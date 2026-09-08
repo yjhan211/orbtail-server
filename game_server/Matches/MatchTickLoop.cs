@@ -41,7 +41,7 @@ internal sealed class MatchTickLoop
             {
                 // 타이머 콜백에서 게임 처리를 직접 실행하지 않고 각 매치를 별도로 예약한다.
                 await Task.Yield();
-                if (Volatile.Read(ref _stopping) != 0 || _runtime.IsTerminal)
+                if (Volatile.Read(ref _stopping) != 0 || _runtime.IsEnded)
                     break;
                 try
                 {

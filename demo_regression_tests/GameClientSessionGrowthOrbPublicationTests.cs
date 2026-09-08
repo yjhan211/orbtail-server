@@ -172,7 +172,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Assert.Equal(0, info.WindCost);
             Assert.Equal(0, info.WaveCost);
             Assert.Equal(before, runtime.SummonStones.GetSnapshot(FirstPlayerId));
-            Assert.Equal(0, runtime.Swarm.OrbBoard.GetFamilyUpgradeCount(FirstPlayerId, OrbColor.Red));
+            Assert.Equal(0, runtime.OrbUpgrades.GetFamilyUpgradeCount(FirstPlayerId, OrbColor.Red));
             Assert.Empty(fixture.ConnectionFor(session).DeliveredProtocols);
         }
     }
@@ -286,14 +286,14 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Assert.Equal(1, cost.OrbCount);
             Assert.Equal(Config.GetSwarmGrowthCardCost(1, 1), cost.CostSummon);
             Assert.Equal(before, first.SummonStones.GetGrowthSuccessCount(101));
-            first.TryMarkTerminal();
+            first.TryMarkEnded();
         }
         using (MatchRuntimeStore.Enter(second))
         {
             var cost = server.GetGrowth().GetCostBreakdown(second.MatchingId, 101);
             Assert.Equal(0, cost.OrbCount);
             Assert.Equal(Config.GetSwarmGrowthCardCost(0, 0), cost.CostSummon);
-            second.TryMarkTerminal();
+            second.TryMarkEnded();
         }
     }
 
@@ -350,7 +350,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(-1, invalid.TargetOrdinal);
         Assert.Equal(originalItemId, Assert.Single(
             fixture.Store.GetOrThrow(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId)).ItemId);
-        Assert.Equal(0, fixture.Runtime(FirstMatchingId).OrbBoard.GetFamilyUpgradeCount(
+        Assert.Equal(0, fixture.Runtime(FirstMatchingId).OrbUpgrades.GetFamilyUpgradeCount(
             FirstPlayerId,
             color));
 
@@ -383,7 +383,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(
             20 - upgradeCost,
             fixture.Store.GetOrThrow(FirstMatchingId).SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
-        Assert.Equal(1, fixture.Runtime(FirstMatchingId).OrbBoard.GetFamilyUpgradeCount(
+        Assert.Equal(1, fixture.Runtime(FirstMatchingId).OrbUpgrades.GetFamilyUpgradeCount(
             FirstPlayerId,
             color));
 
@@ -416,7 +416,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             {
                 lockHeld.Set();
                 Assert.True(markTerminal.Wait(TimeSpan.FromSeconds(5)));
-                Assert.True(runtime.TryMarkTerminal());
+                Assert.True(runtime.TryMarkEnded());
             }
         });
         Assert.True(lockHeld.Wait(TimeSpan.FromSeconds(5)));
@@ -491,7 +491,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(
             20 - upgradeCost,
             fixture.Store.GetOrThrow(FirstMatchingId).SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
-        Assert.Equal(1, fixture.Runtime(FirstMatchingId).OrbBoard.GetFamilyUpgradeCount(
+        Assert.Equal(1, fixture.Runtime(FirstMatchingId).OrbUpgrades.GetFamilyUpgradeCount(
             FirstPlayerId,
             OrbColor.Red));
         Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(FirstMatchingId)!.Sync));
@@ -658,7 +658,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.DoesNotContain("SwarmOrbDecisionCallback", arena);
         Assert.DoesNotContain("RunWithMatchLock", orbSummon);
         Assert.Equal(2, CountOccurrences(orbSummon, "using (match.Enter())"));
-        Assert.Equal(2, CountOccurrences(orbSummon, "if (match.IsTerminal"));
+        Assert.Equal(2, CountOccurrences(orbSummon, "if (match.IsEnded"));
         Assert.DoesNotContain("HandleSwarmGrowthPick", orbSummon);
         Assert.DoesNotContain("C_TO_G_SWARM_GROWTH_PICK", session);
         Assert.Contains("IsEliminated", ReadMethodSlice(
@@ -791,7 +791,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
         public RecordingTcpConnection ConnectionFor(GameClientSession session) => _connections[session];
 
-        public SwarmMatchRuntime Runtime(long matchingId) => Store.GetOrCreate(matchingId).Swarm;
+        public MatchRuntime Runtime(long matchingId) => Store.GetOrCreate(matchingId);
 
         /// <summary>잠금 안에서 터미널로 표시하고 나온다 — 정리는 깊이 0 탈출에서 바로 돈다.</summary>
         public void MarkTerminal(long matchingId)
@@ -799,7 +799,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             MatchRuntime runtime = Store.GetOrNull(matchingId)!;
             using (MatchRuntimeStore.Enter(runtime))
             {
-                Assert.True(runtime.TryMarkTerminal());
+                Assert.True(runtime.TryMarkEnded());
             }
         }
 

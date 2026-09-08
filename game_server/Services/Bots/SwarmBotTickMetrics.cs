@@ -3,7 +3,7 @@ using System.Collections.Immutable;
 namespace game_server.services;
 
 /// <summary>
-///     봇 이동 틱 계측 창 — 매치 하나가 소유한다(<see cref="SwarmMatchRuntime"/>). 샘플 기록은 그 매치의
+///     봇 이동 틱 계측 창 — 매치 하나가 소유한다(<see cref="game_server.matches.MatchRuntime"/>). 샘플 기록은 그 매치의
 ///     잠금 안에서만 돌고, 잠금이 바빠 버린 펄스는 잠금 밖에서 Interlocked로만 누적한다. 200틱마다
 ///     불변 배치를 내보내고 창을 비운다.
 /// </summary>

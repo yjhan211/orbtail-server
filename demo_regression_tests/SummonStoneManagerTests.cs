@@ -202,7 +202,7 @@ public class SummonStoneManagerTests
         manager.AddStones(10, 9);
         manager.AddStones(20, 7);
 
-        using (MatchRuntimeStore.Enter(runtime)) { runtime.TryMarkTerminal(); }
+        using (MatchRuntimeStore.Enter(runtime)) { runtime.TryMarkEnded(); }
 
         Assert.Equal(new SummonStoneSnapshot(0, 0, 2), manager.GetSnapshot(10));
         Assert.Equal(new SummonStoneSnapshot(0, 0, 2), manager.GetSnapshot(20));

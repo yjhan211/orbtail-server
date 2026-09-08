@@ -91,7 +91,7 @@ public sealed class MatchTickRunnerTests
             (_, _) =>
             {
                 combats++;
-                fixture.Match.TryMarkTerminal();
+                fixture.Match.TryMarkEnded();
             },
             (_, _) => { },
             _ => movements++, (_, _) => { });
@@ -167,18 +167,18 @@ public sealed class MatchTickRunnerTests
         using (MatchRuntimeStore.Enter(first))
         {
             service.Process(first, (_, _) => throw new InvalidOperationException("No bots should request a directive."));
-            Assert.Equal(1, first.Swarm.BotTickMetrics.SampleCount);
-            Assert.Equal(0, second.Swarm.BotTickMetrics.SampleCount);
+            Assert.Equal(1, first.BotTickMetrics.SampleCount);
+            Assert.Equal(0, second.BotTickMetrics.SampleCount);
             for (int i = 1; i < SwarmBotTickMetrics.WindowSize; i++)
                 service.Process(first, (_, _) => throw new InvalidOperationException("No bots."));
-            Assert.Equal(0, first.Swarm.BotTickMetrics.SampleCount);
+            Assert.Equal(0, first.BotTickMetrics.SampleCount);
             var entry = Assert.Single(logs.GetRecent(first.MatchingId),
                 e => e.Type == "SURVIVOR_BOT_MOVEMENT_TICK_PERFORMANCE");
             Assert.Equal(SwarmBotTickMetrics.WindowSize, entry.BotMovementTickSampleCount);
             Assert.Empty(logs.GetRecent(second.MatchingId));
-            first.TryMarkTerminal();
+            first.TryMarkEnded();
         }
-        using (MatchRuntimeStore.Enter(second)) second.TryMarkTerminal();
+        using (MatchRuntimeStore.Enter(second)) second.TryMarkEnded();
     }
 
     [Fact]
@@ -188,7 +188,7 @@ public sealed class MatchTickRunnerTests
         int laterStages = 0;
         var runner = new MatchTickRunner(fixture.Store, NullLogger.Instance,
             new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
-            (_, _) => fixture.Match.TryMarkTerminal(),
+            (_, _) => fixture.Match.TryMarkEnded(),
             (_, _) => laterStages++,
             (_, _) => laterStages++,
             _ => laterStages++,

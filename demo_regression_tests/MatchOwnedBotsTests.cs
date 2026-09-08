@@ -20,7 +20,7 @@ public sealed class MatchOwnedBotsTests
             Assert.Equal(1L, first.BotMovement.PrepareTick(logs, [], (_, _) => default).MatchingId);
         using (MatchRuntimeStore.Enter(second))
             Assert.Equal(2L, second.BotMovement.PrepareTick(logs, [], (_, _) => default).MatchingId);
-        using (MatchRuntimeStore.Enter(first)) first.TryMarkTerminal();
+        using (MatchRuntimeStore.Enter(first)) first.TryMarkEnded();
         Assert.Throws<InvalidOperationException>(() => first.BotMovement.PrepareTick(logs, [], (_, _) => default));
         using (MatchRuntimeStore.Enter(second))
             Assert.Equal(2L, second.BotMovement.PrepareTick(logs, [], (_, _) => default).MatchingId);
@@ -37,7 +37,7 @@ public sealed class MatchOwnedBotsTests
         Assert.False(first.Monsters.InitializeMatching(2, 20, DateTime.UtcNow));
         Assert.False(second.Monsters.HasMatching(2));
         Assert.True(second.Monsters.InitializeMatching(2, 20, DateTime.UtcNow));
-        using (MatchRuntimeStore.Enter(first)) first.TryMarkTerminal();
+        using (MatchRuntimeStore.Enter(first)) first.TryMarkEnded();
         Assert.False(first.Monsters.HasMatching(1));
         Assert.True(second.Monsters.HasMatching(2));
     }
@@ -55,7 +55,7 @@ public sealed class MatchOwnedBotsTests
         Assert.Empty(second.Bots.GetBots(2));
         Assert.Empty(first.Bots.GetBots(2));
         Assert.Throws<InvalidOperationException>(() => first.Bots.RegisterBots(2, Config.SWARM_MATCH_MAP, [], new Dictionary<long, Cell>()));
-        using (MatchRuntimeStore.Enter(first)) first.TryMarkTerminal();
+        using (MatchRuntimeStore.Enter(first)) first.TryMarkEnded();
         Assert.Null(store.GetOrNull(1));
         Assert.Empty(first.Bots.GetBots(1));
         Assert.Same(second, store.GetOrNull(2));

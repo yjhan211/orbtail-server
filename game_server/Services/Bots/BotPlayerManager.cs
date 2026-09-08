@@ -1,3 +1,5 @@
+using game_server.matches.states;
+using game_server.matches;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -16,27 +18,11 @@ public readonly record struct SwarmBotDodgeAdvice(float DirectionX, float Direct
 /// <summary>매치 하나의 봇과 이동 계획 상태를 관리한다. 호출은 해당 매치 잠금 안에서 실행한다.</summary>
 public partial class BotPlayerManager
 {
-    /// <summary>
-    ///     문 개방 여부 조회 (2026-08-16 유저 제보: 봇이 문 열리기 전에 들어온다).
-    ///     사람은 GameClientSession.Movement가 문 상태로 막는데 봇만 그냥 지나다녔다.
-    ///     봇도 잠긴 문은 3초 채널링(ProcessSwarmBotDoorUnlocks)으로 열 수 있으므로 막아도 갇히지 않는다.
-    /// </summary>
-    private Func<long, int, bool>? _doorOpenResolver;
+    // 같은 매치의 문 상태를 이동 판정에 사용한다.
+    private readonly DoorState _doors;
 
-    public void SetDoorOpenResolver(Func<long, int, bool> resolver) =>
-        _doorOpenResolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
-
-    private bool IsDoorOpenForBot(long matchingId, int doorId) =>
-        _doorOpenResolver?.Invoke(matchingId, doorId) ?? true;
-
-    /// <summary>
-    ///     투사체 회피 반사 (#232 §9): (matchingId, botId, position, area, now) → 지금 비켜설 월드 방향과
-    ///     그 위협이 지나갈 때까지의 시간. null이면 위협 없음. 게임서버가 교차사격 모양 스냅샷으로 답한다.
-    /// </summary>
-    private Func<long, long, Vector3f, AreaType, DateTime, SwarmBotDodgeAdvice?>? _swarmDodgeResolver;
-
-    public void SetSwarmDodgeResolver(Func<long, long, Vector3f, AreaType, DateTime, SwarmBotDodgeAdvice?> resolver) =>
-        _swarmDodgeResolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
+    // 회피 판단 시 같은 매치의 최신 공격 스냅샷을 읽는다.
+    private readonly SunOrbAttackState _sunOrbAttacks;
 
     // 배회 폴백(잔상 사냥 실패 시)에서 최저 인원 방으로 흩어질 확률 — 봇이 한 방에 뭉치지 않게.
     private const double SwarmWanderScatterProbability = 0.3;
@@ -63,11 +49,13 @@ public partial class BotPlayerManager
 
     private readonly Random _rng = Random.Shared;
 
-    public BotPlayerManager(long matchingId, ILogger logger)
+    internal BotPlayerManager(long matchingId, ILogger logger, DoorState doors, SunOrbAttackState sunOrbAttacks)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
         _matchingId = matchingId;
         _logger = logger;
+        _doors = doors ?? throw new ArgumentNullException(nameof(doors));
+        _sunOrbAttacks = sunOrbAttacks ?? throw new ArgumentNullException(nameof(sunOrbAttacks));
     }
 
     /// <summary>

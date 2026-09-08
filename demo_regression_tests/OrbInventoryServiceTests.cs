@@ -37,7 +37,7 @@ public sealed class OrbInventoryServiceTests
             Assert.Equal(ErrorCode.INSUFFICIENT_CURRENCY, again.ErrorCode);
             Assert.Equal(0, again.State.StoneCount);
             Assert.Single(runtime.Inventory.GetAllItems(1));
-            runtime.TryMarkTerminal();
+            runtime.TryMarkEnded();
         }
     }
 
@@ -55,7 +55,7 @@ public sealed class OrbInventoryServiceTests
             var items = runtime.Inventory.GetPlayerInventory(1).GetAllItems();
             Assert.Equal(2, items.Count);
             Assert.Equal(2, items.Select(item => item.ItemUid).Distinct().Count());
-            runtime.TryMarkTerminal();
+            runtime.TryMarkEnded();
         }
     }
 }

@@ -9,14 +9,14 @@ namespace game_server.matches;
 ///     매치 하나의 참가 명단과 탈락 기록을 관리한다.
 ///     탈락 기록, 최후 1인 판정, 게임 결과 생성.
 /// </summary>
-public class MatchRosterManager
+public class RosterManager
 {
     // MatchRuntime마다 별도 객체를 만들므로 다른 매치의 참가자가 섞이지 않는다.
     private readonly long _matchingId;
     private MatchRosterState? _state;
     private readonly ILogger _logger;
 
-    internal MatchRosterManager(long matchingId, ILogger logger)
+    internal RosterManager(long matchingId, ILogger logger)
     {
         _matchingId = matchingId;
         _state = new MatchRosterState { MatchingId = matchingId };

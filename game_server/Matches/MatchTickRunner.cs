@@ -22,7 +22,7 @@ internal sealed class MatchTickRunner(
     public void Run(MatchRuntime runtime)
     {
         long matchingId = runtime.MatchingId;
-        if (!ReferenceEquals(matchRuntimes.GetOrNull(matchingId), runtime) || runtime.IsTerminal)
+        if (!ReferenceEquals(matchRuntimes.GetOrNull(matchingId), runtime) || runtime.IsEnded)
             return;
         if (!matchRuntimes.TryEnter(matchingId, out MatchScope scope))
         {
@@ -32,7 +32,7 @@ internal sealed class MatchTickRunner(
 
         using (scope)
         {
-            if (!ReferenceEquals(scope.Runtime, runtime) || scope.Runtime.IsTerminal)
+            if (!ReferenceEquals(scope.Runtime, runtime) || scope.Runtime.IsEnded)
                 return;
 
             List<GameClientSession> countdownSessions;
@@ -53,13 +53,13 @@ internal sealed class MatchTickRunner(
             try
             {
                 publishCountdown([matchingId], countdownSessions);
-                if (scope.Runtime.IsTerminal)
+                if (scope.Runtime.IsEnded)
                     return;
                 if (MatchStartGate.IsGameplayActive(matchingId))
                     groundItemAutoPickup.Process(runtime, activeSessions);
-                if (runtime.IsTerminal) return;
+                if (runtime.IsEnded) return;
                 processCombat(matchingId, activeSessions);
-                if (scope.Runtime.IsTerminal)
+                if (scope.Runtime.IsEnded)
                     return;
                 if (scope.Runtime.TryBeginEnvironmentalTick(
                         DateTime.UtcNow, MatchStartGate.GetGameplayStartedAtUtc(matchingId)))
@@ -72,7 +72,7 @@ internal sealed class MatchTickRunner(
                 logger.LogError(ex, "Match combat tick failed: MatchingId={MatchingId}", matchingId);
             }
 
-            if (scope.Runtime.IsTerminal)
+            if (scope.Runtime.IsEnded)
                 return;
 
             try
@@ -88,7 +88,7 @@ internal sealed class MatchTickRunner(
                 logger.LogError(ex, "Match area closure tick failed: MatchingId={MatchingId}", matchingId);
             }
 
-            if (scope.Runtime.IsTerminal || !ShouldMoveBots(scope.Runtime))
+            if (scope.Runtime.IsEnded || !ShouldMoveBots(scope.Runtime))
                 return;
 
             try
@@ -107,7 +107,7 @@ internal sealed class MatchTickRunner(
 
     private void RecordBotTickBusySkip(long matchingId)
     {
-        if (matchRuntimes.GetOrNull(matchingId) is { IsTerminal: false } runtime && ShouldMoveBots(runtime))
-            runtime.Swarm.BotTickMetrics.RecordBusySkip();
+        if (matchRuntimes.GetOrNull(matchingId) is { IsEnded: false } runtime && ShouldMoveBots(runtime))
+            runtime.BotTickMetrics.RecordBusySkip();
     }
 }

@@ -72,7 +72,7 @@ public sealed class MatchOwnedStateTests
         closures.InitializeMatching();
 
         using (MatchRuntimeStore.Enter(runtime))
-            Assert.True(runtime.TryMarkTerminal());
+            Assert.True(runtime.TryMarkEnded());
 
         Assert.Null(store.GetOrNull(runtime.MatchingId));
         Assert.Empty(ground.GetSnapshot(area));
@@ -124,7 +124,7 @@ public sealed class MatchOwnedStateTests
     public void ServerAndSession_DoNotRetainMatchComponentFieldsOrConstructorArguments()
     {
         Type[] components = [typeof(InGameInventoryManager), typeof(GroundItemManager),
-            typeof(SummonStoneManager), typeof(MatchRosterManager), typeof(AreaClosureManager),
+            typeof(SummonStoneManager), typeof(RosterManager), typeof(AreaClosureManager),
             typeof(EncounterRevealManager)];
         foreach (Type owner in new[] { typeof(game_server.GameServer), typeof(game_server.sessions.GameClientSession) })
         {

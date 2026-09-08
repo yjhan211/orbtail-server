@@ -31,7 +31,7 @@ public sealed class ServerDeploymentSurfaceTests
 
         Assert.Equal("no active match", result.GetType().GetProperty("error")!.GetValue(result));
         Assert.Same(runtime, store.GetOrNull(70001));
-        Assert.False(runtime.IsTerminal);
+        Assert.False(runtime.IsEnded);
     }
 
     [Theory]

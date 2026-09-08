@@ -45,7 +45,7 @@ internal sealed class MatchResultService(
         }
 
         using MatchScope scope = runtime.Enter();
-        if (!runtime.TryMarkTerminal())
+        if (!runtime.TryMarkEnded())
         {
             Logger.LogDebug("Duplicate match finalization ignored: MatchingId={MatchingId}", matchingId);
             return;

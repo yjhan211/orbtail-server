@@ -83,7 +83,7 @@ public sealed class MatchEnvironmentalTickTests
         lock (match.Sync)
         {
             Assert.False(match.TryBeginEnvironmentalTick(StartedAt, StartedAt));
-            Assert.True(match.TryMarkTerminal());
+            Assert.True(match.TryMarkEnded());
             Assert.False(match.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt));
             Assert.Equal(StartedAt.AddSeconds(5), match.NextEnvironmentalTickAtUtc);
         }

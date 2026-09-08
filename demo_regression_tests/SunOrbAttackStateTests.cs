@@ -1,3 +1,4 @@
+using game_server.matches.states;
 using game_server.matches;
 using game_server.services;
 using network.common;
@@ -5,7 +6,7 @@ using network.common.data.models;
 
 namespace demo_regression_tests;
 
-public sealed class SwarmCrossfireStateTests
+public sealed class SunOrbAttackStateTests
 {
     private static readonly DateTime NowUtc =
         new(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -13,7 +14,7 @@ public sealed class SwarmCrossfireStateTests
     [Fact]
     public void ShapeQueries_PreserveTelegraphBoundariesAnchorsAndRemovalLifecycle()
     {
-        SwarmCrossfireState state = CreateState();
+        SunOrbAttackState state = CreateState();
         SwarmCrossfireShape first = CreateShape(
             eventId: 1,
             ownerId: 10,
@@ -61,7 +62,7 @@ public sealed class SwarmCrossfireStateTests
     public void DodgeSnapshot_IsGroundScaledImmutableAndPublishedAfterCompletedRemovalPass()
     {
         const long matchingId = 43001;
-        SwarmCrossfireState state = CreateState(matchingId);
+        SunOrbAttackState state = CreateState(matchingId);
         SwarmCrossfireShape first = CreateShape(
             eventId: 1,
             ownerId: 10,
@@ -124,7 +125,7 @@ public sealed class SwarmCrossfireStateTests
     [Fact]
     public void SunBurn_RefreshesPayloadAndUsesInclusiveDueAndExpiryBoundaries()
     {
-        SwarmCrossfireState state = CreateState();
+        SunOrbAttackState state = CreateState();
         const long victimId = 20;
         var applied = new List<(long VictimId, SwarmSunBurnState Burn)>();
 
@@ -196,7 +197,7 @@ public sealed class SwarmCrossfireStateTests
     [Fact]
     public void SunBurn_CallbackFailureDoesNotAdvanceOrRemoveState()
     {
-        SwarmCrossfireState state = CreateState();
+        SunOrbAttackState state = CreateState();
         const long victimId = 20;
         state.SetSunBurn(
             victimId,
@@ -221,7 +222,7 @@ public sealed class SwarmCrossfireStateTests
     [Fact]
     public void Convergence_UsesInclusiveOneSecondWindowAndResetsAfterIt()
     {
-        SwarmCrossfireState state = CreateState();
+        SunOrbAttackState state = CreateState();
 
         SwarmCrossfireConvergenceObservation first = state.TrackConvergence(100, NowUtc);
         SwarmCrossfireConvergenceObservation exactBoundary =
@@ -241,9 +242,9 @@ public sealed class SwarmCrossfireStateTests
         Assert.Equal(2, state.ConvergenceWindowCount);
     }
 
-    private static SwarmCrossfireState CreateState(long matchingId = 43000) =>
+    private static SunOrbAttackState CreateState(long matchingId = 43000) =>
         TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance)
-            .GetOrCreate(matchingId).Swarm.Crossfire;
+            .GetOrCreate(matchingId).SunOrbAttacks;
 
     private static SwarmCrossfireShape CreateShape(
         long eventId,

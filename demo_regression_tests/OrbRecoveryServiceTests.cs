@@ -38,7 +38,7 @@ public sealed class OrbRecoveryServiceTests
             Assert.Equal(2, match.Presentation.OrbRecoveryReadyAtUtc.Count);
             service.Process(match.MatchingId, [], [], [bot], now.AddSeconds(6));
             Assert.Empty(match.Presentation.OrbRecoveryReadyAtUtc);
-            match.TryMarkTerminal();
+            match.TryMarkEnded();
         }
     }
 
@@ -60,8 +60,8 @@ public sealed class OrbRecoveryServiceTests
             var bot = new BotPlayerState { PlayerId = 11, Health = 10 };
             service.Process(secondMatch.MatchingId, [actor], [], [bot], now.AddSeconds(5));
             Assert.Equal(10, bot.Health);
-            secondMatch.TryMarkTerminal();
+            secondMatch.TryMarkEnded();
         }
-        using (MatchRuntimeStore.Enter(firstMatch)) firstMatch.TryMarkTerminal();
+        using (MatchRuntimeStore.Enter(firstMatch)) firstMatch.TryMarkEnded();
     }
 }

@@ -30,7 +30,7 @@ public sealed class OrbTrailServiceTests
         var anchor = new Vector3f(0, 0, 0);
         using (MatchRuntimeStore.Enter(first))
         {
-            first.Swarm.TrailCombat.OrbTrails[(first.MatchingId, 11)] =
+            first.TrailCombat.OrbTrails[(first.MatchingId, 11)] =
                 [new Vector3f(2, 0, 0), new Vector3f(4, 0, 0)];
             var middle = service.GetSwarmTrailPositionAtDistance(first.MatchingId, 11, 3, anchor);
             var beyond = service.GetSwarmTrailPositionAtDistance(first.MatchingId, 11, 6, anchor);
@@ -44,9 +44,9 @@ public sealed class OrbTrailServiceTests
             var fallback = service.GetSwarmTrailPositionAtDistance(second.MatchingId, 11, 5, anchor);
             Assert.Equal(0f, fallback.X);
             Assert.Equal(-1f, fallback.Y);
-            second.TryMarkTerminal();
+            second.TryMarkEnded();
         }
-        using (MatchRuntimeStore.Enter(first)) first.TryMarkTerminal();
+        using (MatchRuntimeStore.Enter(first)) first.TryMarkEnded();
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public sealed class OrbTrailServiceTests
             var removed = service.DestroySwarmOrbsFromOrdinal(match.MatchingId, 11, 1);
             Assert.Equal(original.Skip(1).Select(item => item.ItemUid), removed.Select(item => item.ItemUid));
             Assert.Equal(original[0].ItemUid, Assert.Single(inventory.GetAllItems()).ItemUid);
-            match.TryMarkTerminal();
+            match.TryMarkEnded();
         }
     }
 
@@ -83,12 +83,12 @@ public sealed class OrbTrailServiceTests
         {
             Assert.Null(second.Monsters.FieldSpawnCellResolver);
             second.Monsters.FieldSpawnCellResolver = (_, _) => null;
-            second.TryMarkTerminal();
+            second.TryMarkEnded();
         }
         using (MatchRuntimeStore.Enter(first))
         {
             Assert.NotNull(first.Monsters.FieldSpawnCellResolver!(first.MatchingId, AreaType.None));
-            first.TryMarkTerminal();
+            first.TryMarkEnded();
         }
     }
 }

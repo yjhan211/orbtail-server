@@ -1,3 +1,4 @@
+using game_server.matches.states;
 using game_server.matches;
 using System.Collections.Concurrent;
 using game_server.services;
@@ -9,7 +10,7 @@ internal static class TestGameEventLogs
 {
     public static GameEventLogManager Create()
     {
-        var states = new ConcurrentDictionary<long, MatchEventLogState>();
-        return new GameEventLogManager(id => states.GetOrAdd(id, _ => new MatchEventLogState()));
+        var states = new ConcurrentDictionary<long, EventLogState>();
+        return new GameEventLogManager(id => states.GetOrAdd(id, _ => new EventLogState()));
     }
 }

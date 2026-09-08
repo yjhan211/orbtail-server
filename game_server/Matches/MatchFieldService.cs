@@ -146,7 +146,7 @@ internal sealed class MatchFieldService(
             static _ => true);
         var closureState = matchRuntimes.GetOrThrow(matchingId).Closures.InitializeMatching(
             wavesOverride: MatchPressureFieldPolicy.Enabled ? GetSwarmFieldWaves() : null);
-        if (MatchPressureFieldPolicy.Enabled && matchRuntimes.GetOrThrow(matchingId).Swarm.Pacing.FieldStateAnnounced.Add(matchingId))
+        if (MatchPressureFieldPolicy.Enabled && matchRuntimes.GetOrThrow(matchingId).Progress.FieldStateAnnounced.Add(matchingId))
         {
             outbound.Add(new SwarmFieldStateOutbound(
                 new DateTimeOffset(closureState.GameStartTime).ToUnixTimeMilliseconds(),
@@ -357,7 +357,7 @@ internal sealed class MatchFieldService(
             var destroyed = orbTrails.DestroySwarmOrbsFromOrdinal(matchingId, playerId, suffixStart);
             foreach (var destroyedItem in destroyed)
             {
-                matchRuntimes.GetOrThrow(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.Remove((matchingId, playerId, destroyedItem.ItemUid));
+                matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbDurabilityBonus.Remove((matchingId, playerId, destroyedItem.ItemUid));
                 if (ownerSessionOrdinal >= 0)
                 {
                     outbound.Add(new SwarmInventoryUpdateOutbound(

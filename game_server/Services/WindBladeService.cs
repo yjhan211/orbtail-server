@@ -1,3 +1,4 @@
+using game_server.matches.states;
 using game_server.matches;
 using game_server.sessions;
 using network.common;
@@ -37,7 +38,7 @@ internal sealed class WindBladeService(
         List<GameClientSession> allSessions)
     {
         IReadOnlyList<SwarmArenaCombatTarget>? monsters = null;
-        SwarmWindBladeState windBlade = matchRuntimes.GetOrThrow(matchingId).Swarm.WindBlade;
+        WindBladeState windBlade = matchRuntimes.GetOrThrow(matchingId).WindBlade;
 
         foreach (var owner in participants)
         {
@@ -152,7 +153,7 @@ internal sealed class WindBladeService(
 
     /// <summary>상처 부여·갱신 — HUD 통지 포함. 효과는 ApplySwarmShock의 치명타 굴림이 읽는다.</summary>
     private void ApplySwarmWindWound(
-        SwarmWindBladeState windBlade, long ownerId, AreaType area, long victimId,
+        WindBladeState windBlade, long ownerId, AreaType area, long victimId,
         DateTime nowUtc, List<GameClientSession> aliveSessions)
     {
         windBlade.ApplyWound(victimId, nowUtc.AddSeconds(Config.SWARM_WIND_WOUND_SECONDS));

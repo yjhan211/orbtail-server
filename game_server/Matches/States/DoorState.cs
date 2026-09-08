@@ -1,14 +1,14 @@
 using network.common;
 using network.common.data;
 
-namespace game_server.matches;
+namespace game_server.matches.states;
 
 /// <summary>
 ///     매치 하나의 열린 문을 보관한다. MatchRuntime이 생성과 종료를 책임진다.
 ///     읽기·변경·정리는 호출자가 매치 잠금 안에서 수행한다. 내부에서는 별도 잠금을 잡지 않는다.
 ///     종료 후에는 다시 초기화하거나 열 수 없다.
 /// </summary>
-internal sealed class MatchDoorState
+internal sealed class DoorState
 {
     private readonly HashSet<int> _openDoors = [];
     private bool _initialized;

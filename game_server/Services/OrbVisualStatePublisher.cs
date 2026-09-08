@@ -1,3 +1,4 @@
+using game_server.matches.states;
 using game_server.matches;
 using System.Collections.Immutable;
 using game_server.sessions;
@@ -6,7 +7,7 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 using network.packets;
-using OrbVisualState = game_server.matches.MatchPresentationState.OrbVisualState;
+using OrbVisualState = game_server.matches.states.PresentationState.OrbVisualState;
 
 namespace game_server.services;
 
@@ -62,7 +63,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
         long mask = 0;
         var orbs = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs();
         for (int ordinal = 0; ordinal < orbs.Count && ordinal < 64; ordinal++)
-            if (matchRuntimes.GetOrThrow(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, orbs[ordinal].ItemUid)))
+            if (matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, orbs[ordinal].ItemUid)))
                 mask |= 1L << ordinal;
         return mask;
     }

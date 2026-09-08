@@ -320,7 +320,7 @@ public sealed class GameClientSessionPublicationTests
         {
             Assert.True(ready.SignalAndWait(TimeSpan.FromSeconds(5)));
             try { registry.Register(101, session); }
-            catch (InvalidOperationException) { Assert.True(runtime.IsTerminal); }
+            catch (InvalidOperationException) { Assert.True(runtime.IsEnded); }
         });
         var terminate = Task.Run(() =>
         {
@@ -570,7 +570,7 @@ public sealed class GameClientSessionPublicationTests
             {
                 lockHeld.Set();
                 Assert.True(markTerminal.Wait(TimeSpan.FromSeconds(5)));
-                Assert.True(runtime.TryMarkTerminal());
+                Assert.True(runtime.TryMarkEnded());
             }
         });
         Assert.True(lockHeld.Wait(TimeSpan.FromSeconds(5)));
@@ -768,10 +768,10 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain(Enum.GetNames<Protocol>(), name => name.Contains("RNG_COLLECT") || name.Contains("INTERACT_COOLDOWN"));
         var autoPickup = ReadNormalizedSource(root, "game_server", "Services", "GroundItemAutoPickupService.cs");
         Assert.Contains("Monitor.IsEntered(match.Sync)", autoPickup);
-        Assert.Contains("match.IsTerminal", autoPickup);
+        Assert.Contains("match.IsEnded", autoPickup);
         Assert.DoesNotContain("RunWithMatchLock", orbSummon);
         Assert.Equal(2, CountOccurrences(orbSummon, "using (match.Enter())"));
-        Assert.Equal(2, CountOccurrences(orbSummon, "if (match.IsTerminal"));
+        Assert.Equal(2, CountOccurrences(orbSummon, "if (match.IsEnded"));
         Assert.DoesNotContain("SwarmGrowthPickCallback", session);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
         Assert.DoesNotContain("SwarmGrowthPickCallback", arena);
@@ -796,7 +796,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("HandleRestStateRequest", playerState);
         Assert.DoesNotContain("await ", playerState);
         Assert.Equal(1, CountOccurrences(playerState, "using (match.Enter())"));
-        Assert.Equal(1, CountOccurrences(playerState, "if (match.IsTerminal"));
+        Assert.Equal(1, CountOccurrences(playerState, "if (match.IsEnded"));
         Assert.DoesNotContain("RunWithMatchLock(", doors);
         Assert.Contains("using (match.Enter())", doors);
         Assert.DoesNotContain("ProcessDoorOpenRequest", doors);
@@ -1176,7 +1176,7 @@ public sealed class GameClientSessionPublicationTests
             MatchRuntime runtime = Store.GetOrNull(matchingId)!;
             using (MatchRuntimeStore.Enter(runtime))
             {
-                Assert.True(runtime.TryMarkTerminal());
+                Assert.True(runtime.TryMarkEnded());
             }
         }
 

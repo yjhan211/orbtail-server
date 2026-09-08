@@ -8,11 +8,11 @@ using network.common.data.helpers;
 
 namespace demo_regression_tests;
 
-public sealed class MatchDoorStateTests
+public sealed class DoorStateTests
 {
     private readonly string _networkBasePath;
 
-    public MatchDoorStateTests()
+    public DoorStateTests()
     {
         _networkBasePath = FindNetworkBasePath();
         GameDataHelper.SetBasePath(_networkBasePath);
@@ -86,7 +86,7 @@ public sealed class MatchDoorStateTests
         {
             doors.Initialize();
             Assert.True(doors.OpenDoor(990004));
-            Assert.True(runtime.TryMarkTerminal());
+            Assert.True(runtime.TryMarkEnded());
         }
         doors.Initialize();
         Assert.False(doors.OpenDoor(990004));
@@ -119,7 +119,7 @@ public sealed class MatchDoorStateTests
         using (MatchRuntimeStore.Enter(ended))
         {
             using (MatchRuntimeStore.Enter(ended))
-                ended.TryMarkTerminal();
+                ended.TryMarkEnded();
             Assert.True(ended.Doors.IsDoorOpen(990009));
         }
         Assert.False(ended.Doors.IsDoorOpen(990009));

@@ -26,7 +26,7 @@ internal sealed class MatchEnvironmentService(
     {
         if (!Monitor.IsEntered(match.Sync))
             throw new InvalidOperationException("Environmental settlement requires the match lock.");
-        if (match.IsTerminal)
+        if (match.IsEnded)
             return;
 
         long matchingId = match.MatchingId;
@@ -50,14 +50,14 @@ internal sealed class MatchEnvironmentService(
             if (aliveCount == 1 && humans.Count > 0)
             {
                 matchEliminations.EndMatch(matchingId, humans[0].PlayerId ?? 0, "last_survivor_before_overtime");
-                match.Combat.Clear();
+                match.AutoAttack.Clear();
                 return;
             }
 
             if (humans.Count == 0)
             {
                 long winnerPlayerId = bots.Count == 1 ? bots[0].PlayerId : 0;
-                match.Combat.Clear();
+                match.AutoAttack.Clear();
                 matchCleanup.EndBotOnlyMatchIfSettled(matchingId, winnerPlayerId);
             }
 
@@ -193,7 +193,7 @@ internal sealed class MatchEnvironmentService(
         if (isGameOver && winnerId.HasValue && hasActiveSession)
         {
             matchEliminations.EndMatch(matchingId, winnerId.Value, resolution.DecisiveCriterion);
-            match.Combat.Clear();
+            match.AutoAttack.Clear();
         }
     }
 

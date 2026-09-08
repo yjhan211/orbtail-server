@@ -46,7 +46,7 @@ internal sealed class OrbTrailService(MatchRuntimeStore matchRuntimes)
     public Vector3f GetSwarmTrailPositionAtDistance(
         long matchingId, long playerId, float targetDistance, Vector3f anchor)
     {
-        if (!matchRuntimes.GetOrThrow(matchingId).Swarm.TrailCombat.OrbTrails.TryGetValue((matchingId, playerId), out var points) || points.Count == 0)
+        if (!matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbTrails.TryGetValue((matchingId, playerId), out var points) || points.Count == 0)
             return new Vector3f(anchor.X, anchor.Y - targetDistance * 0.2f, 0f);
 
         Vector3f previous = anchor;

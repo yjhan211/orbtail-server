@@ -1,3 +1,4 @@
+using game_server.matches.states;
 using game_server.matches;
 using System.Collections.Concurrent;
 using System.Globalization;
@@ -17,15 +18,15 @@ public class GameEventLogManager
     private const int MaxEventsPerMatching = 5_000;
 
 
-    private readonly Func<long, MatchEventLogState?> _getMatchState;
+    private readonly Func<long, EventLogState?> _getMatchState;
     private long _nextSeq;
 
-    internal GameEventLogManager(Func<long, MatchEventLogState?> getMatchState)
+    internal GameEventLogManager(Func<long, EventLogState?> getMatchState)
     {
         _getMatchState = getMatchState ?? throw new ArgumentNullException(nameof(getMatchState));
     }
 
-    private MatchEventLogState GetActiveState(long matchingId)
+    private EventLogState GetActiveState(long matchingId)
     {
         var state = _getMatchState(matchingId);
         if (state == null || state.IsReleased)

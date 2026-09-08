@@ -19,7 +19,7 @@ internal sealed class GroundItemAutoPickupService(
     {
         var match = session.Match;
         RequireMatchLock(match);
-        if (match.IsTerminal || !session.PlayerId.HasValue) return;
+        if (match.IsEnded || !session.PlayerId.HasValue) return;
         var candidates = GetCandidates(match, session);
         if (nextArea != session.CurrentArea)
             candidates.Record(match.GroundItems, session.PlayerId.Value, session.CurrentArea,
@@ -36,7 +36,7 @@ internal sealed class GroundItemAutoPickupService(
             match.GroundItemPickupCandidates.Remove(stale);
         foreach (var session in sessions)
         {
-            if (match.IsTerminal) return;
+            if (match.IsEnded) return;
             try
             {
                 Process(session);
@@ -53,7 +53,7 @@ internal sealed class GroundItemAutoPickupService(
     {
         var match = session.Match;
         RequireMatchLock(match);
-        if (match.IsTerminal || !session.PlayerId.HasValue || session.MatchingId <= 0 ||
+        if (match.IsEnded || !session.PlayerId.HasValue || session.MatchingId <= 0 ||
             session.IsEliminated || session.IsGameEnded || session.IsConnectionReleased || session.LastValidatedPosition == null)
         {
             match.GroundItemPickupCandidates.Remove(session);
@@ -65,7 +65,7 @@ internal sealed class GroundItemAutoPickupService(
         match.GroundItemPickupCandidates.Remove(session);
         foreach (var candidate in candidates.Take())
         {
-            if (match.IsTerminal) break;
+            if (match.IsEnded) break;
             var pickup = GroundItemPickupService.TryPickup(match, session.PlayerId.Value, candidate.Area,
                 candidate.Position, session.CurrentHealth, candidate.GroundItemUid);
             if (pickup.Status != GroundItemClaimStatus.Success || pickup.ClaimedItem == null) continue;

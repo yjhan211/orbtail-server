@@ -47,7 +47,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                 service.CleanupIfNoHumanSessionsRemain(matchingId);
             service.CleanupIfNoHumanSessionsRemain(matchingId);
 
-            Assert.True(runtime.IsTerminal);
+            Assert.True(runtime.IsEnded);
             Assert.Null(summaries.Read(matchingId));
             Assert.Same(runtime, store.GetOrNull(matchingId));
         }
@@ -143,7 +143,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
 
         int runtimeLookup = Find(normalFinalization, "_matchRuntimes.GetOrNull(matchingId)");
         int lockEntry = Find(normalFinalization, "runtime.Enter()");
-        int terminalMark = Find(normalFinalization, "runtime.TryMarkTerminal()");
+        int terminalMark = Find(normalFinalization, "runtime.TryMarkEnded()");
         int resultPayload = Find(normalFinalization, "MessagePackSerializer.Serialize(new G_TO_C_GAME_RESULT");
         int preparedTerminalPlan = Find(normalFinalization, "var terminalPlan = new MatchTerminalPublicationPlan(");
         int finalizationClaim = Find(normalFinalization, "_gameEventLogManager.TryBeginFinalization(");
@@ -236,7 +236,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         string noHumanFinalization = serverSource;
 
         int noHumanLock = Find(noHumanFinalization, "runtime.Enter()");
-        int noHumanTerminalMark = Find(noHumanFinalization, "runtime.TryMarkTerminal();");
+        int noHumanTerminalMark = Find(noHumanFinalization, "runtime.TryMarkEnded();");
         int abandonedEvent = Find(noHumanFinalization, "eventLogs.LogMatchAbandoned(");
         int noHumanCapture = Find(noHumanFinalization, "MatchSummaryPersistence.Capture(");
         int noHumanAfterRelease = Find(noHumanFinalization, "runtime.AfterRelease.Add(");
@@ -611,7 +611,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         Assert.True(Find(exit, "_runtimeStore.RemoveCompleted(this);") < Find(exit, "Monitor.Exit(Sync);"));
         Assert.True(Find(exit, "Monitor.Exit(Sync);") < Find(exit, "foreach (Action action in afterRelease)"));
         Assert.True(Find(exit, "foreach (Action action in afterRelease)") < Find(exit, "_matchingLifecycle.StartRedisCleanup(MatchingId);"));
-        Assert.Contains("if (IsTerminal && !_cleanupDone)", exit);
+        Assert.Contains("if (IsEnded && !_cleanupStarted)", exit);
         Assert.Contains("startRedisCleanup = true;", exit);
     }
     public void Dispose()

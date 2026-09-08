@@ -24,7 +24,7 @@ public sealed class GroundItemPickupCandidatesTests
             Assert.Equal(ErrorCode.ITEM_NOT_USABLE, result.Rejection);
             Assert.NotNull(match.GroundItems.GetItem(item.GroundItemUid));
             Assert.Empty(match.Inventory.GetAllItems(1));
-            match.TryMarkTerminal();
+            match.TryMarkEnded();
         }
     }
 
@@ -45,7 +45,7 @@ public sealed class GroundItemPickupCandidatesTests
                 candidate.Position, 100, candidate.GroundItemUid);
             Assert.Equal(GroundItemClaimStatus.Success, result.Status);
             Assert.Empty(candidates.Take());
-            match.TryMarkTerminal();
+            match.TryMarkEnded();
         }
     }
 
@@ -62,7 +62,7 @@ public sealed class GroundItemPickupCandidatesTests
             candidates.Record(match.GroundItems, 1, Config.SWARM_MATCH_GROUND_AREA, At(item, -5, 5), At(item, 5, 5));
             candidates.Record(match.GroundItems, 1, Config.SWARM_MATCH_GROUND_AREA, At(item, 5, 5), At(item, 5, 0));
             Assert.Empty(candidates.Take());
-            match.TryMarkTerminal();
+            match.TryMarkEnded();
         }
     }
 
@@ -78,7 +78,7 @@ public sealed class GroundItemPickupCandidatesTests
                 new Vector3f(-5, 0, 0), new Vector3f(5, 0, 0));
             Spawn(match);
             Assert.Empty(candidates.Take());
-            match.TryMarkTerminal();
+            match.TryMarkEnded();
         }
     }
 
@@ -94,7 +94,7 @@ public sealed class GroundItemPickupCandidatesTests
             candidates.Record(match.GroundItems, 1, Config.SWARM_MATCH_GROUND_AREA, At(item, 0, 0), At(item, 0, 0));
             candidates.Record(match.GroundItems, 1, Config.SWARM_MATCH_GROUND_AREA, At(item, 0, 0), At(item, 0, 0));
             Assert.Single(candidates.Take());
-            match.TryMarkTerminal();
+            match.TryMarkEnded();
         }
     }
 
@@ -112,7 +112,7 @@ public sealed class GroundItemPickupCandidatesTests
             Assert.Empty(candidates.Take());
             candidates.Record(match.GroundItems, 1, Config.SWARM_MATCH_GROUND_AREA, At(item, 5, 0), At(item, 0, 0));
             Assert.Single(candidates.Take());
-            match.TryMarkTerminal();
+            match.TryMarkEnded();
         }
     }
 

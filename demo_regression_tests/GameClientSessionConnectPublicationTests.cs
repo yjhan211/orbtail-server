@@ -93,7 +93,7 @@ public sealed class GameClientSessionConnectPublicationTests
             });
             Assert.True(started.Wait(TimeSpan.FromSeconds(5)));
             Assert.False(request.Wait(TimeSpan.FromMilliseconds(100)));
-            Assert.True(runtime.TryMarkTerminal());
+            Assert.True(runtime.TryMarkEnded());
         }
         await request.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Null(fixture.Store.GetOrNull(74010));
@@ -138,7 +138,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Equal(1, sent);
 
         using (original.Enter())
-            Assert.True(original.TryMarkTerminal());
+            Assert.True(original.TryMarkEnded());
         Assert.Null(fixture.Store.GetOrNull(74009));
         var replacement = fixture.Store.GetOrCreate(74009);
         Assert.NotSame(original, replacement);
@@ -280,7 +280,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.True(fixture.Store.TryEnter(matchingId, out MatchScope probe));
         using (probe)
         {
-            Assert.True(probe.Runtime.TryMarkTerminal());
+            Assert.True(probe.Runtime.TryMarkEnded());
         }
 
         Assert.False(MatchStartGate.IsGameplayActive(matchingId));
@@ -330,7 +330,7 @@ public sealed class GameClientSessionConnectPublicationTests
         MatchRuntime runtime = fixture.Store.GetOrCreate(matchingId);
         using (MatchRuntimeStore.Enter(runtime))
         {
-            Assert.True(runtime.TryMarkTerminal());
+            Assert.True(runtime.TryMarkEnded());
         }
 
         Assert.Null(fixture.Store.GetOrNull(matchingId));
@@ -461,7 +461,7 @@ public sealed class GameClientSessionConnectPublicationTests
             return false;
 
         using MatchScope scope = MatchRuntimeStore.Enter(runtime);
-        if (runtime.IsTerminal)
+        if (runtime.IsEnded)
             return false;
 
         if (!connection.TryMarkAuthenticated(
@@ -513,7 +513,7 @@ public sealed class GameClientSessionConnectPublicationTests
         string initialization = source[statementEnd..inventorySnapshot];
         Assert.Equal(2, initialization.Split("EnsureConnectionActive();").Length - 1);
         Assert.Contains("using (runtime.Enter())", initialization);
-        Assert.Contains("if (runtime.IsTerminal)", initialization);
+        Assert.Contains("if (runtime.IsEnded)", initialization);
         int synchronization = source.IndexOf("SyncPlayersOnEntry();", inventorySnapshot, StringComparison.Ordinal);
         int commit = source.IndexOf("await _matchEntry.CommitAsync(", synchronization, StringComparison.Ordinal);
         Assert.True(synchronization > inventorySnapshot && commit > synchronization);

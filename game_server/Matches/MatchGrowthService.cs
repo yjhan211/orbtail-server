@@ -77,7 +77,7 @@ internal sealed class MatchGrowthService(
         int spawnItemId = SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)];
 
         int armorSlots = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs()
-            .Count(item => !matchRuntimes.GetOrThrow(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)));
+            .Count(item => !matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)));
         int armorCount = armorSlots <= 0 ? 0 : 1;
         if (armorCount > 0 && armorSlots >= 2)
         {
@@ -264,7 +264,7 @@ internal sealed class MatchGrowthService(
                         return false;
                     var targets = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs()
                         .Where(item =>
-                            !matchRuntimes.GetOrThrow(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)))
+                            !matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)))
                         .Take(offer.ArmorCount)
                         .ToList();
                     if (targets.Count == 0)
@@ -272,7 +272,7 @@ internal sealed class MatchGrowthService(
                     if (!matchRuntimes.GetOrThrow(matchingId).SummonStones.TrySpendStones(playerId, cost, out _))
                         return false;
                     foreach (var target in targets)
-                        matchRuntimes.GetOrThrow(matchingId).Swarm.TrailCombat.OrbDurabilityBonus[(matchingId, playerId, target.ItemUid)] =
+                        matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbDurabilityBonus[(matchingId, playerId, target.ItemUid)] =
                             ArmorDurabilityBonus;
                     return true;
                 }

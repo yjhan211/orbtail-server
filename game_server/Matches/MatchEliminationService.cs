@@ -145,7 +145,7 @@ internal sealed class MatchEliminationService(
         if (runtime == null)
             return;
         using var scope = runtime.Enter();
-        if (runtime.IsTerminal)
+        if (runtime.IsEnded)
             return;
 
         Logger.LogInformation(

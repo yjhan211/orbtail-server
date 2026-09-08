@@ -1,3 +1,4 @@
+using game_server.matches.states;
 using game_server.players;
 using game_server.matches;
 using game_server.sessions;
@@ -25,7 +26,7 @@ public sealed class SwarmArenaTickOrderTests
             "matchRuntimes.TryEnter(matchingId, out MatchScope scope)",
             "return;",
             "using (scope)",
-            "scope.Runtime.IsTerminal",
+            "scope.Runtime.IsEnded",
             "processCombat(matchingId, activeSessions);");
         Assert.DoesNotContain("matchRuntimes.Enter(", runner);
     }
@@ -69,7 +70,7 @@ public sealed class SwarmArenaTickOrderTests
             "scope.Runtime.TryBeginEnvironmentalTick(",
             "MatchStartGate.GetGameplayStartedAtUtc(matchingId)",
             "processEnvironment(scope.Runtime, activeSessions);",
-            "scope.Runtime.IsTerminal ||",
+            "scope.Runtime.IsEnded ||",
             "moveBots(scope.Runtime);");
 
         string matchingSettlement = ReadMethodSlice(
@@ -158,7 +159,7 @@ public sealed class SwarmArenaTickOrderTests
             "ApplySwarmPvpAttack(matchingId, pending.Attack",
             "CollectSwarmCrossfireCappedOwners(",
             "CollectSwarmCrossfireAnchoredTargets(",
-            "Combat.Resolve(",
+            "AutoAttack.ResolveAttacks(",
             "TryScheduleSwarmCrossfire(",
             "combatDamage.SendMonsterHitNotification(attackerSession,",
             "BroadcastSwarmAttackVfxToTargetAndObservers(",
@@ -272,9 +273,9 @@ public sealed class SwarmArenaTickOrderTests
         Assert.Contains("Monsters.Release();", cleanupBody);
         Assert.DoesNotContain("CleanupSwarmArenaState", source);
         Assert.DoesNotContain("_swarmMatchRuntimes", source);
-        Assert.DoesNotContain("ClearSwarmCrossfireState", cleanupBody);
-        Assert.DoesNotContain("ClearSwarmWindBladeState", cleanupBody);
-        Assert.DoesNotContain("ClearSwarmOrbBoardState", cleanupBody);
+        Assert.DoesNotContain("ClearSunOrbAttackState", cleanupBody);
+        Assert.DoesNotContain("ClearWindBladeState", cleanupBody);
+        Assert.DoesNotContain("ClearOrbUpgradeState", cleanupBody);
     }
 
     [Fact]
@@ -362,11 +363,11 @@ public sealed class SwarmArenaTickOrderTests
     }
 
     [Fact]
-    public void WindBladeAndOrbBoardState_AreOwnedBySwarmMatchRuntime()
+    public void WindBladeAndOrbBoardState_AreOwnedByMatchRuntime()
     {
         string root = FindRepositoryRoot();
         string windBlade = ReadNormalizedSource(root, "game_server", "Services", "WindBladeService.cs");
-        string crossfire = ReadNormalizedSource(root, "game_server", "Services", "CrossfireService.cs");
+        string crossfire = ReadNormalizedSource(root, "game_server", "Services", "SunOrbAttackService.cs");
         string orbBoard = ReadNormalizedSource(root, "game_server", "Services", "OrbUpgradeService.cs");
 
         Assert.DoesNotContain("_swarmWindBladeNextTickAtUtc", windBlade);
@@ -374,29 +375,30 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("_swarmWindBladeVictimImmuneUntilUtc", windBlade);
         Assert.DoesNotContain("_swarmWindWoundsUntilUtc", crossfire);
         Assert.DoesNotContain("_swarmFamilyUpgradeCounts", orbBoard);
-        Assert.Contains("matchRuntimes.GetOrThrow(matchingId).Swarm.WindBlade", windBlade);
-        Assert.Contains("matchRuntimes.GetOrThrow(matchingId).Swarm.OrbBoard", orbBoard);
+        Assert.Contains("matchRuntimes.GetOrThrow(matchingId).WindBlade", windBlade);
+        Assert.Contains("matchRuntimes.GetOrThrow(matchingId).OrbUpgrades", orbBoard);
     }
 
     [Fact]
-    public void SwarmCrossfireState_IsMatchOwnedAndDodgeLookupDoesNotCreateRuntime()
+    public void SunOrbAttackState_IsMatchOwnedAndDodgeLookupDoesNotCreateRuntime()
     {
         string root = FindRepositoryRoot();
-        string crossfire = ReadNormalizedSource(root, "game_server", "Services", "CrossfireService.cs");
+        string crossfire = ReadNormalizedSource(root, "game_server", "Services", "SunOrbAttackService.cs");
         string botDodge = ReadNormalizedSource(root, "game_server", "Matches", "MatchRuntime.cs");
-        string runtimeStates = ReadNormalizedSource(root, "game_server", "Services", "SwarmArenaStates.cs");
+        string runtimeStates = ReadNormalizedSource(root, "game_server", "Matches", "States", "MatchProgressState.cs");
 
         Assert.DoesNotContain("_swarmCrossfireShapes", crossfire);
         Assert.DoesNotContain("_swarmCrossfireDodgeSnapshot", crossfire);
         Assert.DoesNotContain("_swarmCrossfireEventSeq", crossfire);
         Assert.DoesNotContain("_swarmSunBurns", crossfire);
         Assert.DoesNotContain("_swarmCrossfireConvergeWindows", crossfire);
-        Assert.DoesNotContain("ClearSwarmCrossfireState(", crossfire);
-        Assert.Contains("SwarmCrossfireState crossfire = matchRuntimes.GetOrThrow(matchingId).Swarm.Crossfire;", crossfire);
-        Assert.Contains("public SwarmCrossfireState Crossfire { get; }", runtimeStates);
+        Assert.DoesNotContain("ClearSunOrbAttackState(", crossfire);
+        Assert.Contains("SunOrbAttackState sunOrbAttacks = matchRuntimes.GetOrThrow(matchingId).SunOrbAttacks;", crossfire);
+        Assert.Contains("public SunOrbAttackState SunOrbAttacks { get; }", botDodge);
 
-        Assert.Contains("Bots.SetSwarmDodgeResolver", botDodge);
-        Assert.Contains("Swarm.Crossfire.DodgeSnapshot, id, botId, position, area, now", botDodge);
+        Assert.Contains("new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks)", botDodge);
+        string botMovement = ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotPlayerManager.Movement.cs");
+        Assert.Contains("_sunOrbAttacks.DodgeSnapshot, matchingId, bot.PlayerId, bot.Position, bot.CurrentArea, now", botMovement);
         Assert.DoesNotContain("matchRuntimes.GetOrThrow(matchingId).Swarm", botDodge);
         Assert.False(File.Exists(Path.Combine(root, "game_server", "GameServer.SwarmBotDodge.cs")));
     }
@@ -408,9 +410,9 @@ public sealed class SwarmArenaTickOrderTests
         string store = ReadNormalizedSource(
             root, "game_server", "Matches", "MatchRuntime.cs");
         string runtimeStates = ReadNormalizedSource(
-            root, "game_server", "Services", "SwarmArenaStates.cs");
+            root, "game_server", "Matches", "States", "MatchProgressState.cs");
         string arena = ReadNormalizedSource(root, "game_server", "Matches", "MatchArenaService.cs");
-        string crossfire = ReadNormalizedSource(root, "game_server", "Services", "CrossfireService.cs");
+        string crossfire = ReadNormalizedSource(root, "game_server", "Services", "SunOrbAttackService.cs");
 
         // 매치 하나에 모니터 하나 — 블로킹 진입과 펄스용 TryEnter가 같은 잠금 객체를 쓴다.
         Assert.DoesNotContain("_globalExecutionLock", store);
@@ -423,8 +425,8 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("_swarmCriticalRng", crossfire);
         Assert.Contains("private readonly Random _criticalRng = new();", runtimeStates);
         string damage = ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatDamageService.cs");
-        Assert.Contains(".Pacing.RollCritical(", damage);
-        Assert.Contains("runtime.Pacing.RollCritical(", damage);
+        Assert.Contains(".Progress.RollCritical(", damage);
+        Assert.Contains("runtime.Progress.RollCritical(", damage);
 
         string field = ReadNormalizedSource(root, "game_server", "Matches", "MatchFieldService.cs");
         Assert.Contains(

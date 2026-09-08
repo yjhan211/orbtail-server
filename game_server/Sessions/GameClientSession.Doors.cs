@@ -40,7 +40,7 @@ public partial class GameClientSession
         using (match.Enter())
         {
             var error = ErrorCode.INVALID_GAME_STATE;
-            if (!match.IsTerminal && !IsGameplayActionBlocked(out _) && GameInteractableData.Get(msg.InteractId) is { DoorId: > 0 } info)
+            if (!match.IsEnded && !IsGameplayActionBlocked(out _) && GameInteractableData.Get(msg.InteractId) is { DoorId: > 0 } info)
             {
                 error = info.ZoneId != (int)CurrentArea
                     ? ErrorCode.AREA_MISMATCH
@@ -88,7 +88,7 @@ public partial class GameClientSession
         {
             var error = ErrorCode.INVALID_GAME_STATE;
             int doorId = 0;
-            if (!match.IsTerminal && !IsGameplayActionBlocked(out _) && GameInteractableData.Get(msg.InteractId) is { DoorId: > 0 } info)
+            if (!match.IsEnded && !IsGameplayActionBlocked(out _) && GameInteractableData.Get(msg.InteractId) is { DoorId: > 0 } info)
             {
                 doorId = info.DoorId;
                 error = info.ZoneId != (int)CurrentArea
@@ -166,7 +166,7 @@ public partial class GameClientSession
 
         using (match.Enter())
         {
-            if (match.IsTerminal)
+            if (match.IsEnded)
             {
                 return;
             }

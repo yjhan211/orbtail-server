@@ -1,3 +1,4 @@
+using game_server.matches.states;
 using game_server.matches;
 using System.Collections.Concurrent;
 using game_server.services;
@@ -7,20 +8,20 @@ using network.common.data.models;
 
 namespace demo_regression_tests;
 
-public sealed class SwarmMatchRuntimeTests
+public sealed class MatchGameplayStateTests
 {
     [Fact]
-    public void TerminalCleanup_RemovesSwarmWithItsMatchEvenIfPostCleanupFails()
+    public void TerminalCleanup_RemovesGameplayStateWithItsMatchEvenIfPostCleanupFails()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
             onRedisCleanup: _ => throw new InvalidOperationException());
         var ended = store.GetOrCreate(91001);
         var sibling = store.GetOrCreate(91002);
-        ended.Swarm.OrbBoard.IncrementFamilyUpgradeCount(1, OrbColor.Red);
+        ended.OrbUpgrades.IncrementFamilyUpgradeCount(1, OrbColor.Red);
         using (var scope = MatchRuntimeStore.Enter(ended))
         {
-            Assert.Same(ended.Swarm, scope.Runtime.Swarm);
-            ended.TryMarkTerminal();
+            Assert.Same(ended, scope.Runtime);
+            ended.TryMarkEnded();
         }
         Assert.Null(store.GetOrNull(91001));
         Assert.Throws<InvalidOperationException>(() => store.GetOrThrow(91001));
@@ -32,7 +33,7 @@ public sealed class SwarmMatchRuntimeTests
     [Fact]
     public void WindBladeState_PreservesTimingBoundariesAndEngagementReset()
     {
-        var state = new SwarmWindBladeState();
+        var state = new WindBladeState();
         DateTime nowUtc = new(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc);
 
         Assert.True(state.TryBeginTick(10, 100, nowUtc, 1d));
@@ -60,7 +61,7 @@ public sealed class SwarmMatchRuntimeTests
     [Fact]
     public void OrbBoardState_CountsUpgradesPerPlayerAndColor()
     {
-        var state = new SwarmOrbBoardState();
+        var state = new OrbUpgradeState();
 
         Assert.Equal(0, state.GetFamilyUpgradeCount(10, OrbColor.Red));
         Assert.Equal(1, state.IncrementFamilyUpgradeCount(10, OrbColor.Red));
@@ -74,8 +75,8 @@ public sealed class SwarmMatchRuntimeTests
     public void MatchLocalState_IsIsolatedWhenTwoRuntimesUseTheSameKeys()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
-        SwarmMatchRuntime first = store.GetOrCreate(42001).Swarm;
-        SwarmMatchRuntime second = store.GetOrCreate(42002).Swarm;
+        MatchRuntime first = store.GetOrCreate(42001);
+        MatchRuntime second = store.GetOrCreate(42002);
         const long playerId = 501;
         const long itemUid = 9001;
         DateTime nowUtc = new(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc);
@@ -93,17 +94,17 @@ public sealed class SwarmMatchRuntimeTests
         Assert.False(first.WindBlade.TryClaimVictimShock(playerId, nowUtc, 1d));
         Assert.True(second.WindBlade.TryClaimVictimShock(playerId, nowUtc, 1d));
 
-        Assert.Equal(1, first.OrbBoard.IncrementFamilyUpgradeCount(playerId, OrbColor.Red));
-        Assert.Equal(0, second.OrbBoard.GetFamilyUpgradeCount(playerId, OrbColor.Red));
-        Assert.Equal(1, second.OrbBoard.IncrementFamilyUpgradeCount(playerId, OrbColor.Red));
-        Assert.Equal(1, first.OrbBoard.GetFamilyUpgradeCount(playerId, OrbColor.Red));
+        Assert.Equal(1, first.OrbUpgrades.IncrementFamilyUpgradeCount(playerId, OrbColor.Red));
+        Assert.Equal(0, second.OrbUpgrades.GetFamilyUpgradeCount(playerId, OrbColor.Red));
+        Assert.Equal(1, second.OrbUpgrades.IncrementFamilyUpgradeCount(playerId, OrbColor.Red));
+        Assert.Equal(1, first.OrbUpgrades.GetFamilyUpgradeCount(playerId, OrbColor.Red));
 
-        first.Crossfire.AddShape(CreateCrossfireShape(
+        first.SunOrbAttacks.AddShape(CreateCrossfireShape(
             eventId: 11,
             ownerId: playerId,
             anchorCombatTargetId: 7001,
             armedAtUtc: nowUtc.AddSeconds(1)));
-        first.Crossfire.SetSunBurn(
+        first.SunOrbAttacks.SetSunBurn(
             playerId,
             ownerId: playerId,
             weaponItemId: 101,
@@ -112,18 +113,18 @@ public sealed class SwarmMatchRuntimeTests
             durationSeconds: 3d,
             tickIntervalSeconds: 1d);
         SwarmCrossfireConvergenceObservation firstConvergence =
-            first.Crossfire.TrackConvergence(7001, nowUtc);
+            first.SunOrbAttacks.TrackConvergence(7001, nowUtc);
 
         Assert.Equal(1, firstConvergence.HitCount);
-        Assert.True(second.Crossfire.IsEmpty);
-        Assert.Equal(first.MatchingId, Assert.Single(first.Crossfire.DodgeSnapshot).MatchingId);
+        Assert.True(second.SunOrbAttacks.IsEmpty);
+        Assert.Equal(first.MatchingId, Assert.Single(first.SunOrbAttacks.DodgeSnapshot).MatchingId);
 
-        second.Crossfire.AddShape(CreateCrossfireShape(
+        second.SunOrbAttacks.AddShape(CreateCrossfireShape(
             eventId: 12,
             ownerId: playerId,
             anchorCombatTargetId: 7001,
             armedAtUtc: nowUtc.AddSeconds(1)));
-        second.Crossfire.SetSunBurn(
+        second.SunOrbAttacks.SetSunBurn(
             playerId,
             ownerId: playerId + 1,
             weaponItemId: 202,
@@ -132,17 +133,17 @@ public sealed class SwarmMatchRuntimeTests
             durationSeconds: 4d,
             tickIntervalSeconds: 2d);
         SwarmCrossfireConvergenceObservation secondConvergence =
-            second.Crossfire.TrackConvergence(7001, nowUtc);
+            second.SunOrbAttacks.TrackConvergence(7001, nowUtc);
 
         Assert.Equal(1, secondConvergence.HitCount);
-        Assert.Equal(first.MatchingId, Assert.Single(first.Crossfire.DodgeSnapshot).MatchingId);
-        Assert.Equal(second.MatchingId, Assert.Single(second.Crossfire.DodgeSnapshot).MatchingId);
-        Assert.True(first.Crossfire.TryGetSunBurn(playerId, out SwarmSunBurnState? firstBurn));
-        Assert.True(second.Crossfire.TryGetSunBurn(playerId, out SwarmSunBurnState? secondBurn));
+        Assert.Equal(first.MatchingId, Assert.Single(first.SunOrbAttacks.DodgeSnapshot).MatchingId);
+        Assert.Equal(second.MatchingId, Assert.Single(second.SunOrbAttacks.DodgeSnapshot).MatchingId);
+        Assert.True(first.SunOrbAttacks.TryGetSunBurn(playerId, out SwarmSunBurnState? firstBurn));
+        Assert.True(second.SunOrbAttacks.TryGetSunBurn(playerId, out SwarmSunBurnState? secondBurn));
         Assert.Equal(playerId, firstBurn!.OwnerId);
         Assert.Equal(playerId + 1, secondBurn!.OwnerId);
-        Assert.Equal(1, first.Crossfire.ConvergenceWindowCount);
-        Assert.Equal(1, second.Crossfire.ConvergenceWindowCount);
+        Assert.Equal(1, first.SunOrbAttacks.ConvergenceWindowCount);
+        Assert.Equal(1, second.SunOrbAttacks.ConvergenceWindowCount);
     }
 
     [Fact]
@@ -152,9 +153,9 @@ public sealed class SwarmMatchRuntimeTests
         const long firstMatchingId = 42001;
         const long secondMatchingId = 42002;
 
-        SwarmMatchRuntime first = store.GetOrCreate(firstMatchingId).Swarm;
-        SwarmMatchRuntime firstAgain = store.GetOrCreate(firstMatchingId).Swarm;
-        SwarmMatchRuntime second = store.GetOrCreate(secondMatchingId).Swarm;
+        MatchRuntime first = store.GetOrCreate(firstMatchingId);
+        MatchRuntime firstAgain = store.GetOrCreate(firstMatchingId);
+        MatchRuntime second = store.GetOrCreate(secondMatchingId);
 
         Assert.Same(first, firstAgain);
         Assert.NotSame(first, second);
@@ -170,21 +171,21 @@ public sealed class SwarmMatchRuntimeTests
         const long removedMatchingId = 42003;
         const long siblingMatchingId = 42004;
 
-        SwarmMatchRuntime removed = store.GetOrCreate(removedMatchingId).Swarm;
-        SwarmMatchRuntime sibling = store.GetOrCreate(siblingMatchingId).Swarm;
+        MatchRuntime removed = store.GetOrCreate(removedMatchingId);
+        MatchRuntime sibling = store.GetOrCreate(siblingMatchingId);
 
         Assert.True(store.Remove(removedMatchingId));
-        SwarmMatchRuntime? missing = store.GetOrNull(removedMatchingId)?.Swarm;
+        MatchRuntime? missing = store.GetOrNull(removedMatchingId);
         Assert.Null(missing);
-        SwarmMatchRuntime? preservedSibling = store.GetOrNull(siblingMatchingId)?.Swarm;
+        MatchRuntime? preservedSibling = store.GetOrNull(siblingMatchingId);
         Assert.Same(sibling, preservedSibling);
         Assert.Equal(1, store.Count);
 
-        SwarmMatchRuntime recreated = store.GetOrCreate(removedMatchingId).Swarm;
+        MatchRuntime recreated = store.GetOrCreate(removedMatchingId);
 
         Assert.NotSame(removed, recreated);
         Assert.Equal(removedMatchingId, recreated.MatchingId);
-        Assert.Same(sibling, store.GetOrCreate(siblingMatchingId).Swarm);
+        Assert.Same(sibling, store.GetOrCreate(siblingMatchingId));
         Assert.Equal(2, store.Count);
     }
 
@@ -198,20 +199,20 @@ public sealed class SwarmMatchRuntimeTests
         const long siblingPlayerId = 601;
         DateTime crossfireNowUtc = new(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        SwarmMatchRuntime removed = store.GetOrCreate(removedMatchingId).Swarm;
-        SwarmMatchRuntime sibling = store.GetOrCreate(siblingMatchingId).Swarm;
+        MatchRuntime removed = store.GetOrCreate(removedMatchingId);
+        MatchRuntime sibling = store.GetOrCreate(siblingMatchingId);
 
         removed.TrailCombat.OrbTrails[(removedMatchingId, removedPlayerId)] = [];
         removed.BotTactics.FleeDirective.Add((removedMatchingId, removedPlayerId));
-        removed.Pacing.StartingOrbGrantedPlayers.Add((removedMatchingId, removedPlayerId));
+        removed.Progress.StartingOrbGrantedPlayers.Add((removedMatchingId, removedPlayerId));
         removed.WindBlade.ApplyWound(removedPlayerId, DateTime.MaxValue);
-        removed.OrbBoard.IncrementFamilyUpgradeCount(removedPlayerId, OrbColor.Green);
-        removed.Crossfire.AddShape(CreateCrossfireShape(
+        removed.OrbUpgrades.IncrementFamilyUpgradeCount(removedPlayerId, OrbColor.Green);
+        removed.SunOrbAttacks.AddShape(CreateCrossfireShape(
             eventId: 11,
             ownerId: removedPlayerId,
             anchorCombatTargetId: 7001,
             armedAtUtc: crossfireNowUtc.AddSeconds(1)));
-        removed.Crossfire.SetSunBurn(
+        removed.SunOrbAttacks.SetSunBurn(
             removedPlayerId,
             ownerId: removedPlayerId,
             weaponItemId: 101,
@@ -219,19 +220,19 @@ public sealed class SwarmMatchRuntimeTests
             crossfireNowUtc,
             durationSeconds: 3d,
             tickIntervalSeconds: 1d);
-        removed.Crossfire.TrackConvergence(7001, crossfireNowUtc);
+        removed.SunOrbAttacks.TrackConvergence(7001, crossfireNowUtc);
 
         sibling.TrailCombat.OrbTrails[(siblingMatchingId, siblingPlayerId)] = [];
         sibling.BotTactics.FleeDirective.Add((siblingMatchingId, siblingPlayerId));
-        sibling.Pacing.StartingOrbGrantedPlayers.Add((siblingMatchingId, siblingPlayerId));
+        sibling.Progress.StartingOrbGrantedPlayers.Add((siblingMatchingId, siblingPlayerId));
         sibling.WindBlade.ApplyWound(siblingPlayerId, DateTime.MaxValue);
-        sibling.OrbBoard.IncrementFamilyUpgradeCount(siblingPlayerId, OrbColor.Blue);
-        sibling.Crossfire.AddShape(CreateCrossfireShape(
+        sibling.OrbUpgrades.IncrementFamilyUpgradeCount(siblingPlayerId, OrbColor.Blue);
+        sibling.SunOrbAttacks.AddShape(CreateCrossfireShape(
             eventId: 12,
             ownerId: siblingPlayerId,
             anchorCombatTargetId: 8001,
             armedAtUtc: crossfireNowUtc.AddSeconds(1)));
-        sibling.Crossfire.SetSunBurn(
+        sibling.SunOrbAttacks.SetSunBurn(
             siblingPlayerId,
             ownerId: siblingPlayerId,
             weaponItemId: 202,
@@ -239,39 +240,39 @@ public sealed class SwarmMatchRuntimeTests
             crossfireNowUtc,
             durationSeconds: 4d,
             tickIntervalSeconds: 2d);
-        sibling.Crossfire.TrackConvergence(8001, crossfireNowUtc);
+        sibling.SunOrbAttacks.TrackConvergence(8001, crossfireNowUtc);
 
         Assert.True(store.Remove(removedMatchingId));
 
-        SwarmMatchRuntime? missing = store.GetOrNull(removedMatchingId)?.Swarm;
+        MatchRuntime? missing = store.GetOrNull(removedMatchingId);
         Assert.Null(missing);
-        SwarmMatchRuntime? preservedSibling = store.GetOrNull(siblingMatchingId)?.Swarm;
+        MatchRuntime? preservedSibling = store.GetOrNull(siblingMatchingId);
         Assert.Same(sibling, preservedSibling);
         Assert.Contains((siblingMatchingId, siblingPlayerId), sibling.TrailCombat.OrbTrails.Keys);
         Assert.Contains((siblingMatchingId, siblingPlayerId), sibling.BotTactics.FleeDirective);
-        Assert.Contains((siblingMatchingId, siblingPlayerId), sibling.Pacing.StartingOrbGrantedPlayers);
+        Assert.Contains((siblingMatchingId, siblingPlayerId), sibling.Progress.StartingOrbGrantedPlayers);
         Assert.True(sibling.WindBlade.IsWounded(siblingPlayerId, DateTime.UtcNow));
-        Assert.Equal(1, sibling.OrbBoard.GetFamilyUpgradeCount(siblingPlayerId, OrbColor.Blue));
-        Assert.Equal(1, sibling.Crossfire.ShapeCount);
-        Assert.Equal(1, sibling.Crossfire.SunBurnCount);
-        Assert.Equal(1, sibling.Crossfire.ConvergenceWindowCount);
-        Assert.Equal(siblingMatchingId, Assert.Single(sibling.Crossfire.DodgeSnapshot).MatchingId);
-        Assert.True(sibling.Crossfire.TryGetSunBurn(
+        Assert.Equal(1, sibling.OrbUpgrades.GetFamilyUpgradeCount(siblingPlayerId, OrbColor.Blue));
+        Assert.Equal(1, sibling.SunOrbAttacks.ShapeCount);
+        Assert.Equal(1, sibling.SunOrbAttacks.SunBurnCount);
+        Assert.Equal(1, sibling.SunOrbAttacks.ConvergenceWindowCount);
+        Assert.Equal(siblingMatchingId, Assert.Single(sibling.SunOrbAttacks.DodgeSnapshot).MatchingId);
+        Assert.True(sibling.SunOrbAttacks.TryGetSunBurn(
             siblingPlayerId,
             out SwarmSunBurnState? siblingBurn));
         Assert.Equal(siblingPlayerId, siblingBurn!.OwnerId);
         Assert.Equal(1, store.Count);
 
-        SwarmMatchRuntime replacement = store.GetOrCreate(removedMatchingId).Swarm;
+        MatchRuntime replacement = store.GetOrCreate(removedMatchingId);
         Assert.NotSame(removed, replacement);
         Assert.Empty(replacement.TrailCombat.OrbTrails);
         Assert.Empty(replacement.BotTactics.FleeDirective);
-        Assert.Empty(replacement.Pacing.StartingOrbGrantedPlayers);
+        Assert.Empty(replacement.Progress.StartingOrbGrantedPlayers);
         Assert.False(replacement.WindBlade.IsWounded(removedPlayerId, DateTime.UtcNow));
-        Assert.Equal(0, replacement.OrbBoard.GetFamilyUpgradeCount(removedPlayerId, OrbColor.Green));
-        Assert.NotSame(removed.Crossfire, replacement.Crossfire);
-        Assert.True(replacement.Crossfire.IsEmpty);
-        Assert.Empty(replacement.Crossfire.DodgeSnapshot);
+        Assert.Equal(0, replacement.OrbUpgrades.GetFamilyUpgradeCount(removedPlayerId, OrbColor.Green));
+        Assert.NotSame(removed.SunOrbAttacks, replacement.SunOrbAttacks);
+        Assert.True(replacement.SunOrbAttacks.IsEmpty);
+        Assert.Empty(replacement.SunOrbAttacks.DodgeSnapshot);
     }
 
     [Fact]
@@ -281,16 +282,16 @@ public sealed class SwarmMatchRuntimeTests
         const long firstMatchingId = 42011;
         const long secondMatchingId = 42012;
 
-        SwarmMatchRuntime first = store.GetOrCreate(firstMatchingId).Swarm;
-        SwarmMatchRuntime second = store.GetOrCreate(secondMatchingId).Swarm;
+        MatchRuntime first = store.GetOrCreate(firstMatchingId);
+        MatchRuntime second = store.GetOrCreate(secondMatchingId);
 
-        long firstId = first.Crossfire.AllocateEventId();
-        long secondId = second.Crossfire.AllocateEventId();
+        long firstId = first.SunOrbAttacks.AllocateEventId();
+        long secondId = second.SunOrbAttacks.AllocateEventId();
         Assert.True(secondId > firstId);
 
         Assert.True(store.Remove(firstMatchingId));
-        SwarmMatchRuntime recreated = store.GetOrCreate(firstMatchingId).Swarm;
-        long recreatedId = recreated.Crossfire.AllocateEventId();
+        MatchRuntime recreated = store.GetOrCreate(firstMatchingId);
+        long recreatedId = recreated.SunOrbAttacks.AllocateEventId();
         Assert.True(recreatedId > secondId);
 
         var allocated = new ConcurrentBag<long>();
@@ -299,8 +300,8 @@ public sealed class SwarmMatchRuntimeTests
             1000,
             index => allocated.Add(
                 (index & 1) == 0
-                    ? recreated.Crossfire.AllocateEventId()
-                    : second.Crossfire.AllocateEventId()));
+                    ? recreated.SunOrbAttacks.AllocateEventId()
+                    : second.SunOrbAttacks.AllocateEventId()));
 
         Assert.Equal(1000, allocated.Count);
         Assert.Equal(1000, allocated.Distinct().Count());

@@ -38,7 +38,7 @@ internal static class TestGameSessionServices
         }
         var lifecycle = new MatchingLifecycleService(redis,
             new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
-        return new MatchRuntimeStore(logger, lifecycle);
+        return new MatchRuntimeStore(logger.For<MatchRuntime>(), lifecycle);
     }
     public static PlayerMovementService GetMovement(GameClientSession session) =>
         (PlayerMovementService)typeof(GameClientSession).GetField("_playerMovement",

@@ -1,4 +1,3 @@
-using game_server.services;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 
@@ -9,7 +8,7 @@ namespace game_server.matches;
 ///     ID로 잠금 진입을 요청하면 해당 매치를 찾아 위임하며,
 ///     실제 잠금과 종료 정리는 MatchRuntime이 담당한다.
 /// </summary>
-internal sealed class MatchRuntimeStore(ILogger logger, MatchingLifecycleService matchingLifecycle)
+internal sealed class MatchRuntimeStore(ILogger<MatchRuntime> runtimeLogger, MatchingLifecycleService matchingLifecycle)
 {
     private readonly MatchingLifecycleService _matchingLifecycle = matchingLifecycle ?? throw new ArgumentNullException(nameof(matchingLifecycle));
     private readonly ConcurrentDictionary<long, MatchRuntime> _runtimes = new();
@@ -25,7 +24,7 @@ internal sealed class MatchRuntimeStore(ILogger logger, MatchingLifecycleService
             return existing;
         }
 
-        var candidate = new MatchRuntime(this, matchingId, logger, _matchingLifecycle);
+        var candidate = new MatchRuntime(this, matchingId, runtimeLogger, _matchingLifecycle);
         lock (candidate.Sync)
         {
             var runtime = _runtimes.GetOrAdd(matchingId, candidate);

@@ -14,7 +14,7 @@ public sealed class GroundItemPickupServiceTests
         var runtime = store.GetOrCreate(984201);
         Assert.Throws<InvalidOperationException>(() => GroundItemPickupService.TryPickup(
             runtime, 1, AreaType.None, new Vector3f(0, 0, 0), 0, 1));
-        using (MatchRuntimeStore.Enter(runtime)) runtime.TryMarkTerminal();
+        using (MatchRuntimeStore.Enter(runtime)) runtime.TryMarkEnded();
     }
 
     [Fact]
@@ -31,7 +31,7 @@ public sealed class GroundItemPickupServiceTests
             Assert.Null(result.AddedItem);
             Assert.False(result.AutoUsed);
             Assert.Equal(0, result.HealthRecovery);
-            runtime.TryMarkTerminal();
+            runtime.TryMarkEnded();
         }
     }
 }

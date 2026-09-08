@@ -209,7 +209,7 @@ public sealed class GameMatchEntryServiceTests
         await runtime.EntryInitializationLock.WaitAsync();
         Task<MatchComposition> pending = service.LoadCompositionAsync(runtime.MatchingId, Config.SWARM_MATCH_MAP, runtime);
         using (MatchRuntimeStore.Enter(runtime))
-            Assert.True(runtime.TryMarkTerminal());
+            Assert.True(runtime.TryMarkEnded());
         runtime.EntryInitializationLock.Release();
 
         await Assert.ThrowsAsync<OperationCanceledException>(() => pending);

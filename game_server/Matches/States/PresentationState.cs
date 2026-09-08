@@ -1,10 +1,10 @@
 using network.common;
 using System.Collections.Concurrent;
 
-namespace game_server.matches;
+namespace game_server.matches.states;
 
 /// <summary>매치 하나의 오브 전송 캐시·회복 시각·몬스터 위치 전송 시각. 매치와 함께 폐기한다.</summary>
-internal sealed class MatchPresentationState
+internal sealed class PresentationState
 {
     public ConcurrentDictionary<(long ObserverPlayerId, long ActorPlayerId), OrbVisualState> OrbVisuals { get; } = new();
     public ConcurrentDictionary<(long PlayerId, long ItemUid, int StackIndex), DateTime> OrbRecoveryReadyAtUtc { get; } = new();

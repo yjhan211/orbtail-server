@@ -54,7 +54,7 @@ internal sealed class GameMatchEntryService(
 
             using (runtime.Enter())
             {
-                if (runtime.IsTerminal)
+                if (runtime.IsEnded)
                     throw new OperationCanceledException("Match became terminal during game entry.");
                 if (runtime.Composition is { } existing)
                     return existing;
@@ -70,7 +70,7 @@ internal sealed class GameMatchEntryService(
             {
                 using (runtime.Enter())
                 {
-                    if (runtime.IsTerminal)
+                    if (runtime.IsEnded)
                     {
                         throw new OperationCanceledException("Match became terminal during game entry.");
                     }
@@ -85,7 +85,7 @@ internal sealed class GameMatchEntryService(
             var composition = new MatchComposition(humanPlayerIds, botPlayerIds, mode, spawnCells, roster);
             using (runtime.Enter())
             {
-                if (runtime.IsTerminal)
+                if (runtime.IsEnded)
                 {
                     throw new OperationCanceledException("Match became terminal during game entry.");
                 }

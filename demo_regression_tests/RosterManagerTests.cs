@@ -5,7 +5,7 @@ using network.common;
 
 namespace demo_regression_tests;
 
-public sealed class MatchRosterManagerTests
+public sealed class RosterManagerTests
 {
     [Fact]
     public void Elimination_OnlyChangesTheEliminatedPlayer_WhenLegacyChainEffectsAreDisabled()

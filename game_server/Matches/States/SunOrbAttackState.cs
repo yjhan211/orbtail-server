@@ -1,7 +1,8 @@
+using game_server.services;
 using network.common;
 using network.common.data.models;
 
-namespace game_server.services;
+namespace game_server.matches.states;
 
 /// <summary>One locked Crossfire line. Mutable hit/front fields advance under the match gate.</summary>
 internal sealed class SwarmCrossfireShape
@@ -39,11 +40,10 @@ internal readonly record struct SwarmCrossfireConvergenceObservation(
     double WindowMilliseconds);
 
 /// <summary>
-///     Owns one match's Crossfire lines, sun burns, convergence windows, and immutable bot-dodge
-///     snapshot. Keys are match-local. The enclosing match execution gate serializes mutation;
-///     dodge readers only observe atomically published arrays.
+///     매치 하나의 태양오브 발사체, 화상, 연속 명중 기록과 봇 회피용 정보를 보관한다.
+///     상태 변경은 매치 잠금 안에서 수행하며, 봇은 별도로 공개한 회피 정보만 읽는다.
 /// </summary>
-public sealed class SwarmCrossfireState
+public sealed class SunOrbAttackState
 {
     private readonly long _matchingId;
     // 매치가 제거·재생성돼도 공격 이벤트 ID를 재사용하지 않는다.
@@ -53,7 +53,7 @@ public sealed class SwarmCrossfireState
     private readonly Dictionary<long, (DateTime WindowStartUtc, int Count)> _convergenceWindows = new();
     private SwarmBotDodgePolicy.SwarmCrossfireDodgeThreat[] _dodgeSnapshot = [];
 
-    internal SwarmCrossfireState(long matchingId)
+    internal SunOrbAttackState(long matchingId)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
         _matchingId = matchingId;

@@ -118,7 +118,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         Assert.Equal(PlayerMatchStatus.SPECTATING, spectatorRow.FinalStatus);
 
         Assert.Equal(1, fixture.CleanupCount);
-        Assert.True(runtime.IsTerminal);
+        Assert.True(runtime.IsEnded);
         Assert.Null(fixture.Store.GetOrNull(matchingId));
         Assert.Single(fixture.SummaryFiles);
         Assert.All(recipientIds, playerId =>
@@ -247,7 +247,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         var runtime = fixture.Store.GetOrCreate(73991);
         using (runtime.Enter())
         {
-            Assert.True(runtime.TryMarkTerminal());
+            Assert.True(runtime.TryMarkEnded());
             fixture.Eliminations.EndMatch(73991, 101, "already_terminal");
             Assert.Empty(fixture.Deliveries);
             Assert.Empty(fixture.SummaryFiles);

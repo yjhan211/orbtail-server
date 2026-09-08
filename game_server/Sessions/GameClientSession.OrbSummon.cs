@@ -43,7 +43,7 @@ public partial class GameClientSession
 
         using (match.Enter())
         {
-            if (match.IsTerminal || IsGameplayActionBlocked(out _))
+            if (match.IsEnded || IsGameplayActionBlocked(out _))
             {
                 var state = match.SummonStones.GetSnapshot(PlayerId ?? 0);
                 using var failurePacket = Packet.Create((int)Protocol.G_TO_C_SUMMON_ORB_RESULT, PlayerId ?? 0);
@@ -131,7 +131,7 @@ public partial class GameClientSession
 
         using (match.Enter())
         {
-            if (match.IsTerminal)
+            if (match.IsEnded)
             {
                 using var packet = Packet.Create((int)Protocol.G_TO_C_UPGRADE_ORB_RESULT, PlayerId.Value);
                 packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_UPGRADE_ORB_RESULT

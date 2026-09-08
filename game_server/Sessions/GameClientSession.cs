@@ -220,7 +220,7 @@ public partial class GameClientSession : SessionBase
             GameClientSession? previousSession = null;
             using (runtime.Enter())
             {
-                if (runtime.IsTerminal)
+                if (runtime.IsEnded)
                 {
                     Logger.LogWarning("GameServer connection rejected because the match is terminal: PlayerId={PlayerId}, MatchingId={MatchingId}", playerId, matchingId);
                     MarkDisconnectedByServer();
@@ -251,7 +251,7 @@ public partial class GameClientSession : SessionBase
             var matchingSpawnCell = Cell.Clone(composition.SpawnCells[playerId]);
             using (runtime.Enter())
             {
-                if (runtime.IsTerminal)
+                if (runtime.IsEnded)
                 {
                     throw new OperationCanceledException("Match became terminal during game entry initialization.");
                 }
@@ -311,7 +311,7 @@ public partial class GameClientSession : SessionBase
             using var successResponse = CreateConnectResultPacket(true, ErrorCode.SUCCESS, matchingId, matchingSpawnCell);
             using (runtime.Enter())
             {
-                if (runtime.IsTerminal)
+                if (runtime.IsEnded)
                 {
                     throw new OperationCanceledException("Match became terminal during game entry.");
                 }
@@ -362,7 +362,7 @@ public partial class GameClientSession : SessionBase
 
         using (match.Enter())
         {
-            if (match.IsTerminal || !PlayerId.HasValue || IsEliminated)
+            if (match.IsEnded || !PlayerId.HasValue || IsEliminated)
             {
                 return;
             }
@@ -513,7 +513,7 @@ public partial class GameClientSession : SessionBase
 
         using (match.Enter())
         {
-            if (match.IsTerminal)
+            if (match.IsEnded)
             {
                 return Task.CompletedTask;
             }

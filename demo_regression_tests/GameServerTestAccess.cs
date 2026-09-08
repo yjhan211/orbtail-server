@@ -37,7 +37,7 @@ internal static class GameServerTestAccess
         var sessions = new game_server.sessions.GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<game_server.sessions.GameSessionRegistry>.Instance);
         var lifecycle = new MatchingLifecycleService(new InMemoryRedisOperations(),
             new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
-        runtimes ??= new MatchRuntimeStore(logger,
+        runtimes ??= new MatchRuntimeStore(logger.For<MatchRuntime>(),
 
             matchingLifecycle: lifecycle);
         var logs = new GameEventLogManager(id => runtimes.GetOrNull(id)?.EventLog);
@@ -65,7 +65,7 @@ internal static class GameServerTestAccess
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbRecoveryService>.Instance),
             new OrbVisualStatePublisher(runtimes), orbTrails, combatDamage,
             new WindBladeService(runtimes, orbTrails, combatDamage, logs),
-            new CrossfireService(runtimes, combatDamage, logs), field, movement, decisions,
+            new SunOrbAttackService(runtimes, combatDamage, logs), field, movement, decisions,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchArenaService>.Instance);
         return new GameServer(
             configuration: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),

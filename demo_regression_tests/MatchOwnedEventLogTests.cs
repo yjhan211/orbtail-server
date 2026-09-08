@@ -28,7 +28,7 @@ public sealed class MatchOwnedEventLogTests
         Assert.NotSame(first.EventLog.Combat, second.EventLog.Combat);
         Assert.NotSame(first.EventLog.Telemetry, second.EventLog.Telemetry);
         Assert.NotEmpty(logs.GetForPersistence(1));
-        using (MatchRuntimeStore.Enter(first)) first.TryMarkTerminal();
+        using (MatchRuntimeStore.Enter(first)) first.TryMarkEnded();
         Assert.Null(store.GetOrNull(1));
         Assert.Null(first.EventLog.Log);
         Assert.Null(first.EventLog.Combat);
@@ -52,7 +52,7 @@ public sealed class MatchOwnedEventLogTests
             using (MatchRuntimeStore.Enter(match))
             {
                 logs.LogSystem(id, "event");
-                match.TryMarkTerminal();
+                match.TryMarkEnded();
             }
         }
         Assert.Equal(0, store.Count);

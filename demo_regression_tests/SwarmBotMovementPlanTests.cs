@@ -148,7 +148,7 @@ public sealed class SwarmBotMovementPlanTests
             "RecordBotTickBusySkip(matchingId);",
             "return;",
             "using (scope)",
-            "scope.Runtime.IsTerminal",
+            "scope.Runtime.IsEnded",
             "processCombat(matchingId, activeSessions);",
             "ShouldMoveBots(scope.Runtime)",
             "moveBots(scope.Runtime);");
@@ -195,7 +195,7 @@ public sealed class SwarmBotMovementPlanTests
         AssertInOrder(
             adminSetup,
             "matchRuntimes.Enter(matchingId, out MatchScope scope)",
-            "scope.Runtime.IsTerminal",
+            "scope.Runtime.IsEnded",
             "SetupSwarmCutDummyCore(",
             "botMovement.DispatchExternalMovement(scope.Runtime, movement)");
         AssertInOrder(

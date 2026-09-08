@@ -120,7 +120,7 @@ internal sealed class MatchCombatDamageService(
     /// <summary>PvE 치명타 굴림 — 적중이면 배율을 적용한 피해를 돌려준다.</summary>
     public int RollSwarmCriticalDamage(long matchingId, int damage, out bool critical)
     {
-        critical = matchRuntimes.GetOrThrow(matchingId).Swarm.Pacing.RollCritical(SwarmCriticalChance);
+        critical = matchRuntimes.GetOrThrow(matchingId).Progress.RollCritical(SwarmCriticalChance);
         return critical
             ? Math.Max(damage + 1, (int)MathF.Round(damage * SwarmCriticalMultiplier))
             : damage;
@@ -267,14 +267,14 @@ internal sealed class MatchCombatDamageService(
         float damageScale = 1f,
         bool isPeriodicDamage = false)
     {
-        SwarmMatchRuntime runtime = matchRuntimes.GetOrThrow(matchingId).Swarm;
+        MatchRuntime runtime = matchRuntimes.GetOrThrow(matchingId);
         // 받는 피해 배율: 고정 충격 50에 1/3을 곱한다. 태양·바람·파도 충격이 전부 이 한 곳을 지난다.
         // damageScale: 파도 소용돌이(#268)는 당김이 본체라 피해를 타격 피드백 수준(1/4)으로 줄인다.
         int shock = Math.Max(1, (int)MathF.Round(
             Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE) * damageScale));
         // 상처 (#268): 상처 입은 피해자만 PvP 충격 치명타가 열린다 — PvE와 같은 2배.
         if (runtime.WindBlade.IsWounded(victimId, DateTime.UtcNow) &&
-            runtime.Pacing.RollCritical(Config.SWARM_WIND_WOUND_CRIT_CHANCE))
+            runtime.Progress.RollCritical(Config.SWARM_WIND_WOUND_CRIT_CHANCE))
             shock = Math.Max(shock + 1, (int)MathF.Round(shock * SwarmCriticalMultiplier));
         int healthBefore;
         int healthAfter;

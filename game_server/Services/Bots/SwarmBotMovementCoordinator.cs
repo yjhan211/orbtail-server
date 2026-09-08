@@ -15,7 +15,7 @@ internal sealed class SwarmBotMovementCoordinator(MatchRuntime match)
 {
     private long GetActiveMatchingId()
     {
-        if (match.IsTerminal)
+        if (match.IsEnded)
             throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
         return match.MatchingId;
     }

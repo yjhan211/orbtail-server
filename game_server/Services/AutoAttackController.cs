@@ -65,12 +65,12 @@ public readonly record struct ProximityCombatAttack(
 ///     매치 하나의 조준·공격 주기·재획득 상태를 보관하고 공격 대상을 고른다.
 ///     호출자는 매치 잠금 안에서 실행하며, 실제 피해 적용은 같은 스냅샷의 공격을 모두 고른 뒤 처리한다.
 /// </summary>
-public sealed class ProximityAutoCombatResolver
+public sealed class AutoAttackController
 {
     private readonly long _matchingId;
     private bool _released;
 
-    public ProximityAutoCombatResolver(long matchingId)
+    public AutoAttackController(long matchingId)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
         _matchingId = matchingId;
@@ -94,7 +94,7 @@ public sealed class ProximityAutoCombatResolver
         SuspendedCombatState>
         _recentlyLostCombatStates = new();
 
-    public IReadOnlyList<ProximityCombatAttack> Resolve(
+    public IReadOnlyList<ProximityCombatAttack> ResolveAttacks(
         long matchingId,
         IReadOnlyList<ProximityCombatActor> actors,
         DateTime nowUtc,

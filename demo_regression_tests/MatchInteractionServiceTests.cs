@@ -100,7 +100,7 @@ public sealed class MatchInteractionServiceTests
             Assert.False(state.TryFinishDoor(11, 6000, TimeSpan.FromSeconds(3), out _));
 
             Assert.Empty(MatchInteractionService.CancelPendingInteractions(runtime, state));
-            runtime.TryMarkTerminal();
+            runtime.TryMarkEnded();
         }
     }
 
@@ -119,7 +119,7 @@ public sealed class MatchInteractionServiceTests
         using (MatchRuntimeStore.Enter(runtime))
         {
             MatchInteractionService.CancelPendingInteractions(runtime, state);
-            runtime.TryMarkTerminal();
+            runtime.TryMarkEnded();
         }
     }
     [Fact]
@@ -133,7 +133,7 @@ public sealed class MatchInteractionServiceTests
         {
 
             Assert.Equal(ErrorCode.INVALID_GAME_STATE, MatchInteractionService.CheckDoorGauge(runtime, AreaType.None, int.MaxValue));
-            runtime.TryMarkTerminal();
+            runtime.TryMarkEnded();
         }
     }
 

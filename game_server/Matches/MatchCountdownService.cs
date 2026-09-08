@@ -42,14 +42,14 @@ internal sealed class MatchCountdownService(
 
             using (scope)
             {
-                if (scope.Runtime.IsTerminal)
+                if (scope.Runtime.IsEnded)
                     continue;
 
                 var snapshot = MatchStartGate.GetSnapshot(matchingId);
                 if (!snapshot.IsKnown)
                     continue;
 
-                var pacing = scope.Runtime.Swarm.Pacing;
+                var pacing = scope.Runtime.Progress;
                 if (pacing.LastCountdownSecondsPublished == snapshot.RemainingSeconds)
                     continue;
 

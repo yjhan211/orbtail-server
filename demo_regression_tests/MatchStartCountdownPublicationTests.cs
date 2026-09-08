@@ -1,3 +1,4 @@
+using game_server.matches.states;
 using game_server.matches;
 using System.Collections.Concurrent;
 using System.Reflection;
@@ -43,7 +44,7 @@ public sealed class MatchStartCountdownPublicationTests
             "MatchStartGate.IsEntryTimedOut(matchingId, DateTime.UtcNow)",
             "entryFailureHandler.Handle(anchorSession);",
             "matchRuntimes.Enter(matchingId, out MatchScope scope)",
-            "scope.Runtime.IsTerminal",
+            "scope.Runtime.IsEnded",
             "var snapshot = MatchStartGate.GetSnapshot(matchingId);",
             "pacing.LastCountdownSecondsPublished == snapshot.RemainingSeconds",
             "pacing.LastCountdownSecondsPublished = snapshot.RemainingSeconds;",
@@ -272,7 +273,7 @@ public sealed class MatchStartCountdownPublicationTests
 
         InvokeEntryAbort(server, anchor);
 
-        Assert.True(runtime.IsTerminal);
+        Assert.True(runtime.IsEnded);
         Assert.Null(server.GetMatchRuntimes().GetOrNull(matchingId));
         Assert.Equal(1, anchor.FatalCount);
         Assert.Equal(1, anchor.DisconnectCount);
@@ -329,7 +330,7 @@ public sealed class MatchStartCountdownPublicationTests
                 MatchingLifecycleSubjects.PlayerCompleted,
                 completedPlayerId,
                 matchingId);
-            Assert.True(runtime.TryMarkTerminal());
+            Assert.True(runtime.TryMarkEnded());
         }
 
         Assert.NotNull(completion);
@@ -383,9 +384,9 @@ public sealed class MatchStartCountdownPublicationTests
         public void Close() { }
     }
 
-    private static SwarmMatchPacingState GetPacing(GameServer server, long matchingId)
+    private static MatchProgressState GetPacing(GameServer server, long matchingId)
     {
-        return server.GetMatchRuntimes().GetOrThrow(matchingId).Swarm.Pacing;
+        return server.GetMatchRuntimes().GetOrThrow(matchingId).Progress;
     }
 
     private static void InvokePeriodicBroadcast(

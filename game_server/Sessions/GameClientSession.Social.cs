@@ -24,7 +24,7 @@ public partial class GameClientSession
 
         using (match.Enter())
         {
-            if (match.IsTerminal || IsGameplayActionBlocked(out _))
+            if (match.IsEnded || IsGameplayActionBlocked(out _))
             {
                 return Task.CompletedTask;
             }

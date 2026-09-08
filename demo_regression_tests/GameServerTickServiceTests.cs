@@ -101,7 +101,7 @@ public sealed class GameServerTickServiceTests
             using (MatchRuntimeStore.Enter(runtime))
             {
                 calls++;
-                runtime.TryMarkTerminal();
+                runtime.TryMarkEnded();
                 workFinished = true;
             }
         });

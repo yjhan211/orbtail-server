@@ -43,7 +43,7 @@ internal sealed class GameServerTickService(
         lock (runtime.Sync)
         lock (_lifecycleLock)
         {
-            if (_stopTask != null || runtime.IsTerminal || _loops.ContainsKey(runtime) ||
+            if (_stopTask != null || runtime.IsEnded || _loops.ContainsKey(runtime) ||
                 !ReferenceEquals(matchRuntimes.GetOrNull(runtime.MatchingId), runtime))
                 return;
 

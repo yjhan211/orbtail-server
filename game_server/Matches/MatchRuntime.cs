@@ -1,3 +1,4 @@
+using game_server.matches.states;
 using game_server.services;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
@@ -17,33 +18,31 @@ internal sealed class MatchRuntime
     public const int EnvironmentalTickIntervalSeconds = 5;
 
     private readonly MatchRuntimeStore _runtimeStore;
-    private readonly ILogger _logger;
+    private readonly ILogger<MatchRuntime> _logger;
+
     private readonly MatchingLifecycleService _matchingLifecycle;
-    private int _terminal;
     private MatchTickLoop? _tickLoop;
     private MatchComposition? _composition;
 
-    private int _lockDepth;
-    private bool _cleanupDone;
     internal readonly List<Action> AfterRelease = new();
+    private int _ended;
 
-    internal MatchRuntime(MatchRuntimeStore runtimeStore, long matchingId, ILogger logger,
-        MatchingLifecycleService matchingLifecycle)
+    private int _lockDepth;
+    private bool _cleanupStarted;
+
+    internal MatchRuntime(MatchRuntimeStore runtimeStore, long matchingId, ILogger<MatchRuntime> logger, MatchingLifecycleService matchingLifecycle)
     {
         _runtimeStore = runtimeStore;
         _logger = logger;
-        _matchingLifecycle = matchingLifecycle ?? throw new ArgumentNullException(nameof(matchingLifecycle));
+        _matchingLifecycle = matchingLifecycle;
         MatchingId = matchingId;
-        Bots = new BotPlayerManager(matchingId, logger);
-        Combat = new ProximityAutoCombatResolver(matchingId);
+        SunOrbAttacks = new SunOrbAttackState(matchingId);
+        Bots = new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks);
+        AutoAttack = new AutoAttackController(matchingId);
         BotMovement = new SwarmBotMovementCoordinator(this);
-        Swarm = new SwarmMatchRuntime(matchingId);
-        Bots.SetDoorOpenResolver((_, doorId) => Doors.IsDoorOpen(doorId));
-        Bots.SetSwarmDodgeResolver((id, botId, position, area, now) =>
-            SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(Swarm.Crossfire.DodgeSnapshot, id, botId, position, area, now));
         Inventory = new InGameInventoryManager(matchingId, message => logger.LogInformation("{Message}", message));
         GroundItems = new GroundItemManager(matchingId);
-        Roster = new MatchRosterManager(matchingId, logger);
+        Roster = new RosterManager(matchingId, logger);
         SummonStones = new SummonStoneManager(matchingId);
         Closures = new AreaClosureManager(matchingId, logger);
         Monsters = new SwarmMonsterDirector(matchingId)
@@ -56,24 +55,29 @@ internal sealed class MatchRuntime
 
     public long MatchingId { get; }
     public MatchSessionCollection Sessions { get; } = new();
-    public MatchDoorState Doors { get; } = new();
-    /// <summary>이 매치의 오브 전투·성장·봇 전술 상태. 매치와 함께 생성되고 제거된다.</summary>
-    public SwarmMatchRuntime Swarm { get; }
+    public DoorState Doors { get; } = new();
+    public TrailCombatState TrailCombat { get; } = new();
+    public BotTacticalState BotTactics { get; } = new();
+    public MatchProgressState Progress { get; } = new();
+    internal SwarmBotTickMetrics BotTickMetrics { get; } = new();
+    public WindBladeState WindBlade { get; } = new();
+    public OrbUpgradeState OrbUpgrades { get; } = new();
+    public SunOrbAttackState SunOrbAttacks { get; }
     public BotPlayerManager Bots { get; }
-    public ProximityAutoCombatResolver Combat { get; }
+    public AutoAttackController AutoAttack { get; }
     public SwarmBotMovementCoordinator BotMovement { get; }
     public SwarmMonsterDirector Monsters { get; }
-    public MatchEventLogState EventLog { get; } = new();
+    public EventLogState EventLog { get; } = new();
     public InGameInventoryManager Inventory { get; }
     public GroundItemManager GroundItems { get; }
     internal Dictionary<GameClientSession, GroundItemPickupCandidates> GroundItemPickupCandidates { get; } = new();
     public SummonStoneManager SummonStones { get; }
     public EncounterRevealManager Encounters { get; } = new();
-    public MatchRosterManager Roster { get; }
-    public MatchPresentationState Presentation { get; } = new();
+    public RosterManager Roster { get; }
+    public PresentationState Presentation { get; } = new();
     public AreaClosureManager Closures { get; }
     public object Sync { get; } = new();
-    public bool IsTerminal => Volatile.Read(ref _terminal) != 0;
+    public bool IsEnded => Volatile.Read(ref _ended) != 0;
     public SemaphoreSlim EntryInitializationLock { get; } = new(1, 1);
 
     /// <summary>
@@ -124,7 +128,7 @@ internal sealed class MatchRuntime
             throw new InvalidOperationException("Area closure tick requires the match monitor to be held.");
         }
 
-        if (IsTerminal || gameplayStartedAtUtc is not { } startedAt || utcNow < startedAt.AddSeconds(1))
+        if (IsEnded || gameplayStartedAtUtc is not { } startedAt || utcNow < startedAt.AddSeconds(1))
         {
             return false;
         }
@@ -146,7 +150,7 @@ internal sealed class MatchRuntime
     {
         if (!Monitor.IsEntered(Sync))
             throw new InvalidOperationException("Environmental tick requires the match monitor to be held.");
-        if (IsTerminal || gameplayStartedAtUtc is not { } startedAt || utcNow < startedAt)
+        if (IsEnded || gameplayStartedAtUtc is not { } startedAt || utcNow < startedAt)
             return false;
 
         NextEnvironmentalTickAtUtc ??= startedAt.AddSeconds(EnvironmentalTickIntervalSeconds);
@@ -187,13 +191,13 @@ internal sealed class MatchRuntime
         return (orbCount, tierSum);
     }
 
-    /// <summary>터미널 전이 — Sync를 쥔 호출자만 부를 수 있고 첫 호출자만 true를 받는다.</summary>
-    public bool TryMarkTerminal()
+    /// <summary>매치를 종료 상태로 표시한다. 매치 잠금 안에서 호출하며 처음 표시한 호출자만 true를 받는다.</summary>
+    public bool TryMarkEnded()
     {
         if (!Monitor.IsEntered(Sync))
-            throw new InvalidOperationException("TryMarkTerminal requires the match monitor to be held.");
+            throw new InvalidOperationException("TryMarkEnded requires the match monitor to be held.");
 
-        return Interlocked.CompareExchange(ref _terminal, 1, 0) == 0;
+        return Interlocked.CompareExchange(ref _ended, 1, 0) == 0;
     }
 
     internal void Exit()
@@ -206,12 +210,12 @@ internal sealed class MatchRuntime
             if (_lockDepth > 0)
                 return;
 
-            if (IsTerminal && !_cleanupDone)
+            if (IsEnded && !_cleanupStarted)
             {
                 // 같은 잠금을 쓰는 틱의 게임 처리는 여기까지 끝났다. 자기 루프를 await하지 않고
                 // 다음 틱을 막은 뒤 정리한다. 서버 종료는 별도로 루프 Completion까지 기다린다.
                 TickLoop?.Stop();
-                _cleanupDone = true;
+                _cleanupStarted = true;
                 Sessions.Close();
                 Doors.Clear();
                 try
@@ -232,7 +236,7 @@ internal sealed class MatchRuntime
                 Closures.Release();
                 Bots.Release();
                 Monsters.Release();
-                Combat.Release();
+                AutoAttack.Release();
 
                 _runtimeStore.RemoveCompleted(this);
                 startRedisCleanup = true;

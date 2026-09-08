@@ -1,3 +1,5 @@
+using game_server.matches.states;
+using game_server.matches;
 using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -49,7 +51,7 @@ public sealed class PlayerEliminationCauseTests
     [Fact]
     public void BotDamage_RemembersFirstAttackerThatReachesEliminationThreshold()
     {
-        var manager = new BotPlayerManager(1, NullLogger.Instance);
+        var manager = new BotPlayerManager(1, NullLogger.Instance, new DoorState(), new SunOrbAttackState(1));
         var bot = new BotPlayerState
         {
             PlayerId = -1,

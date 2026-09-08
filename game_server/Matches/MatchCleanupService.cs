@@ -40,10 +40,10 @@ internal sealed class MatchCleanupService(
             return;
 
         using var scope = runtime.Enter();
-        if (runtime.IsTerminal || runtime.Sessions.HasSessions)
+        if (runtime.IsEnded || runtime.Sessions.HasSessions)
             return;
 
-        runtime.TryMarkTerminal();
+        runtime.TryMarkEnded();
         if (eventLogs.TryBeginFinalization(matchingId))
         {
             var endedAtUtc = DateTime.UtcNow;

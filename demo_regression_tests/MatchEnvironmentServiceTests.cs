@@ -24,9 +24,9 @@ public sealed class MatchEnvironmentServiceTests
         var service = CreateService(GameServerDevOptions.Disabled);
         lock (match.Sync)
         {
-            match.TryMarkTerminal();
+            match.TryMarkEnded();
             service.Process(match, []);
-            Assert.True(match.IsTerminal);
+            Assert.True(match.IsEnded);
         }
     }
 
@@ -44,7 +44,7 @@ public sealed class MatchEnvironmentServiceTests
         lock (match.Sync)
         {
             service.Process(match, []);
-            Assert.False(match.IsTerminal);
+            Assert.False(match.IsEnded);
         }
     }
 

@@ -32,7 +32,7 @@ public sealed class MatchAreaClosureTickTests
             Assert.True(match.TryBeginAreaClosureTick(StartedAt.AddSeconds(12), StartedAt));
             Assert.False(match.TryBeginAreaClosureTick(StartedAt.AddSeconds(12), StartedAt));
             Assert.Equal(StartedAt.AddSeconds(13), match.NextAreaClosureTickAtUtc);
-            match.TryMarkTerminal();
+            match.TryMarkEnded();
             Assert.False(match.TryBeginAreaClosureTick(StartedAt.AddSeconds(20), StartedAt));
         }
     }

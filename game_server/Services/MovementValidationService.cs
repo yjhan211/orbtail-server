@@ -1,3 +1,4 @@
+using game_server.matches.states;
 using game_server.matches;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -136,7 +137,7 @@ internal sealed class MovementValidationService(ILogger<MovementValidationServic
         AreaType newArea,
         Cell previousCell,
         Cell currentCell,
-        MatchDoorState? doors)
+        DoorState? doors)
     {
         if (newArea == currentArea || newArea == AreaType.None)
             return null;

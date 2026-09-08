@@ -47,7 +47,7 @@ internal sealed class BotMovementService(
             plan.DispatchPreparationElapsedMilliseconds +
             Stopwatch.GetElapsedTime(dispatchStartedAt).TotalMilliseconds;
 
-        SwarmBotTickMetricsBatch? batch = runtime.Swarm.BotTickMetrics.Record(
+        SwarmBotTickMetricsBatch? batch = runtime.BotTickMetrics.Record(
             matchingId,
             new SwarmBotTickSample(
                 Stopwatch.GetElapsedTime(tickStartedAt).TotalMilliseconds,

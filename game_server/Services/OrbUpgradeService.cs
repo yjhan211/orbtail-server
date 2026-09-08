@@ -1,3 +1,4 @@
+using game_server.matches.states;
 using game_server.matches;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
@@ -105,7 +106,7 @@ internal sealed class OrbUpgradeService(
     /// <summary>이 계열의 다음 강화 비용. 강화할 오브(T3 미만)가 없으면 0(강화 불가).</summary>
 
     private int GetUpgradeCost(
-        long matchingId, long playerId, OrbColor color, SwarmOrbBoardState orbBoard)
+        long matchingId, long playerId, OrbColor color, OrbUpgradeState orbBoard)
     {
         if (FindUpgradeTargetOrdinal(matchingId, playerId, color, out _) < 0)
             return 0;
@@ -130,7 +131,7 @@ internal sealed class OrbUpgradeService(
         int ordinal = FindUpgradeTargetOrdinal(matchingId, playerId, color, out var target);
         if (ordinal < 0 || target == null)
             return false;
-        SwarmOrbBoardState orbBoard = matchRuntimes.GetOrThrow(matchingId).Swarm.OrbBoard;
+        OrbUpgradeState orbBoard = matchRuntimes.GetOrThrow(matchingId).OrbUpgrades;
         int cost = GetUpgradeCost(matchingId, playerId, color, orbBoard);
         if (cost <= 0)
             return false;
@@ -157,7 +158,7 @@ internal sealed class OrbUpgradeService(
     /// <summary>현재 계열별 레벨·비용 데이터를 반환한다. 상태 변경과 전송은 하지 않는다.</summary>
     public G_TO_C_ORB_UPGRADE_INFO GetOrbUpgradeInfo(long matchingId, long playerId)
     {
-        SwarmOrbBoardState orbBoard = matchRuntimes.GetOrThrow(matchingId).Swarm.OrbBoard;
+        OrbUpgradeState orbBoard = matchRuntimes.GetOrThrow(matchingId).OrbUpgrades;
         return new G_TO_C_ORB_UPGRADE_INFO
         {
             SunLevel = GetFamilyLevel(matchingId, playerId, OrbColor.Red),
@@ -212,7 +213,7 @@ internal sealed class OrbUpgradeService(
             return false;
 
         // 최다 보유 계열이 전부 T3이면 강화 가능한 다른 계열을 찾는다.
-        SwarmOrbBoardState orbBoard = matchRuntimes.GetOrThrow(matchingId).Swarm.OrbBoard;
+        OrbUpgradeState orbBoard = matchRuntimes.GetOrThrow(matchingId).OrbUpgrades;
         if (GetUpgradeCost(matchingId, playerId, favorite, orbBoard) <= 0)
         {
             favorite = FamilyColors.FirstOrDefault(color =>

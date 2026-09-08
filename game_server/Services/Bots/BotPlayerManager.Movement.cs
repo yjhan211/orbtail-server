@@ -444,7 +444,7 @@ public partial class BotPlayerManager
         {
             var transitionDoor = GameDoorData.GetDoorForTransition(
                 bot.CurrentArea, nextStep.Area, bot.Cell, nextStep.Cell);
-            if (transitionDoor != null && !IsDoorOpenForBot(matchingId, transitionDoor.DoorId))
+            if (transitionDoor != null && !_doors.IsDoorOpen(transitionDoor.DoorId))
             {
                 bot.Path.Clear();
                 bot.PathIndex = 0;
@@ -586,11 +586,12 @@ public partial class BotPlayerManager
         BotPlayerState bot, long matchingId, DateTime now, float deltaSec, out BotMovementEvent? movement)
     {
         movement = null;
-        if (_swarmDodgeResolver == null || bot.CurrentArea == AreaType.None)
+        if (bot.CurrentArea == AreaType.None)
             return false;
 
         bool committed = now < bot.SwarmDodgeHoldUntilUtc;
-        var advice = _swarmDodgeResolver(matchingId, bot.PlayerId, bot.Position, bot.CurrentArea, now);
+        var advice = SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(
+            _sunOrbAttacks.DodgeSnapshot, matchingId, bot.PlayerId, bot.Position, bot.CurrentArea, now);
         if (advice == null)
         {
             if (!committed)

@@ -1,3 +1,4 @@
+using game_server.matches.states;
 using game_server.matches;
 using game_server.services;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -6,7 +7,7 @@ using network.common.data.models;
 
 namespace demo_regression_tests;
 
-public sealed class CrossfireServiceTests
+public sealed class SunOrbAttackServiceTests
 {
     [Fact]
     public void Process_WaitsForTelegraphHitsOnceAndRemovesExpiredDodgeSnapshot()
@@ -14,7 +15,7 @@ public sealed class CrossfireServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947601);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = new CrossfireService(store, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
+        var service = new SunOrbAttackService(store, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
         var now = DateTime.UtcNow;
         var owner = new BotPlayerState { PlayerId = 11 };
         var victim = new BotPlayerState { PlayerId = 12 };
@@ -28,7 +29,7 @@ public sealed class CrossfireServiceTests
                 SweepSpeed = 5, ArmedAtUtc = now.AddSeconds(1), ExpiresAtUtc = now.AddSeconds(3),
                 LastFront = -0.35f, DetonateAtWall = false
             };
-            match.Swarm.Crossfire.AddShape(shape);
+            match.SunOrbAttacks.AddShape(shape);
             List<SwarmParticipantSpatial> participants =
             [
                 new(11, AreaType.S2Ground, new Vector3f(2, Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y, 0)),
@@ -44,7 +45,7 @@ public sealed class CrossfireServiceTests
             Assert.InRange(healthAfterHit, 1, Config.MAX_HEALTH - 1);
             Assert.Equal(Config.MAX_HEALTH, owner.Health);
             Assert.Equal(12L, Assert.Single(shape.HitVictims));
-            Assert.True(match.Swarm.Crossfire.TryGetSunBurn(12, out var burn));
+            Assert.True(match.SunOrbAttacks.TryGetSunBurn(12, out var burn));
             Assert.Equal(hitAt.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS), burn!.NextTickAtUtc);
 
             service.ProcessSwarmCrossfires(match.MatchingId, hitAt.AddSeconds(0.1),
@@ -53,9 +54,9 @@ public sealed class CrossfireServiceTests
             service.ProcessSwarmCrossfires(match.MatchingId, now.AddSeconds(3),
                 participants, [], [owner, victim], []);
             Assert.Equal(healthAfterHit, victim.Health);
-            Assert.Equal(0, match.Swarm.Crossfire.ShapeCount);
-            Assert.Empty(match.Swarm.Crossfire.DodgeSnapshot);
-            match.TryMarkTerminal();
+            Assert.Equal(0, match.SunOrbAttacks.ShapeCount);
+            Assert.Empty(match.SunOrbAttacks.DodgeSnapshot);
+            match.TryMarkEnded();
         }
     }
 
@@ -66,10 +67,10 @@ public sealed class CrossfireServiceTests
         var first = store.GetOrCreate(947602);
         var second = store.GetOrCreate(947603);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = new CrossfireService(store, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
+        var service = new SunOrbAttackService(store, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
         var now = DateTime.UtcNow;
         using (MatchRuntimeStore.Enter(first))
-            first.Swarm.Crossfire.SetSunBurn(12, 11, 107000010, AreaType.S2Ground,
+            first.SunOrbAttacks.SetSunBurn(12, 11, 107000010, AreaType.S2Ground,
                 now, Config.SWARM_SUN_BURN_SECONDS, Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS);
         var due = now.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS);
         using (MatchRuntimeStore.Enter(second))
@@ -77,7 +78,7 @@ public sealed class CrossfireServiceTests
             var victim = new BotPlayerState { PlayerId = 12 };
             service.ProcessSwarmSunBurns(second.MatchingId, due, [], [victim], []);
             Assert.Equal(Config.MAX_HEALTH, victim.Health);
-            second.TryMarkTerminal();
+            second.TryMarkEnded();
         }
         using (MatchRuntimeStore.Enter(first))
         {
@@ -91,7 +92,7 @@ public sealed class CrossfireServiceTests
             Assert.Equal(Config.MAX_HEALTH - expected, victim.Health);
             service.ProcessSwarmSunBurns(first.MatchingId, due, [], [victim], []);
             Assert.Equal(Config.MAX_HEALTH - expected, victim.Health);
-            first.TryMarkTerminal();
+            first.TryMarkEnded();
         }
     }
 }

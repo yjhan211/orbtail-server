@@ -94,7 +94,7 @@ internal static class Program
         {
             var lifecycle = sp.GetRequiredService<MatchingLifecycleService>();
             return new MatchRuntimeStore(
-                sp.GetRequiredService<ILogger<MatchRuntimeStore>>(),
+                sp.GetRequiredService<ILogger<MatchRuntime>>(),
 
                 matchingLifecycle: lifecycle);
         });
@@ -150,7 +150,7 @@ internal static class Program
         services.AddSingleton<OrbTrailService>();
         services.AddSingleton<MatchCombatDamageService>();
         services.AddSingleton<WindBladeService>();
-        services.AddSingleton<CrossfireService>();
+        services.AddSingleton<SunOrbAttackService>();
         services.AddSingleton<MatchFieldService>();
         services.AddSingleton<MatchCountdownService>(sp => new MatchCountdownService(
             sp.GetRequiredService<MatchRuntimeStore>(), sp.GetRequiredService<MatchEntryFailureHandler>(),

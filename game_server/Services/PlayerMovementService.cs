@@ -265,7 +265,7 @@ internal sealed class PlayerMovementService(
 
         using (match.Enter())
         {
-            if (match.IsTerminal) return;
+            if (match.IsEnded) return;
 
             var objects = InteractableStateManager.GetAreaObjectStates(areaType);
 

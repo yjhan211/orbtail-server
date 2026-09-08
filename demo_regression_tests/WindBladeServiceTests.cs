@@ -29,7 +29,7 @@ public sealed class WindBladeServiceTests
                 [new(11, AreaType.None, new Vector3f(0, 0, 0)), new(12, AreaType.None, origin)];
             service.Process(match.MatchingId, now, participants, [], [owner, victim], []);
             Assert.Equal(Config.MAX_HEALTH, victim.Health);
-            Assert.False(match.Swarm.WindBlade.IsWounded(12, now));
+            Assert.False(match.WindBlade.IsWounded(12, now));
 
             var hitAt = now.AddSeconds(Math.Max(Config.SWARM_WIND_BLADE_TICK_SECONDS,
                 Config.SWARM_WIND_BLADE_SPINUP_SECONDS) + 0.001);
@@ -37,13 +37,13 @@ public sealed class WindBladeServiceTests
             int expected = Math.Max(1, (int)MathF.Round(
                 Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE)));
             Assert.Equal(Config.MAX_HEALTH - expected, victim.Health);
-            Assert.True(match.Swarm.WindBlade.IsWounded(12, hitAt));
+            Assert.True(match.WindBlade.IsWounded(12, hitAt));
             Assert.Equal(Config.MAX_HEALTH, owner.Health);
 
             service.Process(match.MatchingId, hitAt.AddSeconds(Config.SWARM_WIND_BLADE_TICK_SECONDS + 0.001),
                 participants, [], [owner, victim], []);
             Assert.Equal(Config.MAX_HEALTH - expected, victim.Health);
-            match.TryMarkTerminal();
+            match.TryMarkEnded();
         }
     }
 
@@ -68,8 +68,8 @@ public sealed class WindBladeServiceTests
             service.Process(match.MatchingId, now, participants, [], [victim], []);
             service.Process(match.MatchingId, now.AddSeconds(1), participants, [], [victim], []);
             Assert.Equal(Config.MAX_HEALTH, victim.Health);
-            Assert.False(match.Swarm.WindBlade.IsWounded(12, now.AddSeconds(1)));
-            match.TryMarkTerminal();
+            Assert.False(match.WindBlade.IsWounded(12, now.AddSeconds(1)));
+            match.TryMarkEnded();
         }
     }
 

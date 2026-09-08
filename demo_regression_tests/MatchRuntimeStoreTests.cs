@@ -13,7 +13,7 @@ public sealed class MatchRuntimeStoreTests
     [Fact]
     public void Constructor_RejectsMissingLifecycleService()
     {
-        Assert.Throws<ArgumentNullException>(() => new MatchRuntimeStore(NullLogger.Instance, null!));
+        Assert.Throws<ArgumentNullException>(() => new MatchRuntimeStore(NullLogger<MatchRuntime>.Instance, null!));
     }
     [Fact]
     public void RuntimeAndStoreScopes_ShareDepthAndCleanupOnlyOnOutermostExit()
@@ -30,14 +30,14 @@ public sealed class MatchRuntimeStoreTests
         using (runtime.Enter())
         {
             using (runtime.Enter())
-                Assert.True(runtime.TryMarkTerminal());
+                Assert.True(runtime.TryMarkEnded());
             Assert.Equal(0, afterCount);
             Assert.Same(runtime, store.GetOrNull(90001));
         }
         Assert.Equal(1, afterCount);
         Assert.Null(store.GetOrNull(90001));
         using (runtime.Enter())
-            Assert.True(runtime.IsTerminal);
+            Assert.True(runtime.IsEnded);
         Assert.Equal(1, afterCount);
     }
 
@@ -145,13 +145,13 @@ public sealed class MatchRuntimeStoreTests
         Parallel.For(0, 32, _ =>
         {
             using MatchScope scope = runtime.Enter();
-            if (runtime.TryMarkTerminal())
+            if (runtime.TryMarkEnded())
                 Interlocked.Increment(ref winners);
         });
 
         Assert.Equal(1, winners);
-        Assert.True(runtime.IsTerminal);
-        Assert.Throws<InvalidOperationException>(() => runtime.TryMarkTerminal());
+        Assert.True(runtime.IsEnded);
+        Assert.Throws<InvalidOperationException>(() => runtime.TryMarkEnded());
     }
 
     [Fact]
@@ -164,7 +164,7 @@ public sealed class MatchRuntimeStoreTests
 
         using (MatchScope scope = runtime.Enter())
         {
-            Assert.True(runtime.TryMarkTerminal());
+            Assert.True(runtime.TryMarkEnded());
             Assert.Empty(cleanupCalls);
             Assert.NotNull(store.GetOrNull(7));
         }
@@ -193,12 +193,12 @@ public sealed class MatchRuntimeStoreTests
         {
             using (MatchScope inner = runtime.Enter())
             {
-                Assert.True(runtime.TryMarkTerminal());
+                Assert.True(runtime.TryMarkEnded());
             }
 
             // 안쪽 스코프가 닫혀도 바깥이 아직 상태를 만지고 있으므로 정리는 미뤄진다.
             Assert.Empty(cleanupCalls);
-            Assert.True(runtime.IsTerminal);
+            Assert.True(runtime.IsEnded);
             Assert.NotNull(store.GetOrNull(3));
         }
 
@@ -255,7 +255,7 @@ public sealed class MatchRuntimeStoreTests
 
         using (runtime.Enter())
         {
-            runtime.TryMarkTerminal();
+            runtime.TryMarkEnded();
             runtime.AfterRelease.Add(() => order.Add("release"));
         }
 
@@ -275,7 +275,7 @@ public sealed class MatchRuntimeStoreTests
             using (runtime.Enter())
             {
                 using (runtime.Enter())
-                    runtime.TryMarkTerminal();
+                    runtime.TryMarkEnded();
                 Assert.True(MatchStartGate.IsGameplayActive(matchingId));
                 Assert.Same(runtime, store.GetOrNull(matchingId));
             }
@@ -298,7 +298,7 @@ public sealed class MatchRuntimeStoreTests
 
         using (runtime.Enter())
         {
-            runtime.TryMarkTerminal();
+            runtime.TryMarkEnded();
         }
 
         Assert.Null(store.GetOrNull(4));

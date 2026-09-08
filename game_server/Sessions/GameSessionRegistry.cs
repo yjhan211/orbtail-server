@@ -17,7 +17,7 @@ public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
     {
         var match = session.Match;
         using var scope = match.Enter();
-        if (match.IsTerminal)
+        if (match.IsEnded)
         {
             throw new InvalidOperationException("Cannot register a session in a terminal match.");
         }

@@ -30,7 +30,7 @@ public partial class GameClientSession
 
         using (match.Enter())
         {
-            if (match.IsTerminal)
+            if (match.IsEnded)
             {
                 return Task.CompletedTask;
             }
