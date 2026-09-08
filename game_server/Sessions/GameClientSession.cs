@@ -48,8 +48,6 @@ public partial class GameClientSession : SessionBase
     private readonly PlayerInteractionState _interactions = new();
     private const int PendingOrbDraftCost = 0;
 
-    private long _lastMoveReceiptTimestamp;
-    private long _lastMoveAcknowledgementTimestamp;
     private bool _hasPendingOrbDraft;
     public int FreeSummonCharges { get; internal set; }
 

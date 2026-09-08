@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -10,7 +11,7 @@ namespace game_server.services;
 /// <summary>
 ///     플레이어 한 명의 이동 검증과 매치 내 반영을 조율한다.
 ///     위치·셀·속도·회전·구역·오브 궤도를 보관하고, 이동 반영과 주변 알림을 맡는다.
-///     Apply와 Broadcast는 호출자가 해당 매치 잠금을 잡은 상태에서 호출한다.
+///     이동 처리·응답 간격도 관리한다. 이동 상태를 읽거나 변경할 때는 호출자가 매치 잠금을 잡는다.
 /// </summary>
 internal sealed class PlayerMovementService(
     GameClientSession player,
@@ -18,6 +19,9 @@ internal sealed class PlayerMovementService(
     GameEventLogManager eventLog,
     ILogger logger)
 {
+    private long _lastMoveProcessedTimestamp;
+    private long _lastMoveResponseTimestamp;
+
     public Vector3f? LastValidatedPosition { get; private set; }
     public Cell? LastValidatedCell { get; private set; }
     public Vector3f LastValidatedVelocity { get; private set; } = new();
@@ -26,6 +30,33 @@ internal sealed class PlayerMovementService(
     private float? _orbOrbitPhaseDegrees;
     public float OrbOrbitPhaseDegrees =>
         _orbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(player.PlayerId ?? 0L);
+
+    /// <summary>이전 이동 요청과의 처리 간격을 초 단위로 계산하고, 마지막 처리 시각을 갱신한다.</summary>
+    public float CalculateMoveDeltaTime(long timestamp)
+    {
+        if (_lastMoveProcessedTimestamp == 0)
+        {
+            _lastMoveProcessedTimestamp = timestamp;
+            return MovementValidationPolicy.InitialReceiptDeltaSeconds;
+        }
+
+        double elapsedSeconds = (timestamp - _lastMoveProcessedTimestamp) / (double)Stopwatch.Frequency;
+        _lastMoveProcessedTimestamp = timestamp;
+        return MovementValidationPolicy.ClampReceiptDeltaSeconds(elapsedSeconds);
+    }
+
+    /// <summary>첫 이동 응답이거나, 마지막 응답 이후 전송 간격이 지났는지 확인한다.</summary>
+    public bool ShouldSendMoveResponse(long timestamp)
+    {
+        if (_lastMoveResponseTimestamp == 0)
+            return true;
+
+        double elapsedSeconds = (timestamp - _lastMoveResponseTimestamp) / (double)Stopwatch.Frequency;
+        return elapsedSeconds >= MovementValidationPolicy.MovementAcknowledgementIntervalSeconds;
+    }
+
+    /// <summary>이동 응답을 전송한 시각을 기록한다. 즉시 보정 응답도 같은 간격에 반영한다.</summary>
+    public void RecordMoveResponse(long timestamp) => _lastMoveResponseTimestamp = timestamp;
 
     /// <summary>입장 시 서버가 지정한 스폰으로 이동 상태를 초기화한다.</summary>
     public void InitializeSpawn(Cell spawnCell)

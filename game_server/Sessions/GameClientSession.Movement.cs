@@ -31,16 +31,14 @@ public partial class GameClientSession
 
             try
             {
-                if (msg?.Position == null || msg.Velocity == null ||
-                    !MovementValidationPolicy.IsFinite(msg.Position) ||
-                    !MovementValidationPolicy.IsFinite(msg.Velocity) || !float.IsFinite(msg.Rotation))
+                if (!MovementValidationPolicy.IsFinite(msg.Position) || !MovementValidationPolicy.IsFinite(msg.Velocity) || !float.IsFinite(msg.Rotation))
                 {
                     Logger.LogWarning("Player {PlayerId} sent invalid movement values", PlayerId);
                     return Task.CompletedTask;
                 }
 
-                long receiptTimestamp = Stopwatch.GetTimestamp();
-                float deltaTime = GetServerReceiptDeltaSeconds(receiptTimestamp);
+                long timestamp = Stopwatch.GetTimestamp();
+                float deltaTime = _playerMovement.CalculateMoveDeltaTime(timestamp);
 
                 var result = _playerMovement.Apply(msg, deltaTime);
                 if (result == null)
@@ -56,10 +54,10 @@ public partial class GameClientSession
                 using var packet = PacketMaker.G_TO_C_MOVE(PlayerId.Value, validatedPosition, validatedVelocity, msg.Rotation, currentCell, serverTimestamp, _playerMovement.OrbOrbitPhaseDegrees);
                 _playerMovement.Broadcast(packet);
 
-                if (requiresClientCorrection || ShouldSendMovementAcknowledgement(receiptTimestamp))
+                if (requiresClientCorrection || _playerMovement.ShouldSendMoveResponse(timestamp))
                 {
                     TrySend(packet);
-                    _lastMoveAcknowledgementTimestamp = receiptTimestamp;
+                    _playerMovement.RecordMoveResponse(timestamp);
                 }
             }
             catch (Exception ex)
@@ -71,27 +69,5 @@ public partial class GameClientSession
         }
 
         return Task.CompletedTask;
-    }
-
-    private float GetServerReceiptDeltaSeconds(long receiptTimestamp)
-    {
-        if (_lastMoveReceiptTimestamp == 0)
-        {
-            _lastMoveReceiptTimestamp = receiptTimestamp;
-            return MovementValidationPolicy.InitialReceiptDeltaSeconds;
-        }
-
-        double elapsedSeconds = (receiptTimestamp - _lastMoveReceiptTimestamp) / (double)Stopwatch.Frequency;
-        _lastMoveReceiptTimestamp = receiptTimestamp;
-        return MovementValidationPolicy.ClampReceiptDeltaSeconds(elapsedSeconds);
-    }
-
-    private bool ShouldSendMovementAcknowledgement(long receiptTimestamp)
-    {
-        if (_lastMoveAcknowledgementTimestamp == 0)
-            return true;
-
-        double elapsedSeconds = (receiptTimestamp - _lastMoveAcknowledgementTimestamp) / (double)Stopwatch.Frequency;
-        return elapsedSeconds >= MovementValidationPolicy.MovementAcknowledgementIntervalSeconds;
     }
 }
