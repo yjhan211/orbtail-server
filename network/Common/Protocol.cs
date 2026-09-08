@@ -129,7 +129,7 @@ namespace network.common
         G_TO_C_SWARM_CROSSFIRE_TELEGRAPH,
 
         // 6칸 빌드 (#232 4단계) — 계열 공유 레벨(태양·바람·파도 T1~T3)과 직접 강화.
-        G_TO_C_SWARM_FAMILY_LEVELS,
+        G_TO_C_ORB_UPGRADE_INFO,
         C_TO_G_UPGRADE_ORB,
         G_TO_C_UPGRADE_ORB_RESULT,
 

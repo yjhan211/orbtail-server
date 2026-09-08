@@ -106,6 +106,75 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
     }
 
     [Fact]
+    public async Task FirstSummonPublishesUpgradeCostAndAllowsFamilyUpgrade()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
+        var runtime = session.Match;
+        var connection = fixture.ConnectionFor(session);
+        MatchStartGate.RegisterBotOnlyMatch(FirstMatchingId);
+        try
+        {
+            using (runtime.Enter())
+            {
+                runtime.SummonStones.AddStones(FirstPlayerId, 100);
+                session.SendOrbUpgradeInfo(fixture.Server.GetGrowth().GetOrbUpgradeInfo(FirstMatchingId, FirstPlayerId));
+            }
+            var empty = connection.DeserializeSingle<G_TO_C_ORB_UPGRADE_INFO>(Protocol.G_TO_C_ORB_UPGRADE_INFO);
+            Assert.Equal(0, empty.SunCost + empty.WindCost + empty.WaveCost);
+            connection.ClearPackets();
+
+            await SendAsync(session, Protocol.C_TO_G_SUMMON_ORB, new C_TO_G_SUMMON_ORB());
+            var summon = connection.DeserializeSingle<G_TO_C_SUMMON_ORB_RESULT>(Protocol.G_TO_C_SUMMON_ORB_RESULT);
+            Assert.True(summon.Success);
+            var costs = connection.DeserializeSingle<G_TO_C_ORB_UPGRADE_INFO>(Protocol.G_TO_C_ORB_UPGRADE_INFO);
+            Assert.True(OrbData.TryGetColorAndTier(summon.SummonedItemId, out var color, out int tier));
+            int cost = color switch
+            {
+                OrbColor.Red => costs.SunCost,
+                OrbColor.Green => costs.WindCost,
+                OrbColor.Blue => costs.WaveCost,
+                _ => throw new InvalidOperationException("Unexpected orb color")
+            };
+            Assert.True(cost > 0);
+            int stonesBefore = runtime.SummonStones.GetSnapshot(FirstPlayerId).StoneCount;
+            connection.ClearPackets();
+
+            await SendAsync(session, Protocol.C_TO_G_UPGRADE_ORB,
+                new C_TO_G_UPGRADE_ORB { Action = Config.ORB_UPGRADE_FAMILY, TargetItemUid = (long)color });
+            var upgrade = connection.DeserializeSingle<G_TO_C_UPGRADE_ORB_RESULT>(Protocol.G_TO_C_UPGRADE_ORB_RESULT);
+            Assert.True(upgrade.Success);
+            Assert.True(OrbData.TryGetColorAndTier(upgrade.ResultItemId, out var upgradedColor, out int upgradedTier));
+            Assert.Equal(color, upgradedColor);
+            Assert.Equal(tier + 1, upgradedTier);
+            Assert.Equal(stonesBefore - cost, upgrade.StoneCount);
+        }
+        finally
+        {
+            MatchStartGate.RemoveMatching(FirstMatchingId);
+        }
+    }
+    [Fact]
+    public void OrbUpgradeInfoQueryDoesNotSendOrChangePlayerState()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
+        var runtime = session.Match;
+        using (runtime.Enter())
+        {
+            runtime.Inventory.TryAddItemWithCapacity(FirstPlayerId, 107000010, Config.SWARM_ORB_CAPACITY, out _);
+            runtime.SummonStones.AddStones(FirstPlayerId, 20);
+            var before = runtime.SummonStones.GetSnapshot(FirstPlayerId);
+            var info = fixture.Server.GetGrowth().GetOrbUpgradeInfo(FirstMatchingId, FirstPlayerId);
+            Assert.True(info.SunCost > 0);
+            Assert.Equal(0, info.WindCost);
+            Assert.Equal(0, info.WaveCost);
+            Assert.Equal(before, runtime.SummonStones.GetSnapshot(FirstPlayerId));
+            Assert.Equal(0, runtime.Swarm.OrbBoard.GetFamilyUpgradeCount(FirstPlayerId, OrbColor.Red));
+            Assert.Empty(fixture.ConnectionFor(session).DeliveredProtocols);
+        }
+    }
+    [Fact]
     public void SummonStoneStatePacket_OnlyContainsCurrencyCountAndCost()
     {
         var state = new SummonStoneStateInfo
@@ -301,7 +370,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(
             [
                 Protocol.G_TO_C_ORB_LIST,
-                Protocol.G_TO_C_SWARM_FAMILY_LEVELS,
+                Protocol.G_TO_C_ORB_UPGRADE_INFO,
                 Protocol.G_TO_C_UPGRADE_ORB_RESULT
             ],
             connection.DeliveredProtocols);
@@ -388,7 +457,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Config.SWARM_GROWTH_COST_CAP,
             Config.GetSwarmGrowthBaseCost(0));
         Assert.True(OrbData.TryGetItemId(OrbColor.Red, 2, out int upgradedItemId));
-        connection.ThrowOnceOn = Protocol.G_TO_C_SWARM_FAMILY_LEVELS;
+        connection.ThrowOnceOn = Protocol.G_TO_C_ORB_UPGRADE_INFO;
 
         await SendAsync(
             session,
@@ -402,7 +471,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(
             [
                 Protocol.G_TO_C_ORB_LIST,
-                Protocol.G_TO_C_SWARM_FAMILY_LEVELS,
+                Protocol.G_TO_C_ORB_UPGRADE_INFO,
                 Protocol.G_TO_C_ERROR
             ],
             connection.AttemptedProtocols);
@@ -472,7 +541,11 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             orbHandler: (current, _, action, target, _) =>
             {
                 prefixCommitted = true;
-                current.SendSwarmFamilyLevels(1, 1, 1, 2, 2, 2);
+                current.SendOrbUpgradeInfo(new G_TO_C_ORB_UPGRADE_INFO
+                {
+                    SunLevel = 1, WindLevel = 1, WaveLevel = 1,
+                    SunCost = 2, WindCost = 2, WaveCost = 2
+                });
                 throw new InvalidOperationException("upgrade preparation failed");
 #pragma warning disable CS0162
                 suffixCommitted = true;
@@ -483,7 +556,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             new C_TO_G_UPGRADE_ORB { Action = Config.ORB_UPGRADE_FAMILY, TargetItemUid = (long)OrbColor.Red });
         Assert.True(prefixCommitted);
         Assert.False(suffixCommitted);
-        Assert.Equal([Protocol.G_TO_C_SWARM_FAMILY_LEVELS, Protocol.G_TO_C_ERROR],
+        Assert.Equal([Protocol.G_TO_C_ORB_UPGRADE_INFO, Protocol.G_TO_C_ERROR],
             fixture.ConnectionFor(session).DeliveredProtocols);
     }
 
@@ -589,7 +662,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Contains("IsEliminated", ReadMethodSlice(
             orbSummon,
             "private Task HandleUpgradeOrb(",
-            "internal void SendSwarmFamilyLevels("));
+            "internal void SendOrbUpgradeInfo("));
         Assert.Contains("using (match.Enter())", ReadMethodSlice(orbSummon,
             "private Task HandleSummonOrb(",
             "private Task HandleUpgradeOrb("));
@@ -661,14 +734,14 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Path.GetTempPath(),
             "orbtail-growth-orb-publication-tests",
             Guid.NewGuid().ToString("N"));
-        private readonly Func<GameClientSession, long, int, long, long, (bool Success, int ResultItemId, int TargetOrdinal)> _orbHandler;
+
 
         public SessionFixture()
         {
             Server = CreateServer();
             Store = Server.GetMatchRuntimes();
             EventLog = Server.GetEventLogs();
-            _orbHandler = Server.GetGrowth().HandleUpgradeOrb;
+
 
         }
 
@@ -698,7 +771,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 TestGameSessionServices.CreateEliminationService(Store, EventLog, new MatchSummaryFileStore(_summaryDirectory),
                     GameServerDevOptions.Disabled,
                     NullLogger.Instance),
-                new FakePlayerGrowthHandler(orbHandler ?? _orbHandler),
+                orbHandler == null ? Server.GetGrowth() : new FakePlayerGrowthHandler(orbHandler),
 
                 new FakeGameSessionLifecycle(),
                 static () => false,

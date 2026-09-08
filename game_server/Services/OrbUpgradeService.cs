@@ -7,9 +7,9 @@ using network.common.data.models;
 namespace game_server.services;
 
 /// <summary>
-///     사람·봇의 시작 자원 지급과 오브 강화, 레벨·비용 응답을 처리한다.
+///     사람·봇의 시작 자원 지급과 오브 강화, 레벨·비용 계산을 처리한다.
 ///     인벤토리와 구매 횟수는 매치 런타임이 소유하고, 호출자는 해당 매치 잠금을 보유한다.
-///     GameServer와 세션은 이 서비스를 호출하며 서비스는 GameServer를 참조하지 않는다.
+///     전송은 호출자가 담당하며 이 서비스는 세션의 전송 메서드를 호출하지 않는다.
 /// </summary>
 internal sealed class OrbUpgradeService(
     MatchRuntimeStore matchRuntimes,
@@ -39,20 +39,19 @@ internal sealed class OrbUpgradeService(
     ///     사람은 시작 오브 대신 소환 비용만큼의 소환석을 받는다.
     ///     교차사격 샌드박스에서는 사람에게 고정 색 순서로 오브를 주고, 봇에게는 시작 오브를 직접 준다.
     /// </summary>
-    public void GrantStartingOrbs(long matchingId, long playerId, GameClientSession? session)
+    public void GrantStartingOrbs(long matchingId, long playerId, bool isBot)
     {
-        bool fixedSet = devOptions.CrossfireSandbox && session != null;
-        if (session != null && !fixedSet)
+        bool fixedSet = devOptions.CrossfireSandbox && !isBot;
+        if (!isBot && !fixedSet)
         {
             int stonesInsteadOfOrbs = 0;
             for (int index = 0; index < Config.SWARM_STARTING_ORB_GRANT_COUNT; index++)
                 stonesInsteadOfOrbs += Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(index));
             matchRuntimes.GetRequired(matchingId).SummonStones.AddStones(playerId, stonesInsteadOfOrbs);
-            SendFamilyLevels(matchingId, playerId, session);
             return;
         }
 
-        int grantCount = session != null ? Config.SWARM_STARTING_ORB_GRANT_COUNT : BotStartingOrbCount;
+        int grantCount = !isBot ? Config.SWARM_STARTING_ORB_GRANT_COUNT : BotStartingOrbCount;
         for (int index = 0; index < grantCount; index++)
         {
             int itemId = fixedSet
@@ -60,10 +59,8 @@ internal sealed class OrbUpgradeService(
                 : StartingOrbPool[Random.Shared.Next(StartingOrbPool.Length)];
             matchRuntimes.GetRequired(matchingId).Inventory.TryAddItemWithCapacity(
                 playerId, itemId, Config.SWARM_ORB_CAPACITY, out _);
-            session?.SendOrbList();
         }
 
-        SendFamilyLevels(matchingId, playerId, session);
     }
 
     /// <summary>
@@ -149,8 +146,6 @@ internal sealed class OrbUpgradeService(
         resultItemId = upgradedItemId;
         targetOrdinal = ordinal;
 
-        session?.SendOrbList();
-        SendFamilyLevels(matchingId, playerId, session);
         eventLogs.LogSystem(
             matchingId,
             $"ORB_UPGRADED player={playerId} bot={session == null} family={color} ordinal={ordinal} " +
@@ -158,17 +153,19 @@ internal sealed class OrbUpgradeService(
         return replaced;
     }
 
-    /// <summary>계열 레벨·비용 스냅샷 전송 — 시작·강화·오브 증감 때.</summary>
-    public void SendFamilyLevels(long matchingId, long playerId, GameClientSession? session)
+    /// <summary>현재 계열별 레벨·비용 데이터를 반환한다. 상태 변경과 전송은 하지 않는다.</summary>
+    public G_TO_C_ORB_UPGRADE_INFO GetOrbUpgradeInfo(long matchingId, long playerId)
     {
         SwarmOrbBoardState orbBoard = matchRuntimes.GetRequired(matchingId).Swarm.OrbBoard;
-        session?.SendSwarmFamilyLevels(
-            GetFamilyLevel(matchingId, playerId, OrbColor.Red),
-            GetFamilyLevel(matchingId, playerId, OrbColor.Green),
-            GetFamilyLevel(matchingId, playerId, OrbColor.Blue),
-            GetUpgradeCost(matchingId, playerId, OrbColor.Red, orbBoard),
-            GetUpgradeCost(matchingId, playerId, OrbColor.Green, orbBoard),
-            GetUpgradeCost(matchingId, playerId, OrbColor.Blue, orbBoard));
+        return new G_TO_C_ORB_UPGRADE_INFO
+        {
+            SunLevel = GetFamilyLevel(matchingId, playerId, OrbColor.Red),
+            WindLevel = GetFamilyLevel(matchingId, playerId, OrbColor.Green),
+            WaveLevel = GetFamilyLevel(matchingId, playerId, OrbColor.Blue),
+            SunCost = GetUpgradeCost(matchingId, playerId, OrbColor.Red, orbBoard),
+            WindCost = GetUpgradeCost(matchingId, playerId, OrbColor.Green, orbBoard),
+            WaveCost = GetUpgradeCost(matchingId, playerId, OrbColor.Blue, orbBoard)
+        };
     }
 
     /// <summary>

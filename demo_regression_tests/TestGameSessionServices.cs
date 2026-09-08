@@ -1,4 +1,5 @@
 using game_server.network;
+using network.common.data.models;
 using game_server.services;
 using game_server.sessions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -10,6 +11,8 @@ namespace demo_regression_tests;
 internal sealed class FakePlayerGrowthHandler(
     Func<GameClientSession, long, int, long, long, (bool Success, int ResultItemId, int TargetOrdinal)>? orbDecision = null) : IPlayerGrowthHandler
 {
+
+    public G_TO_C_ORB_UPGRADE_INFO GetOrbUpgradeInfo(long matchingId, long playerId) => new();
 
     public (bool Success, int ResultItemId, int TargetOrdinal) HandleUpgradeOrb(GameClientSession session, long matchingId, int action, long targetItemUid, long secondItemUid) =>
         orbDecision?.Invoke(session, matchingId, action, targetItemUid, secondItemUid) ?? (false, 0, -1);

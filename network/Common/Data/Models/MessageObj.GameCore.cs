@@ -222,7 +222,7 @@ namespace network.common.data.models
     ///     보유하지 않은 계열의 비용은 0(강화 불가)이다. 시작·강화·오브 증감 때 보낸다.
     /// </summary>
     [MessagePackObject]
-    public class G_TO_C_SWARM_FAMILY_LEVELS : IMessagePackObject
+    public class G_TO_C_ORB_UPGRADE_INFO : IMessagePackObject
     {
         [Key("sun")] public int SunLevel { get; set; }
         [Key("wind")] public int WindLevel { get; set; }

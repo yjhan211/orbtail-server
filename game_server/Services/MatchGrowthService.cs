@@ -18,6 +18,9 @@ internal sealed class MatchGrowthService(
     OrbUpgradeService orbUpgrades,
     ILogger<MatchGrowthService> logger) : IPlayerGrowthHandler
 {
+    public G_TO_C_ORB_UPGRADE_INFO GetOrbUpgradeInfo(long matchingId, long playerId) =>
+        orbUpgrades.GetOrbUpgradeInfo(matchingId, playerId);
+
     // 방어 카드가 부여하는 외피 보너스. 샌드박스도 같은 값을 사용한다.
     internal const int ArmorDurabilityBonus = 4;
     internal const float BotPreyPowerAdvantage = 1.25f;
@@ -252,7 +255,6 @@ internal sealed class MatchGrowthService(
                         return false;
                     // 소환은 T1 그대로: 티어는 오브마다 따로 산다 — 공유 레벨 상속은 퇴역.
                     inventory.TryAddItemWithCapacity(offer.SpawnItemId, Config.SWARM_ORB_CAPACITY, out _);
-                    orbUpgrades.SendFamilyLevels(matchingId, playerId, session: null);
                     return true;
                 }
             case SwarmGrowthOfferState.CardEnhance:

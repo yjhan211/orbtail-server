@@ -197,7 +197,9 @@ internal sealed class MatchArenaService(
                 !matchRuntimes.GetRequired(matchingId).Swarm.Pacing.StartingOrbGrantedPlayers.Add((matchingId, session.PlayerId.Value)))
                 continue;
 
-            orbUpgrades.GrantStartingOrbs(matchingId, session.PlayerId.Value, session);
+            orbUpgrades.GrantStartingOrbs(matchingId, session.PlayerId.Value, isBot: false);
+            session.SendOrbList();
+            session.SendOrbUpgradeInfo(orbUpgrades.GetOrbUpgradeInfo(matchingId, session.PlayerId.Value));
             matchRuntimes.GetRequired(matchingId).SummonStones.AddStones(session.PlayerId.Value, startingStones);
             session.SendSummonStoneState();
         }
@@ -207,7 +209,7 @@ internal sealed class MatchArenaService(
             if (!matchRuntimes.GetRequired(matchingId).Swarm.Pacing.StartingOrbGrantedPlayers.Add((matchingId, bot.PlayerId)))
                 continue;
 
-            orbUpgrades.GrantStartingOrbs(matchingId, bot.PlayerId, session: null);
+            orbUpgrades.GrantStartingOrbs(matchingId, bot.PlayerId, isBot: true);
             matchRuntimes.GetRequired(matchingId).SummonStones.AddStones(bot.PlayerId, startingStones);
         }
 

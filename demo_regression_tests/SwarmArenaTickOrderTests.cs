@@ -128,7 +128,7 @@ public sealed class SwarmArenaTickOrderTests
 
         AssertInOrder(
             arenaTick,
-            "orbUpgrades.GrantStartingOrbs(matchingId, session.PlayerId.Value, session);",
+            "orbUpgrades.GrantStartingOrbs(matchingId, session.PlayerId.Value, isBot: false);",
             "session.SendSummonStoneState();",
             "SetupSwarmCutDummy(matchingId);",
             "session.TrySend(leavePacket);",

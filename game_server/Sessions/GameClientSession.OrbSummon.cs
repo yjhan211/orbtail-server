@@ -70,6 +70,8 @@ public partial class GameClientSession
             if (attempt is { Success: true, AddedItem: not null })
             {
                 SendOrbUpdate(attempt.AddedItem);
+                var upgradeInfo = _growth.GetOrbUpgradeInfo(MatchingId, playerId);
+                SendOrbUpgradeInfo(upgradeInfo);
             }
 
             using var packet = Packet.Create((int)Protocol.G_TO_C_SUMMON_ORB_RESULT, PlayerId ?? 0);
@@ -152,6 +154,12 @@ public partial class GameClientSession
                 request.TargetItemUid,
                 request.SecondItemUid);
 
+            if (result.Success)
+            {
+                SendOrbList();
+                SendOrbUpgradeInfo(_growth.GetOrbUpgradeInfo(matchingId, PlayerId.Value));
+            }
+
             using var resultPacket = Packet.Create((int)Protocol.G_TO_C_UPGRADE_ORB_RESULT, PlayerId.Value);
             resultPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_UPGRADE_ORB_RESULT
             {
@@ -168,23 +176,15 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
-    internal void SendSwarmFamilyLevels(int sunLevel, int windLevel, int waveLevel, int sunCost, int windCost, int waveCost)
+    internal void SendOrbUpgradeInfo(G_TO_C_ORB_UPGRADE_INFO levels)
     {
         if (!PlayerId.HasValue)
         {
             return;
         }
 
-        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_FAMILY_LEVELS, PlayerId.Value);
-        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_FAMILY_LEVELS
-        {
-            SunLevel = sunLevel,
-            WindLevel = windLevel,
-            WaveLevel = waveLevel,
-            SunCost = sunCost,
-            WindCost = windCost,
-            WaveCost = waveCost
-        }));
+        using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_UPGRADE_INFO, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(levels));
         TrySend(packet);
     }
 
