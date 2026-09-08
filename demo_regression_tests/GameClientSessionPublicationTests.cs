@@ -407,10 +407,7 @@ public sealed class GameClientSessionPublicationTests
         GroundItemInfo item = fixture.SpawnAtSession(session, itemId);
         int stonesBefore = fixture.Store.GetRequired(70001).SummonStones.GetSnapshot(101).StoneCount;
 
-        await SendAsync(
-            session,
-            Protocol.C_TO_G_GROUND_ITEM_PICKUP,
-            new C_TO_G_GROUND_ITEM_PICKUP { GroundItemUid = item.GroundItemUid });
+        await RunPickupTickAsync(session, fixture.EventLog);
 
         IReadOnlyList<Protocol> protocols = fixture.ConnectionFor(session).DeliveredProtocols;
         if (expectedPrefix.HasValue)
@@ -437,10 +434,7 @@ public sealed class GameClientSessionPublicationTests
         fixture.SetHealth(session, 20);
         GroundItemInfo item = fixture.SpawnAtSession(session, Config.HEART_GROUND_ITEM_ID);
 
-        await SendAsync(
-            session,
-            Protocol.C_TO_G_GROUND_ITEM_PICKUP,
-            new C_TO_G_GROUND_ITEM_PICKUP { GroundItemUid = item.GroundItemUid });
+        await RunPickupTickAsync(session, fixture.EventLog);
 
         Assert.Equal(
             [
@@ -455,26 +449,17 @@ public sealed class GameClientSessionPublicationTests
     [Theory]
     [InlineData(Config.HEART_GROUND_ITEM_ID)]
     [InlineData(Config.JAM_GROUND_ITEM_ID)]
-    public async Task GroundPickup_Rejection_LeavesItemAndPublishesOnlyFailureResult(int itemId)
+    public async Task GroundPickup_Rejection_LeavesItemWithoutRepeatedFailurePackets(int itemId)
     {
         using var fixture = new SessionFixture();
         RecordingSession session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
         GroundItemInfo item = fixture.SpawnAtSession(session, itemId);
 
-        await SendAsync(
-            session,
-            Protocol.C_TO_G_GROUND_ITEM_PICKUP,
-            new C_TO_G_GROUND_ITEM_PICKUP { GroundItemUid = item.GroundItemUid });
+        await RunPickupTickAsync(session, fixture.EventLog);
 
-        Assert.Equal(
-            [Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT],
-            fixture.ConnectionFor(session).DeliveredProtocols);
+        await RunPickupTickAsync(session, fixture.EventLog);
+        Assert.Empty(fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.NotNull(fixture.Store.GetRequired(70001).GroundItems.GetItem(item.GroundItemUid));
-        G_TO_C_GROUND_ITEM_PICKUP_RESULT result = fixture.ConnectionFor(session)
-            .DeserializeSingle<G_TO_C_GROUND_ITEM_PICKUP_RESULT>(
-                Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT);
-        Assert.False(result.Success);
-        Assert.Equal(ErrorCode.ITEM_NOT_USABLE, result.ErrorCode);
         Assert.DoesNotContain(fixture.Store.GetRequired(70001).Inventory.GetAllItems(101),
             inventoryItem => inventoryItem.ItemId == itemId);
     }
@@ -518,16 +503,11 @@ public sealed class GameClientSessionPublicationTests
             session,
             Protocol.C_TO_G_RNG_COLLECT_FINISH,
             new C_TO_G_RNG_COLLECT_FINISH { InteractId = 702000101 });
-        await SendAsync(
-            session,
-            Protocol.C_TO_G_GROUND_ITEM_PICKUP,
-            new C_TO_G_GROUND_ITEM_PICKUP { GroundItemUid = 999 });
 
         Assert.Equal(
             [
                 Protocol.G_TO_C_RNG_COLLECT_ACK,
-                Protocol.G_TO_C_RNG_COLLECT_ACK,
-                Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT
+                Protocol.G_TO_C_RNG_COLLECT_ACK
             ],
             fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.DoesNotContain(Protocol.G_TO_C_ERROR, fixture.ConnectionFor(session).AttemptedProtocols);
@@ -536,11 +516,6 @@ public sealed class GameClientSessionPublicationTests
         {
             Assert.Equal(ErrorCode.INVALID_GAME_STATE, ack.ErrorCode);
         }
-        Assert.Equal(
-            ErrorCode.INVALID_GAME_STATE,
-            fixture.ConnectionFor(session)
-                .DeserializeSingle<G_TO_C_GROUND_ITEM_PICKUP_RESULT>(
-                    Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT).ErrorCode);
     }
 
     [Fact]
@@ -621,10 +596,7 @@ public sealed class GameClientSessionPublicationTests
             Assert.True(releaseDispatch.Wait(TimeSpan.FromSeconds(5)));
         };
 
-        Task message = Task.Run(() => SendAsync(
-            session,
-            Protocol.C_TO_G_GROUND_ITEM_PICKUP,
-            new C_TO_G_GROUND_ITEM_PICKUP { GroundItemUid = item.GroundItemUid }));
+        Task message = Task.Run(() => RunPickupTickAsync(session, fixture.EventLog));
         Assert.True(enteredDispatch.Wait(TimeSpan.FromSeconds(5)));
 
         // 핸들러가 잠금을 쥔 채 송신 중이면 종료는 번들 전체가 끝날 때까지 기다린다.
@@ -655,7 +627,7 @@ public sealed class GameClientSessionPublicationTests
     }
 
     [Fact]
-    public async Task TransportFailure_DoesNotRollbackStateAndReleasesLockBeforeGenericError()
+    public async Task TransportFailure_DoesNotRollbackStateAndReleasesMatchLock()
     {
         using var fixture = new SessionFixture();
         RecordingSession session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
@@ -663,18 +635,14 @@ public sealed class GameClientSessionPublicationTests
         RecordingTcpConnection connection = fixture.ConnectionFor(session);
         connection.ThrowOnceOn = Protocol.G_TO_C_GROUND_ITEM_REMOVED;
 
-        await SendAsync(
-            session,
-            Protocol.C_TO_G_GROUND_ITEM_PICKUP,
-            new C_TO_G_GROUND_ITEM_PICKUP { GroundItemUid = item.GroundItemUid });
+        await Assert.ThrowsAsync<InvalidOperationException>(() => RunPickupTickAsync(session, fixture.EventLog));
 
         Assert.Equal(1, session.FreeSummonCharges);
         Assert.Null(fixture.Store.GetRequired(70001).GroundItems.GetItem(item.GroundItemUid));
         Assert.Equal(
             [
                 Protocol.G_TO_C_FREE_SUMMON_STATE,
-                Protocol.G_TO_C_GROUND_ITEM_REMOVED,
-                Protocol.G_TO_C_ERROR
+                Protocol.G_TO_C_GROUND_ITEM_REMOVED
             ],
             connection.AttemptedProtocols);
         Assert.DoesNotContain(Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT, connection.AttemptedProtocols);
@@ -682,7 +650,7 @@ public sealed class GameClientSessionPublicationTests
     }
 
     [Fact]
-    public async Task PreparationFailure_KeepsAlreadySentPrefixThenGenericErrorOutsideLock()
+    public async Task PreparationFailure_KeepsAlreadySentPrefixAndReleasesMatchLock()
     {
         using var fixture = new SessionFixture();
         RecordingSession session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
@@ -691,13 +659,10 @@ public sealed class GameClientSessionPublicationTests
         GameClientSession.SwarmHeartPickupCallback = static (_, _) =>
             throw new InvalidOperationException("heart callback failed");
 
-        await SendAsync(
-            session,
-            Protocol.C_TO_G_GROUND_ITEM_PICKUP,
-            new C_TO_G_GROUND_ITEM_PICKUP { GroundItemUid = item.GroundItemUid });
+        await Assert.ThrowsAsync<InvalidOperationException>(() => RunPickupTickAsync(session, fixture.EventLog));
 
         Assert.Equal(
-            [Protocol.G_TO_C_PLAYER_STATS_UPDATE, Protocol.G_TO_C_ERROR],
+            [Protocol.G_TO_C_PLAYER_STATS_UPDATE],
             fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.Null(fixture.Store.GetRequired(70001).GroundItems.GetItem(item.GroundItemUid));
         Assert.True(session.CurrentHealth > 20);
@@ -786,16 +751,10 @@ public sealed class GameClientSessionPublicationTests
             Assert.True(release.Wait(TimeSpan.FromSeconds(5)));
         };
 
-        Task firstTask = Task.Run(() => SendAsync(
-            first,
-            Protocol.C_TO_G_GROUND_ITEM_PICKUP,
-            new C_TO_G_GROUND_ITEM_PICKUP { GroundItemUid = firstItem.GroundItemUid }));
+        Task firstTask = Task.Run(() => RunPickupTickAsync(first, fixture.EventLog));
         Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
 
-        Task secondTask = SendAsync(
-            second,
-            Protocol.C_TO_G_GROUND_ITEM_PICKUP,
-            new C_TO_G_GROUND_ITEM_PICKUP { GroundItemUid = secondItem.GroundItemUid });
+        Task secondTask = RunPickupTickAsync(second, fixture.EventLog);
         await secondTask.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(1, second.FreeSummonCharges);
         Assert.False(firstTask.IsCompleted);
@@ -834,7 +793,12 @@ public sealed class GameClientSessionPublicationTests
             ReadNormalizedSource(root, "network", "Core", "SessionBase.cs"));
         Assert.Contains("private Task RunWithMatchLock(Func<Task> handleRequest, Action rejectRequest)", session);
         Assert.Equal(2, CountOccurrences(rng, "RunWithMatchLock("));
-        Assert.Equal(1, CountOccurrences(ground, "RunWithMatchLock("));
+        Assert.DoesNotContain("RunWithMatchLock(", ground);
+        Assert.DoesNotContain("ProcessAutomaticGroundItemPickup", ground);
+        Assert.DoesNotContain("_groundItemPickupCandidates", ground);
+        var autoPickup = ReadNormalizedSource(root, "game_server", "Services", "GroundItemAutoPickupService.cs");
+        Assert.Contains("Monitor.IsEntered(match.Sync)", autoPickup);
+        Assert.Contains("match.IsTerminal", autoPickup);
         Assert.Equal(4, CountOccurrences(orbSummon, "RunWithMatchLock("));
         Assert.DoesNotContain("SwarmGrowthPickCallback", session);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
@@ -861,12 +825,8 @@ public sealed class GameClientSessionPublicationTests
                 doors,
                 "internal void BreakDoorUnlockGauge()",
                 "private Task HandleDoorOpenRequest("));
-        Assert.DoesNotContain(
-            "RunWithMatchLock",
-            ReadMethodSlice(
-                ground,
-                "private Task HandleDropGroundItem(",
-                "internal void DropAllInventoryAtCurrentPosition("));
+        Assert.DoesNotContain("HandleDropGroundItem", ground);
+        Assert.Contains("internal void DropAllInventoryAtCurrentPosition(", ground);
     }
 
     [Theory]
@@ -1004,6 +964,116 @@ public sealed class GameClientSessionPublicationTests
         throw new DirectoryNotFoundException("Could not locate repository root from test output path.");
     }
 
+    [Fact]
+    public void MatchTick_AutomaticallyPicksUpForStationaryPlayerOnlyAfterGameplayStarts()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
+        var item = fixture.SpawnAtSession(session, Config.KEY_GROUND_ITEM_ID);
+        var runner = CreatePickupTickRunner(fixture);
+        runner.Run(session.Match);
+        Assert.NotNull(session.Match.GroundItems.GetItem(item.GroundItemUid));
+        Assert.Empty(fixture.ConnectionFor(session).DeliveredProtocols);
+
+        // 테스트에서 대기 없이 활성 게이트를 연다.
+        MatchStartGate.RegisterBotOnlyMatch(session.MatchingId);
+        runner.Run(session.Match);
+        runner.Run(session.Match);
+        Assert.Null(session.Match.GroundItems.GetItem(item.GroundItemUid));
+        Assert.Equal(1, session.FreeSummonCharges);
+        Assert.Single(fixture.ConnectionFor(session).DeserializeAll<G_TO_C_GROUND_ITEM_PICKUP_RESULT>(
+            Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT));
+    }
+
+    [Fact]
+    public void MatchTick_TwoPlayersNearSameItemOnlyOneReceivesIt()
+    {
+        using var fixture = new SessionFixture();
+        var first = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
+        var second = fixture.CreateSession(70001, 102, Config.SWARM_MATCH_GROUND_AREA);
+        var item = fixture.SpawnAtSession(first, Config.KEY_GROUND_ITEM_ID);
+        typeof(GameClientSession).GetProperty(nameof(GameClientSession.LastValidatedPosition))!
+            .SetValue(second, first.LastValidatedPosition);
+        MatchStartGate.RegisterBotOnlyMatch(first.MatchingId);
+
+        CreatePickupTickRunner(fixture).Run(first.Match);
+
+        Assert.Equal(1, first.FreeSummonCharges + second.FreeSummonCharges);
+        Assert.Null(first.Match.GroundItems.GetItem(item.GroundItemUid));
+    }
+
+    [Fact]
+    public void MatchTick_OnePlayerNotificationFailureDoesNotStopOtherPlayersPickup()
+    {
+        using var fixture = new SessionFixture();
+        var first = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
+        var second = fixture.CreateSession(70001, 102, Config.SWARM_MATCH_GROUND_AREA);
+        fixture.SpawnAtSession(first, Config.KEY_GROUND_ITEM_ID);
+        fixture.SpawnAtSession(second, Config.KEY_GROUND_ITEM_ID);
+        fixture.ConnectionFor(first).ThrowOnceOn = Protocol.G_TO_C_FREE_SUMMON_STATE;
+        MatchStartGate.RegisterBotOnlyMatch(first.MatchingId);
+
+        CreatePickupTickRunner(fixture).Run(first.Match);
+
+        Assert.Equal(1, first.FreeSummonCharges);
+        Assert.Equal(1, second.FreeSummonCharges);
+        Assert.False(Monitor.IsEntered(first.Match.Sync));
+    }
+
+    [Fact]
+    public void AutomaticPickupCandidatesAreMatchOwnedAndClearedOnTerminal()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
+        fixture.SpawnAtSession(session, Config.KEY_GROUND_ITEM_ID);
+        var match = session.Match;
+        using (match.Enter())
+        {
+            GroundItemAutoPickupService.RecordMovement(session,
+                session.LastValidatedPosition!, session.LastValidatedPosition!, session.CurrentArea);
+            Assert.Single(match.GroundItemPickupCandidates);
+        }
+
+        fixture.MarkTerminal(session.MatchingId);
+        Assert.Empty(match.GroundItemPickupCandidates);
+    }
+
+    [Fact]
+    public void ReplacementSessionDoesNotInheritPreviousSessionPickupCandidates()
+    {
+        using var fixture = new SessionFixture();
+        var previous = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
+        var item = fixture.SpawnAtSession(previous, Config.KEY_GROUND_ITEM_ID);
+        var match = previous.Match;
+        using (match.Enter())
+            GroundItemAutoPickupService.RecordMovement(previous,
+                previous.LastValidatedPosition!, previous.LastValidatedPosition!, previous.CurrentArea);
+
+        var current = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
+        typeof(GameClientSession).GetProperty(nameof(GameClientSession.LastValidatedPosition))!
+            .SetValue(current, new Vector3f(item.PositionX + 20, item.PositionY, 0));
+        using (match.Enter())
+            new GroundItemAutoPickupService(fixture.EventLog, NullLogger<GroundItemAutoPickupService>.Instance)
+                .Process(match, [current]);
+
+        Assert.Equal(0, current.FreeSummonCharges);
+        Assert.NotNull(match.GroundItems.GetItem(item.GroundItemUid));
+        Assert.Empty(match.GroundItemPickupCandidates);
+    }
+
+    private static MatchTickRunner CreatePickupTickRunner(SessionFixture fixture) =>
+        new(fixture.Store, NullLogger.Instance,
+            new GroundItemAutoPickupService(fixture.EventLog, NullLogger<GroundItemAutoPickupService>.Instance),
+            static (_, _) => { }, static (_, _) => { },
+            static (_, _) => { }, static _ => { }, static (_, _) => { });
+
+    private static Task RunPickupTickAsync(GameClientSession session, GameEventLogManager eventLogs)
+    {
+        using (session.Match.Enter())
+            new GroundItemAutoPickupService(eventLogs, NullLogger<GroundItemAutoPickupService>.Instance).Process(session);
+        return Task.CompletedTask;
+    }
+
     private sealed class SessionFixture : IDisposable
     {
         private readonly List<GameClientSession> _sessions = [];
@@ -1070,6 +1140,7 @@ public sealed class GameClientSessionPublicationTests
                 [itemId],
                 mapId: Config.SWARM_MATCH_MAP).Single();
             SetPosition(session, new Vector3f(item.PositionX, item.PositionY, 0f));
+            TestGroundItemLanding.Complete(session.Match.GroundItems);
             return item;
         }
 

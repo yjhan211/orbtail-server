@@ -11,6 +11,7 @@ namespace game_server.services;
 internal sealed class MatchTickRunner(
     MatchRuntimeStore matchRuntimes,
     ILogger logger,
+    GroundItemAutoPickupService groundItemAutoPickup,
     Action<IEnumerable<long>, IReadOnlyCollection<GameClientSession>> publishCountdown,
     Action<long, List<GameClientSession>> processCombat,
     Action<MatchRuntime, List<GameClientSession>> processEnvironment,
@@ -53,6 +54,9 @@ internal sealed class MatchTickRunner(
                 publishCountdown([matchingId], countdownSessions);
                 if (scope.Runtime.IsTerminal)
                     return;
+                if (MatchStartGate.IsGameplayActive(matchingId))
+                    groundItemAutoPickup.Process(runtime, activeSessions);
+                if (runtime.IsTerminal) return;
                 processCombat(matchingId, activeSessions);
                 if (scope.Runtime.IsTerminal)
                     return;

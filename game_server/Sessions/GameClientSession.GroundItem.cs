@@ -1,6 +1,5 @@
 using game_server.services;
 using MessagePack;
-using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
 using network.packets;
@@ -9,177 +8,12 @@ namespace game_server.sessions;
 
 public partial class GameClientSession
 {
-    private Task HandleGroundItemPickup(C_TO_G_GROUND_ITEM_PICKUP msg)
-    {
-        if (!PlayerId.HasValue || MatchingId <= 0)
-        {
-            SendGroundItemPickupResult(msg.GroundItemUid, 0, false, false, ErrorCode.INVALID_GAME_STATE);
-            return Task.CompletedTask;
-        }
-
-        return RunWithMatchLock(
-            () => ProcessGroundItemPickup(msg),
-            () => SendGroundItemPickupResult(
-                msg.GroundItemUid,
-                0,
-                false,
-                false,
-                ErrorCode.INVALID_GAME_STATE));
-    }
-
-    private Task ProcessGroundItemPickup(C_TO_G_GROUND_ITEM_PICKUP msg)
-    {
-        if (!PlayerId.HasValue || IsEliminated || IsGameEnded || LastValidatedPosition == null)
-        {
-            SendGroundItemPickupResult(msg.GroundItemUid, 0, false, false, ErrorCode.INVALID_GAME_STATE);
-            return Task.CompletedTask;
-        }
-
-        var position = LastValidatedPosition;
-        var pickup = GroundItemPickupService.TryPickup(
-            Match, PlayerId.Value, CurrentArea,
-            position, Health, msg.GroundItemUid);
-        var claimedItem = pickup.ClaimedItem;
-        var attemptedItem = pickup.AttemptedItem;
-        var addedItem = pickup.AddedItem;
-
-        if (pickup.Status != GroundItemClaimStatus.Success || claimedItem == null)
-        {
-            if (attemptedItem?.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
-            {
-                Logger.LogDebug(
-                    "Summon stone pickup rejected: MatchingId={MatchingId}, PlayerId={PlayerId}, GroundItemUid={GroundItemUid}, Status={Status}, PlayerArea={PlayerArea}, ItemArea={ItemArea}, Player=({PlayerX:F2},{PlayerY:F2}), Item=({ItemX:F2},{ItemY:F2})",
-                    MatchingId,
-                    PlayerId.Value,
-                    msg.GroundItemUid,
-                    pickup.Status,
-                    CurrentArea,
-                    attemptedItem.AreaType,
-                    position.X,
-                    position.Y,
-                    attemptedItem.PositionX,
-                    attemptedItem.PositionY);
-            }
-
-            ErrorCode error = pickup.Status switch
-            {
-                GroundItemClaimStatus.AreaMismatch => ErrorCode.AREA_MISMATCH,
-                GroundItemClaimStatus.TooFar => ErrorCode.INVALID_POSITION,
-                GroundItemClaimStatus.Rejected => pickup.Rejection,
-                GroundItemClaimStatus.SourceBlocked => ErrorCode.INVALID_GAME_STATE,
-                GroundItemClaimStatus.Reserved => ErrorCode.ITEM_NOT_FOUND,
-                _ => ErrorCode.ITEM_NOT_FOUND
-            };
-            if (attemptedItem != null && GroundItemPickupPolicy.IsImmediateUseItem(attemptedItem.ItemId))
-            {
-                GroundItemPickupPolicy.Resolve(attemptedItem.ItemId, Health,
-                    out int deniedHealthRecovery);
-                _gameEventLogManager.LogPelletPickupOutcome(
-                    MatchingId, PlayerId.Value, attemptedItem.ItemId,
-                    deniedHealthRecovery, 0,
-                    $"denied_{pickup.Status.ToString().ToLowerInvariant()}", isBot: false);
-            }
-            if (attemptedItem != null && error == ErrorCode.INVENTORY_FULL)
-            {
-                var board = Match.Inventory.GetPlayerInventory(PlayerId.Value);
-                _gameEventLogManager.LogOrbPickupBlockedFull(
-                    MatchingId,
-                    PlayerId.Value,
-                    attemptedItem.ItemId,
-                    CurrentArea.ToString(),
-                    board.GetAllItems(),
-                    isBot: false);
-            }
-            SendGroundItemPickupResult(msg.GroundItemUid, attemptedItem?.ItemId ?? 0, false, false, error);
-            return Task.CompletedTask;
-        }
-
-        if (pickup.BootsPickup)
-        {
-            // 부츠 (#222 M4): 이속은 클라 이동이 소유한다 — 서버는 픽업 결과만 확정.
-            // 클라가 픽업 결과(ItemId)로 10초 버프·HUD 타이머를 시작한다.
-        }
-        else if (pickup.KeyPickup)
-        {
-            AddFreeSummonCharge(1);
-        }
-        else if (pickup.SummonStonePickup)
-        {
-            var summonState = Match.SummonStones.AddStones(PlayerId.Value, 1);
-            SendSummonStoneState(1, claimedItem.PositionX, claimedItem.PositionY);
-            _gameEventLogManager.LogSummonStoneAward(
-                MatchingId,
-                PlayerId.Value,
-                monsterId: 0,
-                amount: 1,
-                summonState.StoneCount,
-                CurrentArea.ToString(),
-                isCore: false,
-                isBot: false);
-        }
-        else if (pickup.AutoUsed)
-        {
-            int effectiveHealthRecovery = Math.Min(pickup.HealthRecovery, Math.Max(0, Config.MAX_HEALTH - Health));
-            int requestedRecovery = pickup.HealthRecovery;
-            int effectiveRecovery = effectiveHealthRecovery;
-            HandleHealthChanged(_condition.Recover(pickup.HealthRecovery));
-            // 하트는 앞줄 오브 HP도 만충으로 (#222 M4) — 원작 하트의 스쿼드 회복.
-            if (claimedItem.ItemId == Config.HEART_GROUND_ITEM_ID)
-                SwarmHeartPickupCallback?.Invoke(MatchingId, PlayerId.Value);
-            _gameEventLogManager.LogRecoveryUse(
-                MatchingId, PlayerId.Value, claimedItem.ItemId,
-                effectiveRecovery, source: "ground_auto_use", isBot: false);
-            _gameEventLogManager.LogPelletPickupOutcome(
-                MatchingId, PlayerId.Value, claimedItem.ItemId, requestedRecovery, effectiveRecovery,
-                effectiveRecovery == 0 ? "wasted" : effectiveRecovery == requestedRecovery ? "effective" : "partial_waste",
-                isBot: false);
-        }
-        else if (addedItem != null)
-        {
-            SendInGameInventoryUpdate(addedItem);
-            if (pickup.AutoEquipped)
-            {
-                using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(
-                    true, addedItem.ItemUid, ErrorCode.SUCCESS);
-                TrySend(equippedPacket);
-            }
-        }
-
-        BroadcastGroundItemRemoved(claimedItem, pickup.AutoUsed);
-        _gameEventLogManager.LogGroundItemPickup(
-            MatchingId,
-            PlayerId.Value,
-            pickup.DiscovererPlayerId,
-            claimedItem.GroundItemUid,
-            claimedItem.ItemId,
-            CurrentArea.ToString(),
-            pickup.AutoUsed,
-            isBot: false);
-        if (!pickup.SummonStonePickup && !pickup.BootsPickup && !pickup.KeyPickup)
-        {
-            var boardAfterPickup = Match.Inventory.GetPlayerInventory(PlayerId.Value);
-            _gameEventLogManager.LogOrbBoardTransition(
-                MatchingId, PlayerId.Value, boardAfterPickup.GetAllItems(),
-                boardAfterPickup.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "pickup", isBot: false);
-        }
-        SendGroundItemPickupResult(claimedItem.GroundItemUid, claimedItem.ItemId, true, pickup.AutoUsed, ErrorCode.SUCCESS);
-        return Task.CompletedTask;
-    }
-
-    /// <summary>열쇠 (#222 M4): 무료 소환 충전 획득 — 상태를 소유자에게 즉시 동기한다.</summary>
-    internal void AddFreeSummonCharge(int amount)
-    {
-        if (!PlayerId.HasValue || amount <= 0)
-            return;
-
-        FreeSummonCharges += amount;
-        SendFreeSummonState();
-    }
-
     internal void SendFreeSummonState()
     {
         if (!PlayerId.HasValue)
+        {
             return;
+        }
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_FREE_SUMMON_STATE, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_FREE_SUMMON_STATE
@@ -189,12 +23,6 @@ public partial class GameClientSession
         TrySend(packet);
     }
 
-    private Task HandleDropGroundItem(C_TO_G_DROP_GROUND_ITEM msg)
-    {
-        // The six board slots are deliberate route pressure. Free floor drops would bypass that pressure.
-        SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Direct board discard is unavailable");
-        return Task.CompletedTask;
-    }
     internal void DropAllInventoryAtCurrentPosition()
     {
         if (!PlayerId.HasValue || LastValidatedPosition == null || CurrentArea == AreaType.None) return;
@@ -244,28 +72,11 @@ public partial class GameClientSession
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, items.ToList());
         TrySend(packet);
     }
-
-
     private void BroadcastGroundItemsSpawned(AreaType area, IReadOnlyList<GroundItemInfo> spawned)
     {
         if (spawned.Count == 0) return;
         var sessions = Match.Sessions.GetInArea(area);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, spawned.ToList());
         foreach (var session in sessions) session.TrySend(packet);
-    }
-
-    private void BroadcastGroundItemRemoved(GroundItemInfo item, bool autoUsed)
-    {
-        var sessions = Match.Sessions.GetInArea((AreaType)item.AreaType);
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(item.GroundItemUid, PlayerId ?? 0, autoUsed);
-        foreach (var session in sessions) session.TrySend(packet);
-    }
-
-    private void SendGroundItemPickupResult(long groundItemUid, int itemId, bool success, bool autoUsed,
-        ErrorCode errorCode)
-    {
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_PICKUP_RESULT(
-            groundItemUid, itemId, success, autoUsed, errorCode);
-        TrySend(packet);
     }
 }

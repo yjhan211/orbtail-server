@@ -119,6 +119,10 @@ public partial class GameClientSession
             // 오브 궤도 (#232): 검증된 이동 거리만큼 돈다 — 멈추면 이동 패킷이 없으니 저절로 선다.
             if (LastValidatedPosition != null)
                 AdvanceOrbOrbit(LastValidatedPosition, validatedPosition);
+            // 승인된 구간마다 후보를 기록한다. 구역을 넘으면 경로 위 좌표가 속한 구역도 확인한다.
+            var pickupArea = newArea == AreaType.None ? CurrentArea : newArea;
+            GroundItemAutoPickupService.RecordMovement(this,
+                LastValidatedPosition ?? validatedPosition, validatedPosition, pickupArea);
             _lastValidCell = validation.ValidCell;
             LastValidatedPosition = validatedPosition;
             _lastValidatedVelocity = validatedVelocity;

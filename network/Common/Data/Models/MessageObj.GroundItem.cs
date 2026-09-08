@@ -32,17 +32,6 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class C_TO_G_GROUND_ITEM_PICKUP : IMessagePackObject
-    {
-        [Key("groundItemUid")] public long GroundItemUid { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_G_DROP_GROUND_ITEM : IMessagePackObject
-    {
-        [Key("itemUid")] public long ItemUid { get; set; }
-    }
-    [MessagePackObject]
     public class G_TO_C_GROUND_ITEM_REMOVED : IMessagePackObject
     {
         [Key("groundItemUid")] public long GroundItemUid { get; set; }

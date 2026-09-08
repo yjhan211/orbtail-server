@@ -149,6 +149,7 @@ internal static class Program
         services.AddSingleton<OrbUpgradeService>();
         services.AddSingleton<MatchGrowthService>();
         services.AddSingleton<OrbRecoveryService>();
+        services.AddSingleton<GroundItemAutoPickupService>();
         services.AddSingleton<OrbVisualStatePublisher>();
         services.AddSingleton<OrbTrailService>();
         services.AddSingleton<MatchCombatDamageService>();

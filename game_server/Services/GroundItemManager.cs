@@ -12,7 +12,8 @@ public enum GroundItemClaimStatus
     TooFar,
     Rejected,
     SourceBlocked,
-    Reserved
+    Reserved,
+    Landing
 }
 
 public enum GroundItemSpawnLayout
@@ -24,10 +25,10 @@ public enum GroundItemSpawnLayout
 /// <summary>매치 런타임의 바닥 아이템에 생성·조회·획득 규칙을 적용한다. 매치별 사전은 소유하지 않는다.</summary>
 public sealed class GroundItemManager
 {
-    public const float PickupRadius = 1.15f;
+    public const float PickupRadius = Config.GROUND_ITEM_PICKUP_RADIUS;
 
     // 소환석 자석 흡수 (#219): 접촉이 아니라 근처를 지나가면 딸려온다 — SB 코인 흡수 문법.
-    public const float SummonStonePickupRadius = 3.5f;
+    public const float SummonStonePickupRadius = Config.SUMMON_STONE_PICKUP_RADIUS;
 
     private readonly long _matchingId;
     private MatchingGroundItemState? _state;
@@ -117,6 +118,22 @@ public sealed class GroundItemManager
                    _timeProvider.GetUtcNow() - spawnedAt < age;
     }
 
+    public bool IsLanding(long groundItemUid)
+    {
+        if (Volatile.Read(ref _state) is not { } state) return false;
+        lock (state.SyncRoot)
+            return state.Items.TryGetValue(groundItemUid, out var item) && IsLanding(state, item);
+    }
+
+    private bool IsLanding(MatchingGroundItemState state, GroundItemInfo item)
+    {
+        if (!state.SpawnedAtUtc.TryGetValue(item.GroundItemUid, out var spawnedAt)) return false;
+        float dx = item.PositionX - item.SpawnOriginX;
+        float dy = item.PositionY - item.SpawnOriginY;
+        float duration = Config.GetGroundItemLandingSeconds(MathF.Sqrt(dx * dx + dy * dy));
+        return _timeProvider.GetUtcNow() - spawnedAt < TimeSpan.FromSeconds(duration);
+    }
+
     public GroundItemInfo? GetItem(long groundItemUid)
     {
         if (Volatile.Read(ref _state) is not { } state)
@@ -143,6 +160,8 @@ public sealed class GroundItemManager
         {
             if (!state.Items.TryGetValue(groundItemUid, out var item))
                 return GroundItemClaimStatus.NotFound;
+            if (IsLanding(state, item))
+                return GroundItemClaimStatus.Landing;
             if (state.ClaimReservations.TryGetValue(groundItemUid, out var reservation))
             {
                 if (reservation.ExpiresAtUtc <= _timeProvider.GetUtcNow())

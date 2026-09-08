@@ -33,6 +33,7 @@ public sealed class MatchTickRunnerTests
         typeof(MatchRuntime).GetProperty(nameof(MatchRuntime.NextEnvironmentalTickAtUtc))!
             .SetValue(fixture.Match, DateTime.UtcNow.AddSeconds(-1));
         var runner = new MatchTickRunner(fixture.Store, NullLogger.Instance,
+            new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
             (_, _) => Record("countdown"),
             (_, _) => Record("combat"),
             (_, _) => Record("environment"),
@@ -59,6 +60,7 @@ public sealed class MatchTickRunnerTests
         var combatIds = new List<long>();
         int movements = 0;
         var runner = new MatchTickRunner(first.Store, NullLogger.Instance,
+            new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
             (_, _) => { },
             (id, _) =>
             {
@@ -83,6 +85,7 @@ public sealed class MatchTickRunnerTests
         int movements = 0;
         int combats = 0;
         var runner = new MatchTickRunner(fixture.Store, NullLogger.Instance,
+            new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
             (_, _) => { },
             (_, _) =>
             {
@@ -108,6 +111,7 @@ public sealed class MatchTickRunnerTests
         using var release = new ManualResetEventSlim();
         var combatIds = new List<long>();
         var runner = new MatchTickRunner(fixture.Store, NullLogger.Instance,
+            new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
             (_, _) => { }, (id, _) => combatIds.Add(id), (_, _) => { }, _ => { }, (_, _) => { });
         Task holder = Task.Run(() =>
         {
@@ -142,6 +146,7 @@ public sealed class MatchTickRunnerTests
         MatchStartGate.RegisterHumanPlayer(fixture.Match.MatchingId, 11, botCount: 7);
         var steps = new List<string>();
         var runner = new MatchTickRunner(fixture.Store, NullLogger.Instance,
+            new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
             (_, _) => steps.Add("countdown"), (_, _) => steps.Add("combat"),
             (_, _) => steps.Add("environment"), _ => steps.Add("movement"), (_, _) => { });
 
@@ -181,6 +186,7 @@ public sealed class MatchTickRunnerTests
         using var fixture = new Fixture(945110);
         int laterStages = 0;
         var runner = new MatchTickRunner(fixture.Store, NullLogger.Instance,
+            new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
             (_, _) => fixture.Match.TryMarkTerminal(),
             (_, _) => laterStages++,
             (_, _) => laterStages++,

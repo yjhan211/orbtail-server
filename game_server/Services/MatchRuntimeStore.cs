@@ -87,6 +87,7 @@ internal sealed class MatchRuntime
     // 데이터와 처리 객체를 함께 소유한다. 호출자는 이 매치를 고른 뒤 playerId만 넘긴다.
     public InGameInventoryManager Inventory { get; }
     public GroundItemManager GroundItems { get; }
+    internal Dictionary<GameClientSession, GroundItemPickupCandidates> GroundItemPickupCandidates { get; } = new();
     public SummonStoneManager SummonStones { get; }
     public EncounterRevealManager Encounters { get; } = new();
     public MatchRosterManager Roster { get; }
@@ -383,6 +384,7 @@ internal sealed class MatchRuntimeStore
                 }
                 runtime.Inventory.Release();
                 runtime.GroundItems.Release();
+                runtime.GroundItemPickupCandidates.Clear();
                 runtime.SummonStones.Release();
                 runtime.Encounters.Release();
                 runtime.Roster.Release();

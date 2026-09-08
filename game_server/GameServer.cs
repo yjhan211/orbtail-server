@@ -41,6 +41,7 @@ internal sealed class GameServer(
     MatchEliminationService matchEliminations,
     GameMatchEntryService matchEntry,
     ItemCombinationService itemCombinations,
+    GroundItemAutoPickupService groundItemAutoPickup,
     MovementValidationService movementValidation,
     MatchEntryFailureHandler entryFailureHandler,
     GameSessionLeaveHandler sessionLeaveHandler,
@@ -196,7 +197,7 @@ internal sealed class GameServer(
     private void StartGameTicks()
     {
         var tickRunner = new MatchTickRunner(
-            matchRuntimes, logger,
+            matchRuntimes, logger, groundItemAutoPickup,
             countdown.Broadcast,
             arena.ProcessSwarmArenaForMatching,
             environmentService.Process,

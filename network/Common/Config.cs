@@ -57,6 +57,13 @@ namespace network.common
         /// <summary>World pickup used to represent one summon stone.</summary>
         public const int SUMMON_STONE_GROUND_ITEM_ID = 107000050;
 
+        public const float GROUND_ITEM_PICKUP_RADIUS = 1.05f;
+        public const float SUMMON_STONE_PICKUP_RADIUS = 1.6f;
+
+        // 클라이언트 착지 연출과 서버 획득 대기에 같은 시간을 사용한다.
+        public static float GetGroundItemLandingSeconds(float distance) =>
+            Math.Max(0.32f, Math.Min(0.55f, 0.3f + distance * 0.08f));
+
         /// <summary>
         ///     잼 지상 픽업 (#222 M3): 소환석(개봉 재화)과 분리된 승점 재화 — SB의 코인/잼
         ///     이원 구조. 큰 몹·오브 파괴가 떨구고, 잼 최다가 승리를 가른다 (M3 승리 판정).

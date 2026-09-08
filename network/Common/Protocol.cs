@@ -114,8 +114,6 @@ namespace network.common
         // 서버 권위 바닥 아이템
         G_TO_C_GROUND_ITEM_SNAPSHOT,
         G_TO_C_GROUND_ITEM_SPAWN,
-        C_TO_G_GROUND_ITEM_PICKUP,
-        C_TO_G_DROP_GROUND_ITEM,
         G_TO_C_GROUND_ITEM_REMOVED,
         G_TO_C_GROUND_ITEM_PICKUP_RESULT,
         G_TO_C_MATCH_START_COUNTDOWN,

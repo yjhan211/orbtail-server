@@ -119,6 +119,7 @@ public partial class GameClientSession : SessionBase
 
     internal bool IsGameEnded => Volatile.Read(ref _isGameEnded);
     internal int CurrentHealth => Health;
+    internal bool IsConnectionReleased => Connection.IsReleased;
     /// <summary>플레이어 상태. 읽기·변경과 결과 처리는 같은 매치 잠금 안에서 수행한다.</summary>
     internal PlayerCondition Condition => _condition;
     public bool IsEliminated => PlayerMatchStatus is PlayerMatchStatus.ELIMINATED or PlayerMatchStatus.SPECTATING;
@@ -148,10 +149,6 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_COMBINE_ITEMS>(bytes, HandleCombineItems));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM,
             async bytes => await HandleMessage<C_TO_G_USE_INGAME_ITEM>(bytes, HandleUseInGameItem));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_GROUND_ITEM_PICKUP,
-            async bytes => await HandleMessage<C_TO_G_GROUND_ITEM_PICKUP>(bytes, HandleGroundItemPickup));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DROP_GROUND_ITEM,
-            async bytes => await HandleMessage<C_TO_G_DROP_GROUND_ITEM>(bytes, HandleDropGroundItem));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_STATE,
             async bytes => await HandleMessage<C_TO_G_PLAYER_STATE>(bytes, HandlePlayerState));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DOOR_OPEN_REQUEST,
