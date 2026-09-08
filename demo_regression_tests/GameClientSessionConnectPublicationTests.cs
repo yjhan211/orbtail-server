@@ -504,7 +504,7 @@ public sealed class GameClientSessionConnectPublicationTests
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(), "game_server", "Sessions", "GameClientSession.cs"));
         Assert.DoesNotContain("await PlayerInfo.Load(", source);
-        int load = source.IndexOf("await _matchEntry.LoadCompositionAsync(", StringComparison.Ordinal);
+        int load = source.IndexOf("await _matchEntry.PrepareMatchAsync(", StringComparison.Ordinal);
         Assert.True(load >= 0);
         int statementEnd = source.IndexOf(';', load);
         Assert.StartsWith("EnsureConnectionActive();", source[(statementEnd + 1)..].TrimStart());

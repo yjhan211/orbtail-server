@@ -241,23 +241,31 @@ public partial class GameClientSession : SessionBase
                 previousSession.ForceDisconnect();
             }
 
-            var composition = await _matchEntry.LoadCompositionAsync(matchingId, CurrentMapId, runtime);
+            await _matchEntry.PrepareMatchAsync(matchingId, CurrentMapId, runtime);
             EnsureConnectionActive();
-            if (!composition.HumanPlayerIds.Contains(playerId))
-            {
-                throw new InvalidOperationException($"Player {playerId} is not part of match {matchingId}.");
-            }
+            Cell matchingSpawnCell;
+            var humanPlayerIds = new List<long>();
 
-            var matchingSpawnCell = Cell.Clone(composition.SpawnCells[playerId]);
             using (runtime.Enter())
             {
                 if (runtime.IsEnded)
                 {
                     throw new OperationCanceledException("Match became terminal during game entry initialization.");
                 }
+                if (!runtime.IsSetupComplete)
+                    throw new InvalidOperationException("Match setup is not complete.");
+                foreach (var participant in runtime.PlayerRoster)
+                {
+                    if (participant.PlayerId > 0)
+                        humanPlayerIds.Add(participant.PlayerId);
+                }
+                if (!humanPlayerIds.Contains(playerId))
+                    throw new InvalidOperationException($"Player {playerId} is not part of match {matchingId}.");
+                matchingSpawnCell = Cell.Clone(runtime.SpawnCells[playerId]);
+
                 EnsureConnectionActive();
 
-                using (var rosterPacket = PacketMaker.G_TO_C_MATCH_ROSTER(matchingId, composition.PlayerRoster.ToList()))
+                using (var rosterPacket = PacketMaker.G_TO_C_MATCH_ROSTER(matchingId, runtime.PlayerRoster.ToList()))
                 {
                     if (!TrySend(rosterPacket))
                     {
@@ -265,7 +273,7 @@ public partial class GameClientSession : SessionBase
                     }
                 }
 
-                MatchStartGate.RegisterHumanPlayer(matchingId, PlayerId.Value, composition.HumanPlayerIds.Count, composition.Mode);
+                MatchStartGate.RegisterHumanPlayer(matchingId, PlayerId.Value, humanPlayerIds.Count, runtime.Mode);
 
                 _playerMovement.InitializeSpawn(matchingSpawnCell);
 
@@ -299,10 +307,10 @@ public partial class GameClientSession : SessionBase
                 EnsureConnectionActive();
             }
 
-            await _matchEntry.CommitAsync(matchingId, PlayerId.Value, composition.HumanPlayerIds);
+            await _matchEntry.CommitAsync(matchingId, PlayerId.Value, humanPlayerIds);
             EnsureConnectionActive();
 
-            if (composition.HumanPlayerIds.Count == 1)
+            if (humanPlayerIds.Count == 1)
             {
                 MatchStartGate.MarkHumanReady(matchingId, PlayerId.Value);
             }

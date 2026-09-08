@@ -89,7 +89,7 @@ public class ProtocolWiringGuardTests
         int join = source.IndexOf("SyncPlayersOnEntry()", StringComparison.Ordinal);
         Assert.True(roster >= 0 && roster < area && roster < join);
         string entry = File.ReadAllText(Path.Combine(root, "game_server", "Matches", "GameMatchEntryService.cs"));
-        Assert.True(entry.IndexOf("if (runtime.Composition is", StringComparison.Ordinal) <
+        Assert.True(entry.IndexOf("if (runtime.IsSetupComplete", StringComparison.Ordinal) <
                     entry.IndexOf("MatchRosterBuilder.CreateBotIds", StringComparison.Ordinal));
     }
 

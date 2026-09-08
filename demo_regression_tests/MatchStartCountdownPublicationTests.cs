@@ -259,8 +259,11 @@ public sealed class MatchStartCountdownPublicationTests
         MatchRuntime runtime = server.GetMatchRuntimes().GetOrCreate(matchingId);
         if (hasComposition)
         {
-            runtime.Composition = new MatchComposition(
-                [101, 202, 303], [404], default, new Dictionary<long, Cell>(), []);
+            using var scope = runtime.Enter();
+            runtime.InitializeMatch(
+                default, new Dictionary<long, Cell>(),
+                [new PlayerInfo { PlayerId = 101 }, new PlayerInfo { PlayerId = 202 },
+                    new PlayerInfo { PlayerId = 303 }, new PlayerInfo { PlayerId = -404 }]);
         }
 
         var anchor = new RecordingEntrySession();
@@ -287,7 +290,7 @@ public sealed class MatchStartCountdownPublicationTests
             // 아직 접속하지 않은 사람도 정리하고 봇은 포함하지 않는다.
             Assert.Equal(MatchingLifecycleSubjects.PlayerEntryFailed, playerSubjects[202]);
             Assert.Equal(MatchingLifecycleSubjects.PlayerEntryFailed, playerSubjects[303]);
-            Assert.False(playerSubjects.ContainsKey(404));
+            Assert.False(playerSubjects.ContainsKey(-404));
         }
         else
         {

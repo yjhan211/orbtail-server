@@ -2,6 +2,7 @@ using game_server.matches.states;
 using game_server.services;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
+using network.common.data.models;
 
 namespace game_server.matches;
 
@@ -15,17 +16,16 @@ namespace game_server.matches;
 internal sealed class MatchRuntime
 {
     private readonly MatchRuntimeStore _runtimeStore;
+    private readonly MatchingLifecycleService _matchingLifecycle;
     private readonly ILogger<MatchRuntime> _logger;
 
-    private readonly MatchingLifecycleService _matchingLifecycle;
-    private MatchTickLoop? _tickLoop;
-    private MatchComposition? _composition;
-
-    internal readonly List<Action> AfterRelease = new();
+    private bool _isSetupComplete;
     private int _ended;
-
     private int _lockDepth;
     private bool _cleanupStarted;
+    private MatchTickLoop? _tickLoop;
+
+    internal readonly List<Action> AfterRelease = new();
 
     internal MatchRuntime(MatchRuntimeStore runtimeStore, long matchingId, ILogger<MatchRuntime> logger, MatchingLifecycleService matchingLifecycle)
     {
@@ -45,45 +45,79 @@ internal sealed class MatchRuntime
         Monsters = new SwarmMonsterDirector(matchingId, Closures, Inventory);
     }
 
+    // 매치 식별과 수명·잠금
     public long MatchingId { get; }
+    public bool IsEnded => Volatile.Read(ref _ended) != 0;
+    public object MatchLock { get; } = new();
+    public SemaphoreSlim EntryInitializationLock { get; } = new(1, 1);
+
+    // 한 번 확정하는 시작 구성
+    public bool IsSetupComplete => Volatile.Read(ref _isSetupComplete);
+    public MatchMode Mode { get; private set; }
+    public IReadOnlyDictionary<long, Cell> SpawnCells { get; private set; } = new Dictionary<long, Cell>();
+    public IReadOnlyList<PlayerInfo> PlayerRoster { get; private set; } = [];
+
+    // 참가자
     public MatchSessionCollection Sessions { get; } = new();
-    public DoorState Doors { get; } = new();
-    public TrailCombatState TrailCombat { get; } = new();
+    public RosterManager Roster { get; }
+    public BotPlayerManager Bots { get; }
     public BotTacticalState BotTactics { get; } = new();
-    public MatchProgressState Progress { get; } = new();
     internal SwarmBotTickMetrics BotTickMetrics { get; } = new();
+    public SwarmMonsterDirector Monsters { get; }
+
+    // 전투와 오브
+    public AutoAttackController AutoAttack { get; }
+    public TrailCombatState TrailCombat { get; } = new();
+    public SunOrbAttackState SunOrbAttacks { get; }
     public WindOrbAttackState WindOrbAttacks { get; } = new();
     public OrbUpgradeState OrbUpgrades { get; } = new();
-    public SunOrbAttackState SunOrbAttacks { get; }
-    public BotPlayerManager Bots { get; }
-    public AutoAttackController AutoAttack { get; }
-    public SwarmMonsterDirector Monsters { get; }
-    public EventLogState EventLog { get; } = new();
+
+    // 아이템과 재화
     public InGameInventoryManager Inventory { get; }
     public GroundItemManager GroundItems { get; }
     internal Dictionary<GameClientSession, GroundItemPickupCandidates> GroundItemPickupCandidates { get; } = new();
     public SummonStoneManager SummonStones { get; }
-    public EncounterRevealManager Encounters { get; } = new();
-    public RosterManager Roster { get; }
-    public PresentationState Presentation { get; } = new();
+
+    // 맵과 진행 상태
+    public DoorState Doors { get; } = new();
     public AreaClosureManager Closures { get; }
-    public object MatchLock { get; } = new();
-    public bool IsEnded => Volatile.Read(ref _ended) != 0;
-    public SemaphoreSlim EntryInitializationLock { get; } = new(1, 1);
+    public EncounterRevealManager Encounters { get; } = new();
+    public MatchProgressState Progress { get; } = new();
+    public PresentationState Presentation { get; } = new();
+    public EventLogState EventLog { get; } = new();
 
-    public MatchComposition? Composition
-    {
-        get => Volatile.Read(ref _composition);
-        set => Volatile.Write(ref _composition, value);
-    }
-
+    // 틱 실행과 일정
+    public MatchTickSchedule TickSchedule { get; }
     internal MatchTickLoop? TickLoop
     {
         get => Volatile.Read(ref _tickLoop);
         set => Volatile.Write(ref _tickLoop, value);
     }
 
-    public MatchTickSchedule TickSchedule { get; }
+    public void InitializeMatch(MatchMode mode, IReadOnlyDictionary<long, Cell> spawnCells, IReadOnlyList<PlayerInfo> playerRoster)
+    {
+        ArgumentNullException.ThrowIfNull(spawnCells);
+        ArgumentNullException.ThrowIfNull(playerRoster);
+        if (!Monitor.IsEntered(MatchLock))
+        {
+            throw new InvalidOperationException("Setting match setup requires the match lock.");
+        }
+
+        if (IsEnded)
+        {
+            throw new InvalidOperationException("Cannot set up an ended match.");
+        }
+
+        if (IsSetupComplete)
+        {
+            throw new InvalidOperationException("Match setup is already registered.");
+        }
+
+        Mode = mode;
+        SpawnCells = spawnCells;
+        PlayerRoster = playerRoster;
+        Volatile.Write(ref _isSetupComplete, true);
+    }
 
     public MatchLockScope Enter()
     {

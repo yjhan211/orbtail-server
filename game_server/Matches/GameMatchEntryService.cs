@@ -43,7 +43,7 @@ internal sealed class GameMatchEntryService(
     ///     매치당 한 번 manifest(사람 ID·봇 수)를 읽고 봇 ID·스폰·최종 명단을 확정한다.
     ///     이후 세션은 런타임에 세워진 구성을 그대로 쓴다. 입장 마커·사람 reservation 확인은 세션마다 다시 한다.
     /// </summary>
-    public async Task<MatchComposition> LoadCompositionAsync(long matchingId, MapId mapId, MatchRuntime runtime)
+    public async Task PrepareMatchAsync(long matchingId, MapId mapId, MatchRuntime runtime)
     {
         var initializationLock = runtime.EntryInitializationLock;
         await initializationLock.WaitAsync();
@@ -56,8 +56,8 @@ internal sealed class GameMatchEntryService(
             {
                 if (runtime.IsEnded)
                     throw new OperationCanceledException("Match became terminal during game entry.");
-                if (runtime.Composition is { } existing)
-                    return existing;
+                if (runtime.IsSetupComplete)
+                    return;
             }
             List<long> humanPlayerIds = manifest.HumanPlayerIds.Distinct().ToList();
             List<long> botPlayerIds = MatchRosterBuilder.CreateBotIds(manifest);
@@ -82,7 +82,6 @@ internal sealed class GameMatchEntryService(
                 botPlayerIds.Select(id => _matchRuntimes.GetOrThrow(matchingId).Bots.SynthesizePlayerInfo(matchingId, id)
                     ?? throw new InvalidOperationException($"Bot {id} was not initialized.")));
 
-            var composition = new MatchComposition(humanPlayerIds, botPlayerIds, mode, spawnCells, roster);
             using (runtime.Enter())
             {
                 if (runtime.IsEnded)
@@ -96,13 +95,12 @@ internal sealed class GameMatchEntryService(
                 }
                 runtime.Doors.Initialize();
                 InitializeMatchLog(runtime);
-                runtime.Composition = composition;
+                runtime.InitializeMatch(mode, spawnCells, roster);
             }
-            return composition;
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Failed to load match composition: MatchingId={MatchingId}", matchingId);
+            Logger.LogError(ex, "Failed to load match setup: MatchingId={MatchingId}", matchingId);
             throw;
         }
         finally

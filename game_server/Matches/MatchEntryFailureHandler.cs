@@ -57,10 +57,19 @@ internal sealed class MatchEntryFailureHandler(
                 foreach (GameClientSession affectedSession in affectedSessions)
                     affectedSession.MarkMatchEndHandledExternally();
 
-                IReadOnlyCollection<long> affectedPlayerIds =
-                    runtime.Composition is { } composition
-                        ? composition.HumanPlayerIds.ToArray()
-                        : [playerId];
+                var affectedPlayerIds = new List<long>();
+                if (runtime.IsSetupComplete)
+                {
+                    foreach (var participant in runtime.PlayerRoster)
+                    {
+                        if (participant.PlayerId > 0)
+                            affectedPlayerIds.Add(participant.PlayerId);
+                    }
+                }
+                else
+                {
+                    affectedPlayerIds.Add(playerId);
+                }
                 var lifecyclePublications = new List<Action>();
                 PrepareEntryFailureLifecycle(matchingId, affectedPlayerIds, lifecyclePublications);
                 foreach (GameClientSession affectedSession in affectedSessions)
