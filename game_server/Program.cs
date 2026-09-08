@@ -144,6 +144,7 @@ internal static class Program
             sp.GetRequiredService<ILogger<MatchEliminationService>>()));
         services.AddSingleton<BotEliminationService>(sp => new BotEliminationService(
             sp.GetRequiredService<GameEventLogManager>(),
+            sp.GetRequiredService<MatchEliminationService>(),
             sp.GetRequiredService<ILogger<BotEliminationService>>()));
         services.AddSingleton<MatchEnvironmentService>();
         services.AddSingleton<OrbUpgradeService>();

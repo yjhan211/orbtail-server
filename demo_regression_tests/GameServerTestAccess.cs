@@ -52,7 +52,9 @@ internal static class GameServerTestAccess
         var orbTrails = new OrbTrailService(runtimes);
         var combatDamage = new MatchCombatDamageService(runtimes, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance);
         var cleanup = new MatchCleanupService(runtimes, logs, summaries, logger);
-        var eliminations = new BotEliminationService( logs, logger);
+        var matchEliminations = TestGameSessionServices.CreateEliminationService(
+            runtimes, logs, summaries, GameServerDevOptions.Disabled, logger);
+        var eliminations = new BotEliminationService(logs, matchEliminations, logger);
         var growth = new MatchGrowthService(runtimes, logs, orbUpgrades,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchGrowthService>.Instance);
         var field = new MatchFieldService(runtimes, logs, orbTrails,
@@ -62,7 +64,7 @@ internal static class GameServerTestAccess
         var decisions = new BotDecisionService(runtimes, logs, growth, orbTrails,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotDecisionService>.Instance);
         var arena = new MatchArenaService(runtimes, GameServerDevOptions.Disabled, logs, cleanup,
-            eliminations, orbUpgrades, growth,
+            eliminations, matchEliminations, orbUpgrades, growth,
             new OrbRecoveryService(runtimes, logs,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbRecoveryService>.Instance),
             new OrbVisualStatePublisher(runtimes), orbTrails, combatDamage,
@@ -83,7 +85,7 @@ internal static class GameServerTestAccess
                 PublicHost = "127.0.0.1"
             },
             devOptions: GameServerDevOptions.Disabled,
-            sessions: sessions, matchRuntimes: runtimes, eventLogs: logs, matchEliminations: TestGameSessionServices.CreateEliminationService(runtimes, logs, summaries, GameServerDevOptions.Disabled, logger),
+            sessions: sessions, matchRuntimes: runtimes, eventLogs: logs, matchEliminations: matchEliminations,
             matchEntry: TestGameSessionServices.CreateEntryService(new InMemoryRedisOperations(), runtimes, GameServerDevOptions.Disabled, logger),
             groundItemAutoPickup: new GroundItemAutoPickupService(logs,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<GroundItemAutoPickupService>.Instance),
@@ -97,7 +99,7 @@ internal static class GameServerTestAccess
             arena: arena,
             botDecisions: decisions,
             environmentService: new MatchEnvironmentService( logs,
-                cleanup, eliminations, GameServerDevOptions.Disabled,
+                cleanup, eliminations, matchEliminations, GameServerDevOptions.Disabled,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchEnvironmentService>.Instance),
             tickService: new GameServerTickService(runtimes, Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServerTickService>.Instance),
             botMovement: movement);

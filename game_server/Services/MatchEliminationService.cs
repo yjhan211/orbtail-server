@@ -23,7 +23,7 @@ internal sealed class MatchEliminationService(
     /// <summary>
     ///     플레이어 탈락 처리 + 탈락 브로드캐스트
     /// </summary>
-    public void Process(MapId mapId, long matchingId, long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null,
+    public void Process(long matchingId, long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null,
         bool deferGameOver = false, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
         bool isOvertimeElimination = false, int forcedRank = 0)
     {
@@ -68,7 +68,7 @@ internal sealed class MatchEliminationService(
         if (eliminatedSession != null)
             groundItemDrop.DropAll(eliminatedSession);
         else
-            DropBotInventoryAtCurrentPosition(mapId, matchingId, eliminatedPlayerId);
+            DropBotInventoryAtCurrentPosition(matchingId, eliminatedPlayerId);
 
         // 1. 전체에게 탈락 알림. 탈락자에게만 결과표를 함께 보낸다.
         var eliminatedResultPlayers = _matchResults.BuildGameResultPlayers(allSessions, matchingId, 0);
@@ -127,21 +127,25 @@ internal sealed class MatchEliminationService(
         if (!deferGameOver && isGameOver)
         {
             Logger.LogInformation("게임 종료! 최후의 1인: {WinnerId}", winnerId);
-            _matchResults.SendGameResult(mapId, winnerId ?? 0, false, matchingId);
+            _matchResults.SendGameResult(winnerId ?? 0, false, matchingId);
         }
 
     }
 
-    public void EndMatch(MapId mapId, long matchingId, long winnerId, string criterion)
+    public void EndMatch(long matchingId, long winnerId, string criterion)
     {
         if (_devOptions.DisableGameEnd)
         {
             Logger.LogWarning(
-                "[DEV] 게임 종료 차단됨 (DISABLE_GAME_END=1): TryEndMatch winner={WinnerId}, criterion={Criterion}",
+                "[DEV] 게임 종료 차단됨 (DISABLE_GAME_END=1): EndMatch winner={WinnerId}, criterion={Criterion}",
                 winnerId, criterion);
             return;
         }
-        if (matchingId <= 0)
+        var runtime = _matchRuntimes.Get(matchingId);
+        if (runtime == null)
+            return;
+        using var scope = runtime.Enter();
+        if (runtime.IsTerminal)
             return;
 
         Logger.LogInformation(
@@ -153,10 +157,10 @@ internal sealed class MatchEliminationService(
         // 오브 점수 만료(#226 단계 B)는 요약 EndReason에도 그대로 남긴다 — 계측에서
         // 연장전 정산과 섞이면 5분 판정 발화율을 셀 수 없다.
         string endReason = criterion == "orb_score_timeout" ? criterion : "overtime_settlement";
-        _matchResults.SendGameResult(mapId, winnerId, false, matchingId, endReason, criterion);
+        _matchResults.SendGameResult(winnerId, false, matchingId, endReason, criterion);
     }
 
-    private void DropBotInventoryAtCurrentPosition(MapId mapId, long matchingId, long botPlayerId)
+    private void DropBotInventoryAtCurrentPosition(long matchingId, long botPlayerId)
     {
         var runtime = _matchRuntimes.GetRequired(matchingId);
         var outcome = EliminationInventoryDropper.DropBotInventoryWithLogs(

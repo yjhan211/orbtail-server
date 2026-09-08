@@ -14,6 +14,7 @@ internal sealed class MatchEnvironmentService(
     GameEventLogManager eventLogs,
     MatchCleanupService matchCleanup,
     BotEliminationService botEliminations,
+    MatchEliminationService matchEliminations,
     GameServerDevOptions devOptions,
     ILogger<MatchEnvironmentService> logger)
 {
@@ -47,7 +48,7 @@ internal sealed class MatchEnvironmentService(
 
             if (aliveCount == 1 && humans.Count > 0)
             {
-                humans[0].TryEndMatch(humans[0].PlayerId ?? 0, "last_survivor_before_overtime");
+                matchEliminations.EndMatch(matchingId, humans[0].PlayerId ?? 0, "last_survivor_before_overtime");
                 match.Combat.Clear();
                 return;
             }
@@ -164,11 +165,12 @@ internal sealed class MatchEnvironmentService(
 
             if (target.Session != null)
             {
-                target.Session.EliminateForSettlement(
-                    target.PlayerId,
-                    closureElimination,
-                    overtimeElimination,
-                    rank);
+                matchEliminations.Process(
+                    matchingId, target.PlayerId, EliminationReason.HEALTH_ZERO,
+                    deferGameOver: true,
+                    isAreaClosureElimination: closureElimination,
+                    isOvertimeElimination: overtimeElimination,
+                    forcedRank: rank);
             }
             else if (target.Bot != null)
             {
@@ -186,11 +188,10 @@ internal sealed class MatchEnvironmentService(
         }
 
         (bool isGameOver, long? winnerId) = match.Roster.CheckGameOver();
-        var resultHost = match.Sessions.Snapshot()
-            .FirstOrDefault(session => !session.IsGameEnded);
-        if (isGameOver && winnerId.HasValue && resultHost != null)
+        bool hasActiveSession = match.Sessions.Snapshot().Any(session => !session.IsGameEnded);
+        if (isGameOver && winnerId.HasValue && hasActiveSession)
         {
-            resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);
+            matchEliminations.EndMatch(matchingId, winnerId.Value, resolution.DecisiveCriterion);
             match.Combat.Clear();
         }
     }

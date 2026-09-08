@@ -25,7 +25,7 @@ internal sealed class MatchResultService(
     ///     GAME_RESULT → 세션별 GAME_END → MarkGameEnded. 마지막 전투 패킷이 이미 같은 잠금 안에서
     ///     나갔으므로 결과는 반드시 그 뒤에 온다. lifecycle 발행과 요약 파일 쓰기는 잠금이 풀린 뒤 후처리로 돈다.
     /// </summary>
-    public void SendGameResult(MapId mapId, long winnerId, bool isTimeout, long matchingId,
+    public void SendGameResult(long winnerId, bool isTimeout, long matchingId,
         string endReason = "last_survivor", string tieBreakCriterion = "not_required")
     {
         if (_devOptions.DisableGameEnd)

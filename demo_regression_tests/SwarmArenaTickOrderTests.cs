@@ -82,10 +82,10 @@ public sealed class SwarmArenaTickOrderTests
             "target.Session.HandleHealthChanged(",
             "var eliminatedTargets = targets",
             "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
-            "target.Session.EliminateForSettlement(",
+            "matchEliminations.Process(",
             "botEliminations.Process(",
             "Roster.CheckGameOver()",
-            "resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);");
+            "matchEliminations.EndMatch(matchingId, winnerId.Value, resolution.DecisiveCriterion);");
         Assert.DoesNotContain("Enter(", matchingSettlement);
         Assert.DoesNotContain("ProcessProximityAutoCombatForMatching(", matchingSettlement);
         Assert.DoesNotContain("PublicationTurn", matchingSettlement);
@@ -187,7 +187,7 @@ public sealed class SwarmArenaTickOrderTests
             healthNotification,
             "if (!change.Changed) return;",
             "SendPlayerStatsUpdate(",
-            "CheckResourceElimination(");
+            "_matchEliminations.Process(");
 
         string applyProximityHit = ReadMethodSlice(
             sessionCombat,

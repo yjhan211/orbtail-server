@@ -405,8 +405,14 @@ public partial class GameClientSession
                 change.RequestedDelta, change.After, reason: "", isBot: false);
         }
 
-        if (change.IsDepleted && !deferElimination)
-            CheckResourceElimination(attackerPlayerId, isAreaClosureElimination, isOvertimeElimination);
+        if (change.IsDepleted && !deferElimination &&
+            PlayerId.HasValue && !IsGameEnded && !IsEliminated && Health <= 0)
+        {
+            _matchEliminations.Process(MatchingId, PlayerId.Value, EliminationReason.HEALTH_ZERO,
+                attackerPlayerId: attackerPlayerId,
+                isAreaClosureElimination: isAreaClosureElimination,
+                isOvertimeElimination: isOvertimeElimination);
+        }
     }
 
     /// <summary>

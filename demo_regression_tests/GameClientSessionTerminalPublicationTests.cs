@@ -28,7 +28,7 @@ public sealed class GameClientSessionTerminalPublicationTests
     }
 
     [Fact]
-    public async Task TryEndMatch_WaitsForMatchLock_ThenPublishesResultBeforeCleanupLifecycleAndSummary()
+    public async Task EndMatch_WaitsForMatchLock_ThenPublishesResultBeforeCleanupLifecycleAndSummary()
     {
         const long matchingId = 73001;
         const long otherMatchingId = 73901;
@@ -54,7 +54,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         });
         Assert.True(lockHeld.Wait(TimeSpan.FromSeconds(5)));
 
-        Task terminal = Task.Run(() => winner.TryEndMatch(winner.PlayerId!.Value, "terminal_behavior"));
+        Task terminal = Task.Run(() => fixture.Eliminations.EndMatch(matchingId, winner.PlayerId!.Value, "terminal_behavior"));
         try
         {
             await Task.Delay(100);
@@ -136,7 +136,7 @@ public sealed class GameClientSessionTerminalPublicationTests
     }
 
     [Fact]
-    public async Task ConcurrentTryEndMatch_FinalizesAndPublishesExactlyOnce()
+    public async Task ConcurrentEndMatch_FinalizesAndPublishesExactlyOnce()
     {
         const long matchingId = 73002;
         using var fixture = new TerminalFixture();
@@ -153,7 +153,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         Task[] finalizers = sessions.Select(session => Task.Run(() =>
         {
             Assert.True(start.Wait(TimeSpan.FromSeconds(5)));
-            session.TryEndMatch(session.PlayerId!.Value, "concurrent_terminal_behavior");
+            fixture.Eliminations.EndMatch(matchingId, session.PlayerId!.Value, "concurrent_terminal_behavior");
         })).ToArray();
         start.Set();
         await Task.WhenAll(finalizers).WaitAsync(TimeSpan.FromSeconds(5));
@@ -201,7 +201,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         fixture.ConnectionFor(resultFailure).ThrowOnceOn = Protocol.G_TO_C_GAME_RESULT;
         fixture.ConnectionFor(endFailure).ThrowOnceOn = Protocol.G_TO_C_GAME_END;
 
-        markFailure.TryEndMatch(markFailure.PlayerId!.Value, "isolated_terminal_failures");
+        fixture.Eliminations.EndMatch(matchingId, markFailure.PlayerId!.Value, "isolated_terminal_failures");
 
         Assert.Single(fixture.ConnectionFor(markFailure)
             .DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT));
@@ -237,6 +237,31 @@ public sealed class GameClientSessionTerminalPublicationTests
         Assert.True(lastResult >= 0 && lastResult < firstEnd);
     }
 
+    [Fact]
+    public void EndMatch_MissingOrTerminalMatchDoesNotPublishAgain()
+    {
+        using var fixture = new TerminalFixture();
+        fixture.Eliminations.EndMatch(73990, 101, "missing");
+        Assert.Empty(fixture.Deliveries);
+        Assert.Empty(fixture.SummaryFiles);
+
+        var runtime = fixture.Store.GetOrCreate(73991);
+        using (runtime.Enter())
+        {
+            Assert.True(runtime.TryMarkTerminal());
+            fixture.Eliminations.EndMatch(73991, 101, "already_terminal");
+            Assert.Empty(fixture.Deliveries);
+            Assert.Empty(fixture.SummaryFiles);
+            Assert.Equal(0, fixture.CleanupCount);
+        }
+
+        // terminal 매치는 최외곽 scope 해제 시 한 번 정리된다.
+        Assert.Equal(1, fixture.CleanupCount);
+        fixture.Eliminations.EndMatch(73991, 101, "already_removed");
+        Assert.Equal(1, fixture.CleanupCount);
+        Assert.Empty(fixture.Deliveries);
+        Assert.Empty(fixture.SummaryFiles);
+    }
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -284,6 +309,8 @@ public sealed class GameClientSessionTerminalPublicationTests
 
         public GameEventLogManager EventLog { get; } = TestGameEventLogs.Create();
         public MatchSummaryFileStore Summaries => new(_summaryDirectory);
+        public MatchEliminationService Eliminations =>
+            TestGameSessionServices.CreateEliminationService(Store, EventLog, Summaries, GameServerDevOptions.Disabled, Logger);
         public long? ThrowPrepareCompletionForPlayerId { get; set; }
         public MatchRuntime? TrackedRuntime { get; set; }
         public bool? LockHeldDuringLifecycle { get; private set; }

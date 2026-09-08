@@ -64,11 +64,11 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Contains("public override void OnRemoved()", main);
         Assert.DoesNotContain("private Task HandleSocialAction(", main);
         Assert.DoesNotContain("private void AdvanceOrbOrbit(", main);
-        Assert.DoesNotContain("internal Action? MarkGameEndedAndPrepareLifecyclePublication()", main);
+        Assert.Contains("internal Action? MarkGameEndedAndPrepareLifecyclePublication()", main);
         Assert.DoesNotContain("private Task BroadcastPlayerJoin()", main);
         Assert.Contains("private Task HandleSocialAction(", File.ReadAllText(Path.Combine(directory, "GameClientSession.Social.cs")));
         Assert.Contains("private void AdvanceOrbOrbit(", File.ReadAllText(Path.Combine(directory, "GameClientSession.Movement.cs")));
-        Assert.Contains("internal Action? MarkGameEndedAndPrepareLifecyclePublication()", File.ReadAllText(Path.Combine(directory, "GameClientSession.MatchEnd.cs")));
+        Assert.False(File.Exists(Path.Combine(directory, "GameClientSession.MatchEnd.cs")));
         Assert.Contains("private Task BroadcastPlayerJoin()", File.ReadAllText(Path.Combine(directory, "GameClientSession.Snapshots.cs")));
     }
 

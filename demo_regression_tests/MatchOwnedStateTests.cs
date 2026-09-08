@@ -155,8 +155,11 @@ public sealed class MatchOwnedStateTests
             runtime.Inventory.AddItem(botId, 107000010);
         }
         var bot = match.Bots.GetBot(match.MatchingId, botId)!;
-        var service = new BotEliminationService(
-            new GameEventLogManager(id => store.Get(id)?.EventLog), NullLogger.Instance);
+        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        var service = new BotEliminationService(logs,
+            TestGameSessionServices.CreateEliminationService(
+                store, logs, new MatchSummaryFileStore(), GameServerDevOptions.Disabled, NullLogger.Instance),
+            NullLogger.Instance);
         using (store.Enter(match))
         {
             service.Process(match, botId, EliminationReason.HEALTH_ZERO, attackerPlayerId: 11);

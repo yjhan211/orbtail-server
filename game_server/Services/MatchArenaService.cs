@@ -22,6 +22,7 @@ internal sealed class MatchArenaService(
     GameEventLogManager eventLogs,
     MatchCleanupService matchCleanup,
     BotEliminationService botEliminations,
+    MatchEliminationService matchEliminations,
     OrbUpgradeService orbUpgrades,
     MatchGrowthService growth,
     OrbRecoveryService orbRecovery,
@@ -1827,7 +1828,7 @@ internal sealed class MatchArenaService(
     /// <summary>
     ///     5분 점수 만료 판정 (#226 단계 B): 개전 후 5분이 지나면 생존자 중 오브 최다
     ///     보유자가 승리한다. 동점은 총 티어 합 → (철갑, 단계 C 예정) → 본체 게이지(오염
-    ///     낮은 쪽) → PlayerId 낮은 쪽. 단독 생존 조기 종료와 같은 TryEndMatch
+    ///     낮은 쪽) → PlayerId 낮은 쪽. 단독 생존 조기 종료와 같은 MatchEliminationService.EndMatch
     ///     경로라 결과 화면도 같다. 잼 승점(#222 M3-2)은 퇴역.
     /// </summary>
     private bool ProcessSwarmScoreTimeout(
@@ -1891,10 +1892,9 @@ internal sealed class MatchArenaService(
             candidates.Count > 0 ? candidates[0].TierSum : 0,
             candidates.Count);
 
-        var resultHost = sessions.FirstOrDefault(session => !session.IsGameEnded);
-        if (resultHost != null)
+        if (sessions.Any(session => !session.IsGameEnded))
         {
-            resultHost.TryEndMatch(winnerId, "orb_score_timeout");
+            matchEliminations.EndMatch(matchingId, winnerId, "orb_score_timeout");
             matchRuntimes.Get(matchingId)?.Combat.Clear();
             return true;
         }
