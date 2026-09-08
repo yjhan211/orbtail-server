@@ -383,7 +383,7 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string crossfire = ReadNormalizedSource(root, "game_server", "Services", "CrossfireService.cs");
-        string botDodge = ReadNormalizedSource(root, "game_server", "Matches", "MatchRuntimeStore.cs");
+        string botDodge = ReadNormalizedSource(root, "game_server", "Matches", "MatchRuntime.cs");
         string runtimeStates = ReadNormalizedSource(root, "game_server", "Services", "SwarmArenaStates.cs");
 
         Assert.DoesNotContain("_swarmCrossfireShapes", crossfire);
