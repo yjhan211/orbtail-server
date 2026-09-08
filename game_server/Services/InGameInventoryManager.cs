@@ -17,7 +17,8 @@ public class PlayerInGameInventory(long matchingId)
 
     private long _equippedBattleItemUid;
     private static bool ShouldKeepSeparateStack(int itemId, GiftState giftState) =>
-        giftState == GiftState.None && BattleItemRecipeData.IsRecipeInputItem(itemId);
+        giftState == GiftState.None &&
+        (OrbData.IsOrbItem(itemId) || BattleItemRecipeData.IsRecipeInputItem(itemId));
 
     /// <summary>
     ///     ItemUid 생성: MatchingId * 100000 + Sequence
@@ -40,7 +41,7 @@ public class PlayerInGameInventory(long matchingId)
     {
         bool keepSeparateStack = forceSeparateStack || ShouldKeepSeparateStack(itemId, giftState);
 
-        // Merge puzzle inputs need separate slots so duplicate materials can be selected independently.
+        // 오브 열의 개별 UID와 조합 재료 선택을 위해 각각 독립된 슬롯을 유지한다.
         if (!keepSeparateStack)
         {
             foreach (var kvp in _items)
@@ -57,8 +58,8 @@ public class PlayerInGameInventory(long matchingId)
     }
 
     /// <summary>
-    ///     오브 갈아끼우기 (#232 4단계): ItemUid·열 순번은 그대로 두고 ItemId만 바꾼다 — 합성 결과가
-    ///     첫 원본 슬롯에, 예비 오브가 고른 슬롯에 들어간다. 제거+추가로 하면 열 끝으로 밀린다.
+    ///     오브 승급 시 ItemUid와 열 순번을 유지하고 ItemId만 바꾼다.
+    ///     제거 후 추가하면 오브가 열 끝으로 이동하므로 기존 슬롯을 갱신한다.
     /// </summary>
     [MethodImpl(MethodImplOptions.Synchronized)]
     public bool TryReplaceOrb(long itemUid, int newItemId, out InGameItemInfo? replacedItem)
@@ -160,19 +161,6 @@ public class PlayerInGameInventory(long matchingId)
         return true;
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool TryCombineOrbs(int inputA, int inputB, Random random,
-        out int outputItemId, out List<InGameItemInfo> changedItems)
-    {
-        outputItemId = 0;
-        changedItems = new List<InGameItemInfo>();
-        if (!OrbData.CanMerge(inputA, inputB) || !HasItems([inputA, inputB]))
-            return false;
-        if (!OrbData.TryGetRandomMergeOutput(inputA, inputB, random, out outputItemId))
-            return false;
-
-        return TryCombineItems([inputA, inputB], outputItemId, out changedItems);
-    }
 
     /// <summary>
     ///     Checks a matching recipe's materials, draws its outcome, and consumes the inputs under
@@ -440,16 +428,6 @@ public class InGameInventoryManager
         return result;
     }
 
-    public bool TryCombineOrbs(long playerId, int inputA, int inputB,
-        Random random, out int outputItemId, out List<InGameItemInfo> changedItems)
-    {
-        var inventory = GetPlayerInventory(playerId);
-        bool result = inventory.TryCombineOrbs(inputA, inputB, random, out outputItemId, out changedItems);
-        if (result)
-            _logAction?.Invoke(
-                $"InGameInventoryManager: Random Swarm orb merge (MatchingId={_matchingId}, PlayerId={playerId}, Inputs=[{inputA},{inputB}], Output={outputItemId})");
-        return result;
-    }
 
     public bool TryCombineRandomRecipe(
         long playerId,
@@ -470,57 +448,6 @@ public class InGameInventoryManager
         return result;
     }
 
-    /// <summary>
-    ///     #217 궤도 스쿼드 자동 머지: 같은 색·티어 3개가 모이면 같은 색 상위 티어로
-    ///     즉시 합성한다 (SB 3머지 문법). 보드 관리를 실시간 태스크에서 제거하고,
-    ///     드래프트(무슨 색을 쌓나)는 개봉 선택에 남는다. 반환은 변경 목록(클라 전송용).
-    /// </summary>
-    public List<InGameItemInfo> AutoMergeOrbs(long playerId)
-    {
-        var allChanged = new List<InGameItemInfo>();
-        var inventory = GetPlayerInventory(playerId);
-        while (true)
-        {
-            int mergeItemId = inventory.GetAllItems()
-                .Where(item => item.Count > 0)
-                .GroupBy(item => item.ItemId)
-                .Where(group => group.Sum(item => item.Count) >= 3 &&
-                                TryGetTripleMergeOutput(group.Key, out _))
-                .Select(group => group.Key)
-                .FirstOrDefault();
-            if (mergeItemId == 0)
-                return allChanged;
-
-            if (!TryGetTripleMergeOutput(mergeItemId, out int outputItemId) ||
-                !inventory.TryCombineItems(
-                    [mergeItemId, mergeItemId, mergeItemId], outputItemId, out var changedItems))
-                return allChanged;
-
-            allChanged.AddRange(changedItems);
-            _logAction?.Invoke(
-                $"InGameInventoryManager: Auto-merged orbs (MatchingId={_matchingId}, PlayerId={playerId}, Input={mergeItemId}x3, Output={outputItemId})");
-        }
-    }
-
-    /// <summary>같은 색 3개 → 같은 색 상위 티어. 회복 오브도 동일 규칙.</summary>
-    private static bool TryGetTripleMergeOutput(int itemId, out int outputItemId)
-    {
-        outputItemId = 0;
-        if (OrbData.TryGetRecoveryTier(itemId, out int recoveryTier))
-        {
-            outputItemId = recoveryTier switch
-            {
-                1 => 107000041,
-                2 => 107000042,
-                _ => 0
-            };
-            return outputItemId > 0;
-        }
-
-        return OrbData.TryGetColorAndTier(itemId, out var color, out int tier) &&
-               tier < 3 &&
-               OrbData.TryGetItemId(color, tier + 1, out outputItemId);
-    }
     public bool TryEquipBattleItem(long playerId, long itemUid,
         out InGameItemInfo? equippedItem)
     {

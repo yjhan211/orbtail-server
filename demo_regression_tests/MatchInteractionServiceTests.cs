@@ -86,11 +86,11 @@ public sealed class MatchInteractionServiceTests
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984401);
         Assert.Throws<InvalidOperationException>(() =>
-            MatchInteractionService.OpenDoor(runtime, 1, AreaType.None, int.MaxValue));
+            MatchInteractionService.CheckDoorGauge(runtime, AreaType.None, int.MaxValue));
         using (store.Enter(runtime))
         {
             Assert.Equal(ErrorCode.FATAL, MatchInteractionService.Start(runtime, 1, AreaType.None, int.MaxValue).Error);
-            Assert.Equal(ErrorCode.INVALID_GAME_STATE, MatchInteractionService.OpenDoor(runtime, 1, AreaType.None, int.MaxValue));
+            Assert.Equal(ErrorCode.INVALID_GAME_STATE, MatchInteractionService.CheckDoorGauge(runtime, AreaType.None, int.MaxValue));
             runtime.TryMarkTerminal();
         }
     }

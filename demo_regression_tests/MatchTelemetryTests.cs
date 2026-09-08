@@ -158,7 +158,7 @@ public sealed class MatchTelemetryTests
     }
 
     [Fact]
-    public void OrbBoardTelemetryCapturesTransitionsMergeWindowsColorRatesAndVolleyTargets()
+    public void OrbBoardTelemetryCapturesTransitionsColorRatesAndVolleyTargets()
     {
         const long matchingId = 198401;
         const long playerId = 401;
@@ -172,7 +172,7 @@ public sealed class MatchTelemetryTests
         log.LogOrbBoardTransition(matchingId, playerId, redPair, 107000010, "Library", "pickup", false);
         Thread.Sleep(10);
         log.LogOrbBoardTransition(matchingId, playerId,
-            [new InGameItemInfo { ItemId = 107000031, Count = 1 }], 107000031, "Gym", "merge", false);
+            [new InGameItemInfo { ItemId = 107000031, Count = 1 }], 107000031, "Gym", "inventory_changed", false);
         var volley = new ProximityCombatAttack(playerId, 402, AreaType.S2Gym1, 107000020, 6, 0.2f, 1f, 3);
         log.LogOrbAttackTargets(matchingId, [volley], [volley],
             new Dictionary<long, OrbColor> { [playerId] = OrbColor.Green });
@@ -183,15 +183,14 @@ public sealed class MatchTelemetryTests
             [new MatchFinalPlayerStats(playerId, 1, 30, 0, 0, 0)]);
 
         var events = log.GetRecent(matchingId, 500);
-        var merge = Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_BOARD_STATE" && entry.Outcome == "merge");
-        Assert.Equal([107000010, 107000010], merge.PreviousBoardItemIds);
-        Assert.Equal("Blue", merge.EquippedColor);
-        Assert.Equal("Red", merge.PreviousEquippedColor);
-        Assert.False(merge.ResonanceActive ?? true);
-        Assert.True(Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_MERGE_WINDOW_ENDED")
-            .MergeCandidateDurationSeconds > 0d);
+        var transition = Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_BOARD_STATE" && entry.Outcome == "inventory_changed");
+        Assert.Equal([107000010, 107000010], transition.PreviousBoardItemIds);
+        Assert.Equal("Blue", transition.EquippedColor);
+        Assert.Equal("Red", transition.PreviousEquippedColor);
+        Assert.False(transition.ResonanceActive ?? true);
+        Assert.DoesNotContain(events, entry => entry.Type.StartsWith("SURVIVOR_ORB_MERGE"));
         Assert.Contains(events, entry => entry.Type == "SURVIVOR_ORB_RESONANCE_APPLIED" && entry.ResonanceProfile == "sun_single_target");
-        Assert.Contains(events, entry => entry.Type == "SURVIVOR_ORB_RESONANCE_REMOVED" && entry.Outcome == "merge");
+        Assert.Contains(events, entry => entry.Type == "SURVIVOR_ORB_RESONANCE_REMOVED" && entry.Outcome == "inventory_changed");
         var greenVolley = Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_ATTACK_TARGETS");
         Assert.Equal(3, greenVolley.CandidateTargetCount);
         Assert.Equal([402L], greenVolley.AttackTargetPlayerIds);

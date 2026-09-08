@@ -477,13 +477,13 @@ public sealed class GameClientSessionPublicationTests
         else
             fixture.SetMatchingId(session, 0);
 
-        await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_REQUEST,
-            new C_TO_G_DOOR_OPEN_REQUEST { DoorId = 201 });
+        await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_START,
+            new C_TO_G_DOOR_OPEN_START { InteractId = 201 });
 
         var result = fixture.ConnectionFor(session)
-            .DeserializeSingle<G_TO_C_DOOR_STATE_UPDATE>(Protocol.G_TO_C_DOOR_STATE_UPDATE);
-        Assert.Equal(201, result.DoorId);
-        Assert.False(result.IsOpen);
+            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK);
+        Assert.Equal(201, result.InteractId);
+        Assert.False(result.Completed);
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, result.ErrorCode);
         Assert.False(Monitor.IsEntered(runtime.Sync));
     }
@@ -808,7 +808,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("RunWithMatchLock", itemCombine);
         Assert.DoesNotContain("ProcessCombineItems", itemCombine);
         Assert.Contains("using (match.Enter())", itemCombine);
-        Assert.Contains("match.IsTerminal || IsGameplayActionBlocked(out _)", itemCombine);
+        Assert.Contains("!match.IsTerminal && !IsGameplayActionBlocked(out _)", itemCombine);
         Assert.DoesNotContain("RunWithMatchLock(", ReadMethodSlice(connection,
             "private async Task HandleConnect(", "private void LogInitialInventory("));
         Assert.DoesNotContain("RunWithMatchLock", arena);
@@ -826,7 +826,7 @@ public sealed class GameClientSessionPublicationTests
             ReadMethodSlice(
                 doors,
                 "internal void BreakDoorUnlockGauge()",
-                "private Task HandleDoorOpenRequest("));
+                "private void SendDoorStateList("));
     }
 
     [Theory]

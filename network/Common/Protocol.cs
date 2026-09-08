@@ -57,7 +57,6 @@ namespace network.common
         G_TO_C_PLAYER_STATS_UPDATE, // 스태미나/정신력 등 스탯 변경 알림
 
         // 문 프로토콜
-        C_TO_G_DOOR_OPEN_REQUEST, // 문 열기 요청
         G_TO_C_DOOR_STATE_UPDATE, // 문 상태 변경 브로드캐스트
         G_TO_C_DOOR_STATE_LIST, // 입장 시 열린 문 목록
         C_TO_G_DOOR_OPEN_START, // 문 게이지 시작

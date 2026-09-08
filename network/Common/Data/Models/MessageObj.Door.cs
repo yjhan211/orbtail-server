@@ -7,13 +7,6 @@ using network.common.data.helpers;
 
 namespace network.common.data.models
 {
-    // 문 열기 요청
-    [MessagePackObject]
-    public class C_TO_G_DOOR_OPEN_REQUEST : IMessagePackObject
-    {
-        [Key("doorId")] public int DoorId { get; set; }
-    }
-
     // InteractId는 문 양쪽의 상호작용 위치를 구분한다. DoorId는 서버 데이터에서 찾는다.
     [MessagePackObject]
     public class C_TO_G_DOOR_OPEN_START : IMessagePackObject

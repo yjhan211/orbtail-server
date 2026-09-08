@@ -57,24 +57,8 @@ internal static class MatchInteractionService
         RequireLock(runtime);
         if (runtime.Doors.IsDoorOpen(doorId)) return ErrorCode.DOOR_ALREADY_OPEN;
         var door = GameDoorData.Get(doorId);
-        if (door != null && IsBlockedByClosure(runtime, area, door.AreaType, door.AreaTypeB))
-            return ErrorCode.INVALID_GAME_STATE;
-        return ErrorCode.SUCCESS;
-    }
-
-    public static ErrorCode OpenDoor(MatchRuntime runtime, long playerId, AreaType area, int doorId)
-    {
-        RequireLock(runtime);
-        var door = GameDoorData.Get(doorId);
         if (door == null || IsBlockedByClosure(runtime, area, door.AreaType, door.AreaTypeB))
             return ErrorCode.INVALID_GAME_STATE;
-        if (GameInteractableData.IsGaugeGatedDoor(doorId) && !runtime.Doors.IsDoorOpen(doorId))
-            return ErrorCode.DOOR_KEY_MISSING;
-        if (runtime.Doors.IsDoorOpen(doorId)) return ErrorCode.DOOR_ALREADY_OPEN;
-        if (door.RequiredItemId > 0 &&
-            runtime.Inventory.GetPlayerInventory(playerId).GetItemCount(door.RequiredItemId) <= 0)
-            return ErrorCode.DOOR_KEY_MISSING;
-        runtime.Doors.OpenDoor(doorId);
         return ErrorCode.SUCCESS;
     }
 

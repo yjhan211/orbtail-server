@@ -13,75 +13,59 @@ public partial class GameClientSession
         {
             return Task.CompletedTask;
         }
+
+        var response = new G_TO_C_ITEMS_COMBINED
+        {
+            ErrorCode = ErrorCode.INVALID_GAME_STATE,
+            InputItemA = msg.ItemA,
+            InputItemB = msg.ItemB
+        };
         var match = Volatile.Read(ref _match);
         if (MatchingId <= 0 || match == null)
         {
-            SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INVALID_GAME_STATE);
+            using var packet = Packet.Create((int)Protocol.G_TO_C_ITEMS_COMBINED, PlayerId.Value);
+            packet.SetBody(MessagePackSerializer.Serialize(response));
+            TrySend(packet);
             return Task.CompletedTask;
         }
 
         using (match.Enter())
         {
-            if (match.IsTerminal || IsGameplayActionBlocked(out _))
+            IReadOnlyCollection<InGameItemInfo>? changedItems = null;
+            if (!match.IsTerminal && !IsGameplayActionBlocked(out _))
             {
-                SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INVALID_GAME_STATE);
+                var result = _itemCombinations.Combine(match, PlayerId.Value, CurrentArea, msg);
+                response.ErrorCode = result.ErrorCode;
+                response.RecipeId = result.RecipeId;
+                response.OutputItemId = result.OutputItemId;
+                changedItems = result.ChangedItems;
+            }
+
+            using var combinePacket = Packet.Create((int)Protocol.G_TO_C_ITEMS_COMBINED, PlayerId.Value);
+            combinePacket.SetBody(MessagePackSerializer.Serialize(response));
+            TrySend(combinePacket);
+            if (response.ErrorCode != ErrorCode.SUCCESS)
+            {
                 return Task.CompletedTask;
             }
 
-            var result = _itemCombinations.Combine(match, PlayerId.Value, CurrentArea, msg);
-            if (result.ErrorCode != ErrorCode.SUCCESS)
+            var outputItem = changedItems!.LastOrDefault(item => item.ItemId == response.OutputItemId && item.Count > 0);
+            var equippedBattleItem = match.Inventory.GetEquippedBattleItem(PlayerId.Value);
+            bool shouldReplaceEquippedItem = outputItem != null && equippedBattleItem?.ItemUid == outputItem.ItemUid;
+
+            if (changedItems != null)
             {
-                SendCombineItemsFailure(msg.ItemA, msg.ItemB, result.ErrorCode);
-                return Task.CompletedTask;
+                using var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE(changedItems.ToList());
+                TrySend(inventoryPacket);
             }
 
-            SendCombineItemsSuccess(msg, result.OutputItemId, result.ChangedItems!, result.RecipeId);
+            if (shouldReplaceEquippedItem)
+            {
+                using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, outputItem!.ItemUid, ErrorCode.SUCCESS);
+                TrySend(equippedPacket);
+            }
         }
 
         return Task.CompletedTask;
-    }
-
-    private void SendCombineItemsSuccess(C_TO_G_COMBINE_ITEMS msg, int outputItemId, IReadOnlyCollection<InGameItemInfo> changedItems, int recipeId)
-    {
-        var outputItem = changedItems.LastOrDefault(item => item.ItemId == outputItemId && item.Count > 0);
-        var equippedBattleItem = Match.Inventory.GetEquippedBattleItem(PlayerId!.Value);
-        bool shouldReplaceEquippedItem = outputItem != null && equippedBattleItem?.ItemUid == outputItem.ItemUid;
-
-        using var combinePacket = Packet.Create((int)Protocol.G_TO_C_ITEMS_COMBINED, PlayerId.Value);
-        var combinedMsg = new G_TO_C_ITEMS_COMBINED
-        {
-            ErrorCode = ErrorCode.SUCCESS,
-            RecipeId = recipeId,
-            InputItemA = msg.ItemA,
-            InputItemB = msg.ItemB,
-            OutputItemId = outputItemId
-        };
-        combinePacket.SetBody(MessagePackSerializer.Serialize(combinedMsg));
-        TrySend(combinePacket);
-
-        using var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE(changedItems.ToList());
-        TrySend(inventoryPacket);
-
-        if (!shouldReplaceEquippedItem)
-        {
-            return;
-        }
-        using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, outputItem!.ItemUid, ErrorCode.SUCCESS);
-        TrySend(equippedPacket);
-    }
-
-    private void SendCombineItemsFailure(int partA, int partB, ErrorCode errorCode)
-    {
-        using var failPacket = Packet.Create((int)Protocol.G_TO_C_ITEMS_COMBINED, PlayerId!.Value);
-        var failMsg = new G_TO_C_ITEMS_COMBINED
-        {
-            ErrorCode = errorCode,
-            RecipeId = 0,
-            InputItemA = partA,
-            InputItemB = partB,
-            OutputItemId = 0
-        };
-        failPacket.SetBody(MessagePackSerializer.Serialize(failMsg));
-        TrySend(failPacket);
     }
 }

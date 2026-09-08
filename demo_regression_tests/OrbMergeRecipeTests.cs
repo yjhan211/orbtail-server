@@ -7,10 +7,6 @@ namespace demo_regression_tests;
 
 public sealed class OrbMergeRecipeTests
 {
-    // 현행 소환 풀의 태양 오브 라인 (107000003/4/6 수호 오브 계보는 #274에서 테스트 폐기).
-    private const int SunOrbT1 = 107000010;
-    private const int SunOrbT2 = 107000011;
-    private const int SunOrbT3 = 107000012;
 
     public OrbMergeRecipeTests()
     {
@@ -18,44 +14,42 @@ public sealed class OrbMergeRecipeTests
         GameDataHelper.Initialize();
     }
 
-    [Fact]
-    public void T1OrbMergeHasOneDeterministicT2Candidate()
+    [Theory]
+    [InlineData(107000003)]
+    [InlineData(107000004)]
+    [InlineData(107000010)]
+    [InlineData(107000011)]
+    [InlineData(107000020)]
+    [InlineData(107000021)]
+    [InlineData(107000030)]
+    [InlineData(107000031)]
+    public void RemovedOrbMergeHasNoRecipe(int itemId)
     {
-        var recipe = Assert.Single(BattleItemRecipeData.GetMatchingRecipes([SunOrbT1, SunOrbT1]));
-
-        Assert.Equal(SunOrbT2, recipe.OutputItemId);
-        Assert.Equal("orb", recipe.Category);
-        Assert.Equal("primary", recipe.RouteType);
+        Assert.Empty(BattleItemRecipeData.GetMatchingRecipes([itemId, itemId]));
+        Assert.False(BattleItemRecipeData.IsRecipeInputItem(itemId));
     }
 
     [Fact]
-    public void T2OrbsMergeIntoT3InEveryArea()
+    public void BattleItemAndRecoveryRecipesRemainAvailable()
     {
-        foreach (var area in Enum.GetValues<AreaType>())
-        {
-            var recipe = BattleItemRecipeData.TryCombine([SunOrbT2, SunOrbT2], area);
-            Assert.NotNull(recipe);
-            Assert.Equal(SunOrbT3, recipe.OutputItemId);
-            Assert.Equal("orb", recipe.Category);
-            Assert.Equal("primary", recipe.RouteType);
-        }
+        Assert.Equal(201000019, Assert.Single(BattleItemRecipeData.GetMatchingRecipes([201000008, 201000008])).OutputItemId);
+        Assert.Equal(107000041, Assert.Single(BattleItemRecipeData.GetMatchingRecipes([107000040, 107000040])).OutputItemId);
     }
 
     [Fact]
-    public void OrbMergeConsumesTwoInputsAndAddsOneOutputAtomically()
+    public void OrbsKeepSeparateSlotsWithoutMergeRecipes()
     {
         var inventory = new PlayerInGameInventory(193);
-        inventory.AddItem(SunOrbT1);
-        inventory.AddItem(SunOrbT1);
-
-        Assert.True(inventory.TryCombineItems([SunOrbT1, SunOrbT1], SunOrbT2, out var changedItems));
-        Assert.Equal(3, changedItems.Count);
-        Assert.Equal(0, inventory.GetItemCount(SunOrbT1));
-        Assert.Equal(1, inventory.GetItemCount(SunOrbT2));
-
-        Assert.False(inventory.TryCombineItems([SunOrbT1, SunOrbT1], SunOrbT3, out var rejectedChanges));
-        Assert.Empty(rejectedChanges);
-        Assert.Equal(1, inventory.GetItemCount(SunOrbT2));
+        var first = inventory.AddItem(107000010);
+        var second = inventory.AddItem(107000010);
+        var third = inventory.AddItem(107000010);
+        Assert.Equal(3, new[] { first.ItemUid, second.ItemUid, third.ItemUid }.Distinct().Count());
+        Assert.Equal(3, inventory.GetAllItems().Count);
+        Assert.All(inventory.GetAllItems(), item =>
+        {
+            Assert.Equal(107000010, item.ItemId);
+            Assert.Equal(1, item.Count);
+        });
     }
 
     [Fact]

@@ -131,11 +131,6 @@ namespace network.common
         /// </summary>
         public static float SWARM_BOSS_ATTACK_RANGE => SwarmConfigData.GetFloat("SWARM_BOSS_ATTACK_RANGE", 4.1f);
 
-        /// <summary>
-        ///     3머지 비활성 (#226 오브열): 열 문법에서 성장 = 길이 — 같은 색 3개 압축(3→1)은
-        ///     그 언어와 싸운다. 소환마다 열이 길어지고, 티어는 상자 시간 등급이 공급한다.
-        /// </summary>
-        public static readonly bool SWARM_ORB_MERGE_ENABLED = false;
 
         /// <summary>파도(Blue) 오브 공급 — 단색 검증이 필요하면 false로 차단한다.</summary>
         public static readonly bool SWARM_WAVE_ORB_ENABLED = true;

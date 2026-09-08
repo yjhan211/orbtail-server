@@ -102,28 +102,6 @@ public sealed class InGameInventoryAtomicityTests
         Assert.Equal(1, manager.GetPlayerInventory(100).GetItemCount(Bandage));
     }
 
-    [Fact]
-    public void OrbMergeWithMissingMaterialDoesNotDraw()
-    {
-        InitializeBattleCombatData();
-        var manager = MatchTestServices.Inventory();
-        manager.AddItem(playerId: 100, itemId: SunOrbT1);
-        var random = new CountingRandom();
-
-        bool combined = manager.TryCombineOrbs(
-            playerId: 100,
-            SunOrbT1,
-            SunOrbT1,
-            random,
-            out int outputItemId,
-            out var changedItems);
-
-        Assert.False(combined);
-        Assert.Equal(0, outputItemId);
-        Assert.Empty(changedItems);
-        Assert.Equal(0, random.DrawCount);
-        Assert.Equal(1, manager.GetPlayerInventory(100).GetItemCount(SunOrbT1));
-    }
 
     private static void InitializeBattleCombatData()
     {

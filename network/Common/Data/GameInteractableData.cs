@@ -123,8 +123,7 @@ namespace network.common.data
         }
 
         /// <summary>
-        ///     탐색 게이지로만 열리는 문 (#229). interactable_info.csv의 door_id에서 유도한다 —
-        ///     이 문은 근접 자동 개방(Door.CheckProximityAndRequestOpen)으로 열려선 안 된다.
+        ///     interactable_info.csv의 door_id를 기준으로 문 열기 게이지가 등록된 문인지 확인한다.
         /// </summary>
         public static bool IsGaugeGatedDoor(int doorId) =>
             doorId > 0 && _gaugeGatedDoorIds.Contains(doorId);

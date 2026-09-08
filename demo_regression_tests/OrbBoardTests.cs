@@ -81,65 +81,8 @@ public sealed class OrbBoardTests
         Assert.False(OrbData.IsOrbItem(itemId));
     }
 
-    [Theory]
-    [InlineData(107000010, 107000010)]
-    [InlineData(107000011, 107000011)]
-    [InlineData(107000020, 107000020)]
-    [InlineData(107000021, 107000021)]
-    [InlineData(107000030, 107000030)]
-    [InlineData(107000031, 107000031)]
-    public void SameColorSameTierOrbMergeEvolvesToRandomNextTier(int inputA, int inputB)
-    {
-        var random = new Random(198);
-        var outputs = new HashSet<int>();
-        for (int i = 0; i < 50; i++)
-        {
-            Assert.True(OrbData.TryGetRandomMergeOutput(inputA, inputB, random, out int output));
-            Assert.True(OrbData.TryGetColorAndTier(inputA, out _, out int inputTier));
-            Assert.True(OrbData.TryGetColorAndTier(output, out _, out int outputTier));
-            Assert.Equal(inputTier + 1, outputTier);
-            outputs.Add(output);
-        }
 
-        Assert.All(outputs, output => Assert.True(OrbData.IsOrbItem(output)));
-        // 공급 차단 토글(SWARM_SUN/WIND/WAVE_ORB_ENABLED)이 꺼진 색은 머지 출력에도 안 나온다 —
-        // 켜진 색이 하나뿐이면 출력 다양성 검증은 성립하지 않는다.
-        int enabledColorCount = (Config.SWARM_SUN_ORB_ENABLED ? 1 : 0) +
-                                (Config.SWARM_WIND_ORB_ENABLED ? 1 : 0) +
-                                (Config.SWARM_WAVE_ORB_ENABLED ? 1 : 0);
-        Assert.All(outputs, output =>
-        {
-            Assert.True(OrbData.TryGetColorAndTier(output, out OrbColor outputColor, out _));
-            Assert.True(outputColor switch
-            {
-                OrbColor.Green => Config.SWARM_WIND_ORB_ENABLED,
-                OrbColor.Red => Config.SWARM_SUN_ORB_ENABLED,
-                OrbColor.Blue => Config.SWARM_WAVE_ORB_ENABLED,
-                _ => false
-            });
-        });
-        Assert.Equal(enabledColorCount > 1, outputs.Count > 1);
-    }
 
-    [Theory]
-    [InlineData(107000040, 107000041)]
-    [InlineData(107000041, 107000042)]
-    public void SameTierRecoveryOrbsMergeToTheNextRecoveryTier(int input, int expectedOutput)
-    {
-        Assert.True(OrbData.CanMerge(input, input));
-        Assert.True(OrbData.TryGetRandomMergeOutput(input, input, new Random(198), out int output));
-        Assert.Equal(expectedOutput, output);
-    }
-
-    [Theory]
-    [InlineData(107000010, 107000020)]
-    [InlineData(107000010, 107000011)]
-    [InlineData(107000012, 107000012)]
-    public void DifferentColorDifferentTierOrTierThreeCannotMerge(int inputA, int inputB)
-    {
-        Assert.False(OrbData.CanMerge(inputA, inputB));
-        Assert.False(OrbData.TryGetRandomMergeOutput(inputA, inputB, new Random(1), out _));
-    }
 
     [Fact]
     public void LegacyGuardianOrbDoesNotEnterColoredBoardRules()
@@ -236,23 +179,6 @@ public sealed class OrbBoardTests
         Assert.Equal(firstOrb.ItemUid, manager.GetEquippedBattleItem(100)!.ItemUid);
     }
 
-    [Fact]
-    public void EquippedInputStaysEquippedAndResonanceRecomputesAfterRandomMerge()
-    {
-        InitializeBattleCombatData();
-        var inventory = new PlayerInGameInventory(198);
-        var equippedOrb = inventory.AddItem(107000010, forceSeparateStack: true);
-        inventory.AddItem(107000010, forceSeparateStack: true);
-
-        Assert.True(inventory.TryEquipBattleItem(equippedOrb.ItemUid, out _));
-        Assert.True(inventory.TryGetActiveOrbPair(out var color, out int supportTier));
-        Assert.Equal(OrbColor.Red, color);
-        Assert.Equal(1, supportTier);
-
-        Assert.True(inventory.TryCombineOrbs(107000010, 107000010, new Random(1), out int output, out _));
-        Assert.Equal(output, inventory.GetEquippedBattleItem()!.ItemId);
-        Assert.False(inventory.TryGetActiveOrbPair(out color, out supportTier));
-    }
 
     [Fact]
     public void ReconnectRecomputesTheSameSingleResonanceFromTheAuthoritativeBoard()
@@ -269,42 +195,7 @@ public sealed class OrbBoardTests
         Assert.Equal(OrbColor.Red, color);
         Assert.Equal(1, supportTier);
     }
-    [Fact]
-    public async Task ConcurrentRandomMergeConsumesInputsOnlyOnce()
-    {
-        InitializeBattleCombatData();
-        var manager = MatchTestServices.Inventory(10);
-        manager.AddItem(100, 107000010);
-        manager.AddItem(100, 107000010);
 
-        var attempts = await Task.WhenAll(
-            Task.Run(() => manager.TryCombineOrbs(100, 107000010, 107000010, new Random(1), out _, out _)),
-            Task.Run(() => manager.TryCombineOrbs(100, 107000010, 107000010, new Random(2), out _, out _)));
-
-        Assert.Single(attempts, success => success);
-        Assert.Single(attempts, success => !success);
-        Assert.Equal(1, manager.GetPlayerInventory(100).GetAllItems().Sum(item => item.Count));
-    }
-
-    [Fact]
-    public void ReconnectingToTheSameMatchReadsTheSingleAuthoritativeMergeResult()
-    {
-        InitializeBattleCombatData();
-        var manager = MatchTestServices.Inventory(198);
-        manager.AddItem(100, 107000010);
-        manager.AddItem(100, 107000010);
-
-        Assert.True(manager.TryCombineOrbs(100, 107000010, 107000010,
-            new Random(198), out int outputItemId, out _));
-
-        // A new session retrieves the same matching/player inventory; it must not replay the merge.
-        var reconnectedInventory = manager.GetPlayerInventory(100);
-        var output = Assert.Single(reconnectedInventory.GetAllItems());
-        Assert.Equal(outputItemId, output.ItemId);
-        Assert.Equal(1, output.Count);
-        Assert.False(manager.TryCombineOrbs(100, 107000010, 107000010,
-            new Random(199), out _, out _));
-    }
 
     private static void InitializeBattleCombatData()
     {

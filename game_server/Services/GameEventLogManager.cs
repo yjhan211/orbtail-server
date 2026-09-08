@@ -812,29 +812,8 @@ public class GameEventLogManager
                 entry.PreviousResonanceActive = transition.PreviousResonanceActive;
                 entry.PreviousResonanceColor = transition.PreviousResonanceColor.ToString();
                 entry.ResonanceProfile = GetResonanceProfile(resonance ? color : OrbColor.None);
-                entry.MergeCandidateDurationSeconds = transition.EndedMergeCandidateDurationSeconds;
             });
 
-        if (transition.MergeCandidateBecameAvailable)
-            Append(matchingId, "SURVIVOR_ORB_MERGE_AVAILABLE", playerId, isBot,
-                $"Orb merge became available: reason={reason}.", entry =>
-                {
-                    entry.Area = area;
-                    entry.Outcome = reason;
-                    entry.BoardItemIds = itemIds;
-                    entry.WeaponItemId = equippedItemId;
-                });
-
-        if (transition.EndedMergeCandidateDurationSeconds.HasValue)
-            Append(matchingId, "SURVIVOR_ORB_MERGE_WINDOW_ENDED", playerId, isBot,
-                $"Orb merge window ended: reason={reason}, held={transition.EndedMergeCandidateDurationSeconds.Value:F1}s.", entry =>
-                {
-                    entry.Area = area;
-                    entry.Outcome = reason;
-                    entry.MergeCandidateDurationSeconds = transition.EndedMergeCandidateDurationSeconds;
-                    entry.BoardItemIds = itemIds;
-                    entry.PreviousBoardItemIds = transition.PreviousBoardItemIds;
-                });
 
         if (transition.FirstOrbPickup)
             Append(matchingId, "SURVIVOR_ORB_FIRST_PICKUP", playerId, isBot,
@@ -1032,14 +1011,6 @@ public class GameEventLogManager
             telemetry.Active = active;
             telemetry.ActiveColor = active ? color : OrbColor.None;
 
-            bool hasMergeCandidate = HasMergeCandidate(itemIds);
-            bool mergeCandidateBecameAvailable = !telemetry.HasMergeCandidate && hasMergeCandidate;
-            double? endedMergeCandidateDurationSeconds = null;
-            if (mergeCandidateBecameAvailable)
-                telemetry.MergeCandidateSince = now;
-            else if (telemetry.HasMergeCandidate && !hasMergeCandidate)
-                endedMergeCandidateDurationSeconds = Math.Max(0d, (now - telemetry.MergeCandidateSince).TotalSeconds);
-            telemetry.HasMergeCandidate = hasMergeCandidate;
             int previousBoardItemCount = CountBoardOrbs(previousBoard);
             int boardItemCount = CountBoardOrbs(itemIds);
             bool firstOrbPickup = previousBoardItemCount == 0 && boardItemCount > 0 && !telemetry.FirstOrbPickupLogged;
@@ -1063,8 +1034,6 @@ public class GameEventLogManager
                 previousActive,
                 previousActiveColor,
                 equippedColor,
-                mergeCandidateBecameAvailable,
-                endedMergeCandidateDurationSeconds,
                 firstOrbPickup,
                 boardReachedCapacity,
                 boardItemCount,
@@ -1116,8 +1085,6 @@ public class GameEventLogManager
         }
     }
 
-    private static bool HasMergeCandidate(IEnumerable<int> itemIds) =>
-        itemIds.GroupBy(itemId => itemId).Any(group => group.Count() >= 2 && OrbData.CanMerge(group.Key, group.Key));
 
     private static int CountBoardOrbs(IEnumerable<int> itemIds) =>
         itemIds.Count(itemId => OrbData.IsOrbItem(itemId) || OrbData.IsRecoveryOrb(itemId));
@@ -1474,8 +1441,6 @@ public class GameEventLogManager
         public int EquippedItemId;
         public int EquipChanges;
         public List<int> BoardItemIds { get; set; } = new();
-        public bool HasMergeCandidate;
-        public DateTimeOffset MergeCandidateSince;
         public bool FirstOrbPickupLogged;
         public bool BoardFullLogged;
     }
@@ -1487,8 +1452,6 @@ public class GameEventLogManager
         bool PreviousResonanceActive,
         OrbColor PreviousResonanceColor,
         OrbColor EquippedColor,
-        bool MergeCandidateBecameAvailable,
-        double? EndedMergeCandidateDurationSeconds,
         bool FirstOrbPickup,
         bool BoardReachedCapacity,
         int BoardItemCount,
@@ -1773,7 +1736,6 @@ public class GameEventEntry
     public string? ResonanceColor { get; set; }
     public string? PreviousResonanceColor { get; set; }
     public string? ResonanceProfile { get; set; }
-    public double? MergeCandidateDurationSeconds { get; set; }
     public List<long>? AttackTargetPlayerIds { get; set; }
     public int? CandidateTargetCount { get; set; }
     public int? ValidTargetCount { get; set; }

@@ -222,21 +222,10 @@ namespace network.common.data
             return 1f + Math.Min(WindMoveSpeedBonusCap, bonus);
         }
 
-        // 공명 판정·색 순회가 같이 쓴다 — 파도 공급 차단과 무관하게 전 색 유지 (보유 중인 파도의
-        // 공명·판정은 계속 살아야 한다). 파도 차단은 머지 출력 풀에만 건다.
+        // 공명 판정·색 순회는 공급 차단 여부와 무관하게 보유 중인 모든 색을 검사한다.
         private static readonly OrbColor[] EvolutionColors =
             new[] { OrbColor.Red, OrbColor.Green, OrbColor.Blue };
 
-        private static readonly OrbColor[] MergeOutputColors = BuildMergeOutputColors();
-
-        private static OrbColor[] BuildMergeOutputColors()
-        {
-            var colors = new List<OrbColor>();
-            if (Config.SWARM_SUN_ORB_ENABLED) colors.Add(OrbColor.Red);
-            if (Config.SWARM_WIND_ORB_ENABLED) colors.Add(OrbColor.Green);
-            if (Config.SWARM_WAVE_ORB_ENABLED) colors.Add(OrbColor.Blue);
-            return colors.ToArray();
-        }
 
         /// <summary>
         ///     색·티어 원본은 battle_item_combat.csv color/tier 컬럼 (#292 CSV 이전).
@@ -449,40 +438,6 @@ namespace network.common.data
         public static int GetRecoveryAmount(int itemId) =>
             IsRecoveryOrb(itemId) ? BattleItemCombatData.Get(itemId)?.RecoveryAmount ?? 0 : 0;
 
-        /// <summary>
-        /// Validates a P1 merge and randomly evolves its colour. The server calls this only after
-        /// receiving the two inputs; clients must not predict the result.
-        /// </summary>
-        public static bool CanMerge(int inputA, int inputB)
-        {
-            if (TryGetRecoveryTier(inputA, out int recoveryTierA) &&
-                TryGetRecoveryTier(inputB, out int recoveryTierB))
-            {
-                return recoveryTierA == recoveryTierB && recoveryTierA < 3;
-            }
-
-            return TryGetColorAndTier(inputA, out OrbColor colorA, out int tierA) &&
-                   TryGetColorAndTier(inputB, out OrbColor colorB, out int tierB) &&
-                   colorA == colorB && tierA == tierB && tierA < 3;
-        }
-
-        public static bool TryGetRandomMergeOutput(int inputA, int inputB, Random random, out int outputItemId)
-        {
-            if (random == null) throw new ArgumentNullException(nameof(random));
-            outputItemId = 0;
-            if (!CanMerge(inputA, inputB))
-                return false;
-
-            if (TryGetRecoveryTier(inputA, out int recoveryTier))
-            {
-                return BattleItemCombatData.TryGetItemId(OrbColor.Recovery, recoveryTier + 1, out outputItemId);
-            }
-
-            if (!TryGetColorAndTier(inputA, out _, out int tier))
-                return false;
-
-            return TryGetItemId(MergeOutputColors[random.Next(MergeOutputColors.Length)], tier + 1, out outputItemId);
-        }
 
         public static bool TryGetItemId(OrbColor color, int tier, out int itemId)
         {
