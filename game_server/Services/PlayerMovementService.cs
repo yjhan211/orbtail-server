@@ -9,7 +9,7 @@ namespace game_server.services;
 
 /// <summary>
 ///     플레이어 한 명의 이동 검증과 매치 내 반영을 조율한다.
-///     구역 변경 알림·아이템 획득 후보·주변 이동 전파를 맡으며, 위치 상태는 세션이 보관한다.
+///     위치·셀·속도·회전·구역·오브 궤도를 보관하고, 이동 반영과 주변 알림을 맡는다.
 ///     Apply와 Broadcast는 호출자가 해당 매치 잠금을 잡은 상태에서 호출한다.
 /// </summary>
 internal sealed class PlayerMovementService(
@@ -18,24 +18,75 @@ internal sealed class PlayerMovementService(
     GameEventLogManager eventLog,
     ILogger logger)
 {
+    public Vector3f? LastValidatedPosition { get; private set; }
+    public Cell? LastValidatedCell { get; private set; }
+    public Vector3f LastValidatedVelocity { get; private set; } = new();
+    public float LastValidatedRotation { get; private set; }
+    public AreaType CurrentArea { get; private set; } = AreaType.None;
+    private float? _orbOrbitPhaseDegrees;
+    public float OrbOrbitPhaseDegrees =>
+        _orbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(player.PlayerId ?? 0L);
+
+    /// <summary>입장 시 서버가 지정한 스폰으로 이동 상태를 초기화한다.</summary>
+    public void InitializeSpawn(Cell spawnCell)
+    {
+        LastValidatedCell = Cell.Clone(spawnCell);
+        LastValidatedPosition = MapCoordinateConverter.CellToWorld(player.CurrentMapId, spawnCell);
+        LastValidatedVelocity = new Vector3f();
+        LastValidatedRotation = 0f;
+        CurrentArea = GameMapData.GetCurrentArea(player.CurrentMapId, spawnCell);
+        _orbOrbitPhaseDegrees = null;
+    }
+
+    /// <summary>검증된 이동 값을 함께 반영한다. 호출자는 매치 잠금을 잡아야 한다.</summary>
+    internal void ApplyValidatedMovement(ValidatedMovement movement, float rotation)
+    {
+        LastValidatedCell = movement.ValidCell;
+        LastValidatedPosition = movement.Position;
+        LastValidatedVelocity = movement.Velocity;
+        LastValidatedRotation = rotation;
+    }
+
+    public GameObjectInfo CaptureGameObjectInfo(PlayerState state)
+    {
+        var position = LastValidatedPosition
+            ?? throw new InvalidOperationException("Cannot publish a player before its spawn is initialized.");
+        var cell = LastValidatedCell ?? ToCell(position);
+        return new GameObjectInfo(ObjectType.PLAYER, player.PlayerId!.Value, player.CurrentMapId, player.MatchingId, cell)
+        {
+            Position = new Vector3f(position.X, position.Y, position.Z),
+            Velocity = new Vector3f(LastValidatedVelocity.X, LastValidatedVelocity.Y, LastValidatedVelocity.Z),
+            Rotation = LastValidatedRotation,
+            State = state
+        };
+    }
+
+    private void AdvanceOrbOrbit(Vector3f from, Vector3f to)
+    {
+        float dx = to.X - from.X;
+        float dy = to.Y - from.Y;
+        _orbOrbitPhaseDegrees = SwarmOrbOrbit.AdvancePhase(
+            OrbOrbitPhaseDegrees, MathF.Sqrt(dx * dx + dy * dy));
+    }
+
     public (ValidatedMovement Movement, Cell Cell, long ServerTimestamp)? Apply(C_TO_G_MOVE msg, float deltaTime)
     {
         var validation = validationService.ValidatePosition(
-            player.PlayerId.Value, player.CurrentMapId, player.LastValidatedPosition, player.LastValidatedCell,
+            player.PlayerId.Value, player.CurrentMapId, LastValidatedPosition, LastValidatedCell,
             msg.Position, msg.Velocity, deltaTime);
         var validatedPosition = validation.Position;
         // 2. Area 변경 시 퇴장 조건 체크 (치팅 방지)
         var currentCell = ToCell(validatedPosition);
-        var newArea = GameMapData.GetStableCurrentArea(player.CurrentMapId, currentCell, player.CurrentArea);
+        var newArea = GameMapData.GetStableCurrentArea(player.CurrentMapId, currentCell, CurrentArea);
 
         // 3. Area 변경 처리 (퇴장 조건 통과한 경우만)
         long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-        var previousCell = player.LastValidatedPosition != null
-            ? ToCell(player.LastValidatedPosition)
+        var previousCell = LastValidatedPosition != null
+            ? ToCell(LastValidatedPosition)
             : currentCell;
         var blockedCell = validationService.GetBlockedTransitionCell(
-            player.PlayerId.Value, player.CurrentArea, newArea, previousCell, currentCell, player.Match.Doors);
+            player.PlayerId.Value, CurrentArea, newArea, previousCell, currentCell, player.Match.Doors);
         if (blockedCell != null)
         {
             using var rejected = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(newArea, blockedCell);
@@ -51,16 +102,16 @@ internal sealed class PlayerMovementService(
         if (player.Condition.IsSleeping)
             player.BreakSwarmSleep();
         // 오브 궤도 (#232): 검증된 이동 거리만큼 돈다 — 멈추면 이동 패킷이 없으니 저절로 선다.
-        if (player.LastValidatedPosition != null)
-            player.AdvanceOrbOrbit(player.LastValidatedPosition, validatedPosition);
+        if (LastValidatedPosition != null)
+            AdvanceOrbOrbit(LastValidatedPosition, validatedPosition);
         // 승인된 구간마다 후보를 기록한다. 구역을 넘으면 경로 위 좌표가 속한 구역도 확인한다.
-        var pickupArea = newArea == AreaType.None ? player.CurrentArea : newArea;
+        var pickupArea = newArea == AreaType.None ? CurrentArea : newArea;
         GroundItemAutoPickupService.RecordMovement(player,
-            player.LastValidatedPosition ?? validatedPosition, validatedPosition, pickupArea);
-        player.ApplyValidatedMovement(validation, msg.Rotation);
+            LastValidatedPosition ?? validatedPosition, validatedPosition, pickupArea);
+        ApplyValidatedMovement(validation, msg.Rotation);
         player.Match.GroundItems.ReleaseSourcePickupBlocks(player.PlayerId.Value, pickupArea, validatedPosition.X, validatedPosition.Y);
 
-        if (newArea != player.CurrentArea && newArea != AreaType.None)
+        if (newArea != CurrentArea && newArea != AreaType.None)
         {
             // 폐쇄 구역 진입 경고 (지속 페널티는 ResourceTick에서 처리)
             if (player.Match.Closures.IsAreaClosed(newArea))
@@ -70,9 +121,9 @@ internal sealed class PlayerMovementService(
             }
 
             logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}",
-                player.PlayerId, currentCell.X, currentCell.Y, player.CurrentArea, newArea);
-            var oldArea = player.CurrentArea;
-            player.ChangeMovementArea(newArea); // 먼저 Area 업데이트 (다른 플레이어의 MOVE 수신 가능하도록)
+                player.PlayerId, currentCell.X, currentCell.Y, CurrentArea, newArea);
+            var oldArea = CurrentArea;
+            CurrentArea = newArea; // 먼저 Area 업데이트 (다른 플레이어의 MOVE 수신 가능하도록)
             eventLog.LogMove(player.MatchingId, player.PlayerId.Value,
                 oldArea.ToString(), newArea.ToString(), isBot: false);
             HandleAreaChange(oldArea, newArea);
@@ -220,7 +271,7 @@ internal sealed class PlayerMovementService(
 
     public void Broadcast(Packet packet)
     {
-        foreach (var other in player.Match.Sessions.GetInArea(player.CurrentArea, player.PlayerId))
+        foreach (var other in player.Match.Sessions.GetInArea(CurrentArea, player.PlayerId))
         {
             if (other.PlayerId != player.PlayerId)
                 other.TrySend(packet);

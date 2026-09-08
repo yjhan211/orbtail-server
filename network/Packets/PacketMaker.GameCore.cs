@@ -54,7 +54,7 @@ public static partial class PacketMaker
     }
 
     public static Packet G_TO_C_MOVE(long playerId, Vector3f position, Vector3f velocity, float rotation, Cell cell,
-        uint lastProcessedInput, long serverTimestamp, float orbOrbitPhaseDegrees = 0f)
+        long serverTimestamp, float orbOrbitPhaseDegrees = 0f)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_MOVE, playerId);
         G_TO_C_MOVE body = new()
@@ -64,7 +64,6 @@ public static partial class PacketMaker
             Velocity = velocity,
             Rotation = rotation,
             Cell = cell,
-            LastProcessedInput = lastProcessedInput,
             ServerTimestamp = serverTimestamp,
             OrbOrbitPhaseDegrees = orbOrbitPhaseDegrees
         };

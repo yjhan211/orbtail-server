@@ -46,33 +46,9 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
-    internal Cell? LastValidatedCell => _lastValidCell;
-
-    /// <summary>검증된 위치·셀·속도·회전을 함께 반영한다. 호출자는 매치 잠금을 잡아야 한다.</summary>
-    internal void ApplyValidatedMovement(ValidatedMovement movement, float rotation)
-    {
-        _lastValidCell = movement.ValidCell;
-        LastValidatedPosition = movement.Position;
-        _lastValidatedVelocity = movement.Velocity;
-        _lastValidatedRotation = rotation;
-    }
-
-    internal void ChangeMovementArea(AreaType area) => CurrentArea = area;
-
-    /// <summary>서버가 승인한 현재 공간 정보를 복사한다. PlayerInfo·Redis 데이터는 건드리지 않는다.</summary>
-    internal GameObjectInfo CaptureGameObjectInfo()
-    {
-        var position = LastValidatedPosition
-            ?? throw new InvalidOperationException("Cannot publish a player before its spawn is initialized.");
-        var cell = _lastValidCell ?? WorldPositionToCell(position);
-        return new GameObjectInfo(ObjectType.PLAYER, PlayerId!.Value, CurrentMapId, MatchingId, cell)
-        {
-            Position = new Vector3f(position.X, position.Y, position.Z),
-            Velocity = new Vector3f(_lastValidatedVelocity.X, _lastValidatedVelocity.Y, _lastValidatedVelocity.Z),
-            Rotation = _lastValidatedRotation,
-            State = _condition.IsSleeping ? PlayerState.SLEEP : CurrentState
-        };
-    }
+    /// <summary>이동 서비스가 보관한 공간 정보를 현재 행동 상태와 함께 복사한다.</summary>
+    internal GameObjectInfo CaptureGameObjectInfo() =>
+        _playerMovement.CaptureGameObjectInfo(_condition.IsSleeping ? PlayerState.SLEEP : CurrentState);
 
     /// <summary>입장한 클라이언트에 자기장 수축 시작 시각을 보낸다. 경계는 공용 규칙으로 계산한다.</summary>
     private void SendPressureFieldState()

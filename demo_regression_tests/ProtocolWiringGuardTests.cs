@@ -84,7 +84,7 @@ public class ProtocolWiringGuardTests
         string root = FindRepositoryRoot();
         string source = File.ReadAllText(Path.Combine(root, "game_server", "Sessions", "GameClientSession.cs"));
         int roster = source.IndexOf("PacketMaker.G_TO_C_MATCH_ROSTER", StringComparison.Ordinal);
-        int area = source.IndexOf("CurrentArea = GameMapData.GetCurrentArea", StringComparison.Ordinal);
+        int area = source.IndexOf("_playerMovement.InitializeSpawn(matchingSpawnCell)", StringComparison.Ordinal);
         int join = source.IndexOf("await BroadcastPlayerJoin()", StringComparison.Ordinal);
         Assert.True(roster >= 0 && roster < area && roster < join);
         string entry = File.ReadAllText(Path.Combine(root, "game_server", "Services", "GameMatchEntryService.cs"));

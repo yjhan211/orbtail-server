@@ -47,16 +47,10 @@ public partial class GameClientSession : SessionBase
 
     private readonly PlayerInteractionState _interactions = new();
     private const int PendingOrbDraftCost = 0;
-    private Vector3f _lastValidatedVelocity = new(0f, 0f, 0f);
-    private Cell? _lastValidCell;
 
-    private float _lastValidatedRotation;
-    private float? _orbOrbitPhaseDegrees;
     private long _lastMoveReceiptTimestamp;
     private readonly MovementPacketQueue _movementPacketQueue;
     private long _lastMoveAcknowledgementTimestamp;
-    private bool _hasProcessedMoveInputSequence;
-    private uint _lastProcessedMoveInputSequence;
     private bool _hasPendingOrbDraft;
     public int FreeSummonCharges { get; internal set; }
 
@@ -106,9 +100,9 @@ public partial class GameClientSession : SessionBase
     public new long? PlayerId { get; private set; }
     public MapId CurrentMapId { get; private set; }
     public long MatchingId { get; private set; }
-    public AreaType CurrentArea { get; private set; } = AreaType.None;
+    public AreaType CurrentArea => _playerMovement.CurrentArea;
     private PlayerState CurrentState { get; set; } = PlayerState.IDLE;
-    public Vector3f? LastValidatedPosition { get; private set; }
+    public Vector3f? LastValidatedPosition => _playerMovement.LastValidatedPosition;
 
     public PlayerMatchStatus PlayerMatchStatus { get; private set; } = PlayerMatchStatus.ACTIVE;
     private bool _isGameEnded;
@@ -300,15 +294,12 @@ public partial class GameClientSession : SessionBase
             });
 
             var matchingSpawnCell = Cell.Clone(composition.SpawnCells[playerId]);
-            LastValidatedPosition = CellToWorldPosition(matchingSpawnCell);
-            _lastValidCell = Cell.Clone(matchingSpawnCell);
-            _lastValidatedRotation = 0f;
-            CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, matchingSpawnCell);
+            _playerMovement.InitializeSpawn(matchingSpawnCell);
 
             Logger.LogInformation(
                 "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
-                PlayerId, CurrentArea, LastValidatedPosition?.X, LastValidatedPosition?.Y, _lastValidCell?.X,
-                _lastValidCell?.Y);
+                PlayerId, CurrentArea, LastValidatedPosition?.X, LastValidatedPosition?.Y, _playerMovement.LastValidatedCell?.X,
+                _playerMovement.LastValidatedCell?.Y);
 
             _gameEventLogManager.LogSpawnAssignment(
                 MatchingId,

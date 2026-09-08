@@ -987,8 +987,7 @@ public sealed class GameClientSessionPublicationTests
         var first = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
         var second = fixture.CreateSession(70001, 102, Config.SWARM_MATCH_GROUND_AREA);
         var item = fixture.SpawnAtSession(first, Config.KEY_GROUND_ITEM_ID);
-        typeof(GameClientSession).GetProperty(nameof(GameClientSession.LastValidatedPosition))!
-            .SetValue(second, first.LastValidatedPosition);
+        TestGameSessionServices.SetMovementProperty(second, "LastValidatedPosition", first.LastValidatedPosition);
         MatchStartGate.RegisterBotOnlyMatch(first.MatchingId);
 
         CreatePickupTickRunner(fixture).Run(first.Match);
@@ -1045,8 +1044,7 @@ public sealed class GameClientSessionPublicationTests
                 previous.LastValidatedPosition!, previous.LastValidatedPosition!, previous.CurrentArea);
 
         var current = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
-        typeof(GameClientSession).GetProperty(nameof(GameClientSession.LastValidatedPosition))!
-            .SetValue(current, new Vector3f(item.PositionX + 20, item.PositionY, 0));
+        TestGameSessionServices.SetMovementProperty(current, "LastValidatedPosition", new Vector3f(item.PositionX + 20, item.PositionY, 0));
         using (match.Enter())
             new GroundItemAutoPickupService(fixture.EventLog, NullLogger<GroundItemAutoPickupService>.Instance)
                 .Process(match, [current]);
@@ -1237,7 +1235,7 @@ public sealed class GameClientSessionPublicationTests
             SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
             TestGameSessionServices.BindMatch(session, matchingId);
             SetProperty(session, nameof(GameClientSession.CurrentMapId), Config.SWARM_MATCH_MAP);
-            SetProperty(session, nameof(GameClientSession.CurrentArea), area);
+            TestGameSessionServices.SetMovementProperty(session, "CurrentArea", area);
             SetPosition(session, new Vector3f(0f, 0f, 0f));
         }
 
@@ -1247,7 +1245,7 @@ public sealed class GameClientSessionPublicationTests
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.SetValue(session, value);
 
         private static void SetPosition(GameClientSession session, Vector3f position) =>
-            typeof(GameClientSession).GetProperty(nameof(GameClientSession.LastValidatedPosition), BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.SetValue(session, position);
+            TestGameSessionServices.SetMovementProperty(session, "LastValidatedPosition", position);
 
         private static void Activate(TcpConnection connection)
         {

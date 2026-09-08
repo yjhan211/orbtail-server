@@ -14,24 +14,20 @@ internal sealed class MovementPacketQueue(Func<bool> canDispatch, TimeProvider? 
     private bool _draining;
     private long? _lastMovementCompletedAt;
 
-    public Task EnqueueAsync(Func<Task> dispatch, uint? movementSequence = null)
+    public Task EnqueueAsync(Func<Task> dispatch, bool isMovement = false)
     {
         Task completion;
         bool startDrain;
         lock (_gate)
         {
-            if (movementSequence is { } incoming && _pending.Last?.Value is { Sequence: { } previous } tail)
+            if (isMovement && _pending.Last?.Value is { IsMovement: true } tail)
             {
-                // 같은 순번의 정지 패킷도 최신 값이다. uint 순번의 wrap-around도 허용한다.
-                if (unchecked(incoming - previous) <= uint.MaxValue / 2)
-                {
-                    tail.Sequence = incoming;
-                    tail.Dispatch = dispatch;
-                }
+                // TCP로 나중에 받은 연속 이동으로 교체한다. 행동 요청을 사이에 두면 합치지 않는다.
+                tail.Dispatch = dispatch;
                 return tail.Completion.Task;
             }
 
-            var pending = new PendingPacket(dispatch, movementSequence);
+            var pending = new PendingPacket(dispatch, isMovement);
             _pending.AddLast(pending);
             completion = pending.Completion.Task;
             startDrain = !_draining;
@@ -101,11 +97,10 @@ internal sealed class MovementPacketQueue(Func<bool> canDispatch, TimeProvider? 
         }
     }
 
-    private sealed class PendingPacket(Func<Task> dispatch, uint? sequence)
+    private sealed class PendingPacket(Func<Task> dispatch, bool isMovement)
     {
         public Func<Task> Dispatch { get; set; } = dispatch;
-        public uint? Sequence { get; set; } = sequence;
-        public bool IsMovement { get; } = sequence.HasValue;
+        public bool IsMovement { get; } = isMovement;
         public TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 }

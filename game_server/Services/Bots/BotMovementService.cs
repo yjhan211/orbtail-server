@@ -158,7 +158,6 @@ internal sealed class BotMovementService(
                        movement.Velocity.ToVector3f(),
                        movement.Rotation,
                        movement.ToCell.ToCell(),
-                       lastProcessedInput: 0u,
                        movement.ServerTimestamp,
                        movement.OrbOrbitPhaseDegrees))
             {

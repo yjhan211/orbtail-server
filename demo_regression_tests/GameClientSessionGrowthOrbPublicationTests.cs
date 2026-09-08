@@ -28,10 +28,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var runtime = fixture.Store.GetRequired(FirstMatchingId);
         var spawnCell = GameMapData.GetMapInfo(Config.SWARM_MATCH_MAP)!.GetInitialPosition().Item1;
         var spawnArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, spawnCell);
-        typeof(GameClientSession).GetProperty(nameof(GameClientSession.CurrentArea))!
-            .SetValue(session, spawnArea);
-        typeof(GameClientSession).GetProperty(nameof(GameClientSession.LastValidatedPosition), BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
-            .SetValue(session, MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, spawnCell));
+        TestGameSessionServices.SetMovementProperty(session, "CurrentArea", spawnArea);
+        TestGameSessionServices.SetMovementProperty(session, "LastValidatedPosition", MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, spawnCell));
         using var matchLock = runtime.Enter();
         Assert.True(runtime.Inventory.TryAddItemWithCapacity(
             FirstPlayerId, 107000010, Config.SWARM_ORB_CAPACITY, out _));
@@ -828,10 +826,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
             TestGameSessionServices.BindMatch(session, matchingId);
             SetProperty(session, nameof(GameClientSession.CurrentMapId), Config.SWARM_MATCH_MAP);
-            SetProperty(session, nameof(GameClientSession.CurrentArea), Config.SWARM_MATCH_GROUND_AREA);
-            typeof(GameClientSession).GetProperty(nameof(GameClientSession.LastValidatedPosition), BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.SetValue(
-                session,
-                new Vector3f(0f, 0f, 0f));
+            TestGameSessionServices.SetMovementProperty(session, "CurrentArea", Config.SWARM_MATCH_GROUND_AREA);
+            TestGameSessionServices.SetMovementProperty(session, "LastValidatedPosition", new Vector3f(0f, 0f, 0f));
         }
 
         private static void SetProperty(GameClientSession session, string name, object? value) =>

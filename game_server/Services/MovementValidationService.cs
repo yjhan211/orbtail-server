@@ -8,7 +8,7 @@ namespace game_server.services;
 
 /// <summary>
 ///     서버 수신 간격으로 이동 거리·속도를 제한하고 목적 셀·이동 경로·구역 사이의 잠긴 문을 검사한다.
-///     세션 상태를 변경하지 않고 검증 결과만 반환한다. 입력 순번·수신 시각은 세션이,
+///     세션 상태를 변경하지 않고 검증 결과만 반환한다. 이동 처리 간격은 세션이,
 ///     검증 이후 처리는 PlayerMovementService가 맡는다.
 /// </summary>
 internal sealed class MovementValidationService(ILogger<MovementValidationService> logger)

@@ -50,7 +50,6 @@ public sealed class GameClientSessionConnectPublicationTests
         await request.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Null(fixture.Store.Get(74010));
         Assert.Null(session.LastValidatedPosition);
-        Assert.False((bool)typeof(GameClientSession).GetField("_hasProcessedMoveInputSequence", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session)!);
     }
 
     [Fact]
@@ -67,7 +66,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Contains("internal Action? MarkGameEndedAndPrepareLifecyclePublication()", main);
         Assert.DoesNotContain("private Task BroadcastPlayerJoin()", main);
         Assert.Contains("private Task HandleSocialAction(", File.ReadAllText(Path.Combine(directory, "GameClientSession.Social.cs")));
-        Assert.Contains("internal void AdvanceOrbOrbit(", File.ReadAllText(Path.Combine(directory, "GameClientSession.Movement.cs")));
+        Assert.Contains("private void AdvanceOrbOrbit(", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Services", "PlayerMovementService.cs")));
         Assert.False(File.Exists(Path.Combine(directory, "GameClientSession.MatchEnd.cs")));
         Assert.Contains("private Task BroadcastPlayerJoin()", File.ReadAllText(Path.Combine(directory, "GameClientSession.Snapshots.cs")));
     }
@@ -106,6 +105,34 @@ public sealed class GameClientSessionConnectPublicationTests
     }
 
     [Fact]
+    public void SpawnInitialization_IsOwnedByEachMovementService()
+    {
+        using var fixture = new ConnectFixture();
+        var first = fixture.CreateSession(74026, 8125, _ => true);
+        using var otherFixture = new ConnectFixture();
+        var second = otherFixture.CreateSession(74026, 8126, _ => true);
+        TestGameSessionServices.BindMatch(second, 74026, fixture.Store);
+        var movement = TestGameSessionServices.GetMovement(first);
+        var other = TestGameSessionServices.GetMovement(second);
+        Assert.NotSame(movement, other);
+        var spawn = new Cell(10, 20);
+        using (first.Match.Enter())
+        {
+            movement.InitializeSpawn(spawn);
+            spawn.X = 999;
+            Assert.Equal(10, movement.LastValidatedCell!.X);
+            Assert.Equal(0f, movement.LastValidatedVelocity.Magnitude());
+            Assert.Equal(0f, movement.LastValidatedRotation);
+            Assert.Same(movement.LastValidatedPosition, first.LastValidatedPosition);
+            Assert.Equal(movement.CurrentArea, first.CurrentArea);
+            Assert.Null(other.LastValidatedPosition);
+            Assert.Null(other.LastValidatedCell);
+        }
+        Assert.Null(typeof(GameClientSession).GetProperty(nameof(GameClientSession.LastValidatedPosition))!.SetMethod);
+        Assert.Null(typeof(GameClientSession).GetProperty(nameof(GameClientSession.CurrentArea))!.SetMethod);
+    }
+
+    [Fact]
     public void AppliedMovement_UpdatesTheAuthoritativeSnapshotTogether()
     {
         using var fixture = new ConnectFixture();
@@ -116,7 +143,7 @@ public sealed class GameClientSessionConnectPublicationTests
 
         using (session.Match.Enter())
         {
-            session.ApplyValidatedMovement(movement, 45f);
+            TestGameSessionServices.GetMovement(session).ApplyValidatedMovement(movement, 45f);
             var snapshot = session.CaptureGameObjectInfo();
             Assert.Equal(10.25f, snapshot.Position.X);
             Assert.Equal(20.75f, snapshot.Position.Y);
@@ -136,9 +163,9 @@ public sealed class GameClientSessionConnectPublicationTests
         var position = new Vector3f(10.25f, 20.75f, 0f);
         var velocity = new Vector3f(2f, 3f, 0f);
         var cell = new Cell(10, 20);
-        typeof(GameClientSession).GetProperty(nameof(GameClientSession.LastValidatedPosition), BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.SetValue(session, position);
-        typeof(GameClientSession).GetField("_lastValidatedVelocity", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, velocity);
-        typeof(GameClientSession).GetField("_lastValidCell", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, cell);
+        TestGameSessionServices.SetMovementProperty(session, "LastValidatedPosition", position);
+        TestGameSessionServices.SetMovementProperty(session, "LastValidatedVelocity", velocity);
+        TestGameSessionServices.SetMovementProperty(session, "LastValidatedCell", cell);
         var snapshot = session.CaptureGameObjectInfo();
         position.X = 999;
         velocity.X = 999;

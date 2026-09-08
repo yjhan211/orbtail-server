@@ -20,6 +20,13 @@ internal sealed class FakePlayerGrowthHandler(
 
 internal static class TestGameSessionServices
 {
+    public static PlayerMovementService GetMovement(GameClientSession session) =>
+        (PlayerMovementService)typeof(GameClientSession).GetField("_playerMovement",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(session)!;
+
+    public static void SetMovementProperty(GameClientSession session, string name, object? value) =>
+        typeof(PlayerMovementService).GetProperty(name)!.SetValue(GetMovement(session), value);
+
     // 입장 프로토콜을 생략하는 단위 테스트에서도 실제 입장과 같은 런타임을 세션에 연결한다.
     public static void BindMatch(GameClientSession session, long matchingId, MatchRuntimeStore? store = null)
     {
