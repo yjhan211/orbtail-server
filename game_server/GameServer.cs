@@ -130,7 +130,7 @@ internal sealed class GameServer(
             logger.LogWarning(ex, "Game server tick shutdown failed.");
         }
 
-        foreach (var session in sessions.SnapshotAll())
+        foreach (var session in sessions.GetAllSessions())
         {
             session.MarkDisconnectedByServer();
         }

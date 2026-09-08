@@ -40,7 +40,7 @@ internal sealed class MatchEntryFailureHandler(
         {
             if (!runtime.IsTerminal)
             {
-                if (sessions.TryGetCurrent(playerId, out GameClientSession? currentSession) &&
+                if (sessions.TryGetSession(playerId, out GameClientSession? currentSession) &&
                     currentSession != null &&
                     !ReferenceEquals(currentSession, session) &&
                     currentSession.MatchingId == matchingId)

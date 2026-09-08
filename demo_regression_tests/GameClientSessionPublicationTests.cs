@@ -231,7 +231,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Same(previous, registry.Register(101, replacement));
 
         Assert.False(fixture.ConnectionFor(previous).IsReleased);
-        Assert.True(registry.TryGetCurrent(101, out var current));
+        Assert.True(registry.TryGetSession(101, out var current));
         Assert.Same(replacement, current);
         Assert.Empty(fixture.Store.GetRequired(70001).Sessions.Snapshot());
         Assert.Same(replacement, Assert.Single(fixture.Store.GetRequired(70002).Sessions.Snapshot()));
@@ -268,11 +268,11 @@ public sealed class GameClientSessionPublicationTests
 
         Assert.Empty(runtime.Sessions.Snapshot());
         Assert.False(runtime.Sessions.HasSessions);
-        Assert.Same(session, Assert.Single(registry.SnapshotAll()));
+        Assert.Same(session, Assert.Single(registry.GetAllSessions()));
         Assert.Throws<InvalidOperationException>(() => registry.Register(101, session));
         Assert.Throws<InvalidOperationException>(() => runtime.Sessions.Add(101, session));
         Assert.True(registry.Remove(session));
-        Assert.Empty(registry.SnapshotAll());
+        Assert.Empty(registry.GetAllSessions());
     }
 
     [Fact]
@@ -302,7 +302,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Same(firstReplacement, Assert.Single(second.Match.Sessions.Snapshot()));
         Assert.False(registry.Remove(first));
         Assert.False(registry.Remove(second));
-        Assert.Equal(2, registry.SnapshotAll().Count);
+        Assert.Equal(2, registry.GetAllSessions().Count);
     }
 
     [Fact]
@@ -330,7 +330,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Empty(runtime.Sessions.Snapshot());
         Assert.Null(fixture.Store.Get(70001));
         registry.Remove(session);
-        Assert.Empty(registry.SnapshotAll());
+        Assert.Empty(registry.GetAllSessions());
     }
 
     [Fact]
@@ -350,7 +350,7 @@ public sealed class GameClientSessionPublicationTests
 
         handler.Handle(leaving);
 
-        Assert.False(registry.TryGetCurrent(101, out _));
+        Assert.False(registry.TryGetSession(101, out _));
         Assert.Equal([Protocol.G_TO_C_AREA_PLAYER_LEAVE], fixture.ConnectionFor(nearby).DeliveredProtocols);
         Assert.Empty(fixture.ConnectionFor(otherArea).DeliveredProtocols);
         Assert.Empty(fixture.ConnectionFor(otherMatch).DeliveredProtocols);
@@ -380,7 +380,7 @@ public sealed class GameClientSessionPublicationTests
 
         handler.Handle(previous);
 
-        Assert.True(registry.TryGetCurrent(101, out var current));
+        Assert.True(registry.TryGetSession(101, out var current));
         Assert.Same(replacement, current);
         Assert.Empty(fixture.ConnectionFor(peer).DeliveredProtocols);
         Assert.NotNull(fixture.Store.Get(70001));
