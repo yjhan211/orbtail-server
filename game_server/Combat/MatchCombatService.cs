@@ -84,7 +84,7 @@ internal class MatchCombatService(
 
         // 탐사 모드(SOLO_MAP_VALIDATION=1): 맵 검증용 1인 매치 — 캠프 몹·접촉 피해·
         // 전투·오브 스트림을 전부 끈다. 이동·문·탐색만 남는다.
-        if (MatchStartGate.IsSoloMapValidation(matchingId))
+        if (matchRuntimes.GetOrThrow(matchingId).Mode == MatchMode.SoloMapValidation)
             return;
 
         var sessions = activeSessions
@@ -129,7 +129,7 @@ internal class MatchCombatService(
                 new SwarmParticipantSpatial(bot.PlayerId, bot.CurrentArea, bot.Position)))
             .ToList();
 
-        var tick = matchRuntimes.GetOrThrow(matchingId).Monsters.Tick(matchingId, participants, MatchStartGate.IsGameplayActive(matchingId), nowUtc);
+        var tick = matchRuntimes.GetOrThrow(matchingId).Monsters.Tick(matchingId, participants, matchRuntimes.GetOrThrow(matchingId).IsGameplayActive(), nowUtc);
 
         // 정지 감시: 8초 이상 제자리인 몹을 매치 로그로 남긴다 — 회귀 감지선.
         foreach (string report in tick.StuckReports)
@@ -151,10 +151,10 @@ internal class MatchCombatService(
         // 인트로 예열은 여기서 끝난다: 공급 디렉터와 몹 이동만 돌리고
         // 전투·절단·포위·물폭탄·접촉 피해는 매치가 시작된 뒤에 붙는다. 카운트다운 동안
         // 운동장에서 각 방으로 걸어 나가는 그림만 만들면 되고, 그 사이 누가 맞아서는 안 된다.
-        if (!MatchStartGate.IsGameplayActive(matchingId))
+        if (!matchRuntimes.GetOrThrow(matchingId).IsGameplayActive())
         {
             MonsterSnapshotPublisher.Broadcast(
-                matchingId, sessions, matchRuntimes.GetOrThrow(matchingId).Monsters.GetVisualStates(matchingId));
+                matchRuntimes.GetOrThrow(matchingId), sessions, matchRuntimes.GetOrThrow(matchingId).Monsters.GetVisualStates(matchingId));
             return;
         }
 
@@ -212,7 +212,7 @@ internal class MatchCombatService(
         botDecisions.ProcessSwarmBotDoorUnlocks(matchingId, aliveBots, sessions, nowUtc);
 
         if (MonsterSnapshotPublisher.TryConsumeBroadcastSlot(matchRuntimes.GetOrThrow(matchingId), nowUtc))
-            MonsterSnapshotPublisher.Broadcast(matchingId, sessions, matchRuntimes.GetOrThrow(matchingId).Monsters.GetVisualStates(matchingId));
+            MonsterSnapshotPublisher.Broadcast(matchRuntimes.GetOrThrow(matchingId), sessions, matchRuntimes.GetOrThrow(matchingId).Monsters.GetVisualStates(matchingId));
 
         var actors = BuildSwarmArenaCombatActors(matchingId, aliveSessions, aliveBots, nowUtc);
         orbRecovery.Process(matchingId, actors, aliveSessions, aliveBots, nowUtc);
@@ -536,7 +536,7 @@ internal class MatchCombatService(
     /// <summary>상자 시간 등급 (#222 M3): 개전 앵커(게이트, 봇 전용은 스웜 첫 틱) 경과로 티어 결정.</summary>
     private int GetSwarmDraftTier(long matchingId)
     {
-        var startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId);
+        var startedAtUtc = matchRuntimes.GetOrThrow(matchingId).StartsAtUtc;
         if (startedAtUtc == null &&
             _fallbackStartedAtUtc.HasValue)
             startedAtUtc = _fallbackStartedAtUtc.Value;
@@ -1455,7 +1455,7 @@ internal class MatchCombatService(
         if (_timeoutResultProcessed)
             return false;
 
-        var startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId);
+        var startedAtUtc = matchRuntimes.GetOrThrow(matchingId).StartsAtUtc;
         if (startedAtUtc == null)
         {
             // 봇 전용 매치(어드민 검증)는 게이트가 없다 — 스웜 첫 틱을 앵커로 대신 쓴다.

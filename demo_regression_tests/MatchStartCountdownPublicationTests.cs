@@ -37,18 +37,16 @@ public sealed class MatchStartCountdownPublicationTests
         SetSessionIdentity(server.GetMatchRuntimes(), session, 301, matchingId);
         var runtime = server.GetMatchRuntimes().GetOrCreate(matchingId);
         if (hasSession) runtime.Sessions[301] = session;
-        MatchStartGate.RegisterHumanPlayer(matchingId, 301, 2, MatchMode.Normal);
+        server.GetMatchRuntimes().GetOrThrow(matchingId).PrepareEntry(301, 302);
         try
         {
-            var states = typeof(MatchStartGate).GetField("States", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
-            var state = states.GetType().GetProperty("Item")!.GetValue(states, [matchingId])!;
-            state.GetType().GetField("<CreatedAtUtc>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .SetValue(state, DateTime.UtcNow - MatchingRedisKeys.EntryTimeout - TimeSpan.FromSeconds(1));
+            typeof(MatchRuntime).GetField("_entryDeadlineUtc", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(runtime, DateTime.UtcNow - TimeSpan.FromSeconds(1));
             InvokeEntryTimeoutCheck(server, [matchingId], [session]);
             Assert.True(runtime.IsEnded);
             Assert.Null(server.GetMatchRuntimes().GetOrNull(matchingId));
         }
-        finally { MatchStartGate.RemoveMatching(matchingId); }
+        finally {  }
     }
 
     [Fact]
@@ -58,16 +56,16 @@ public sealed class MatchStartCountdownPublicationTests
         var server = CreateEntryTestServer();
         var session = new RecordingEntrySession();
         SetSessionIdentity(server.GetMatchRuntimes(), session, 301, matchingId);
-        MatchStartGate.RegisterHumanPlayer(matchingId, 301, 1, MatchMode.Normal);
+        server.GetMatchRuntimes().GetOrThrow(matchingId).PrepareEntry(301);
         try
         {
             InvokeEntryTimeoutCheck(server, [matchingId], [session]);
-            MatchStartGate.MarkHumanReady(matchingId, 301);
+            server.GetMatchRuntimes().GetOrThrow(matchingId).MarkPlayerReady(301);
             InvokeEntryTimeoutCheck(server, [matchingId], [session]);
             InvokeEntryTimeoutCheck(server, [matchingId], [session]);
             Assert.Equal(0, session.SendCount);
         }
-        finally { MatchStartGate.RemoveMatching(matchingId); }
+        finally {  }
     }
 
     [Fact]
@@ -82,8 +80,8 @@ public sealed class MatchStartCountdownPublicationTests
         SetSessionIdentity(server.GetMatchRuntimes(), second, 302, matchingId);
         runtime.Sessions[301] = first;
         runtime.Sessions[302] = second;
-        MatchStartGate.RegisterHumanPlayer(matchingId, 301, 2, MatchMode.Normal);
-        MatchStartGate.RegisterHumanPlayer(matchingId, 302, 2, MatchMode.Normal);
+        server.GetMatchRuntimes().GetOrThrow(matchingId).PrepareEntry(301, 302);
+        server.GetMatchRuntimes().GetOrThrow(matchingId).BeginEntry(302);
         var ready = typeof(GameClientSession).GetMethod("HandleMatchStartReady", BindingFlags.Instance | BindingFlags.NonPublic)!;
         try
         {
@@ -96,9 +94,9 @@ public sealed class MatchStartCountdownPublicationTests
             var secondBody = MessagePackSerializer.Deserialize<G_TO_C_MATCH_START_COUNTDOWN>(second.DeliveredWireBytes.Last()[(Config.HEADER_SIZE + sizeof(int) + sizeof(long))..]);
             Assert.Equal(firstBody.StartsAtUnixMs, secondBody.StartsAtUnixMs);
             Assert.InRange(firstBody.StartsAtUnixMs - firstBody.ServerUnixMs, 1, 5000);
-            Assert.False(MatchStartGate.IsGameplayActive(matchingId));
+            Assert.False(server.GetMatchRuntimes().GetOrThrow(matchingId).IsGameplayActive());
         }
-        finally { MatchStartGate.RemoveMatching(matchingId); }
+        finally {  }
     }
 
     [Theory]

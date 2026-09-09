@@ -134,7 +134,7 @@ public sealed class GameClientSessionConnectPublicationTests
         original.Sessions[8109] = session;
         var flags = BindingFlags.Instance | BindingFlags.NonPublic;
         var handle = typeof(GameClientSession).GetMethod("HandleMatchStartReady", flags)!;
-        MatchStartGate.RegisterHumanPlayer(74009, 8109, 1, MatchMode.Normal);
+        session.Match.PrepareEntry(8109);
         int sent = 0;
         ((AcceptingConnection)fixture.Connection).BeforeSend = _ =>
         {
@@ -152,7 +152,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Same(original, typeof(GameClientSession).GetField("_match", flags)!.GetValue(session));
         await (Task)handle.Invoke(session, null)!;
         Assert.Equal(1, sent);
-        MatchStartGate.RemoveMatching(74009);
+
     }
 
     [Fact]
@@ -290,7 +290,7 @@ public sealed class GameClientSessionConnectPublicationTests
             Assert.True(probe.Runtime.TryMarkEnded());
         }
 
-        Assert.False(MatchStartGate.IsGameplayActive(matchingId));
+        Assert.False(session.Match.IsGameplayActive());
         Assert.Null(fixture.Store.GetOrNull(matchingId));
 
         releaseSender.Set();

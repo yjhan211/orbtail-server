@@ -400,7 +400,7 @@ public sealed class GameClientSessionTerminalPublicationTests
                 if (TrackedRuntime != null)
                     LockHeldDuringLifecycle = Monitor.IsEntered(TrackedRuntime.MatchLock);
                 Assert.Null(Store.GetOrNull(matchingId));
-                Assert.False(MatchStartGate.IsGameplayActive(matchingId));
+                Assert.False(Store.GetOrNull(matchingId)?.IsGameplayActive() ?? false);
                 LifecycleDispatchCounts.AddOrUpdate(playerId, 1, static (_, count) => count + 1);
                 Timeline.Enqueue($"lifecycle:{playerId}");
             };

@@ -56,7 +56,7 @@ public sealed class SwarmArenaTickOrderTests
             proximityTick,
             "using var scope = runtime.Enter();",
             "runtime.Sessions.Values.ToList()",
-            "MatchStartGate.IsEntryTimedOut(matchingId, utcNow)",
+            "runtime.IsEntryTimedOut(utcNow)",
             "combat.ProcessTick(matchingId, activeSessions);");
         Assert.DoesNotContain("catch (", proximityTick);
         string loopSource = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs");
@@ -77,7 +77,7 @@ public sealed class SwarmArenaTickOrderTests
             proximityTick,
             "using var scope = runtime.Enter();",
             "combat.ProcessTick(matchingId, activeSessions);",
-            "MatchStartGate.GetGameplayStartedAtUtc(matchingId)",
+            "runtime.StartsAtUtc",
             "if (currentEnvironmentInterval > _lastEnvironmentInterval)",
             "environment.ProcessTick(runtime, activeSessions);",
             "runtime.IsEnded ||",
@@ -113,12 +113,12 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             arenaCode,
             "matchRuntimes.GetOrThrow(matchingId).Monsters.Tick(",
-            "if (!MatchStartGate.IsGameplayActive(matchingId))");
+            "if (!matchRuntimes.GetOrThrow(matchingId).IsGameplayActive())");
 
         string inactiveGameplayBranch = MaskCommentsAndLiterals(
             ReadBracedBlockAfterMarker(
                 arenaTick,
-                "if (!MatchStartGate.IsGameplayActive(matchingId))"));
+                "if (!matchRuntimes.GetOrThrow(matchingId).IsGameplayActive())"));
         AssertInOrder(
             inactiveGameplayBranch,
             "MonsterSnapshotPublisher.Broadcast(",
@@ -135,7 +135,7 @@ public sealed class SwarmArenaTickOrderTests
         string inactiveGameplayBranch = MaskCommentsAndLiterals(
             ReadBracedBlockAfterMarker(
                 arenaTickSource,
-                "if (!MatchStartGate.IsGameplayActive(matchingId))"));
+                "if (!matchRuntimes.GetOrThrow(matchingId).IsGameplayActive())"));
         AssertInOrder(
             inactiveGameplayBranch,
             "MonsterSnapshotPublisher.Broadcast(",
@@ -144,7 +144,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             arenaTick,
             "matchRuntimes.GetOrThrow(matchingId).Monsters.Tick(",
-            "if (!MatchStartGate.IsGameplayActive(matchingId))",
+            "if (!matchRuntimes.GetOrThrow(matchingId).IsGameplayActive())",
             "UpdateSwarmOrbTrails(",
             "ProcessSwarmTrailCuts(",
             "ProcessSwarmRetaliationWindows(",

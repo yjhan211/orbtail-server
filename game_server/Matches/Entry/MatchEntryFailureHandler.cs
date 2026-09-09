@@ -65,7 +65,7 @@ internal sealed class MatchEntryFailureHandler(
                 return false;
             }
 
-            if (!failedPlayerId.HasValue && MatchStartGate.GetGameplayStartedAtUtc(runtime.MatchingId).HasValue)
+            if (!failedPlayerId.HasValue && runtime.StartsAtUtc.HasValue)
             {
                 return false;
             }

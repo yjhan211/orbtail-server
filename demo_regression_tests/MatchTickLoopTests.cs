@@ -195,9 +195,9 @@ public sealed class MatchTickLoopTests
     [Fact]
     public void CountdownMatch_RunsCombatWarmup_ButNotBotMovement()
     {
-        using var fixture = new Fixture(945107);
-        MatchStartGate.RemoveMatching(fixture.Match.MatchingId);
-        MatchStartGate.RegisterHumanPlayer(fixture.Match.MatchingId, 11, botCount: 7);
+        using var fixture = new Fixture(945107, startImmediately: false);
+
+        fixture.Store.GetOrThrow(fixture.Match.MatchingId).PrepareEntry(11);
         var steps = new List<string>();
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
             new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
@@ -259,18 +259,18 @@ public sealed class MatchTickLoopTests
         public MatchRuntime Match { get; }
         public HashSet<MatchTickLoop> Loops { get; } = [];
 
-        public Fixture(long id)
+        public Fixture(long id, bool startImmediately = true)
         {
             Match = Store.GetOrCreate(id);
             Match.Bots.RegisterBots(id, Config.SWARM_MATCH_MAP, [-42],
                 new Dictionary<long, Cell> { [-42] = new(0, 0) });
-            MatchStartGate.RegisterBotOnlyMatch(id);
+            if (startImmediately) Match.StartGameplay();
         }
 
         public void Dispose()
         {
             foreach (var loop in Loops) loop.Stop();
-            MatchStartGate.RemoveMatching(Match.MatchingId);
+
         }
     }
 }

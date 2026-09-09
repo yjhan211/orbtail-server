@@ -169,7 +169,7 @@ public partial class GameClientSession : SessionBase
             return true;
         }
 
-        if (MatchingId > 0 && !MatchStartGate.IsGameplayActive(MatchingId))
+        if (MatchingId > 0 && Volatile.Read(ref _match)?.IsGameplayActive() != true)
         {
             errorCode = ErrorCode.GAME_NOT_STARTED;
             return true;
@@ -279,7 +279,7 @@ public partial class GameClientSession : SessionBase
                     }
                 }
 
-                MatchStartGate.RegisterHumanPlayer(matchingId, PlayerId.Value, humanPlayerIds.Count, runtime.Mode);
+                runtime.BeginEntry(PlayerId.Value);
 
                 _playerMovement.InitializeSpawn(matchingSpawnCell);
 
@@ -309,7 +309,7 @@ public partial class GameClientSession : SessionBase
 
             if (humanPlayerIds.Count == 1)
             {
-                MatchStartGate.MarkHumanReady(matchingId, PlayerId.Value);
+                runtime.MarkPlayerReady(PlayerId.Value);
             }
 
             SendMatchStartCountdown(matchingId);
@@ -488,8 +488,7 @@ public partial class GameClientSession : SessionBase
 
     private void SendMatchStartCountdown(long matchingId)
     {
-        var snapshot = MatchStartGate.GetSnapshot(matchingId);
-        if (!snapshot.IsKnown)
+        if (Match.IsEnded || !Match.EntryDeadlineUtc.HasValue)
         {
             return;
         }
@@ -498,7 +497,7 @@ public partial class GameClientSession : SessionBase
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MATCH_START_COUNTDOWN
         {
             MatchingId = matchingId,
-            StartsAtUnixMs = MatchStartGate.GetGameplayStartedAtUtc(matchingId) is { } startsAt ? new DateTimeOffset(startsAt).ToUnixTimeMilliseconds() : 0,
+            StartsAtUnixMs = Match.StartsAtUtc is { } startsAt ? new DateTimeOffset(startsAt).ToUnixTimeMilliseconds() : 0,
             ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         }));
         TrySend(packet);
@@ -522,9 +521,9 @@ public partial class GameClientSession : SessionBase
             {
                 return Task.CompletedTask;
             }
-            bool wasScheduled = MatchStartGate.GetGameplayStartedAtUtc(MatchingId).HasValue;
-            MatchStartGate.MarkHumanReady(MatchingId, PlayerId.Value);
-            if (!wasScheduled && MatchStartGate.GetGameplayStartedAtUtc(MatchingId).HasValue)
+            bool wasScheduled = match.StartsAtUtc.HasValue;
+            match.MarkPlayerReady(PlayerId.Value);
+            if (!wasScheduled && match.StartsAtUtc.HasValue)
             {
                 foreach (var participant in match.Sessions.Values)
                     participant.SendMatchStartCountdown(MatchingId);

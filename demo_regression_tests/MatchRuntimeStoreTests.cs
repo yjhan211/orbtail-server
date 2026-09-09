@@ -247,7 +247,7 @@ public sealed class MatchRuntimeStoreTests
         MatchRuntimeStore store = CreateStore(
             onRedisCleanup: _ =>
             {
-                Assert.False(MatchStartGate.IsGameplayActive(11));
+                Assert.False(runtime!.IsGameplayActive());
                 order.Add("after");
                 heldDuringAfterCleanup = Monitor.IsEntered(runtime!.MatchLock);
             });
@@ -264,27 +264,27 @@ public sealed class MatchRuntimeStoreTests
     }
 
     [Fact]
-    public void TerminalCleanup_RemovesStartStateOnlyAfterOutermostScope()
+    public void TerminalMark_BlocksGameplayBeforeOutermostScopeRemovesRuntime()
     {
         const long matchingId = 90009;
         var store = CreateStore();
         var runtime = store.GetOrCreate(matchingId);
-        MatchStartGate.RegisterBotOnlyMatch(matchingId);
+        runtime!.StartGameplay();
         try
         {
             using (runtime.Enter())
             {
                 using (runtime.Enter())
                     runtime.TryMarkEnded();
-                Assert.True(MatchStartGate.IsGameplayActive(matchingId));
+                Assert.False(runtime!.IsGameplayActive());
                 Assert.Same(runtime, store.GetOrNull(matchingId));
             }
-            Assert.False(MatchStartGate.IsGameplayActive(matchingId));
+            Assert.False(runtime!.IsGameplayActive());
             Assert.Null(store.GetOrNull(matchingId));
         }
         finally
         {
-            MatchStartGate.RemoveMatching(matchingId);
+
         }
     }
 

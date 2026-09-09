@@ -28,6 +28,22 @@ internal sealed class FakePlayerGrowthHandler(
 
 internal static class TestGameSessionServices
 {
+    internal static void StartGameplay(this MatchRuntime runtime)
+    {
+        typeof(MatchRuntime).GetField("_startsAtUtc", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(runtime, DateTime.UtcNow);
+    }
+
+    internal static void PrepareEntry(this MatchRuntime runtime, params long[] playerIds)
+    {
+        using (runtime.Enter())
+        {
+            if (!runtime.IsSetupComplete)
+                runtime.InitializeMatch(MatchMode.Normal, new Dictionary<long, Cell>(),
+                    playerIds.Select(id => new PlayerInfo { PlayerId = id }).ToList());
+            runtime.BeginEntry(playerIds[0]);
+        }
+    }
     // 송신 계획의 수신자 참조를 검사하기 위한 소켓 없는 세션.
     public static GameClientSession CreateRecipientSession()
     {

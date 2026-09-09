@@ -4,7 +4,6 @@ using game_server.items;
 using game_server.monsters;
 using game_server.field;
 using System.Collections.Concurrent;
-using game_server.matches.entry;
 using game_server.matches.lifecycle;
 using game_server.matches.results;
 using game_server.logging;
@@ -12,6 +11,7 @@ using game_server.orbs;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common.data.models;
+using network.common;
 
 namespace game_server.matches;
 
@@ -41,6 +41,10 @@ internal sealed class MatchRuntime
     private readonly MatchRuntimeStore _runtimeStore;
     private readonly MatchingLifecycleService _matchingLifecycle;
     private readonly ILogger<MatchRuntime> _logger;
+
+    private readonly HashSet<long> _readyPlayerIds = [];
+    private DateTime? _entryDeadlineUtc;
+    private DateTime? _startsAtUtc;
 
     private bool _isSetupComplete;
     private int _ended;
@@ -103,11 +107,9 @@ internal sealed class MatchRuntime
     internal MatchTickLoop? TickLoop
     {
         get => Volatile.Read(ref _tickLoop);
-        // 연결 뒤 종료 상태를 읽기 전에 루프 참조를 게시한다.
         set => Interlocked.Exchange(ref _tickLoop, value);
     }
 
-    /// <summary>매치 구성과 참가자별 시작 자원을 한 번 초기화한다. 호출자는 매치 잠금을 보유한다.</summary>
     public void InitializeMatch(MatchMode mode, IReadOnlyDictionary<long, Cell> spawnCells, IReadOnlyList<PlayerInfo> playerRoster)
     {
         ArgumentNullException.ThrowIfNull(spawnCells);
@@ -134,7 +136,53 @@ internal sealed class MatchRuntime
         {
             OrbUpgradeService.GrantStartingResources(this, player.PlayerId);
         }
+        if (playerRoster.Count > 0 && playerRoster.All(player => player.PlayerId < 0))
+            _startsAtUtc = DateTime.UtcNow;
         Volatile.Write(ref _isSetupComplete, true);
+    }
+
+    public DateTime? EntryDeadlineUtc { get { lock (MatchLock) return _entryDeadlineUtc; } }
+    public DateTime? StartsAtUtc { get { lock (MatchLock) return _startsAtUtc; } }
+
+    public void BeginEntry(long playerId)
+    {
+        lock (MatchLock)
+        {
+            if (IsEnded || !IsSetupComplete || playerId <= 0 || PlayerRoster.All(p => p.PlayerId != playerId))
+            {
+                return;
+            }
+            _entryDeadlineUtc ??= DateTime.UtcNow + MatchingRedisKeys.EntryTimeout;
+        }
+    }
+
+    public void MarkPlayerReady(long playerId)
+    {
+        lock (MatchLock)
+        {
+            if (IsEnded || !_entryDeadlineUtc.HasValue || playerId <= 0 || PlayerRoster.All(p => p.PlayerId != playerId))
+            {
+                return;
+            }
+            _readyPlayerIds.Add(playerId);
+            if (PlayerRoster.Any(player => player.PlayerId > 0 && !_readyPlayerIds.Contains(player.PlayerId)))
+            {
+                return;
+            }
+            _startsAtUtc ??= DateTime.UtcNow.AddSeconds(5);
+        }
+    }
+
+    public bool IsGameplayActive(DateTime? utcNow = null)
+    {
+        lock (MatchLock)
+            return !IsEnded && _startsAtUtc.HasValue && (utcNow ?? DateTime.UtcNow) >= _startsAtUtc.Value;
+    }
+
+    public bool IsEntryTimedOut(DateTime utcNow)
+    {
+        lock (MatchLock)
+            return !IsEnded && !_startsAtUtc.HasValue && _entryDeadlineUtc.HasValue && utcNow >= _entryDeadlineUtc.Value;
     }
 
     public MatchLockScope Enter()
@@ -186,14 +234,6 @@ internal sealed class MatchRuntime
                 TickLoop?.Stop();
                 Sessions.Clear();
                 Doors.Clear();
-                try
-                {
-                    MatchStartGate.RemoveMatching(MatchingId);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Match start state cleanup failed: MatchingId={MatchingId}", MatchingId);
-                }
                 EventLog.Release();
                 Inventory.Release();
                 GroundItems.Release();

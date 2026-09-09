@@ -129,7 +129,7 @@ public sealed class SwarmBotMovementPlanTests
         // 같은 주기로 맞물려 뒤에 오는 쪽이 매 펄스 잠금을 놓치던 문제의 재발 방지.
         Assert.DoesNotContain("StartBotMovementTimer", server);
         Assert.DoesNotContain("Task.Run(", server);
-        Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(tick, @"MatchStartGate\.IsGameplayActive\(").Count);
+        Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(tick, @"runtime\.IsGameplayActive\(").Count);
         // 잠금을 기다린 뒤 종료를 다시 확인한다. 전투→걸음, 준비→송신은 같은 잠금 안에서 실행한다.
         AssertInOrder(
             tick,

@@ -34,7 +34,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         var runtime = fixture.Store.GetOrThrow(FirstMatchingId);
         var connection = fixture.ConnectionFor(session);
-        MatchStartGate.RegisterBotOnlyMatch(FirstMatchingId);
+        fixture.Store.GetOrThrow(FirstMatchingId).StartGameplay();
         try
         {
             runtime.SummonStones.AddStones(FirstPlayerId, 20);
@@ -54,7 +54,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         }
         finally
         {
-            MatchStartGate.RemoveMatching(FirstMatchingId);
+
         }
     }
 
@@ -65,7 +65,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         var runtime = fixture.Store.GetOrThrow(FirstMatchingId);
         var connection = fixture.ConnectionFor(session);
-        MatchStartGate.RegisterBotOnlyMatch(FirstMatchingId);
+        fixture.Store.GetOrThrow(FirstMatchingId).StartGameplay();
         try
         {
             runtime.SummonStones.AddStones(FirstPlayerId, 20);
@@ -86,7 +86,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         }
         finally
         {
-            MatchStartGate.RemoveMatching(FirstMatchingId);
+
         }
     }
 
@@ -96,7 +96,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         var runtime = fixture.Store.GetOrThrow(FirstMatchingId);
-        MatchStartGate.RegisterBotOnlyMatch(FirstMatchingId);
+        fixture.Store.GetOrThrow(FirstMatchingId).StartGameplay();
         try
         {
             await SendAsync(session, Protocol.C_TO_G_SUMMON_ORB, new C_TO_G_SUMMON_ORB());
@@ -108,7 +108,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         }
         finally
         {
-            MatchStartGate.RemoveMatching(FirstMatchingId);
+
         }
     }
 
@@ -119,7 +119,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         var runtime = session.Match;
         var connection = fixture.ConnectionFor(session);
-        MatchStartGate.RegisterBotOnlyMatch(FirstMatchingId);
+        fixture.Store.GetOrThrow(FirstMatchingId).StartGameplay();
         try
         {
             using (runtime.Enter())
@@ -158,7 +158,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         }
         finally
         {
-            MatchStartGate.RemoveMatching(FirstMatchingId);
+
         }
     }
     [Fact]

@@ -233,7 +233,7 @@ internal sealed class MatchResultService(
         long winnerId)
     {
         DateTime endedAtUtc = DateTime.UtcNow;
-        DateTime startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId) ?? endedAtUtc;
+        DateTime startedAtUtc = _matchRuntimes.GetOrThrow(matchingId).StartsAtUtc ?? endedAtUtc;
         var resultRows = _matchRuntimes.GetOrThrow(matchingId).Roster.BuildGameResult();
         var killCountsByPlayerId = resultRows
             .Where(row => row.attackerPlayerId != 0 && row.reason == EliminationReason.HEALTH_ZERO)

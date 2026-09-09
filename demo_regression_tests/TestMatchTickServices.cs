@@ -40,7 +40,7 @@ internal static class TestMatchTickServices
         public ScheduleProbe(MatchRuntime runtime, MatchRuntimeStore store)
         {
             _runtime = runtime;
-            MatchStartGate.RemoveMatching(runtime.MatchingId);
+
             _loop = CreateLoop(runtime, store, NullLogger.Instance,
                 new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
                 (_, _) => { },
@@ -72,7 +72,7 @@ internal static class TestMatchTickServices
         public void Dispose()
         {
             _loop.Stop();
-            MatchStartGate.RemoveMatching(_runtime.MatchingId);
+
         }
 
         private long ReadInterval(string field) => (long)typeof(MatchTickLoop)
@@ -84,16 +84,13 @@ internal static class TestMatchTickServices
             _clock.UtcNow = new DateTimeOffset(now);
             if (startedAt.HasValue)
             {
-                MatchStartGate.RegisterBotOnlyMatch(_runtime.MatchingId);
-                var states = (System.Collections.IDictionary)typeof(MatchStartGate)
-                    .GetField("States", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
-                    .GetValue(null)!;
-                object state = states[_runtime.MatchingId]!;
-                state.GetType().GetProperty("CountdownEndsAtUtc")!.SetValue(state, startedAt);
+                typeof(MatchRuntime).GetField("_startsAtUtc", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                    .SetValue(_runtime, startedAt);
             }
             else
             {
-                MatchStartGate.RemoveMatching(_runtime.MatchingId);
+                typeof(MatchRuntime).GetField("_startsAtUtc", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                    .SetValue(_runtime, null);
             }
             _loop.ProcessTick();
         }

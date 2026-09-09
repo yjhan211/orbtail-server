@@ -446,7 +446,7 @@ public sealed class GameClientSessionPublicationTests
             playerId: 101,
             area: (AreaType)50);
 
-        MatchStartGate.RegisterBotOnlyMatch(70001); // 테스트에서만 카운트다운을 생략한다.
+        fixture.Store.GetOrThrow(70001).StartGameplay(); // 테스트에서만 카운트다운을 생략한다.
 
         await SendAsync(
             session,
@@ -925,7 +925,7 @@ public sealed class GameClientSessionPublicationTests
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
-        MatchStartGate.RegisterBotOnlyMatch(70001);
+        fixture.Store.GetOrThrow(70001).StartGameplay();
         await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_FINISH,
             new C_TO_G_DOOR_OPEN_FINISH { InteractId = 702000101 });
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, fixture.ConnectionFor(session)
@@ -938,7 +938,7 @@ public sealed class GameClientSessionPublicationTests
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
-        MatchStartGate.RegisterBotOnlyMatch(70001);
+        fixture.Store.GetOrThrow(70001).StartGameplay();
         var interactions = (PlayerInteractionState)typeof(GameClientSession).GetField(
             "_interactions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session)!;
         using (session.Match.Enter())
@@ -1024,7 +1024,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Empty(fixture.ConnectionFor(session).DeliveredProtocols);
 
         // 테스트에서 대기 없이 활성 게이트를 연다.
-        MatchStartGate.RegisterBotOnlyMatch(session.MatchingId);
+        fixture.Store.GetOrThrow(session.MatchingId).StartGameplay();
         loop.ProcessTick();
         loop.ProcessTick();
         Assert.Null(session.Match.GroundItems.GetItem(item.GroundItemUid));
@@ -1041,7 +1041,7 @@ public sealed class GameClientSessionPublicationTests
         var second = fixture.CreateSession(70001, 102, Config.SWARM_MATCH_GROUND_AREA);
         var item = fixture.SpawnAtSession(first, Config.SUMMON_STONE_GROUND_ITEM_ID);
         TestGameSessionServices.SetMovementProperty(second, "LastValidatedPosition", first.LastValidatedPosition);
-        MatchStartGate.RegisterBotOnlyMatch(first.MatchingId);
+        fixture.Store.GetOrThrow(first.MatchingId).StartGameplay();
 
         CreatePickupTickLoop(fixture, first.Match).ProcessTick();
 
@@ -1058,7 +1058,7 @@ public sealed class GameClientSessionPublicationTests
         fixture.SpawnAtSession(first, Config.SUMMON_STONE_GROUND_ITEM_ID);
         fixture.SpawnAtSession(second, Config.SUMMON_STONE_GROUND_ITEM_ID);
         fixture.ConnectionFor(first).ThrowOnceOn = Protocol.G_TO_C_SUMMON_STONE_STATE;
-        MatchStartGate.RegisterBotOnlyMatch(first.MatchingId);
+        fixture.Store.GetOrThrow(first.MatchingId).StartGameplay();
 
         CreatePickupTickLoop(fixture, first.Match).ProcessTick();
 
@@ -1279,7 +1279,7 @@ public sealed class GameClientSessionPublicationTests
             foreach (var loop in TickLoops) loop.Stop();
             GameClientSession.SwarmHeartPickupCallback = null;
             foreach (long matchingId in _sessions.Select(session => session.MatchingId).Distinct())
-                MatchStartGate.RemoveMatching(matchingId);
+
             if (Directory.Exists(_summaryDirectory))
                 Directory.Delete(_summaryDirectory, recursive: true);
         }

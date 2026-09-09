@@ -91,13 +91,13 @@ internal sealed class MatchTickLoop(
         var playerSessions = runtime.Sessions.Values.ToList();
         var activeSessions = playerSessions.Where(static session => session is { IsEliminated: false, IsGameEnded: false }).ToList();
         var utcNow = (timeProvider ?? TimeProvider.System).GetUtcNow().UtcDateTime;
-        if (MatchStartGate.IsEntryTimedOut(matchingId, utcNow))
+        if (runtime.IsEntryTimedOut(utcNow))
         {
             entryFailureHandler.AbortMatchForEntryFailure(runtime);
             return;
         }
 
-        bool isGameplayActive = MatchStartGate.IsGameplayActive(matchingId, utcNow);
+        bool isGameplayActive = runtime.IsGameplayActive(utcNow);
         if (isGameplayActive)
         {
             groundItemAutoPickup.Process(runtime, activeSessions);
@@ -113,7 +113,7 @@ internal sealed class MatchTickLoop(
             return;
         }
 
-        var startedAt = MatchStartGate.GetGameplayStartedAtUtc(matchingId);
+        var startedAt = runtime.StartsAtUtc;
         if (startedAt.HasValue)
         {
             long elapsedSeconds = (utcNow - startedAt.Value).Ticks / TimeSpan.TicksPerSecond;

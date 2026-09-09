@@ -35,13 +35,13 @@ internal static class MonsterSnapshotPublisher
     ///     이게 "서버 시뮬 개체와 클라 동기화 개체 분리"의 실체다 — 시뮬은 전역, 동기화는 구역.
     /// </summary>
     internal static void Broadcast(
-        long matchingId,
+        MatchRuntime match,
         IReadOnlyCollection<GameClientSession> sessions, IEnumerable<MonsterRuntimeInfo> states)
     {
         // 인트로 구간은 구역 필터를 걷는다 (2026-08-16 유저 결정): 카메라가 운동장에서 열리고
         // 플레이어의 방까지 훑는데, 내 구역 것만 보내면 클라는 그릴 데이터를 아예 못 받는다 —
         // 발원지에서 나가는 몹이 안 보이던 원인이 여기였다. 카운트다운 5초 동안만이다.
-        bool preMatch = !MatchStartGate.IsGameplayActive(matchingId);
+        bool preMatch = !match.IsGameplayActive();
         foreach (var areaSnapshot in MonsterSnapshotBatcher.GroupByArea(states))
         {
             using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_SNAPSHOT);
