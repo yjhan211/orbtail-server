@@ -22,14 +22,13 @@ public sealed class MatchTickLoopTests
     }
 
     [Theory]
-    [InlineData("countdown")]
     [InlineData("combat")]
     [InlineData("environment")]
     [InlineData("movement")]
     public async Task StageFailure_PropagatesWithoutRunningLaterStagesAndReleasesLock(string failingStage)
     {
         using var fixture = new Fixture(945111);
-        string[] stages = ["countdown", "combat", "environment", "movement"];
+        string[] stages = ["combat", "environment", "movement"];
         var called = new List<string>();
         var failure = new InvalidOperationException("stage failure");
         void Process(string stage)
@@ -40,7 +39,7 @@ public sealed class MatchTickLoopTests
         }
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
             new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
-            (_, _) => Process("countdown"), (_, _) => Process("combat"),
+            (_, _) => Process("combat"),
             (_, _) => Process("environment"), _ => Process("movement"), (_, _) => { });
         fixture.Loops.Add(loop);
         TestMatchTickServices.ForceNextEnvironmentalTick(loop);
@@ -68,7 +67,6 @@ public sealed class MatchTickLoopTests
         // 실제 시간을 기다리지 않고 다음 환경 정산이 실행되도록 준비한다.
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
             new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
-            (_, _) => Record("countdown"),
             (_, _) => Record("combat"),
             (_, _) => Record("environment"),
             runtime =>
@@ -80,12 +78,12 @@ public sealed class MatchTickLoopTests
         fixture.Loops.Add(loop);
         TestMatchTickServices.ForceNextEnvironmentalTick(loop);
         loop.ProcessTick();
-        Assert.Equal(new[] { "countdown", "combat", "environment", "movement" }, steps);
+        Assert.Equal(new[] { "combat", "environment", "movement" }, steps);
         Assert.All(locksHeld, Assert.True);
 
         steps.Clear();
         loop.ProcessTick();
-        Assert.Equal(new[] { "countdown", "combat", "movement" }, steps);
+        Assert.Equal(new[] { "combat", "movement" }, steps);
     }
 
     [Fact]
@@ -97,7 +95,6 @@ public sealed class MatchTickLoopTests
         int movements = 0;
         var loop = TestMatchTickServices.CreateLoop(first.Match, first.Store, NullLogger.Instance,
             new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
-            (_, _) => { },
             (id, _) =>
             {
                 combatIds.Add(id);
@@ -112,7 +109,7 @@ public sealed class MatchTickLoopTests
         Assert.False(Monitor.IsEntered(first.Match.MatchLock));
         var secondLoop = TestMatchTickServices.CreateLoop(second, first.Store, NullLogger.Instance,
             new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
-            (_, _) => { }, (id, _) => combatIds.Add(id), (_, _) => { }, _ => { }, (_, _) => { });
+            (id, _) => combatIds.Add(id), (_, _) => { }, _ => { }, (_, _) => { });
         secondLoop.ProcessTick();
         secondLoop.Stop();
         Assert.Contains(first.Match.MatchingId, combatIds);
@@ -128,14 +125,12 @@ public sealed class MatchTickLoopTests
         int combats = 0;
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
             new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
-            (_, _) => { },
             (_, _) =>
             {
                 combats++;
                 fixture.Match.TryMarkEnded();
             },
-            (_, _) => { },
-            _ => movements++, (_, _) => { });
+            (_, _) => { }, _ => movements++, (_, _) => { });
 
         fixture.Loops.Add(loop);
         loop.ProcessTick();
@@ -159,7 +154,7 @@ public sealed class MatchTickLoopTests
         int calls = 0;
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
             new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
-            (_, _) => { }, (_, _) => Interlocked.Increment(ref calls), (_, _) => { }, _ => { }, (_, _) => { });
+            (_, _) => Interlocked.Increment(ref calls), (_, _) => { }, _ => { }, (_, _) => { });
         Task holder = Task.Run(() =>
         {
             using (fixture.Match.Enter())
@@ -206,13 +201,13 @@ public sealed class MatchTickLoopTests
         var steps = new List<string>();
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
             new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
-            (_, _) => steps.Add("countdown"), (_, _) => steps.Add("combat"),
+            (_, _) => steps.Add("combat"),
             (_, _) => steps.Add("environment"), _ => steps.Add("movement"), (_, _) => { });
 
         fixture.Loops.Add(loop);
         TestMatchTickServices.ForceNextEnvironmentalTick(loop);
         loop.ProcessTick();
-        Assert.Equal(new[] { "countdown", "combat" }, steps);
+        Assert.Equal(new[] { "combat" }, steps);
     }
 
     [Fact]
@@ -242,14 +237,13 @@ public sealed class MatchTickLoopTests
     }
 
     [Fact]
-    public void TerminalDuringCountdownDoesNotRunCombatOrOtherStages()
+    public void TerminalDuringCombatDoesNotRunEnvironmentOrOtherStages()
     {
         using var fixture = new Fixture(945110);
         int laterStages = 0;
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
             new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
             (_, _) => fixture.Match.TryMarkEnded(),
-            (_, _) => laterStages++,
             (_, _) => laterStages++,
             _ => laterStages++,
             (_, _) => laterStages++);

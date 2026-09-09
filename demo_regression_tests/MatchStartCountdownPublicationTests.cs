@@ -21,227 +21,84 @@ using network.packets;
 namespace demo_regression_tests;
 
 /// <summary>
-///     카운트다운 방송과 입장 실패 중단 (#331): 둘 다 매치 잠금 안에서 확정된다 — 초는 한 번만,
+///     시작 시각 전달과 입장 실패 중단을 검증한다. 매 틱 카운트다운을 보내지 않으며,
 ///     입장 실패는 터미널을 이긴 호출이 로스터 전원을 한 번 끊고 늦은 호출은 자기 세션만 정리한다.
 /// </summary>
 public sealed class MatchStartCountdownPublicationTests
 {
-    [Fact]
-    public void PeriodicCountdown_SourceContract_PublishesInsideMatchLockFromMatchTick()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EntryTick_StillAbortsWhenDeadlineExpires(bool hasSession)
     {
-        string repositoryRoot = FindRepositoryRoot();
-        string server = ReadNormalizedSource(repositoryRoot, "game_server", "GameServer.cs");
-
-        string broadcast = ReadNormalizedSource(repositoryRoot, "game_server", "Matches", "Entry", "MatchCountdownService.cs");
-        string matchTick = ReadMethodSlice(
-            ReadNormalizedSource(repositoryRoot, "game_server", "Matches", "MatchTickLoop.cs"),
-"internal void ProcessTick()",
-            "\n}");
-
-        Assert.DoesNotContain("_lastMatchStartCountdownBroadcast", server);
-        AssertInOrder(
-            broadcast,
-            "MatchStartGate.IsEntryTimedOut(matchingId, DateTime.UtcNow)",
-            "entryFailureHandler.Handle(anchorSession);",
-            "matchRuntimes.Enter(matchingId, out MatchLockScope scope)",
-            "scope.Runtime.IsEnded",
-            "var snapshot = MatchStartGate.GetSnapshot(matchingId);",
-            "_lastCountdownSecondsSent == snapshot.RemainingSeconds",
-            "_lastCountdownSecondsSent = snapshot.RemainingSeconds;",
-            ".Where(session => session.MatchingId == matchingId)",
-            "if (matchingSessions.Count == 0)",
-            "Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN)",
-            "MatchingId = matchingId",
-            "RemainingSeconds = snapshot.RemainingSeconds",
-            "ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()",
-            "foreach (var session in matchingSessions)",
-            "session.TrySend(packet);");
-        Assert.DoesNotContain("anchorSession.DisconnectForEntryFailure();", broadcast);
-
-        // 매치 틱은 잠금 안에서 카운트다운을 먼저 보내고 전투·봇 걸음을 잇는다.
-        AssertInOrder(
-            matchTick,
-            "using var scope = runtime.Enter();",
-            "countdown.CheckEntryAndBroadcast(matchingId, playerSessions);",
-            "combat.ProcessTick(matchingId, activeSessions);",
-            "botMovement.ProcessTick(runtime, botDecisions.DecideMovement)");
-    }
-
-    [Fact]
-    public void DirectCountdownPathsAndClockOnlyStartBarrier_RemainUnchanged()
-    {
-        string repositoryRoot = FindRepositoryRoot();
-        string connection = ReadNormalizedSource(
-            repositoryRoot,
-            "game_server",
-            "Sessions",
-            "GameClientSession.cs");
-        string startGate = ReadNormalizedSource(
-            repositoryRoot,
-            "game_server",
-            "Matches",
-            "Entry",
-            "MatchStartGate.cs");
-        string connect = ReadMethodSlice(
-            connection,
-            "private async Task HandleConnect(C_TO_G_CONNECT msg)",
-            "private void LogInitialInventory(");
-        string directCountdown = ReadMethodSlice(
-            connection,
-            "private void SendMatchStartCountdown(long matchingId)",
-            "private void ForceDisconnect()");
-        string gameplayActive = ReadMethodSlice(
-            startGate,
-            "public static bool IsGameplayActive(long matchingId)",
-            "public static bool IsEntryTimedOut(");
-
-        AssertInOrder(
-            connect,
-            "MatchStartGate.MarkHumanReady(matchingId, PlayerId.Value);",
-            "SendMatchStartCountdown(matchingId);",
-            "using var successResponse = CreateConnectResultPacket(",
-            "using (runtime.Enter())",
-            "Connection.TryMarkAuthenticated(() => Volatile.Write(ref _entryCompleted, 1))",
-            "_trySendConnectSuccessResponse(successResponse)");
-        AssertInOrder(
-            directCountdown,
-            "private void SendMatchStartCountdown(long matchingId)",
-            "MatchStartGate.GetSnapshot(matchingId)",
-            "Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN, PlayerId ?? 0)",
-            "TrySend(packet);",
-            "private Task HandleMatchStartReady()",
-            "MatchStartGate.MarkHumanReady(MatchingId, PlayerId.Value);",
-            "SendMatchStartCountdown(MatchingId);");
-        Assert.DoesNotContain("LastCountdownSecondsPublished", connection);
-
-        AssertInOrder(
-            gameplayActive,
-            "state.CountdownEndsAtUtc is { } endsAt",
-            "utcNow >= endsAt");
-        Assert.DoesNotContain("PeriodicCountdown", gameplayActive);
-        Assert.DoesNotContain("publication", gameplayActive, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task PeriodicCountdown_PublishesEachSecondOnceUnderMatchLock()
-    {
-        const long matchingId = 71_002;
-        GameServer server = CreateEntryTestServer();
-        MatchRuntime runtime = server.GetMatchRuntimes().GetOrCreate(matchingId);
-        MatchStartGate.RegisterHumanPlayer(
-            matchingId,
-            playerId: 301,
-            botCount: Config.SWARM_PLAYERS_PER_MATCH - 1);
+        const long matchingId = 71004;
+        var server = CreateEntryTestServer();
+        var session = new RecordingEntrySession();
+        SetSessionIdentity(server.GetMatchRuntimes(), session, 301, matchingId);
+        var runtime = server.GetMatchRuntimes().GetOrCreate(matchingId);
+        if (hasSession) runtime.Sessions[301] = session;
+        MatchStartGate.RegisterHumanPlayer(matchingId, 301, 2, MatchMode.Normal);
         try
         {
-            var first = new RecordingEntrySession();
-            SetSessionIdentity(server.GetMatchRuntimes(), first, 301, matchingId);
-            var second = new RecordingEntrySession();
-            SetSessionIdentity(server.GetMatchRuntimes(), second, 302, matchingId);
-            var differentMatch = new RecordingEntrySession();
-            SetSessionIdentity(server.GetMatchRuntimes(), differentMatch, 999, matchingId + 1);
-
-            using var lockHeld = new ManualResetEventSlim();
-            using var releaseLock = new ManualResetEventSlim();
-            Task holder = Task.Run(() =>
-            {
-                using (runtime.Enter())
-                {
-                    lockHeld.Set();
-                    Assert.True(releaseLock.Wait(TimeSpan.FromSeconds(5)));
-                }
-            });
-            Assert.True(lockHeld.Wait(TimeSpan.FromSeconds(5)));
-
-            Task broadcast = Task.Run(() => InvokePeriodicBroadcast(
-                server,
-                [matchingId],
-                [first, second, differentMatch]));
-            await Task.Delay(100);
-            Assert.False(broadcast.IsCompleted);
-            Assert.Equal(0, first.SendCount);
-            Assert.Equal(0, second.SendCount);
-
-            releaseLock.Set();
-            await holder.WaitAsync(TimeSpan.FromSeconds(5));
-            await broadcast.WaitAsync(TimeSpan.FromSeconds(5));
-
-            Assert.Equal(1, first.SendCount);
-            Assert.Equal(1, second.SendCount);
-            Assert.Equal(0, differentMatch.SendCount);
-            byte[] firstWire = Assert.Single(first.DeliveredWireBytes);
-            byte[] secondWire = Assert.Single(second.DeliveredWireBytes);
-            Assert.Equal(firstWire, secondWire);
-            Assert.Equal(
-                (int)Protocol.G_TO_C_MATCH_START_COUNTDOWN,
-                BitConverter.ToInt32(firstWire, Config.HEADER_SIZE));
-            var body = MessagePackSerializer.Deserialize<G_TO_C_MATCH_START_COUNTDOWN>(
-                firstWire[(Config.HEADER_SIZE + sizeof(int) + sizeof(long))..]);
-            Assert.Equal(matchingId, body.MatchingId);
-            Assert.Equal(-1, body.RemainingSeconds);
-            Assert.True(body.ServerUnixMs > 0);
-
-            // 같은 초는 다시 보내지 않는다.
-            InvokePeriodicBroadcast(
-                server,
-                [matchingId],
-                [first, second, differentMatch]);
-            Assert.Equal(1, first.SendCount);
-            Assert.Equal(1, second.SendCount);
-
-            // 수신자가 없어도 초는 기록된다 — 늦게 붙은 세션이 옛 초를 받지 않는다.
-            const long noRecipientMatchingId = 71_003;
-            server.GetMatchRuntimes().GetOrCreate(noRecipientMatchingId);
-            MatchStartGate.RegisterHumanPlayer(
-                noRecipientMatchingId,
-                playerId: 401,
-                botCount: Config.SWARM_PLAYERS_PER_MATCH - 1);
-            try
-            {
-                InvokePeriodicBroadcast(server, [noRecipientMatchingId], []);
-                Assert.Equal(-1, GetLastCountdownSeconds(server, noRecipientMatchingId));
-            }
-            finally
-            {
-                MatchStartGate.RemoveMatching(noRecipientMatchingId);
-            }
+            var states = typeof(MatchStartGate).GetField("States", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+            var state = states.GetType().GetProperty("Item")!.GetValue(states, [matchingId])!;
+            state.GetType().GetField("<CreatedAtUtc>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(state, DateTime.UtcNow - MatchingRedisKeys.EntryTimeout - TimeSpan.FromSeconds(1));
+            InvokeEntryTimeoutCheck(server, [matchingId], [session]);
+            Assert.True(runtime.IsEnded);
+            Assert.Null(server.GetMatchRuntimes().GetOrNull(matchingId));
         }
-        finally
-        {
-            MatchStartGate.RemoveMatching(matchingId);
-        }
+        finally { MatchStartGate.RemoveMatching(matchingId); }
     }
 
     [Fact]
-    public void PeriodicCountdown_TransportFailureCommitsSecondWithoutRetry()
+    public void EntryTick_DoesNotBroadcastCountdown()
     {
-        const long matchingId = 71_004;
-        GameServer server = CreateEntryTestServer();
-        server.GetMatchRuntimes().GetOrCreate(matchingId);
-        MatchStartGate.RegisterHumanPlayer(
-            matchingId,
-            playerId: 501,
-            botCount: Config.SWARM_PLAYERS_PER_MATCH - 1);
+        const long matchingId = 71002;
+        var server = CreateEntryTestServer();
+        var session = new RecordingEntrySession();
+        SetSessionIdentity(server.GetMatchRuntimes(), session, 301, matchingId);
+        MatchStartGate.RegisterHumanPlayer(matchingId, 301, 1, MatchMode.Normal);
         try
         {
-            var failing = new RecordingEntrySession(throwOnSend: true);
-            SetSessionIdentity(server.GetMatchRuntimes(), failing, 501, matchingId);
-
-            Assert.Throws<InvalidOperationException>(
-                () => InvokePeriodicBroadcast(server, [matchingId], [failing]));
-            Assert.Equal(1, failing.SendCount);
-            Assert.Equal(-1, GetLastCountdownSeconds(server, matchingId));
-            // 실패해도 잠금은 풀린다.
-            Assert.True(server.GetMatchRuntimes().TryEnter(matchingId, out MatchLockScope scope));
-            scope.Dispose();
-
-            InvokePeriodicBroadcast(server, [matchingId], [failing]);
-            Assert.Equal(1, failing.SendCount);
+            InvokeEntryTimeoutCheck(server, [matchingId], [session]);
+            MatchStartGate.MarkHumanReady(matchingId, 301);
+            InvokeEntryTimeoutCheck(server, [matchingId], [session]);
+            InvokeEntryTimeoutCheck(server, [matchingId], [session]);
+            Assert.Equal(0, session.SendCount);
         }
-        finally
+        finally { MatchStartGate.RemoveMatching(matchingId); }
+    }
+
+    [Fact]
+    public async Task LastReadyPlayer_SendsSameStartTimeToAllParticipants()
+    {
+        const long matchingId = 71003;
+        var server = CreateEntryTestServer();
+        var runtime = server.GetMatchRuntimes().GetOrCreate(matchingId);
+        var first = new RecordingEntrySession();
+        var second = new RecordingEntrySession();
+        SetSessionIdentity(server.GetMatchRuntimes(), first, 301, matchingId);
+        SetSessionIdentity(server.GetMatchRuntimes(), second, 302, matchingId);
+        runtime.Sessions[301] = first;
+        runtime.Sessions[302] = second;
+        MatchStartGate.RegisterHumanPlayer(matchingId, 301, 2, MatchMode.Normal);
+        MatchStartGate.RegisterHumanPlayer(matchingId, 302, 2, MatchMode.Normal);
+        var ready = typeof(GameClientSession).GetMethod("HandleMatchStartReady", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        try
         {
-            MatchStartGate.RemoveMatching(matchingId);
+            await (Task)ready.Invoke(first, null)!;
+            Assert.Equal(1, first.SendCount);
+            await (Task)ready.Invoke(second, null)!;
+            Assert.Equal(2, first.SendCount);
+            Assert.Equal(1, second.SendCount);
+            var firstBody = MessagePackSerializer.Deserialize<G_TO_C_MATCH_START_COUNTDOWN>(first.DeliveredWireBytes.Last()[(Config.HEADER_SIZE + sizeof(int) + sizeof(long))..]);
+            var secondBody = MessagePackSerializer.Deserialize<G_TO_C_MATCH_START_COUNTDOWN>(second.DeliveredWireBytes.Last()[(Config.HEADER_SIZE + sizeof(int) + sizeof(long))..]);
+            Assert.Equal(firstBody.StartsAtUnixMs, secondBody.StartsAtUnixMs);
+            Assert.InRange(firstBody.StartsAtUnixMs - firstBody.ServerUnixMs, 1, 5000);
+            Assert.False(MatchStartGate.IsGameplayActive(matchingId));
         }
+        finally { MatchStartGate.RemoveMatching(matchingId); }
     }
 
     [Theory]
@@ -294,7 +151,7 @@ public sealed class MatchStartCountdownPublicationTests
         }
         else
         {
-            Assert.Single(playerSubjects);
+            Assert.Equal(2, playerSubjects.Count);
         }
 
         // 이미 끝난 매치에 늦게 온 호출은 자기 세션의 entry_failed만 발행하고 끊기는 반복하지 않는다.
@@ -387,17 +244,13 @@ public sealed class MatchStartCountdownPublicationTests
         public void Close() { }
     }
 
-    private static int? GetLastCountdownSeconds(GameServer server, long matchingId) =>
-        (int?)typeof(MatchCountdownService).GetField("_lastCountdownSecondsSent",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(server.GetCountdown(matchingId));
-
-    private static void InvokePeriodicBroadcast(
+    private static void InvokeEntryTimeoutCheck(
         GameServer server,
         IReadOnlyCollection<long> matchingIds,
         IReadOnlyCollection<GameClientSession> sessions)
     {
         foreach (long matchingId in matchingIds)
-            server.GetCountdown(matchingId).CheckEntryAndBroadcast(matchingId, sessions);
+            GameServerTestAccess.GetLoop(server, matchingId).ProcessTick();
     }
     private static void InvokeEntryAbort(GameServer server, GameClientSession session)
     {

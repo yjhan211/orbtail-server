@@ -154,13 +154,10 @@ internal static class Program
         services.AddSingleton<WindOrbAttackService>();
         services.AddSingleton<SunOrbAttackService>();
         services.AddTransient<MatchZoneService>();
-        services.AddTransient<MatchCountdownService>(sp => new MatchCountdownService(
-            sp.GetRequiredService<MatchRuntimeStore>(), sp.GetRequiredService<MatchEntryFailureHandler>(),
-            sp.GetRequiredService<ILogger<MatchCountdownService>>()));
         services.AddSingleton<BotMovementService>();
         services.AddSingleton<BotDecisionService>();
         services.AddTransient<MatchCombatService>();
-        // 생성 함수만 공유한다. 루프와 진행 상태를 가진 전투·자기장·카운트다운 서비스는 매치마다 만든다.
+        // 생성 함수만 공유한다. 루프와 전투·자기장 서비스는 매치마다 만든다.
         services.AddSingleton<Func<MatchRuntime, TimeProvider, MatchTickLoop>>(sp =>
         {
             var environment = sp.GetRequiredService<MatchEnvironmentService>();
@@ -171,13 +168,13 @@ internal static class Program
             var pickup = sp.GetRequiredService<GroundItemAutoPickupService>();
             return (runtime, clock) =>
             {
-                var countdown = sp.GetRequiredService<MatchCountdownService>();
+                var entryFailureHandler = sp.GetRequiredService<MatchEntryFailureHandler>();
                 var zones = sp.GetRequiredService<MatchZoneService>();
                 var combat = ActivatorUtilities.CreateInstance<MatchCombatService>(sp, zones);
                 return new MatchTickLoop(
                     runtime,
                     runtimes, loopLogger, pickup,
-                    countdown, combat, environment, botMovement, botDecisions, zones, clock);
+                    entryFailureHandler, combat, environment, botMovement, botDecisions, zones, clock);
             };
         });
         services.AddSingleton<MatchTickService>();

@@ -25,10 +25,7 @@ internal static class GameServerTestAccess
     internal static MatchCombatService GetCombat(this GameServer server, long matchingId) =>
         Read<MatchCombatService>(GetLoop(server, matchingId));
 
-    internal static MatchCountdownService GetCountdown(this GameServer server, long matchingId) =>
-        Read<MatchCountdownService>(GetLoop(server, matchingId));
-
-    private static MatchTickLoop GetLoop(GameServer server, long matchingId)
+    internal static MatchTickLoop GetLoop(GameServer server, long matchingId)
     {
         var runtime = server.GetMatchRuntimes().GetOrThrow(matchingId);
         var ticks = Read<MatchTickService>(server);
@@ -94,9 +91,9 @@ internal static class GameServerTestAccess
             new WindOrbAttackService(runtimes, orbTrails, logs),
             new SunOrbAttackService(runtimes, logs), field, decisions,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatService>.Instance);
-        var countdown = new MatchCountdownService(runtimes, entryFailure, logger);
+
             return new MatchTickLoop(runtime, runtimes, logger, groundPickup,
-            countdown, combat, environment, movement, decisions, field, clock);
+            entryFailure, combat, environment, movement, decisions, field, clock);
         };
         return new GameServer(
             configuration: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),

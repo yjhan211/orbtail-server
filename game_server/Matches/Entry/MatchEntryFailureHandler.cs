@@ -43,38 +43,7 @@ internal sealed class MatchEntryFailureHandler(
                     logger.LogDebug("Skipped entry-failed reservation release for superseded session: PlayerId={PlayerId}, MatchingId={MatchingId}", playerId, matchingId);
                     return;
                 }
-
-                isFirstEndRequest = runtime.TryMarkEnded();
-                var affectedSessions = runtime.Sessions.Values.ToList();
-                foreach (var affectedSession in affectedSessions)
-                {
-                    affectedSession.MarkMatchEndHandledExternally();
-                }
-
-                var affectedPlayerIds = new List<long>();
-                if (runtime.IsSetupComplete)
-                {
-                    affectedPlayerIds.AddRange(runtime.PlayerRoster.Select(participant => participant.PlayerId));
-                }
-                else
-                {
-                    affectedPlayerIds.Add(playerId);
-                }
-
-                var failureNotifications = new List<Action>();
-                PrepareFailureNotifications(matchingId, affectedPlayerIds, failureNotifications);
-                foreach (var affectedSession in affectedSessions)
-                {
-                    try
-                    {
-                        affectedSession.DisconnectForEntryFailure();
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning(ex, "Failed to deliver entry failure disconnect: PlayerId={PlayerId}, MatchingId={MatchingId}", affectedSession.PlayerId, matchingId);
-                    }
-                }
-                runtime.AfterRelease.Add(() => SendFailureNotifications(matchingId, failureNotifications));
+                isFirstEndRequest = AbortMatchForEntryFailure(runtime, playerId);
             }
         }
 
@@ -85,6 +54,78 @@ internal sealed class MatchEntryFailureHandler(
         }
 
         HandleLateEntryFailure(session, playerId, matchingId);
+    }
+
+    public bool AbortMatchForEntryFailure(MatchRuntime runtime, long? failedPlayerId = null)
+    {
+        using (runtime.Enter())
+        {
+            if (runtime.IsEnded || !ReferenceEquals(matchRuntimes.GetOrNull(runtime.MatchingId), runtime))
+            {
+                return false;
+            }
+
+            if (!failedPlayerId.HasValue && MatchStartGate.GetGameplayStartedAtUtc(runtime.MatchingId).HasValue)
+            {
+                return false;
+            }
+
+            if (!runtime.TryMarkEnded())
+            {
+                return false;
+            }
+
+            long matchingId = runtime.MatchingId;
+            var affectedSessions = runtime.Sessions.Values.ToList();
+            foreach (var session in affectedSessions)
+            {
+                session.MarkMatchEndHandledExternally();
+            }
+
+            var affectedPlayerIds = new HashSet<long>();
+            if (runtime.IsSetupComplete)
+            {
+                foreach (var participant in runtime.PlayerRoster)
+                {
+                    affectedPlayerIds.Add(participant.PlayerId);
+                }
+            }
+            else
+            {
+                foreach (var session in affectedSessions)
+                {
+                    if (session.PlayerId.HasValue)
+                    {
+                        affectedPlayerIds.Add(session.PlayerId.Value);
+                    }
+                }
+
+                if (failedPlayerId.HasValue)
+                {
+                    affectedPlayerIds.Remove(failedPlayerId.Value);
+                }
+            }
+
+            var failureNotifications = new List<Action>();
+            PrepareFailureNotifications(matchingId, affectedPlayerIds, failureNotifications);
+            foreach (var session in affectedSessions)
+            {
+                try
+                {
+                    session.DisconnectForEntryFailure();
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to deliver entry failure disconnect: PlayerId={PlayerId}, MatchingId={MatchingId}", session.PlayerId, matchingId);
+                }
+            }
+            runtime.AfterRelease.Add(() => SendFailureNotifications(matchingId, failureNotifications));
+            if (!failedPlayerId.HasValue)
+            {
+                logger.LogWarning("Match aborted after entry deadline expired: MatchingId={MatchingId}", runtime.MatchingId);
+            }
+            return true;
+        }
     }
 
     private void HandleLateEntryFailure(GameClientSession session, long playerId, long matchingId)

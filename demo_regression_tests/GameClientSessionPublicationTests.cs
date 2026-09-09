@@ -1168,7 +1168,7 @@ public sealed class GameClientSessionPublicationTests
     {
         var loop = TestMatchTickServices.CreateLoop(runtime, fixture.Store, NullLogger.Instance,
             new GroundItemAutoPickupService(fixture.EventLog, NullLogger<GroundItemAutoPickupService>.Instance),
-            static (_, _) => { }, static (_, _) => { },
+            static (_, _) => { },
             static (_, _) => { }, static _ => { }, static (_, _) => { });
         fixture.TickLoops.Add(loop);
         return loop;

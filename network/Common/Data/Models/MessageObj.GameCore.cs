@@ -313,7 +313,7 @@ namespace network.common.data.models
     public class G_TO_C_MATCH_START_COUNTDOWN : IMessagePackObject
     {
         [Key("matchingId")] public long MatchingId { get; set; }
-        [Key("remainingSeconds")] public int RemainingSeconds { get; set; }
+        [Key("startsAtUnixMs")] public long StartsAtUnixMs { get; set; }
         [Key("serverUnixMs")] public long ServerUnixMs { get; set; }
     }
 

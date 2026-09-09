@@ -498,7 +498,7 @@ public partial class GameClientSession : SessionBase
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MATCH_START_COUNTDOWN
         {
             MatchingId = matchingId,
-            RemainingSeconds = snapshot.RemainingSeconds,
+            StartsAtUnixMs = MatchStartGate.GetGameplayStartedAtUtc(matchingId) is { } startsAt ? new DateTimeOffset(startsAt).ToUnixTimeMilliseconds() : 0,
             ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         }));
         TrySend(packet);
@@ -522,8 +522,17 @@ public partial class GameClientSession : SessionBase
             {
                 return Task.CompletedTask;
             }
+            bool wasScheduled = MatchStartGate.GetGameplayStartedAtUtc(MatchingId).HasValue;
             MatchStartGate.MarkHumanReady(MatchingId, PlayerId.Value);
-            SendMatchStartCountdown(MatchingId);
+            if (!wasScheduled && MatchStartGate.GetGameplayStartedAtUtc(MatchingId).HasValue)
+            {
+                foreach (var participant in match.Sessions.Values)
+                    participant.SendMatchStartCountdown(MatchingId);
+            }
+            else
+            {
+                SendMatchStartCountdown(MatchingId);
+            }
         }
         return Task.CompletedTask;
     }

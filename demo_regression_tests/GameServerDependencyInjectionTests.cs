@@ -66,7 +66,7 @@ public sealed class GameServerDependencyInjectionTests
             {
                 Type[] dependencyTypes =
                 [
-                    typeof(MatchCountdownService), typeof(MatchCombatService),
+                    typeof(MatchCombatService),
                     typeof(game_server.field.MatchEnvironmentService),
                     typeof(game_server.bots.BotMovementService), typeof(game_server.bots.BotDecisionService),
                     typeof(game_server.field.MatchZoneService)
@@ -79,7 +79,7 @@ public sealed class GameServerDependencyInjectionTests
                         .Single(field => field.FieldType == type).GetValue(firstLoop);
                     var secondDependency = typeof(MatchTickLoop).GetFields(flags)
                         .Single(field => field.FieldType == type).GetValue(secondLoop);
-                    if (type == typeof(MatchCountdownService) || type == typeof(MatchCombatService) ||
+                    if (type == typeof(MatchCombatService) ||
                         type == typeof(game_server.field.MatchZoneService))
                         Assert.NotSame(firstDependency, secondDependency);
                     else
@@ -98,8 +98,7 @@ public sealed class GameServerDependencyInjectionTests
                     .Single(field => field.FieldType == typeof(game_server.field.MatchZoneService)).GetValue(combat));
             }
             Assert.DoesNotContain(typeof(GameServer).GetConstructors().Single().GetParameters(),
-                parameter => parameter.ParameterType == typeof(MatchCombatService)
-                    || parameter.ParameterType == typeof(MatchCountdownService));
+                parameter => parameter.ParameterType == typeof(MatchCombatService));
         }
         finally
         {

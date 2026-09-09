@@ -50,8 +50,8 @@ internal static class TestGameSessionServices
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         return (runtime, clock) => TestMatchTickServices.CreateLoop(runtime, store, NullLogger<MatchTickLoop>.Instance,
             new GroundItemAutoPickupService(logs, NullLogger<GroundItemAutoPickupService>.Instance),
-            (matchingIds, _) => processTick(store.GetOrThrow(matchingIds.Single())),
-            (_, _) => { }, (_, _) => { }, _ => { }, (_, _) => { }, clock);
+            (matchingId, _) => processTick(store.GetOrThrow(matchingId)),
+            (_, _) => { }, _ => { }, (_, _) => { }, clock);
     }
 
     // 단위 테스트도 실제 Lifecycle을 사용한다. Redis/NATS만 인메모리 구현으로 대체한다.

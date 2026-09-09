@@ -28,7 +28,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(composition,
             "services.AddSingleton<Func<MatchRuntime, TimeProvider, MatchTickLoop>>",
             "return (runtime, clock) =>",
-            "countdown, combat, environment, botMovement, botDecisions, zones, clock);",
+            "entryFailureHandler, combat, environment, botMovement, botDecisions, zones, clock);",
 
             "services.AddSingleton<MatchTickService>");
         AssertInOrder(runner,
@@ -56,7 +56,7 @@ public sealed class SwarmArenaTickOrderTests
             proximityTick,
             "using var scope = runtime.Enter();",
             "runtime.Sessions.Values.ToList()",
-            "countdown.CheckEntryAndBroadcast(matchingId, playerSessions);",
+            "MatchStartGate.IsEntryTimedOut(matchingId, utcNow)",
             "combat.ProcessTick(matchingId, activeSessions);");
         Assert.DoesNotContain("catch (", proximityTick);
         string loopSource = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs");

@@ -17,14 +17,13 @@ internal static class TestMatchTickServices
     public static MatchTickLoop CreateLoop(
         MatchRuntime runtime, MatchRuntimeStore store, ILogger logger,
         GroundItemAutoPickupService pickup,
-        Action<IEnumerable<long>, IReadOnlyCollection<GameClientSession>> countdown,
         Action<long, List<GameClientSession>> combat,
         Action<MatchRuntime, List<GameClientSession>> environment,
         Action<MatchRuntime> movement,
         Action<long, GameClientSession[]> field,
         TimeProvider? clock = null) =>
         new(runtime, store, logger, pickup,
-            new Countdown(countdown), new Combat(combat), new Environment(environment),
+            new MatchEntryFailureHandler(store, new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance), new game_server.matches.lifecycle.MatchingLifecycleService(new InMemoryRedisOperations(), new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger), logger), new Combat(combat), new Environment(environment),
             new Movement(movement),
             new BotDecisionService(store, null!, null!, null!, NullLogger<BotDecisionService>.Instance),
             new Field(field), clock);
@@ -44,7 +43,7 @@ internal static class TestMatchTickServices
             MatchStartGate.RemoveMatching(runtime.MatchingId);
             _loop = CreateLoop(runtime, store, NullLogger.Instance,
                 new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
-                (_, _) => { }, (_, _) => { },
+                (_, _) => { },
                 (match, _) =>
                 {
                     Assert.True(Monitor.IsEntered(match.MatchLock));
@@ -118,11 +117,7 @@ internal static class TestMatchTickServices
             .GetField("_lastEnvironmentInterval", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .SetValue(loop, -1L);
 
-    private sealed class Countdown(Action<IEnumerable<long>, IReadOnlyCollection<GameClientSession>> run)
-        : MatchCountdownService(null!, null!, NullLogger.Instance)
-    {
-        public override void CheckEntryAndBroadcast(long matchingId, IReadOnlyCollection<GameClientSession> sessions) => run([matchingId], sessions);
-    }
+
 
     private sealed class Combat(Action<long, List<GameClientSession>> run)
         : MatchCombatService(null!, null!, null!, null!, null!,

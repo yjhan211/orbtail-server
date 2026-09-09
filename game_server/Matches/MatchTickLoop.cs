@@ -10,7 +10,7 @@ namespace game_server.matches;
 
 /// <summary>
 ///     매치 하나의 게임 로직을 50ms 주기로 순서대로 실행한다.
-///     매치 잠금 안에서 입장 확인·카운트다운, 아이템 획득, 전투,
+///     매치 잠금 안에서 입장 마감 확인, 아이템 획득, 전투,
 ///     환경 정산, 구역 폐쇄 확인, 봇 이동을 처리한다.
 ///
 ///     카운트다운 중에는 입장 확인과 전투 준비만 수행한다.
@@ -26,7 +26,7 @@ internal sealed class MatchTickLoop(
     MatchRuntimeStore matchRuntimes,
     ILogger logger,
     GroundItemAutoPickupService groundItemAutoPickup,
-    MatchCountdownService countdown,
+    MatchEntryFailureHandler entryFailureHandler,
     MatchCombatService combat,
     MatchEnvironmentService environment,
     BotMovementService botMovement,
@@ -90,13 +90,13 @@ internal sealed class MatchTickLoop(
 
         var playerSessions = runtime.Sessions.Values.ToList();
         var activeSessions = playerSessions.Where(static session => session is { IsEliminated: false, IsGameEnded: false }).ToList();
-        countdown.CheckEntryAndBroadcast(matchingId, playerSessions);
-        if (runtime.IsEnded)
+        var utcNow = (timeProvider ?? TimeProvider.System).GetUtcNow().UtcDateTime;
+        if (MatchStartGate.IsEntryTimedOut(matchingId, utcNow))
         {
+            entryFailureHandler.AbortMatchForEntryFailure(runtime);
             return;
         }
 
-        var utcNow = (timeProvider ?? TimeProvider.System).GetUtcNow().UtcDateTime;
         bool isGameplayActive = MatchStartGate.IsGameplayActive(matchingId, utcNow);
         if (isGameplayActive)
         {

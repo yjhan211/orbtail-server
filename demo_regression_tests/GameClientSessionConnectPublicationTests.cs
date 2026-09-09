@@ -131,6 +131,7 @@ public sealed class GameClientSessionConnectPublicationTests
         using var fixture = new ConnectFixture();
         var session = fixture.CreateSession(74009, 8109, _ => true);
         var original = fixture.Store.GetOrThrow(74009);
+        original.Sessions[8109] = session;
         var flags = BindingFlags.Instance | BindingFlags.NonPublic;
         var handle = typeof(GameClientSession).GetMethod("HandleMatchStartReady", flags)!;
         MatchStartGate.RegisterHumanPlayer(74009, 8109, 1, MatchMode.Normal);
