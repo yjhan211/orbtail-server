@@ -92,7 +92,9 @@ public static class MatchStartGate
         }
     }
 
-    public static bool IsGameplayActive(long matchingId)
+    public static bool IsGameplayActive(long matchingId) => IsGameplayActive(matchingId, DateTime.UtcNow);
+
+    public static bool IsGameplayActive(long matchingId, DateTime utcNow)
     {
         // 미등록 매치는 비활성 — 등록 누락이 "게이트 없이 바로 진행"으로 새지 않게 한다 (#335).
         if (!States.TryGetValue(matchingId, out var state))
@@ -100,7 +102,7 @@ public static class MatchStartGate
 
         lock (state.SyncRoot)
         {
-            return state.CountdownEndsAtUtc is { } endsAt && DateTime.UtcNow >= endsAt;
+            return state.CountdownEndsAtUtc is { } endsAt && utcNow >= endsAt;
         }
     }
 

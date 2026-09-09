@@ -11,6 +11,9 @@ namespace network.common
     /// </summary>
     public class Config
     {
+        /// <summary>환경 피해 정산 간격(초). 실행 주기와 피해 계산에서 같은 값을 사용한다.</summary>
+        public const int ENVIRONMENTAL_TICK_INTERVAL_SECONDS = 5;
+
         // Network Settings
         /// <summary>최대 동시 연결 수</summary>
         public static readonly int MAX_CONNECTION = 1000;

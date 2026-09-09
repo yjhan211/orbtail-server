@@ -37,13 +37,12 @@ public sealed class MatchTickLoopTests
             called.Add(stage);
             if (stage == failingStage) throw failure;
         }
-        typeof(MatchTickSchedule).GetProperty(nameof(MatchTickSchedule.NextEnvironmentalTickAtUtc))!
-            .SetValue(fixture.Match.TickSchedule, DateTime.UtcNow.AddSeconds(-1));
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
             new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
             (_, _) => Process("countdown"), (_, _) => Process("combat"),
             (_, _) => Process("environment"), _ => Process("movement"), (_, _) => { });
         fixture.Loops.Add(loop);
+        TestMatchTickServices.ForceNextEnvironmentalTick(loop);
 
         Assert.Same(failure, Assert.Throws<InvalidOperationException>(loop.ProcessTick));
         Assert.Equal(stages.Take(Array.IndexOf(stages, failingStage) + 1), called);
@@ -65,9 +64,7 @@ public sealed class MatchTickLoopTests
             steps.Add(step);
             locksHeld.Add(Monitor.IsEntered(fixture.Match.MatchLock));
         }
-        // 실제 시간을 기다리지 않고 환경 정산 시각이 지난 상태를 준비한다.
-        typeof(MatchTickSchedule).GetProperty(nameof(MatchTickSchedule.NextEnvironmentalTickAtUtc))!
-            .SetValue(fixture.Match.TickSchedule, DateTime.UtcNow.AddSeconds(-1));
+        // 실제 시간을 기다리지 않고 다음 환경 정산이 실행되도록 준비한다.
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
             new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
             (_, _) => Record("countdown"),
@@ -80,6 +77,7 @@ public sealed class MatchTickLoopTests
             }, (_, _) => { });
 
         fixture.Loops.Add(loop);
+        TestMatchTickServices.ForceNextEnvironmentalTick(loop);
         loop.ProcessTick();
         Assert.Equal(new[] { "countdown", "combat", "environment", "movement" }, steps);
         Assert.All(locksHeld, Assert.True);
@@ -211,6 +209,7 @@ public sealed class MatchTickLoopTests
             (_, _) => steps.Add("environment"), _ => steps.Add("movement"), (_, _) => { });
 
         fixture.Loops.Add(loop);
+        TestMatchTickServices.ForceNextEnvironmentalTick(loop);
         loop.ProcessTick();
         Assert.Equal(new[] { "countdown", "combat" }, steps);
     }

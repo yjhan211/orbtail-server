@@ -3,14 +3,22 @@ using game_server.matches.field;
 using game_server.matches.entry;
 using game_server.services;
 using Microsoft.Extensions.Logging;
+using network.common;
 
 namespace game_server.matches;
 
 /// <summary>
-///     매치 하나의 50ms 순차 루프. 이전 처리가 끝나야 다음 틱을 받으며 밀린 틱은 합쳐진다.
-///     매치 잠금을 기다린 뒤 카운트다운·전투·환경 정산·구역 폐쇄·봇 이동을 실행한다.
-///     한 단계가 실패하면 그 틱의 나머지 처리를 중단하고 로그를 남긴 뒤 다음 틱을 계속한다.
-///     Stop은 다음 틱을 막고, Completion은 실행 중인 처리까지 끝났음을 나타낸다.
+///     매치 하나의 게임 로직을 50ms 주기로 순서대로 실행한다.
+///     매치 잠금 안에서 입장 확인·카운트다운, 아이템 획득, 전투,
+///     환경 정산, 구역 폐쇄 확인, 봇 이동을 처리한다.
+///
+///     카운트다운 중에는 입장 확인과 전투 준비만 수행한다.
+///     환경 정산은 시작 후 5초마다, 구역 폐쇄 확인은 1초마다 수행하며,
+///     처리가 늦어져도 밀린 횟수를 몰아서 실행하지 않는다.
+///
+///     처리 중 매치가 끝나거나 예외가 발생하면 해당 틱의 나머지 단계를 중단한다.
+///     예외는 로그로 남기고 다음 틱을 계속한다.
+///     Stop은 다음 틱을 중단하며, Completion을 기다리면 진행 중인 처리까지 끝난다.
 /// </summary>
 internal sealed class MatchTickLoop(
     MatchRuntime runtime,
@@ -26,6 +34,9 @@ internal sealed class MatchTickLoop(
     TimeProvider? timeProvider = null)
 {
     private readonly PeriodicTimer _timer = new(TimeSpan.FromMilliseconds(50), timeProvider ?? TimeProvider.System);
+
+    private long _lastAreaClosureSecond;
+    private long _lastEnvironmentInterval;
     private int _stopping;
 
     public Task Completion { get; private set; } = Task.CompletedTask;
@@ -76,16 +87,17 @@ internal sealed class MatchTickLoop(
             return;
         }
 
-        var playerSessions = runtime.Sessions.Values.ToList().Where(static session => session.PlayerId.HasValue).ToList();
+        var playerSessions = runtime.Sessions.Values.ToList();
         var activeSessions = playerSessions.Where(static session => session is { IsEliminated: false, IsGameEnded: false }).ToList();
-
         countdown.CheckEntryAndBroadcast([matchingId], playerSessions);
         if (runtime.IsEnded)
         {
             return;
         }
 
-        if (MatchStartGate.IsGameplayActive(matchingId))
+        var utcNow = (timeProvider ?? TimeProvider.System).GetUtcNow().UtcDateTime;
+        bool isGameplayActive = MatchStartGate.IsGameplayActive(matchingId, utcNow);
+        if (isGameplayActive)
         {
             groundItemAutoPickup.Process(runtime, activeSessions);
             if (runtime.IsEnded)
@@ -95,26 +107,34 @@ internal sealed class MatchTickLoop(
         }
 
         combat.ProcessTick(matchingId, activeSessions);
-        if (runtime.IsEnded)
+        if (runtime.IsEnded || !isGameplayActive)
         {
             return;
         }
 
-        if (runtime.TickSchedule.TryBeginEnvironmentalTick(DateTime.UtcNow, MatchStartGate.GetGameplayStartedAtUtc(matchingId), runtime.IsEnded))
+        var startedAt = MatchStartGate.GetGameplayStartedAtUtc(matchingId);
+        if (startedAt.HasValue)
         {
-            environment.ProcessTick(runtime, activeSessions);
-            if (runtime.IsEnded)
+            long elapsedSeconds = (utcNow - startedAt.Value).Ticks / TimeSpan.TicksPerSecond;
+            long currentEnvironmentInterval = elapsedSeconds / Config.ENVIRONMENTAL_TICK_INTERVAL_SECONDS;
+            if (currentEnvironmentInterval > _lastEnvironmentInterval)
             {
-                return;
+                _lastEnvironmentInterval = currentEnvironmentInterval;
+                environment.ProcessTick(runtime, activeSessions);
+                if (runtime.IsEnded)
+                {
+                    return;
+                }
+            }
+
+            if (elapsedSeconds > _lastAreaClosureSecond)
+            {
+                _lastAreaClosureSecond = elapsedSeconds;
+                zones.ProcessTick(matchingId, playerSessions.ToArray());
             }
         }
 
-        if (runtime.TickSchedule.TryBeginAreaClosureTick(DateTime.UtcNow, MatchStartGate.GetGameplayStartedAtUtc(matchingId), runtime.IsEnded))
-        {
-            zones.ProcessTick(matchingId, playerSessions.ToArray());
-        }
-
-        if (runtime.IsEnded || !MatchStartGate.IsGameplayActive(matchingId) || !runtime.Bots.HasBots(matchingId))
+        if (runtime.IsEnded || !runtime.Bots.HasBots(matchingId))
         {
             return;
         }

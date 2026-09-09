@@ -36,6 +36,29 @@ public sealed class MatchStartGateTests
     }
 
     [Fact]
+    public void ExplicitTimeDeterminesGameplayActivationAtCountdownBoundary()
+    {
+        const long matchingId = 974512301;
+        MatchStartGate.RemoveMatching(matchingId);
+        try
+        {
+            Assert.False(MatchStartGate.IsGameplayActive(matchingId, DateTime.MaxValue));
+            MatchStartGate.RegisterHumanPlayer(matchingId, 1, 1, MatchMode.Normal);
+            Assert.False(MatchStartGate.IsGameplayActive(matchingId, DateTime.MaxValue));
+            MatchStartGate.MarkHumanReady(matchingId, 1);
+            DateTime startedAt = MatchStartGate.GetGameplayStartedAtUtc(matchingId)!.Value;
+
+            Assert.False(MatchStartGate.IsGameplayActive(matchingId, startedAt.AddTicks(-1)));
+            Assert.True(MatchStartGate.IsGameplayActive(matchingId, startedAt));
+            Assert.True(MatchStartGate.IsGameplayActive(matchingId, startedAt.AddSeconds(5)));
+        }
+        finally
+        {
+            MatchStartGate.RemoveMatching(matchingId);
+        }
+    }
+
+    [Fact]
     public void UnknownMatchIsNotActive()
     {
         // 등록 누락이 "게이트 없이 진행"으로 새지 않는다 (#335).

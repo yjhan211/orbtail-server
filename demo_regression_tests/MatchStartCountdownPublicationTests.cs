@@ -119,7 +119,7 @@ public sealed class MatchStartCountdownPublicationTests
         AssertInOrder(
             gameplayActive,
             "state.CountdownEndsAtUtc is { } endsAt",
-            "DateTime.UtcNow >= endsAt");
+            "utcNow >= endsAt");
         Assert.DoesNotContain("PeriodicCountdown", gameplayActive);
         Assert.DoesNotContain("publication", gameplayActive, StringComparison.OrdinalIgnoreCase);
     }

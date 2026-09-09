@@ -11,89 +11,105 @@ public sealed class MatchEnvironmentalTickTests
     [Fact]
     public void UnregisteredAndCountdownMatches_DoNotStartEnvironmentalClock()
     {
-        var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(101);
+        var matchStore = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = matchStore.GetOrCreate(101);
+        using var matchSchedule = new TestMatchTickServices.ScheduleProbe(match, matchStore);
         lock (match.MatchLock)
         {
-            Assert.False(match.TickSchedule.TryBeginEnvironmentalTick(StartedAt, null, match.IsEnded));
-            Assert.False(match.TickSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(-1), StartedAt, match.IsEnded));
-            Assert.Null(match.TickSchedule.NextEnvironmentalTickAtUtc);
+            Assert.False(matchSchedule.TryBeginEnvironmentalTick(StartedAt, null));
+            Assert.False(matchSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(-1), StartedAt));
+            Assert.Equal(0, matchSchedule.LastEnvironmentInterval);
         }
     }
 
     [Fact]
     public void FirstSettlement_IsFiveSecondsAfterGameplayStarts()
     {
-        var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(102);
+        var matchStore = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = matchStore.GetOrCreate(102);
+        using var matchSchedule = new TestMatchTickServices.ScheduleProbe(match, matchStore);
         lock (match.MatchLock)
         {
-            Assert.False(match.TickSchedule.TryBeginEnvironmentalTick(StartedAt, StartedAt, match.IsEnded));
-            Assert.False(match.TickSchedule.TryBeginEnvironmentalTick(StartedAt.AddMilliseconds(4999), StartedAt, match.IsEnded));
-            Assert.True(match.TickSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt, match.IsEnded));
-            Assert.Equal(StartedAt.AddSeconds(10), match.TickSchedule.NextEnvironmentalTickAtUtc);
+            Assert.False(matchSchedule.TryBeginEnvironmentalTick(StartedAt, StartedAt));
+            Assert.False(matchSchedule.TryBeginEnvironmentalTick(StartedAt.AddMilliseconds(4999), StartedAt));
+            Assert.True(matchSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt));
+            Assert.Equal(1, matchSchedule.LastEnvironmentInterval);
         }
     }
 
     [Fact]
     public void RepeatedPulses_DoNotApplyTheSameIntervalTwice()
     {
-        var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(103);
+        var matchStore = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = matchStore.GetOrCreate(103);
+        using var matchSchedule = new TestMatchTickServices.ScheduleProbe(match, matchStore);
         lock (match.MatchLock)
         {
-            Assert.True(match.TickSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt, match.IsEnded));
-            Assert.False(match.TickSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt, match.IsEnded));
-            Assert.False(match.TickSchedule.TryBeginEnvironmentalTick(StartedAt.AddMilliseconds(5050), StartedAt, match.IsEnded));
-            Assert.True(match.TickSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(10), StartedAt, match.IsEnded));
+            Assert.True(matchSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt));
+            Assert.False(matchSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt));
+            Assert.False(matchSchedule.TryBeginEnvironmentalTick(StartedAt.AddMilliseconds(5050), StartedAt));
+            Assert.True(matchSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(10), StartedAt));
         }
     }
 
     [Fact]
     public void DelayedPulse_AppliesOnceAndKeepsTheMatchStartBoundaries()
     {
-        var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(104);
+        var matchStore = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = matchStore.GetOrCreate(104);
+        using var matchSchedule = new TestMatchTickServices.ScheduleProbe(match, matchStore);
         lock (match.MatchLock)
         {
-            Assert.False(match.TickSchedule.TryBeginEnvironmentalTick(StartedAt, StartedAt, match.IsEnded));
+            Assert.False(matchSchedule.TryBeginEnvironmentalTick(StartedAt, StartedAt));
             // 잠금 경합 등으로 중간 펄스를 놓쳤더라도 밀린 다섯 번을 몰아서 적용하지 않는다.
-            Assert.True(match.TickSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(26), StartedAt, match.IsEnded));
-            Assert.Equal(StartedAt.AddSeconds(30), match.TickSchedule.NextEnvironmentalTickAtUtc);
-            Assert.False(match.TickSchedule.TryBeginEnvironmentalTick(StartedAt.AddMilliseconds(26050), StartedAt, match.IsEnded));
-            Assert.True(match.TickSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(30), StartedAt, match.IsEnded));
+            Assert.True(matchSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(26), StartedAt));
+            Assert.Equal(5, matchSchedule.LastEnvironmentInterval);
+            Assert.False(matchSchedule.TryBeginEnvironmentalTick(StartedAt.AddMilliseconds(26050), StartedAt));
+            Assert.True(matchSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(30), StartedAt));
         }
     }
 
     [Fact]
-    public void DifferentMatches_HaveIndependentDeadlines()
+    public void DifferentMatches_HaveIndependentIntervals()
     {
-        var first = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(105);
-        var second = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(106);
+        var firstStore = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var first = firstStore.GetOrCreate(105);
+        using var firstSchedule = new TestMatchTickServices.ScheduleProbe(first, firstStore);
+        var secondStore = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var second = secondStore.GetOrCreate(106);
+        using var secondSchedule = new TestMatchTickServices.ScheduleProbe(second, secondStore);
         lock (first.MatchLock)
-            Assert.True(first.TickSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt, first.IsEnded));
+            Assert.True(firstSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt));
         lock (second.MatchLock)
         {
-            Assert.False(second.TickSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt.AddSeconds(3), second.IsEnded));
-            Assert.Equal(StartedAt.AddSeconds(8), second.TickSchedule.NextEnvironmentalTickAtUtc);
+            Assert.False(secondSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt.AddSeconds(3)));
+            Assert.Equal(0, secondSchedule.LastEnvironmentInterval);
         }
-        Assert.Equal(StartedAt.AddSeconds(10), first.TickSchedule.NextEnvironmentalTickAtUtc);
+        Assert.Equal(1, firstSchedule.LastEnvironmentInterval);
     }
 
     [Fact]
-    public void TerminalMatch_DoesNotAdvanceDeadlineOrSettleAgain()
+    public void TerminalMatch_DoesNotAdvanceIntervalOrSettleAgain()
     {
-        var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(107);
+        var matchStore = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = matchStore.GetOrCreate(107);
+        using var matchSchedule = new TestMatchTickServices.ScheduleProbe(match, matchStore);
         lock (match.MatchLock)
         {
-            Assert.False(match.TickSchedule.TryBeginEnvironmentalTick(StartedAt, StartedAt, match.IsEnded));
+            Assert.False(matchSchedule.TryBeginEnvironmentalTick(StartedAt, StartedAt));
             Assert.True(match.TryMarkEnded());
-            Assert.False(match.TickSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt, match.IsEnded));
-            Assert.Equal(StartedAt.AddSeconds(5), match.TickSchedule.NextEnvironmentalTickAtUtc);
+            Assert.False(matchSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt));
+            Assert.Equal(0, matchSchedule.LastEnvironmentInterval);
         }
     }
 
     [Fact]
-    public void SchedulingRequiresTheMatchLock()
+    public void SchedulingAcquiresTheMatchLock()
     {
-        var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(108);
-        Assert.Throws<InvalidOperationException>(() =>
-            match.TickSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt, match.IsEnded));
+        var matchStore = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = matchStore.GetOrCreate(108);
+        using var matchSchedule = new TestMatchTickServices.ScheduleProbe(match, matchStore);
+        Assert.True(matchSchedule.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt));
+        Assert.False(Monitor.IsEntered(match.MatchLock));
     }
 }

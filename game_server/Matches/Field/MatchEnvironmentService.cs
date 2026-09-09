@@ -66,14 +66,14 @@ internal class MatchEnvironmentService(
         }
 
         int overtimeDelta = match.Closures.GetOvertimeDamagePerTick(
-            MatchTickSchedule.EnvironmentalTickIntervalSeconds);
+            Config.ENVIRONMENTAL_TICK_INTERVAL_SECONDS);
         var targets = new List<EnvironmentalTarget>(aliveCount);
 
         foreach (var session in humans)
         {
             int closureDelta = match.Closures.GetClosedAreaDamagePerTick(
                 session.CurrentArea,
-                MatchTickSchedule.EnvironmentalTickIntervalSeconds);
+                Config.ENVIRONMENTAL_TICK_INTERVAL_SECONDS);
             if (session.LastValidatedPosition != null)
                 closureDelta += MatchPressureFieldPolicy.GetDamagePerTick(match, session.LastValidatedPosition, DateTime.UtcNow);
             targets.Add(new EnvironmentalTarget(
@@ -89,7 +89,7 @@ internal class MatchEnvironmentService(
         {
             int closureDelta = match.Closures.GetClosedAreaDamagePerTick(
                 bot.CurrentArea,
-                MatchTickSchedule.EnvironmentalTickIntervalSeconds);
+                Config.ENVIRONMENTAL_TICK_INTERVAL_SECONDS);
             closureDelta += MatchPressureFieldPolicy.GetDamagePerTick(match, bot.Position, DateTime.UtcNow);
             targets.Add(new EnvironmentalTarget(
                 bot.PlayerId,

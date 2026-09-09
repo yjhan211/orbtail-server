@@ -75,8 +75,8 @@ public sealed class SwarmArenaTickOrderTests
             proximityTick,
             "using var scope = runtime.Enter();",
             "combat.ProcessTick(matchingId, activeSessions);",
-            "runtime.TickSchedule.TryBeginEnvironmentalTick(",
             "MatchStartGate.GetGameplayStartedAtUtc(matchingId)",
+            "if (currentEnvironmentInterval > _lastEnvironmentInterval)",
             "environment.ProcessTick(runtime, activeSessions);",
             "runtime.IsEnded ||",
             "botMovement.ProcessTick(runtime, botDecisions.DecideMovement);");
@@ -311,7 +311,7 @@ public sealed class SwarmArenaTickOrderTests
         string runner = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs");
         AssertInOrder(runner,
             "using var scope = runtime.Enter();",
-            "TryBeginAreaClosureTick(",
+            "_lastAreaClosureSecond = elapsedSeconds;",
             "zones.ProcessTick(matchingId, playerSessions.ToArray());");
         AssertInOrder(
             tick,

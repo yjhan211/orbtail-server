@@ -37,7 +37,6 @@ internal sealed class MatchRuntime
         _logger = logger;
         _matchingLifecycle = matchingLifecycle;
         MatchingId = matchingId;
-        TickSchedule = new MatchTickSchedule(MatchLock);
         SunOrbAttacks = new SunOrbAttackState(matchingId);
         Bots = new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks);
         AutoAttack = new AutoAttackController(matchingId);
@@ -92,7 +91,6 @@ internal sealed class MatchRuntime
     public EventLogState EventLog { get; } = new();
 
     // 틱 실행과 일정
-    public MatchTickSchedule TickSchedule { get; }
     internal MatchTickLoop? TickLoop
     {
         get => Volatile.Read(ref _tickLoop);
