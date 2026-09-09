@@ -1,5 +1,5 @@
-using game_server.matches.bots;
-using game_server.matches.logging;
+using game_server.bots;
+using game_server.logging;
 using game_server.matches;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;

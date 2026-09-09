@@ -1,13 +1,14 @@
-using game_server.matches.bots;
-using game_server.matches.combat;
-using game_server.matches.items;
-using game_server.matches.monsters;
-using game_server.matches.field;
+using game_server.bots;
+using game_server.combat;
+using game_server.items;
+using game_server.monsters;
+using game_server.field;
 using System.Collections.Concurrent;
 using game_server.matches.entry;
 using game_server.matches.lifecycle;
 using game_server.matches.results;
-using game_server.matches.states;
+using game_server.logging;
+using game_server.orbs;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common.data.models;
@@ -49,7 +50,8 @@ internal sealed class MatchRuntime
 
     internal readonly List<Action> AfterRelease = new();
 
-    internal MatchRuntime(MatchRuntimeStore runtimeStore, long matchingId, ILogger<MatchRuntime> logger, MatchingLifecycleService matchingLifecycle)
+    internal MatchRuntime(MatchRuntimeStore runtimeStore, long matchingId, ILogger<MatchRuntime> logger, MatchingLifecycleService matchingLifecycle,
+        GameEventLogManager eventLogs, ILogger<MatchCombatDamageService> damageLogger)
     {
         _runtimeStore = runtimeStore;
         _logger = logger;
@@ -64,6 +66,7 @@ internal sealed class MatchRuntime
         SummonStones = new SummonStoneManager(matchingId);
         Closures = new AreaClosureManager(matchingId, logger);
         Monsters = new SwarmMonsterDirector(matchingId, Closures, Inventory);
+        CombatDamage = new MatchCombatDamageService(this, eventLogs, damageLogger);
     }
 
     // 매치 식별과 수명·잠금
@@ -76,6 +79,7 @@ internal sealed class MatchRuntime
 
     // 전투와 오브
     public AutoAttackController AutoAttack { get; }
+    public MatchCombatDamageService CombatDamage { get; }
     public TrailCombatState TrailCombat { get; } = new();
     public SunOrbAttackState SunOrbAttacks { get; }
     public WindOrbAttackState WindOrbAttacks { get; } = new();
@@ -92,7 +96,8 @@ internal sealed class MatchRuntime
     public AreaClosureManager Closures { get; }
     public EncounterRevealManager Encounters { get; } = new();
     public MatchProgressState Progress { get; } = new();
-    public PresentationState Presentation { get; } = new();
+    public OrbVisualStateCache OrbVisualCache { get; } = new();
+    public OrbRecoveryState OrbRecovery { get; } = new();
     public EventLogState EventLog { get; } = new();
 
     // 틱 실행과 일정

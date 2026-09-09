@@ -1,7 +1,7 @@
-using game_server.matches.bots;
-using game_server.matches.logging;
-using game_server.matches.orbs;
-using game_server.matches.combat;
+using game_server.bots;
+using game_server.logging;
+using game_server.orbs;
+using game_server.combat;
 using game_server.matches;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -20,7 +20,7 @@ public sealed class WindOrbAttackServiceTests
         var match = store.GetOrCreate(947501);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var trails = new OrbTrailService(store);
-        var service = new WindOrbAttackService(store, trails, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
+        var service = new WindOrbAttackService(store, trails, logs);
         var now = DateTime.UtcNow;
         var owner = new BotPlayerState { PlayerId = 11 };
         var victim = new BotPlayerState { PlayerId = 12 };
@@ -59,7 +59,7 @@ public sealed class WindOrbAttackServiceTests
         var match = store.GetOrCreate(947502);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var trails = new OrbTrailService(store);
-        var service = new WindOrbAttackService(store, trails, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
+        var service = new WindOrbAttackService(store, trails, logs);
         using (MatchRuntimeStore.Enter(match))
         {
             match.Inventory.GetPlayerInventory(11).AddItem(itemId, forceSeparateStack: true);

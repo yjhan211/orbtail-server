@@ -1,4 +1,4 @@
-using game_server.matches.combat;
+using game_server.combat;
 using game_server.matches.results;
 using game_server.matches;
 namespace demo_regression_tests;
@@ -15,8 +15,8 @@ public sealed class ServerDeploymentSurfaceTests
             foreach (string flag in new[] { "DISABLE_GAME_END", "DEV_CROSSFIRE_SANDBOX", "SOLO_MONSTERS", "DEV_CUT_DUMMY" })
                 Assert.DoesNotContain(flag, source);
         }
-        Assert.DoesNotContain("SetupSwarmCutDummy", Read("game_server/Matches/Combat/MatchCombatService.cs"));
-        Assert.DoesNotContain("IsSwarmCutDummy", Read("game_server/Matches/Bots/BotPlayerManager.cs"));
+        Assert.DoesNotContain("SetupSwarmCutDummy", Read("game_server/Combat/MatchCombatService.cs"));
+        Assert.DoesNotContain("IsSwarmCutDummy", Read("game_server/Bots/BotPlayerManager.cs"));
     }
 
     [Fact]
@@ -28,7 +28,7 @@ public sealed class ServerDeploymentSurfaceTests
         Assert.DoesNotContain("GetFullInstanceSnapshot", source);
         Assert.DoesNotContain("GetInstanceSnapshot", source);
         Assert.DoesNotContain("GetActiveMatchingIds", source);
-        Assert.DoesNotContain("GetActiveMatchingIds", Read("game_server/Matches/Combat/MatchCombatService.cs"));
+        Assert.DoesNotContain("GetActiveMatchingIds", Read("game_server/Combat/MatchCombatService.cs"));
         Assert.DoesNotContain("GetActiveMatchingIds", Read("game_server/Sessions/GameSessionRegistry.cs"));
         Assert.Contains("EndBotOnlyMatchIfSettled", Read("game_server/Matches/Results/MatchCleanupService.cs"));
     }

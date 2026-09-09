@@ -1,4 +1,4 @@
-using game_server.matches.items;
+using game_server.items;
 using System.Reflection;
 
 namespace demo_regression_tests;

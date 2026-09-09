@@ -1,6 +1,6 @@
 using game_server;
-using game_server.matches.logging;
-using game_server.matches.orbs;
+using game_server.logging;
+using game_server.orbs;
 using game_server.players;
 using game_server.matches.entry;
 using game_server.matches.results;

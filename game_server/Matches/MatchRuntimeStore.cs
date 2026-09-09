@@ -1,4 +1,6 @@
 using game_server.matches.lifecycle;
+using game_server.combat;
+using game_server.logging;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 
@@ -9,11 +11,24 @@ namespace game_server.matches;
 ///     ID로 잠금 진입을 요청하면 해당 매치를 찾아 위임하며,
 ///     실제 잠금과 종료 정리는 MatchRuntime이 담당한다.
 /// </summary>
-internal sealed class MatchRuntimeStore(ILogger<MatchRuntime> runtimeLogger, MatchingLifecycleService matchingLifecycle)
+internal sealed class MatchRuntimeStore
 {
-    private readonly MatchingLifecycleService _matchingLifecycle = matchingLifecycle ?? throw new ArgumentNullException(nameof(matchingLifecycle));
+    private readonly MatchingLifecycleService _matchingLifecycle;
+    private readonly ILogger<MatchRuntime> _runtimeLogger;
+    private readonly ILogger<MatchCombatDamageService> _damageLogger;
     private readonly ConcurrentDictionary<long, MatchRuntime> _runtimes = new();
+
     internal event Action<MatchRuntime>? MatchCreated;
+    internal GameEventLogManager EventLogs { get; }
+
+    internal MatchRuntimeStore(ILogger<MatchRuntime> runtimeLogger, MatchingLifecycleService matchingLifecycle,
+        ILogger<MatchCombatDamageService> damageLogger)
+    {
+        _runtimeLogger = runtimeLogger;
+        _matchingLifecycle = matchingLifecycle ?? throw new ArgumentNullException(nameof(matchingLifecycle));
+        _damageLogger = damageLogger;
+        EventLogs = new GameEventLogManager(id => GetOrNull(id)?.EventLog);
+    }
 
     public int Count => _runtimes.Count;
 
@@ -25,7 +40,7 @@ internal sealed class MatchRuntimeStore(ILogger<MatchRuntime> runtimeLogger, Mat
             return existing;
         }
 
-        var newRuntime = new MatchRuntime(this, matchingId, runtimeLogger, _matchingLifecycle);
+        var newRuntime = new MatchRuntime(this, matchingId, _runtimeLogger, _matchingLifecycle, EventLogs, _damageLogger);
         lock (newRuntime.MatchLock)
         {
             var runtime = _runtimes.GetOrAdd(matchingId, newRuntime);

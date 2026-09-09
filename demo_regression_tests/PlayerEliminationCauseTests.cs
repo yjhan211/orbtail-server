@@ -1,5 +1,6 @@
-using game_server.matches.bots;
-using game_server.matches.states;
+using game_server.bots;
+using game_server.field;
+using game_server.orbs;
 using game_server.matches;
 using MessagePack;
 using Microsoft.Extensions.Logging.Abstractions;

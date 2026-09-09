@@ -1,9 +1,9 @@
-using game_server.matches.orbs;
+using game_server.orbs;
 using game_server;
-using game_server.matches.items;
-using game_server.matches.logging;
+using game_server.items;
+using game_server.logging;
 using game_server.players;
-using game_server.matches.combat;
+using game_server.combat;
 using game_server.matches.entry;
 using game_server.matches.lifecycle;
 using game_server.matches.results;
@@ -71,7 +71,7 @@ internal static class TestGameSessionServices
         }
         var lifecycle = new MatchingLifecycleService(redis,
             new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
-        return new MatchRuntimeStore(logger.For<MatchRuntime>(), lifecycle);
+        return new MatchRuntimeStore(logger.For<MatchRuntime>(), lifecycle, logger.For<MatchCombatDamageService>());
     }
     public static PlayerMovementService GetMovement(GameClientSession session) =>
         (PlayerMovementService)typeof(GameClientSession).GetField("_playerMovement",

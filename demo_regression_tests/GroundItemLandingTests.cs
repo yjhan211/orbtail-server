@@ -1,4 +1,4 @@
-using game_server.matches.items;
+using game_server.items;
 using network.common;
 using network.common.data.models;
 

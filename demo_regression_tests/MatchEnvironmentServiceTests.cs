@@ -1,7 +1,7 @@
 using game_server;
-using game_server.matches.bots;
-using game_server.matches.logging;
-using game_server.matches.field;
+using game_server.bots;
+using game_server.logging;
+using game_server.field;
 using game_server.matches.results;
 using game_server.matches;
 using game_server.sessions;

@@ -1,11 +1,11 @@
-using game_server.matches.bots;
-using game_server.matches.items;
-using game_server.matches.logging;
-using game_server.matches.orbs;
+using game_server.bots;
+using game_server.items;
+using game_server.logging;
+using game_server.orbs;
 using game_server.players;
-using game_server.matches.combat;
+using game_server.combat;
 using game_server.matches.entry;
-using game_server.matches.field;
+using game_server.field;
 using game_server.matches.lifecycle;
 using game_server.matches.results;
 using game_server.matches;
@@ -53,14 +53,13 @@ internal static class GameServerTestAccess
             new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
         runtimes ??= new MatchRuntimeStore(logger.For<MatchRuntime>(),
 
-            matchingLifecycle: lifecycle);
-        var logs = new GameEventLogManager(id => runtimes.GetOrNull(id)?.EventLog);
+            matchingLifecycle: lifecycle, damageLogger: logger.For<MatchCombatDamageService>());
+        var logs = runtimes.EventLogs;
         var summaries = new MatchSummaryFileStore();
         var entryFailure = new MatchEntryFailureHandler(runtimes, sessions, lifecycle, logger);
         var orbUpgrades = new OrbUpgradeService(runtimes, logs,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbUpgradeService>.Instance);
         var orbTrails = new OrbTrailService(runtimes);
-        var combatDamage = new MatchCombatDamageService(runtimes, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance);
         var cleanup = new MatchCleanupService(runtimes, logs, summaries, logger);
         var matchEliminations = TestGameSessionServices.CreateEliminationService(
             runtimes, logs, summaries, logger);
@@ -77,9 +76,9 @@ internal static class GameServerTestAccess
             eliminations, matchEliminations, orbUpgrades, growth,
             new OrbRecoveryService(runtimes, logs,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbRecoveryService>.Instance),
-            new OrbVisualStatePublisher(runtimes), orbTrails, combatDamage,
-            new WindOrbAttackService(runtimes, orbTrails, combatDamage, logs),
-            new SunOrbAttackService(runtimes, combatDamage, logs), field, decisions,
+            new OrbVisualStatePublisher(runtimes), orbTrails,
+            new WindOrbAttackService(runtimes, orbTrails, logs),
+            new SunOrbAttackService(runtimes, logs), field, decisions,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatService>.Instance);
         var countdown = new MatchCountdownService(runtimes, entryFailure, logger);
         var environment = new MatchEnvironmentService(logs,

@@ -1,7 +1,7 @@
-using game_server.matches.bots;
-using game_server.matches.logging;
-using game_server.matches.orbs;
-using game_server.matches.combat;
+using game_server.bots;
+using game_server.logging;
+using game_server.orbs;
+using game_server.combat;
 using game_server.matches.entry;
 using game_server.matches.results;
 using game_server.players;
@@ -652,8 +652,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             "game_server",
             "Sessions",
             "GameClientSession.OrbSummon.cs");
-        string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
-        string orbBoard = ReadNormalizedSource(root, "game_server", "Matches", "Orbs", "OrbUpgradeService.cs");
+        string combat = ReadNormalizedSource(root, "game_server", "Combat", "MatchCombatService.cs");
+        string orbBoard = ReadNormalizedSource(root, "game_server", "Orbs", "OrbUpgradeService.cs");
 
         Assert.Contains("IPlayerGrowthHandler _growth", session);
         Assert.Contains("_growth.HandleUpgradeOrb(", orbSummon);

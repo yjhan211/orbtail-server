@@ -1,7 +1,7 @@
-using game_server.matches.bots;
-using game_server.matches.combat;
-using game_server.matches.logging;
-using game_server.matches.orbs;
+using game_server.bots;
+using game_server.combat;
+using game_server.logging;
+using game_server.orbs;
 using game_server.matches;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -38,9 +38,9 @@ public sealed class OrbRecoveryServiceTests
             Assert.Equal(Config.MAX_HEALTH - 12, bot.Health);
             service.Process(match.MatchingId, [first, second], [], [bot], now.AddSeconds(5));
             Assert.Equal(Config.MAX_HEALTH, bot.Health);
-            Assert.Equal(2, match.Presentation.OrbRecoveryReadyAtUtc.Count);
+            Assert.Equal(2, match.OrbRecovery.ReadyAtUtc.Count);
             service.Process(match.MatchingId, [], [], [bot], now.AddSeconds(6));
-            Assert.Empty(match.Presentation.OrbRecoveryReadyAtUtc);
+            Assert.Empty(match.OrbRecovery.ReadyAtUtc);
             match.TryMarkEnded();
         }
     }

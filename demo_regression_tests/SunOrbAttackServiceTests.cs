@@ -1,8 +1,7 @@
-using game_server.matches.bots;
-using game_server.matches.logging;
-using game_server.matches.orbs;
-using game_server.matches.combat;
-using game_server.matches.states;
+using game_server.bots;
+using game_server.logging;
+using game_server.orbs;
+using game_server.combat;
 using game_server.matches;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -18,7 +17,7 @@ public sealed class SunOrbAttackServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947601);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = new SunOrbAttackService(store, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
+        var service = new SunOrbAttackService(store, logs);
         var now = DateTime.UtcNow;
         var owner = new BotPlayerState { PlayerId = 11 };
         var victim = new BotPlayerState { PlayerId = 12 };
@@ -70,7 +69,7 @@ public sealed class SunOrbAttackServiceTests
         var first = store.GetOrCreate(947602);
         var second = store.GetOrCreate(947603);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = new SunOrbAttackService(store, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
+        var service = new SunOrbAttackService(store, logs);
         var now = DateTime.UtcNow;
         using (MatchRuntimeStore.Enter(first))
             first.SunOrbAttacks.SetSunBurn(12, 11, 107000010, AreaType.S2Ground,

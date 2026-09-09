@@ -1,11 +1,11 @@
-using game_server.matches.bots;
-using game_server.matches.items;
-using game_server.matches.logging;
-using game_server.matches.orbs;
+using game_server.bots;
+using game_server.items;
+using game_server.logging;
+using game_server.orbs;
 using game_server.players;
-using game_server.matches.combat;
+using game_server.combat;
 using game_server.matches.entry;
-using game_server.matches.field;
+using game_server.field;
 using game_server.matches.lifecycle;
 using game_server.matches.results;
 using game_server.matches;
@@ -101,12 +101,13 @@ internal static class Program
             return new MatchRuntimeStore(
                 sp.GetRequiredService<ILogger<MatchRuntime>>(),
 
-                matchingLifecycle: lifecycle);
+                matchingLifecycle: lifecycle,
+                damageLogger: sp.GetRequiredService<ILogger<MatchCombatDamageService>>());
         });
         services.AddSingleton<GameEventLogManager>(sp =>
         {
             var runtimes = sp.GetRequiredService<MatchRuntimeStore>();
-            return new GameEventLogManager(id => runtimes.GetOrNull(id)?.EventLog);
+            return runtimes.EventLogs;
         });
         services.AddSingleton<MatchSummaryFileStore>(_ => new MatchSummaryFileStore(
             hostContext.Configuration["MATCH_SUMMARY_DIRECTORY"],
@@ -150,7 +151,6 @@ internal static class Program
         services.AddSingleton<GroundItemDropService>();
         services.AddSingleton<OrbVisualStatePublisher>();
         services.AddSingleton<OrbTrailService>();
-        services.AddSingleton<MatchCombatDamageService>();
         services.AddSingleton<WindOrbAttackService>();
         services.AddSingleton<SunOrbAttackService>();
         services.AddSingleton<MatchZoneService>();

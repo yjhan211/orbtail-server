@@ -1,8 +1,8 @@
 using game_server;
-using game_server.matches.bots;
-using game_server.matches.items;
-using game_server.matches.logging;
-using game_server.matches.field;
+using game_server.bots;
+using game_server.items;
+using game_server.logging;
+using game_server.field;
 using game_server.matches.results;
 using game_server.matches;
 using game_server.sessions;
@@ -105,7 +105,7 @@ public sealed class MatchOwnedStateTests
     }
 
     [Fact]
-    public void EncounterCooldownAndPresentationCaches_BelongToOneMatch()
+    public void EncounterCooldownAndOrbAndMonsterState_BelongToOneMatch()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(941006);
@@ -118,10 +118,12 @@ public sealed class MatchOwnedStateTests
             encounters.ResolveCorridorEncounter(11, position, [(12L, position)]).EventType);
         Assert.Equal(EncounterRevealManager.CorridorRevealEventType,
             second.Encounters.ResolveCorridorEncounter(11, position, [(12L, position)]).EventType);
-        first.Presentation.OrbRecoveryReadyAtUtc[(11, 22, 0)] = DateTime.UtcNow;
-        first.Presentation.NextMonsterPositionBroadcastAtUtc = DateTime.UtcNow;
-        Assert.Empty(second.Presentation.OrbRecoveryReadyAtUtc);
-        Assert.Equal(default, second.Presentation.NextMonsterPositionBroadcastAtUtc);
+        first.OrbRecovery.ReadyAtUtc[(11, 22, 0)] = DateTime.UtcNow;
+        first.Monsters.NextMonsterPositionBroadcastAtUtc = DateTime.UtcNow;
+        Assert.Empty(second.OrbRecovery.ReadyAtUtc);
+        Assert.NotSame(first.OrbVisualCache, second.OrbVisualCache);
+        Assert.NotSame(first.OrbVisualCache.States, second.OrbVisualCache.States);
+        Assert.Equal(default, second.Monsters.NextMonsterPositionBroadcastAtUtc);
     }
 
     [Fact]

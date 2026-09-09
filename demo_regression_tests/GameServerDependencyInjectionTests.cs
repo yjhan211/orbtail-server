@@ -1,7 +1,7 @@
-using game_server.matches.bots;
-using game_server.matches.logging;
+using game_server.bots;
+using game_server.logging;
 using game_server.players;
-using game_server.matches.combat;
+using game_server.combat;
 using game_server.matches.entry;
 using game_server.matches.results;
 using game_server.matches;
@@ -19,6 +19,32 @@ namespace demo_regression_tests;
 
 public sealed class GameServerDependencyInjectionTests
 {
+    [Fact]
+    public void CombatDamageAndCriticalRandomBelongToEachMatchButEventLogsAreShared()
+    {
+        using var provider = CreateProvider();
+        var logs = provider.GetRequiredService<GameEventLogManager>();
+        var store = provider.GetRequiredService<MatchRuntimeStore>();
+        var first = store.GetOrCreate(990011);
+        var second = store.GetOrCreate(990012);
+
+        Assert.Null(provider.GetService<MatchCombatDamageService>());
+        Assert.Same(logs, store.EventLogs);
+        Assert.Same(first.CombatDamage, store.GetOrThrow(first.MatchingId).CombatDamage);
+        Assert.NotSame(first.CombatDamage, second.CombatDamage);
+
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var fields = typeof(MatchCombatDamageService).GetFields(flags);
+        var random = fields.Single(field => field.FieldType == typeof(Random));
+        Assert.NotSame(random.GetValue(first.CombatDamage), random.GetValue(second.CombatDamage));
+        var runtime = fields.Single(field => field.FieldType == typeof(MatchRuntime));
+        Assert.Same(first, runtime.GetValue(first.CombatDamage));
+        Assert.Same(second, runtime.GetValue(second.CombatDamage));
+        var eventLogs = fields.Single(field => field.FieldType == typeof(GameEventLogManager));
+        Assert.Same(logs, eventLogs.GetValue(first.CombatDamage));
+        Assert.Same(logs, eventLogs.GetValue(second.CombatDamage));
+    }
+
     [Fact]
     public void MatchTickServiceCreatesSeparateLoopsUsingSharedGameplayServices()
     {
@@ -41,9 +67,9 @@ public sealed class GameServerDependencyInjectionTests
                 Type[] dependencyTypes =
                 [
                     typeof(MatchCountdownService), typeof(MatchCombatService),
-                    typeof(game_server.matches.field.MatchEnvironmentService),
-                    typeof(game_server.matches.bots.BotMovementService), typeof(game_server.matches.bots.BotDecisionService),
-                    typeof(game_server.matches.field.MatchZoneService)
+                    typeof(game_server.field.MatchEnvironmentService),
+                    typeof(game_server.bots.BotMovementService), typeof(game_server.bots.BotDecisionService),
+                    typeof(game_server.field.MatchZoneService)
                 ];
                 foreach (var type in dependencyTypes)
                 {
@@ -69,7 +95,7 @@ public sealed class GameServerDependencyInjectionTests
     {
         using var provider = CreateProvider();
         // 로그를 먼저 요청해도 저장소와 순환 없이 조립되어야 한다.
-        provider.GetRequiredService<game_server.matches.logging.GameEventLogManager>();
+        provider.GetRequiredService<game_server.logging.GameEventLogManager>();
         var registry = provider.GetRequiredService<GameSessionRegistry>();
         var server = provider.GetRequiredService<GameServer>();
         var injectedRegistry = typeof(GameServer)
@@ -83,7 +109,7 @@ public sealed class GameServerDependencyInjectionTests
         Type[] serviceTypes =
         [
             typeof(game_server.matches.MatchRuntimeStore),
-            typeof(game_server.matches.logging.GameEventLogManager),
+            typeof(game_server.logging.GameEventLogManager),
             typeof(game_server.matches.results.MatchEliminationService),
             typeof(game_server.matches.entry.GameMatchEntryService),
             typeof(game_server.players.MovementValidationService),

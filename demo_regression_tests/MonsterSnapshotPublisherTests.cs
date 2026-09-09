@@ -1,4 +1,4 @@
-using game_server.matches.monsters;
+using game_server.monsters;
 using game_server.matches;
 using Microsoft.Extensions.Logging.Abstractions;
 

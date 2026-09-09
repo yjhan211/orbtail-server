@@ -1,6 +1,6 @@
 using game_server;
-using game_server.matches.bots;
-using game_server.matches.logging;
+using game_server.bots;
+using game_server.logging;
 using game_server.matches.entry;
 using game_server.sessions;
 using MessagePack;

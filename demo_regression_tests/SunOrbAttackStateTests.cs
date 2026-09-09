@@ -1,5 +1,5 @@
-using game_server.matches.bots;
-using game_server.matches.states;
+using game_server.bots;
+using game_server.orbs;
 using game_server.matches;
 using network.common;
 using network.common.data.models;

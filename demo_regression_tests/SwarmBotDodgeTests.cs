@@ -1,4 +1,4 @@
-using game_server.matches.bots;
+using game_server.bots;
 using game_server;
 using network.common;
 using network.common.data.models;

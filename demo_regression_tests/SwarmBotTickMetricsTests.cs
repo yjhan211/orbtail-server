@@ -1,4 +1,4 @@
-using game_server.matches.bots;
+using game_server.bots;
 
 namespace demo_regression_tests;
 

@@ -1,4 +1,4 @@
-using game_server.matches.logging;
+using game_server.logging;
 using game_server.matches.lifecycle;
 using game_server.matches.results;
 using game_server.matches;

@@ -1,11 +1,11 @@
 using game_server;
-using game_server.matches.bots;
-using game_server.matches.items;
-using game_server.matches.logging;
-using game_server.matches.orbs;
-using game_server.matches.combat;
+using game_server.bots;
+using game_server.items;
+using game_server.logging;
+using game_server.orbs;
+using game_server.combat;
 using game_server.matches.entry;
-using game_server.matches.field;
+using game_server.field;
 using game_server.matches.results;
 using game_server.players;
 using game_server.matches;
@@ -147,7 +147,7 @@ public sealed class GameClientSessionPublicationTests
         var session = fixture.CreateSession(70001, 102, (AreaType)50);
         using (session.Match.Enter())
         {
-            var combat = new MatchCombatDamageService(fixture.Store, fixture.EventLog, NullLogger<MatchCombatDamageService>.Instance);
+            var combat = session.Match.CombatDamage;
             combat.ApplyProximityAutoCombatHit(session, 101, (AreaType)50, 123, 5, isPeriodicDamage: true, sourceHealth: 73);
         }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
@@ -165,7 +165,7 @@ public sealed class GameClientSessionPublicationTests
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
-        var combat = new MatchCombatDamageService(fixture.Store, fixture.EventLog, NullLogger<MatchCombatDamageService>.Instance);
+        var combat = session.Match.CombatDamage;
         combat.SendMonsterHitNotification(session, 42, (AreaType)50, 123, 9, critical: true, showDamageOnly: true);
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(CombatEntityKind.Monster, hit.TargetKind);
@@ -183,7 +183,7 @@ public sealed class GameClientSessionPublicationTests
         int healthBefore = session.CurrentHealth;
         using (session.Match.Enter())
         {
-            var combat = new MatchCombatDamageService(fixture.Store, fixture.EventLog, NullLogger<MatchCombatDamageService>.Instance);
+            var combat = session.Match.CombatDamage;
             combat.ApplySwarmAfterimageMonsterHit(session, 42, 1);
         }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
@@ -199,7 +199,7 @@ public sealed class GameClientSessionPublicationTests
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
-        var combat = new MatchCombatDamageService(fixture.Store, fixture.EventLog, NullLogger<MatchCombatDamageService>.Instance);
+        var combat = session.Match.CombatDamage;
         combat.SendPlayerHitNotification(session, 999, (AreaType)50, 123, 7, targetHealth: 61);
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(999, hit.TargetId);
@@ -806,12 +806,11 @@ public sealed class GameClientSessionPublicationTests
             "GameClientSession.OrbSummon.cs");
         string doors = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Doors.cs");
         string connection = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
-        string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
-        string bots = ReadNormalizedSource(root, "game_server", "Matches", "Bots", "BotDecisionService.cs");
+        string combat = ReadNormalizedSource(root, "game_server", "Combat", "MatchCombatService.cs");
+        string bots = ReadNormalizedSource(root, "game_server", "Bots", "BotDecisionService.cs");
         string botPickup = ReadNormalizedSource(
             root,
             "game_server",
-            "Matches",
             "Bots",
             "BotPlayerManager.ProximityAutoCombat.cs");
 
@@ -821,7 +820,7 @@ public sealed class GameClientSessionPublicationTests
             ReadNormalizedSource(root, "network", "Core", "SessionBase.cs"));
         Assert.DoesNotContain("RunWithMatchLock", session);
         Assert.DoesNotContain(Enum.GetNames<Protocol>(), name => name.Contains("RNG_COLLECT") || name.Contains("INTERACT_COOLDOWN"));
-        var autoPickup = ReadNormalizedSource(root, "game_server", "Matches", "Items", "GroundItemAutoPickupService.cs");
+        var autoPickup = ReadNormalizedSource(root, "game_server", "Items", "GroundItemAutoPickupService.cs");
         Assert.Contains("Monitor.IsEntered(match.MatchLock)", autoPickup);
         Assert.Contains("match.IsEnded", autoPickup);
         Assert.DoesNotContain("RunWithMatchLock", orbSummon);

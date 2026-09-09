@@ -1,4 +1,4 @@
-using game_server.matches.monsters;
+using game_server.monsters;
 using System.Globalization;
 using System.Reflection;
 using System.Text.RegularExpressions;

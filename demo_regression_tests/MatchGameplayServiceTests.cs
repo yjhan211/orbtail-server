@@ -1,5 +1,5 @@
-using game_server.matches.bots;
-using game_server.matches.combat;
+using game_server.bots;
+using game_server.combat;
 using game_server.matches;
 using System.Reflection;
 using game_server;
