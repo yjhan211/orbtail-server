@@ -110,13 +110,13 @@ public sealed class SessionPacketProcessingTests
             logs,
             TestGameSessionServices.CreateEliminationService(store, logs,
                 new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
-                GameServerDevOptions.Disabled, NullLogger.Instance),
+                NullLogger.Instance),
             new FakePlayerGrowthHandler(),
 
             new FakeGameSessionLifecycle(),
             static () => false,
             new FakeMatchEntryFailureHandler(),
-            matchEntry: TestGameSessionServices.CreateEntryService(null!, store, GameServerDevOptions.Disabled, NullLogger.Instance),
+            matchEntry: TestGameSessionServices.CreateEntryService(null!, store, NullLogger.Instance),
             movementValidation: new MovementValidationService(NullLogger<MovementValidationService>.Instance),
                 orbInventory: new OrbInventoryService(logs));
         connection.SetSession(session);

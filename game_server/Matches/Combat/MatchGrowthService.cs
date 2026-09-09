@@ -115,8 +115,6 @@ internal sealed class MatchGrowthService(
     {
         foreach (var bot in aliveBots)
         {
-            if (bot.IsSwarmCutDummy)
-                continue;
             var (baseCost, surcharge, finalCost, orbCount, costSummon, costAttack, costDefense) =
                 GetCostBreakdown(matchingId, bot.PlayerId);
             if (matchRuntimes.GetOrThrow(matchingId).SummonStones.GetSnapshot(bot.PlayerId).StoneCount < finalCost)
@@ -167,7 +165,7 @@ internal sealed class MatchGrowthService(
 
         foreach (var bot in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
         {
-            if (!bot.IsEliminated && !bot.IsSwarmCutDummy)
+            if (!bot.IsEliminated)
                 top = Math.Max(top, matchRuntimes.GetOrThrow(matchingId).Inventory.GetOrbScore(bot.PlayerId).OrbCount);
         }
 
@@ -193,7 +191,7 @@ internal sealed class MatchGrowthService(
 
         foreach (var other in aliveBots)
         {
-            if (other.PlayerId != bot.PlayerId && !other.IsSwarmCutDummy &&
+            if (other.PlayerId != bot.PlayerId &&
                 other.CurrentArea == bot.CurrentArea &&
                 matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(other.PlayerId).GetOrbPower() *
                 BotPreyPowerAdvantage <= myPower)

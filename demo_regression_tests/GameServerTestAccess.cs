@@ -57,13 +57,13 @@ internal static class GameServerTestAccess
         var logs = new GameEventLogManager(id => runtimes.GetOrNull(id)?.EventLog);
         var summaries = new MatchSummaryFileStore();
         var entryFailure = new MatchEntryFailureHandler(runtimes, sessions, lifecycle, logger);
-        var orbUpgrades = new OrbUpgradeService(runtimes, logs, GameServerDevOptions.Disabled,
+        var orbUpgrades = new OrbUpgradeService(runtimes, logs,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbUpgradeService>.Instance);
         var orbTrails = new OrbTrailService(runtimes);
         var combatDamage = new MatchCombatDamageService(runtimes, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance);
         var cleanup = new MatchCleanupService(runtimes, logs, summaries, logger);
         var matchEliminations = TestGameSessionServices.CreateEliminationService(
-            runtimes, logs, summaries, GameServerDevOptions.Disabled, logger);
+            runtimes, logs, summaries, logger);
         var eliminations = new BotEliminationService(logs, matchEliminations, logger);
         var growth = new MatchGrowthService(runtimes, logs, orbUpgrades,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchGrowthService>.Instance);
@@ -73,17 +73,17 @@ internal static class GameServerTestAccess
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotMovementService>.Instance);
         var decisions = new BotDecisionService(runtimes, logs, growth, orbTrails,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotDecisionService>.Instance);
-        var combat = new MatchCombatService(runtimes, GameServerDevOptions.Disabled, logs, cleanup,
+        var combat = new MatchCombatService(runtimes, logs, cleanup,
             eliminations, matchEliminations, orbUpgrades, growth,
             new OrbRecoveryService(runtimes, logs,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbRecoveryService>.Instance),
             new OrbVisualStatePublisher(runtimes), orbTrails, combatDamage,
             new WindOrbAttackService(runtimes, orbTrails, combatDamage, logs),
-            new SunOrbAttackService(runtimes, combatDamage, logs), field, movement, decisions,
+            new SunOrbAttackService(runtimes, combatDamage, logs), field, decisions,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatService>.Instance);
         var countdown = new MatchCountdownService(runtimes, entryFailure, logger);
         var environment = new MatchEnvironmentService(logs,
-            cleanup, eliminations, matchEliminations, GameServerDevOptions.Disabled,
+            cleanup, eliminations, matchEliminations,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchEnvironmentService>.Instance);
         var groundPickup = new GroundItemAutoPickupService(logs,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<GroundItemAutoPickupService>.Instance);
@@ -102,9 +102,8 @@ internal static class GameServerTestAccess
                 NodeId = "game-server-test",
                 PublicHost = "127.0.0.1"
             },
-            devOptions: GameServerDevOptions.Disabled,
             sessions: sessions, matchRuntimes: runtimes, eventLogs: logs, matchEliminations: matchEliminations,
-            matchEntry: TestGameSessionServices.CreateEntryService(new InMemoryRedisOperations(), runtimes, GameServerDevOptions.Disabled, logger),
+            matchEntry: TestGameSessionServices.CreateEntryService(new InMemoryRedisOperations(), runtimes, logger),
             movementValidation: new MovementValidationService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MovementValidationService>.Instance),
             orbInventory: new OrbInventoryService(logs),
             entryFailureHandler: entryFailure,

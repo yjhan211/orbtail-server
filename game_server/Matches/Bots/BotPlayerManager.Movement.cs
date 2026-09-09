@@ -138,13 +138,7 @@ public partial class BotPlayerManager
         DateTime nowUtc = DateTime.UtcNow;
         foreach (var bot in activeBots)
         {
-            // 절단 실험 더미 (#226): AI 전체 정지 — 이동·픽업·탐색 없이 과녁으로만 서 있는다.
-            if (bot.IsSwarmCutDummy)
-            {
-                bot.Path.Clear();
-                bot.PathIndex = 0;
-                continue;
-            }
+
 
             if (TryAutoPickupGroundItem(
                     bot, matchingId, inventoryManager, groundItemManager, summonStoneManager, out var pickup) &&

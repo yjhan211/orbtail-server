@@ -308,7 +308,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         public GameEventLogManager EventLog { get; } = TestGameEventLogs.Create();
         public MatchSummaryFileStore Summaries => new(_summaryDirectory);
         public MatchEliminationService Eliminations =>
-            TestGameSessionServices.CreateEliminationService(Store, EventLog, Summaries, GameServerDevOptions.Disabled, Logger);
+            TestGameSessionServices.CreateEliminationService(Store, EventLog, Summaries, Logger);
         public long? ThrowPrepareCompletionForPlayerId { get; set; }
         public MatchRuntime? TrackedRuntime { get; set; }
         public bool? LockHeldDuringLifecycle { get; private set; }
@@ -463,12 +463,12 @@ public sealed class GameClientSessionTerminalPublicationTests
                 static (_, _) => null,
 
                 eventLog,
-                TestGameSessionServices.CreateEliminationService(matchRuntimes, eventLog, summaries, GameServerDevOptions.Disabled, logger),
+                TestGameSessionServices.CreateEliminationService(matchRuntimes, eventLog, summaries, logger),
                 new FakePlayerGrowthHandler(),
                 new FakeGameSessionLifecycle(prepareGameCompletion),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
-                TestGameSessionServices.CreateEntryService(null!, matchRuntimes, GameServerDevOptions.Disabled, NullLogger.Instance),
+                TestGameSessionServices.CreateEntryService(null!, matchRuntimes, NullLogger.Instance),
                 new MovementValidationService(NullLogger<MovementValidationService>.Instance),
                 orbInventory: new OrbInventoryService(eventLog))
         {

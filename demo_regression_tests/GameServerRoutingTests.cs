@@ -31,8 +31,7 @@ public sealed class GameServerRoutingTests
             MaxConcurrentMatches = max,
             ActiveMatches = active,
             Accepting = accepting,
-            HeartbeatUnixMs = heartbeat,
-            StartedUnixMs = 1
+            HeartbeatUnixMs = heartbeat
         };
     }
 

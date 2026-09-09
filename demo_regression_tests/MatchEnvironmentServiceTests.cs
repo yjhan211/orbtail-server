@@ -17,7 +17,7 @@ public sealed class MatchEnvironmentServiceTests
     public void Process_RequiresTheSuppliedMatchLock()
     {
         var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947001);
-        var service = CreateService(GameServerDevOptions.Disabled);
+        var service = CreateService();
         Assert.Throws<InvalidOperationException>(() => service.ProcessTick(match, []));
     }
 
@@ -25,30 +25,12 @@ public sealed class MatchEnvironmentServiceTests
     public void Process_DoesNothingAfterMatchEnded()
     {
         var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947002);
-        var service = CreateService(GameServerDevOptions.Disabled);
+        var service = CreateService();
         lock (match.MatchLock)
         {
             match.TryMarkEnded();
             service.ProcessTick(match, []);
             Assert.True(match.IsEnded);
-        }
-    }
-
-    [Theory]
-    [InlineData(true, false, false)]
-    [InlineData(false, true, false)]
-    [InlineData(false, false, true)]
-    public void Process_PreservesDeveloperModesWithoutSurvivors(bool disableEnd, bool cutDummy, bool crossfire)
-    {
-        var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947003);
-        var service = CreateService(new GameServerDevOptions
-        {
-            DisableGameEnd = disableEnd, CutDummy = cutDummy, CrossfireSandbox = crossfire
-        });
-        lock (match.MatchLock)
-        {
-            service.ProcessTick(match, []);
-            Assert.False(match.IsEnded);
         }
     }
 
@@ -81,17 +63,17 @@ public sealed class MatchEnvironmentServiceTests
             now.AddSeconds(MatchPressureFieldPolicy.ShrinkSeconds)));
     }
 
-    private static MatchEnvironmentService CreateService(GameServerDevOptions options)
+    private static MatchEnvironmentService CreateService()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var sessions = new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var eliminations = TestGameSessionServices.CreateEliminationService(
-            store, logs, new MatchSummaryFileStore(), options, NullLogger.Instance);
+            store, logs, new MatchSummaryFileStore(), NullLogger.Instance);
         return new MatchEnvironmentService(logs,
             new MatchCleanupService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance),
             new BotEliminationService(logs, eliminations, NullLogger.Instance),
             eliminations,
-            options, NullLogger<MatchEnvironmentService>.Instance);
+            NullLogger<MatchEnvironmentService>.Instance);
     }
 }

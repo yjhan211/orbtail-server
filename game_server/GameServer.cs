@@ -41,7 +41,6 @@ internal sealed class GameServer(
     ServerReadinessState readinessState,
     IGameServerRegistry gameServerRegistry,
     GameServerNodeOptions nodeOptions,
-    GameServerDevOptions devOptions,
     GameSessionRegistry sessions,
     MatchRuntimeStore matchRuntimes,
     GameEventLogManager eventLogs,
@@ -160,10 +159,6 @@ internal sealed class GameServer(
 
     private void InitializeServices(CancellationToken cancellationToken)
     {
-        var enabledDevFlags = devOptions.EnabledVariableNames();
-        if (enabledDevFlags.Count > 0)
-            logger.LogWarning("[DEV] Game Server flags enabled: {Flags}", string.Join(", ", enabledDevFlags));
-
         GameDataHelper.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
         GameDataHelper.Initialize(
             message => logger.LogDebug("{Message}", message),

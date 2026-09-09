@@ -6,6 +6,20 @@ namespace demo_regression_tests;
 public sealed class ServerDeploymentSurfaceTests
 {
     [Fact]
+    public void RetiredGameServerDeveloperModesAreNotExposed()
+    {
+        Assert.Null(typeof(game_server.GameServerNodeOptions).Assembly.GetType("game_server.GameServerDevOptions"));
+        foreach (string path in new[] { "docker-compose.local.yml", "docker-compose.scale.yml" })
+        {
+            string source = Read(path);
+            foreach (string flag in new[] { "DISABLE_GAME_END", "DEV_CROSSFIRE_SANDBOX", "SOLO_MONSTERS", "DEV_CUT_DUMMY" })
+                Assert.DoesNotContain(flag, source);
+        }
+        Assert.DoesNotContain("SetupSwarmCutDummy", Read("game_server/Matches/Combat/MatchCombatService.cs"));
+        Assert.DoesNotContain("IsSwarmCutDummy", Read("game_server/Matches/Bots/BotPlayerManager.cs"));
+    }
+
+    [Fact]
     public void GameServerDoesNotKeepUnusedAdminEntryPoints()
     {
         string source = Read("game_server/GameServer.cs");
@@ -17,23 +31,6 @@ public sealed class ServerDeploymentSurfaceTests
         Assert.DoesNotContain("GetActiveMatchingIds", Read("game_server/Matches/Combat/MatchCombatService.cs"));
         Assert.DoesNotContain("GetActiveMatchingIds", Read("game_server/Sessions/GameSessionRegistry.cs"));
         Assert.Contains("EndBotOnlyMatchIfSettled", Read("game_server/Matches/Results/MatchCleanupService.cs"));
-    }
-
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void CutDummyRejectsMissingMatchIdEvenWhenAnotherMatchExists(long matchingId)
-    {
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(
-            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
-        var runtime = store.GetOrCreate(70001);
-        var server = GameServerTestAccess.Create(store);
-
-        object result = server.GetCombat().SetupSwarmCutDummy(matchingId);
-
-        Assert.Equal("no active match", result.GetType().GetProperty("error")!.GetValue(result));
-        Assert.Same(runtime, store.GetOrNull(70001));
-        Assert.False(runtime.IsEnded);
     }
 
     [Theory]

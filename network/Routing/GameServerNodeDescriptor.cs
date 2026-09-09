@@ -17,7 +17,6 @@ public sealed class GameServerNodeDescriptor
     [Key("activeMatches")] public int ActiveMatches { get; set; }
     [Key("accepting")] public bool Accepting { get; set; }
     [Key("heartbeatUnixMs")] public long HeartbeatUnixMs { get; set; }
-    [Key("startedUnixMs")] public long StartedUnixMs { get; set; }
     public bool IsValid()
     {
         return !string.IsNullOrWhiteSpace(NodeId) &&

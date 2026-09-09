@@ -144,8 +144,6 @@ public sealed class SwarmArenaTickOrderTests
             arenaTick,
             "orbUpgrades.GrantStartingOrbs(matchingId, session.PlayerId.Value, isBot: false);",
             "session.SendSummonStoneState();",
-            "SetupSwarmCutDummy(matchingId);",
-            "session.TrySend(leavePacket);",
             "matchRuntimes.GetOrThrow(matchingId).Monsters.Tick(",
             "if (!MatchStartGate.IsGameplayActive(matchingId))",
             "UpdateSwarmOrbTrails(",
@@ -248,7 +246,6 @@ public sealed class SwarmArenaTickOrderTests
             "Roster.TryEliminatePlayer(",
             "groundItemDrop.DropAll(eliminatedSession);",
             "session.TrySend(eliminatedPacket);",
-            "session.TrySend(leavePacket);",
             "Roster.CheckGameOver(",
             "SendGameResult(");
         Assert.False(ContainsCodeToken(humanElimination, "catch"));

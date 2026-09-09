@@ -74,11 +74,11 @@ internal static class TestGameSessionServices
     }
 
     public static GameMatchEntryService CreateEntryService(
-        IRedisOperations? redis, MatchRuntimeStore store, GameServerDevOptions options,
+        IRedisOperations? redis, MatchRuntimeStore store,
         Microsoft.Extensions.Logging.ILogger logger)
     {
         redis ??= new InMemoryRedisOperations();
-        return new GameMatchEntryService(redis, store, options, logger,
+        return new GameMatchEntryService(redis, store, logger,
             new GameEntryTicketService(new RedisGameEntryTicketStore(redis), new GameEntryTicketOptions()),
             new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
             new GameEventLogManager(id => store.GetOrNull(id)?.EventLog));
@@ -88,11 +88,10 @@ internal static class TestGameSessionServices
         MatchRuntimeStore store,
         GameEventLogManager logs,
         MatchSummaryFileStore summaries,
-        GameServerDevOptions options,
         Microsoft.Extensions.Logging.ILogger logger)
     {
-        var results = new MatchResultService(store, logs, summaries, options, logger);
-        return new MatchEliminationService(store, logs, results, new GroundItemDropService(logs), options, logger);
+        var results = new MatchResultService(store, logs, summaries, logger);
+        return new MatchEliminationService(store, logs, results, new GroundItemDropService(logs), logger);
     }
     public static MatchCleanupService CreateMatchCleanupService()
     {

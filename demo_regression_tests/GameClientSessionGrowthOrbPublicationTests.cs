@@ -776,14 +776,13 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
                 EventLog,
                 TestGameSessionServices.CreateEliminationService(Store, EventLog, new MatchSummaryFileStore(_summaryDirectory),
-                    GameServerDevOptions.Disabled,
                     NullLogger.Instance),
                 orbHandler == null ? Server.GetGrowth() : new FakePlayerGrowthHandler(orbHandler),
 
                 new FakeGameSessionLifecycle(),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
-                TestGameSessionServices.CreateEntryService(null!, Store, GameServerDevOptions.Disabled, NullLogger.Instance),
+                TestGameSessionServices.CreateEntryService(null!, Store, NullLogger.Instance),
                 new MovementValidationService(NullLogger<MovementValidationService>.Instance),
                 orbInventory: new OrbInventoryService(EventLog));
             connection.SetSession(session);

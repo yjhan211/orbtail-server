@@ -21,13 +21,12 @@ using System.Collections.Immutable;
 namespace game_server.matches.combat;
 
 /// <summary>
-///     매치의 전투 틱 순서를 조율하고 꼬리 절단·파도·점수 만료·개발 샌드박스를 처리한다.
+///     매치의 전투 틱 순서를 조율하고 꼬리 절단·파도·점수 만료를 처리한다.
 ///     상태는 MatchRuntime이 소유하며 틱 호출자는 해당 매치 잠금을 보유한다.
 ///     봇 판단과 개별 무기·성장·피해 규칙은 각 서비스에 위임한다.
 /// </summary>
 internal class MatchCombatService(
     MatchRuntimeStore matchRuntimes,
-    GameServerDevOptions devOptions,
     GameEventLogManager eventLogs,
     MatchCleanupService matchCleanup,
     BotEliminationService botEliminations,
@@ -41,7 +40,6 @@ internal class MatchCombatService(
     WindOrbAttackService windOrbAttacks,
     SunOrbAttackService sunOrbAttacks,
     MatchZoneService zones,
-    BotMovementService botMovement,
     BotDecisionService botDecisions,
     ILogger<MatchCombatService> logger)
 {
@@ -163,8 +161,7 @@ internal class MatchCombatService(
 
         // 탐사 모드(SOLO_MAP_VALIDATION=1): 맵 검증용 1인 매치 — 캠프 몹·접촉 피해·
         // 전투·오브 스트림을 전부 끈다. 이동·문·탐색만 남는다.
-        // SOLO_MONSTERS=1을 얹으면 캠프 몹만 되살린다 (봇 없이 몹 상대 검증).
-        if (MatchStartGate.IsSoloMapValidation(matchingId) && !devOptions.SoloMonsters)
+        if (MatchStartGate.IsSoloMapValidation(matchingId))
             return;
 
         var sessions = activeSessions
@@ -197,8 +194,7 @@ internal class MatchCombatService(
                 matchingId, sessions.Count, bots.Count);
         }
 
-        // 시작 지급 (#232 4단계): 무작위 T1 공격 오브 3개 + 소환석 5 — 6칸 빌드에서 첫 판단은 무엇을 살지가
-        // 아니라 들고 시작한 셋을 유지·합성·교체할지다. 샌드박스 사람은 태양·바람·파도 한 개씩 고정.
+        // 사람에게는 소환석을, 봇에게는 시작 오브를 지급하고 공통 시작 소환석을 더한다.
         int startingStones = Config.SWARM_STARTING_STONE_GRANT;
         foreach (var session in sessions)
         {
@@ -234,39 +230,7 @@ internal class MatchCombatService(
                 new SwarmParticipantSpatial(bot.PlayerId, bot.CurrentArea, bot.Position)))
             .ToList();
 
-        // 실험장 자동 세팅 (#226): 사람이 있는 매치는 첫 틱에 실험장이 자동으로 차려진다.
-        // 봇 전용 검증 매치는 제외 — 게이트 계측이 오염되지 않게.
-        if (SwarmDummySandboxActive && aliveSessions.Count > 0 && aliveBots.Count > 0 &&
-            matchRuntimes.GetOrThrow(matchingId).Progress.CutDummyAutoSetupDone.Add(matchingId))
-        {
-            // 무장 과녁은 절단 실험장(DEV_CUT_DUMMY)에만 세운다. 교차사격 샌드박스는 더미 없이
-            // 사람 + 몹만 남긴다 (유저 지시 "더미 유저 없애줘") — 단독 생존 종료는
-            // 정산 쪽 샌드박스 게이트가 막는다.
-            if (SwarmCutDummyAutoSetup)
-            {
-                // 자동 세팅은 전투 틱과 같은 잠금 안에서 재진입해 나머지 아레나 패킷보다 먼저 나간다.
-                SetupSwarmCutDummy(matchingId);
-            }
-            // 실험장 격리: 더미 외 봇은 조용히 퇴장 — 순위·드롭 이벤트 없이 화면에서 사라진다.
-            foreach (var other in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
-            {
-                if (other.IsSwarmCutDummy || other.IsEliminated)
-                    continue;
-                other.IsEliminated = true;
-                using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(other.PlayerId);
-                foreach (var session in sessions)
-                    session.TrySend(leavePacket);
-            }
-        }
-
-        // 더미(#226 실험 과녁)는 웨이브 디렉터에서 제외 — 몹이 몰려들지 않아 실험장이 조용하다.
-        var dummyIds = aliveBots.Where(bot => bot.IsSwarmCutDummy)
-            .Select(bot => bot.PlayerId).ToHashSet();
-        var directorParticipants = dummyIds.Count == 0
-            ? participants
-            : participants.Where(participant => !dummyIds.Contains(participant.PlayerId)).ToList();
-        // 실험장 (#226): 몹은 나오되(색 무기 과녁) 공격 피해만 아래 게이트에서 꺼진다.
-        var tick = matchRuntimes.GetOrThrow(matchingId).Monsters.Tick(matchingId, directorParticipants, MatchStartGate.IsGameplayActive(matchingId), nowUtc);
+        var tick = matchRuntimes.GetOrThrow(matchingId).Monsters.Tick(matchingId, participants, MatchStartGate.IsGameplayActive(matchingId), nowUtc);
 
         // 정지 감시: 8초 이상 제자리인 몹을 매치 로그로 남긴다 — 회귀 감지선.
         foreach (string report in tick.StuckReports)
@@ -295,17 +259,6 @@ internal class MatchCombatService(
             return;
         }
 
-        // 절단 실험 더미 (#226): 불사 + 오브 리필 — 절단·포위 타격감 튜닝용 과녁.
-        // 리필 기준은 피격 시각이 아니라 오브 수다 (#227 수리): 피격 스탬프는 PvP 미사일이
-        // 매 발 갱신해 3초 유예가 영영 지나지 않았다 — 끊어도 다시 안 차던 원인.
-        foreach (var dummyBot in aliveBots)
-        {
-            if (!dummyBot.IsSwarmCutDummy)
-                continue;
-            dummyBot.Health = Config.MAX_HEALTH;
-            ProcessSwarmCutDummyRefill(matchingId, dummyBot, nowUtc);
-        }
-
         // 오브열 (#226 α/C/B): 경로 기록 → 이동 선분의 상대 열 절단.
         // 경로 기록은 #232에서도 산다 — 꼬리 오브의 월드 좌표가 곧 각 공격의 발사 원점이다.
         UpdateSwarmOrbTrails(matchingId, participants);
@@ -316,22 +269,15 @@ internal class MatchCombatService(
             ProcessSwarmRetaliationWindows(matchingId, nowUtc, participants);
         }
 
-        // 실험장 (#227): 절단 더미 매치에서는 물폭탄도 끈다 — 파도 오브가 계속 터지면
-        // 절단 궤적 실험이 폭발 연출·피해에 묻힌다. 미사일 비무장(AddSwarmParticipantCombatActors)과
-        // 같은 조건을 쓴다 — 옵트인 환경변수 자체가 실험장 스위치다.
-        // 교차사격 샌드박스(#232)는 켠다 — 파도·바람이 실험 대상이다 (저녁 유저 지시).
-        if (!SwarmCutDummyAutoSetup && (dummyIds.Count == 0 || SwarmCrossfireSandbox))
-        {
-            ProcessWaveOrbAttacks(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
-            if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
-                return;
+        ProcessWaveOrbAttacks(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+        if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
+            return;
 
-            windOrbAttacks.Process(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
-            if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
-                return;
-        }
+        windOrbAttacks.Process(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+        if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
+            return;
 
-        // 화상 틱 (#268): 교차사격 충격이 남긴 도트 — 발생원이 위 블록과 무관하게 항상 정산한다.
+        // 화상 틱 (#268): 교차사격 충격이 남긴 지속 피해를 정산한다.
         sunOrbAttacks.ProcessSwarmSunBurns(matchingId, nowUtc, aliveSessions, aliveBots, sessions);
         if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
             return;
@@ -348,21 +294,15 @@ internal class MatchCombatService(
             eventLogs.LogSystem(
                 matchingId,
                 $"contact_probe damage={tick.PlayerDamage.Count} toBots={toBots} toHumans={toHumans} " +
-                $"dummies={dummyIds.Count} aliveBots={aliveBots.Count} aliveSessions={aliveSessions.Count} " +
+                $"aliveBots={aliveBots.Count} aliveSessions={aliveSessions.Count} " +
                 $"participants={participants.Count}");
         }
 
-        // 실험장 (#226): 절단 더미 매치는 몹 공격도 끈다 — 절단 튜닝 중 방해 금지.
-        // 교차사격 샌드박스(#232)는 켠다 — 몹이 달려들어 부딪히는 것까지가 실험 대상이다
-        // (저녁 유저 제보 "몹이 데미지를 안 입힌다": 이 게이트가 막고 있었다).
-        if (dummyIds.Count == 0 || SwarmCrossfireSandbox)
+        foreach (var damage in tick.PlayerDamage)
         {
-            foreach (var damage in tick.PlayerDamage)
-            {
-                ApplySwarmParticipantDamage(matchingId, damage, aliveSessions, aliveBots, sessions);
-                if (sessions.Any(session => session.IsGameEnded))
-                    return;
-            }
+            ApplySwarmParticipantDamage(matchingId, damage, aliveSessions, aliveBots, sessions);
+            if (sessions.Any(session => session.IsGameEnded))
+                return;
         }
         botDecisions.ProcessSwarmBotRecovery(matchingId, aliveBots, nowUtc);
         ProcessPeriodicBuffs(matchingId, aliveSessions, nowUtc);
@@ -1261,8 +1201,6 @@ internal class MatchCombatService(
     private const int SwarmRingVfxKindRetaliationGuard = 5;
     private const int SwarmRingVfxKindRetaliationBlocked = 6;
 
-    // 방어 카드와 샌드박스 초기 외피가 같은 보너스를 사용한다.
-    private const int SwarmArmorDurabilityBonus = MatchGrowthService.ArmorDurabilityBonus;
 
     /// <summary>링 연출 공용 전송 — 포위 완성(대형)·절단 파열(소형)·물폭탄(파랑)이 같은 원형을 쓴다.</summary>
     private void SendOrbRingEffect(
@@ -1519,184 +1457,6 @@ internal class MatchCombatService(
         }
     }
 
-    // ===== 절단 실험 더미 (#226): 매치의 봇 하나를 운동장 과녁으로 바꾼다 —
-    // 정지·불사·오브 10개 일자 꼬리(자동 리필)·비무장·몹 절단 면제. 웨이브 디렉터 제외.
-    // 명시적 분리 (단계 0): DEV_CUT_DUMMY=1 환경변수 옵트인 — 일반 매치는 순정으로 돈다. =====
-    private bool SwarmCutDummyAutoSetup => devOptions.CutDummy;
-
-    // 교차사격 샌드박스 (#232 2단계): DEV_CROSSFIRE_SANDBOX=1 — 절단 실험장과 같은 격리
-    // (운동장 더미 하나 + 나머지 봇 퇴장)를 쓰되(몹 접촉 피해는 켜 둔다), 더미는 태양 T1 3개·철갑
-    // 없음·무장(몹을 쏜다)이다. 사람 오브도 무장 — 실험 대상이 절단 궤적이 아니라
-    // 몹을 향한 사격이 만드는 직선이기 때문이다. 같은 플래그로 MatchSpawnPlanner가 전원을 운동장에 스폰한다.
-    private bool SwarmCrossfireSandbox => devOptions.CrossfireSandbox;
-    private bool SwarmDummySandboxActive => SwarmCutDummyAutoSetup || SwarmCrossfireSandbox;
-    private const int SwarmCutDummyOrbCount = 10;
-    private const int SwarmCrossfireDummyOrbCount = 3;
-    private int SwarmDummyOrbCount => SwarmCrossfireSandbox ? SwarmCrossfireDummyOrbCount : SwarmCutDummyOrbCount;
-    // 과녁 열은 단색 태양 T1 — 시작 지급의 무작위 색이 섞이면 파도(물폭탄)가 딸려 온다.
-    private const int SwarmCutDummyOrbItemId = 107000010;
-    // 절단 직후 3초는 비워 둔다 — 즉시 채우면 "끊어도 안 줄어드는" 것처럼 보인다.
-    private const double SwarmCutDummyRefillDelaySeconds = 3d;
-
-    /// <summary>
-    ///     더미 오브 리필 (#227 수리): 판단 기준은 오브 수 — 열이 줄어든 걸 본 시점부터
-    ///     3초를 세고 채운다. 피격 시각 기준이던 시절엔 PvP 미사일이 스탬프를 매 발 갱신해
-    ///     유예가 끝나지 않았다(리필 정지).
-    /// </summary>
-    private void ProcessSwarmCutDummyRefill(long matchingId, BotPlayerState dummy, DateTime nowUtc)
-    {
-        var key = (matchingId, dummy.PlayerId);
-        if (orbTrails.CountSwarmSquadOrbs(matchingId, dummy.PlayerId) >= SwarmDummyOrbCount)
-        {
-            matchRuntimes.GetOrThrow(matchingId).Progress.CutDummyRefillAtUtc.Remove(key);
-            return;
-        }
-
-        if (!matchRuntimes.GetOrThrow(matchingId).Progress.CutDummyRefillAtUtc.TryGetValue(key, out var refillAtUtc))
-        {
-            matchRuntimes.GetOrThrow(matchingId).Progress.CutDummyRefillAtUtc[key] = nowUtc.AddSeconds(SwarmCutDummyRefillDelaySeconds);
-            return;
-        }
-
-        if (nowUtc < refillAtUtc)
-            return;
-
-        matchRuntimes.GetOrThrow(matchingId).Progress.CutDummyRefillAtUtc.Remove(key);
-        RefillSwarmCutDummyOrbs(matchingId, dummy);
-    }
-
-    /// <summary>봇 플래그 조회 — 참가자 id가 더미인지. 사람(양수)은 항상 false.</summary>
-    private bool IsSwarmCutDummyPlayer(long matchingId, long playerId)
-    {
-        if (playerId >= 0)
-            return false;
-        foreach (var bot in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
-        {
-            if (bot.PlayerId == playerId)
-                return bot.IsSwarmCutDummy;
-        }
-
-        return false;
-    }
-
-    private void RefillSwarmCutDummyOrbs(long matchingId, BotPlayerState dummy)
-    {
-        for (int index = orbTrails.CountSwarmSquadOrbs(matchingId, dummy.PlayerId);
-             index < SwarmDummyOrbCount;
-             index++)
-            matchRuntimes.GetOrThrow(matchingId).Inventory.TryAddItemWithCapacity(
-                dummy.PlayerId, SwarmCutDummyOrbItemId, Config.SWARM_ORB_CAPACITY, out _);
-
-        // 교차사격 샌드박스는 철갑을 안 씌운다 — 절단이 꺼져 있어 내구는 의미가 없다.
-        if (SwarmCrossfireSandbox)
-            return;
-
-        // 실험 과녁 (#227): 머리쪽 절반은 방어 강화(5/5), 나머지 절반은 맨 오브(1/5) —
-        // 같은 열에서 두 내구를 나란히 밟아 비교할 수 있다.
-        var trailOrbs = GetSwarmTrailOrbs(matchingId, dummy.PlayerId);
-        int armoredCount = (trailOrbs.Count + 1) / 2;
-        for (int ordinal = 0; ordinal < trailOrbs.Count; ordinal++)
-        {
-            var key = (matchingId, dummy.PlayerId, trailOrbs[ordinal].ItemUid);
-            if (ordinal < armoredCount)
-                matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbDurabilityBonus[key] = SwarmArmorDurabilityBonus;
-            else
-                matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbDurabilityBonus.Remove(key);
-        }
-    }
-
-    /// <summary>
-    ///     지정한 매치의 절단 실험 더미를 설정한다. 봇 하나를 운동장 중앙 동쪽에 고정하고
-    ///     서쪽으로 일자 꼬리를 심는다. 같은 봇에 재호출하면 위치·꼬리를 재정렬한다.
-    /// </summary>
-    public object SetupSwarmCutDummy(long matchingId)
-    {
-
-        if (matchingId <= 0)
-            return new { error = "no active match" };
-
-        if (!matchRuntimes.Enter(matchingId, out MatchLockScope scope))
-            return new { error = "match is no longer active " + matchingId };
-
-        using (scope)
-        {
-            if (scope.Runtime.IsEnded)
-                return new { error = "match is no longer active " + matchingId };
-
-            object result = SetupSwarmCutDummyCore(matchingId, out BotMovementEvent? movement);
-            if (movement != null)
-                botMovement.DispatchExternalMovement(scope.Runtime, movement);
-            return result;
-        }
-    }
-
-    private object SetupSwarmCutDummyCore(long matchingId, out BotMovementEvent? movement)
-    {
-        movement = null;
-        var bots = matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId)
-            .Where(bot => !bot.IsEliminated).ToList();
-        var dummy = bots.FirstOrDefault(bot => bot.IsSwarmCutDummy) ?? bots.FirstOrDefault();
-        if (dummy == null)
-            return new { error = "no alive bot in match " + matchingId };
-
-        var groundCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, Config.SWARM_MATCH_GROUND_AREA);
-        var center = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, groundCell);
-        var fromArea = dummy.CurrentArea;
-        var fromCell = dummy.Cell;
-        dummy.IsSwarmCutDummy = true;
-        dummy.CurrentArea = Config.SWARM_MATCH_GROUND_AREA;
-        dummy.Position = new Vector3f(center.X + 4f, center.Y + 3f, 0f);
-        dummy.Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, dummy.Position);
-        dummy.Path.Clear();
-        dummy.PathIndex = 0;
-        dummy.Health = Config.MAX_HEALTH;
-
-        // 꼬리: 동→서 일자 경로를 미리 심는다 — points[0] = 현재 위치(최신).
-        var trailPoints = new List<Vector3f>();
-        for (float distance = 0f; distance <= 12f; distance += 0.3f)
-            trailPoints.Add(new Vector3f(dummy.Position.X - distance, dummy.Position.Y, 0f));
-        matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbTrails[(matchingId, dummy.PlayerId)] = trailPoints;
-        matchRuntimes.GetOrThrow(matchingId).TrailCombat.TrailLastTickPositions[(matchingId, dummy.PlayerId)] =
-            new Vector3f(dummy.Position.X, dummy.Position.Y, 0f);
-        // 시작 지급의 무작위 색(파도 포함)을 비우고 단색 태양 열로 재구성한다 (#227).
-        matchRuntimes.GetOrThrow(matchingId).Inventory.TakeAllItems(dummy.PlayerId);
-        matchRuntimes.GetOrThrow(matchingId).Progress.CutDummyRefillAtUtc.Remove((matchingId, dummy.PlayerId));
-        RefillSwarmCutDummyOrbs(matchingId, dummy);
-
-        movement = new BotMovementEvent
-        {
-            BotPlayerId = dummy.PlayerId,
-            FromArea = fromArea,
-            ToArea = Config.SWARM_MATCH_GROUND_AREA,
-            FromCell = fromCell,
-            ToCell = dummy.Cell,
-            Position = dummy.Position,
-            Velocity = new Vector3f(0f, 0f, 0f),
-            Rotation = 0f,
-            IsAreaTransition = fromArea != Config.SWARM_MATCH_GROUND_AREA
-        };
-        logger.LogInformation(
-            "Swarm cut dummy ready: MatchingId={MatchingId}, DummyId={DummyId}, Position=({X},{Y})",
-            matchingId, dummy.PlayerId, dummy.Position.X, dummy.Position.Y);
-        return new
-        {
-            matchingId,
-            dummyId = dummy.PlayerId,
-            x = dummy.Position.X,
-            y = dummy.Position.Y,
-            orbs = SwarmDummyOrbCount
-        };
-    }
-
-
-
-
-
-    /// <summary>
-    ///     열 순번부터 꼬리 끝까지 인벤토리에서 즉시 파괴한다 (스네이크 문법). 순번 매핑은
-    ///     전투 액터·클라 슬롯과 같은 인벤토리 순서(스쿼드 오브 필터).
-    /// </summary>
-
     /// <summary>점이 오브 판정 타원 안에 있는지 — 래치 이탈 재무장 판정.</summary>
     private static bool IsInsideOrbHitEllipse(Vector3f point, Vector3f orbHitPoint)
     {
@@ -1826,7 +1586,7 @@ internal class MatchCombatService(
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots)
     {
-        if (devOptions.DisableGameEnd || matchRuntimes.GetOrThrow(matchingId).Progress.TimeoutEndedMatchings.Contains(matchingId))
+        if (matchRuntimes.GetOrThrow(matchingId).Progress.TimeoutEndedMatchings.Contains(matchingId))
             return false;
 
         var startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId);
@@ -2090,10 +1850,8 @@ internal class MatchCombatService(
     }
 
     /// <summary>
-    ///     보드의 오브가 곧 화력이다. 오브가 있으면 오브별 공격 문법(기존 인벤토리 액터)을
-    ///     스웜 배율로 얹고, 없을 때만 기본 공격 하나로 싸운다 — 드래프트가 성장 체감이 되게.
-    ///     비무장(실험 더미)이면 모든 공격 액터의 데미지를 0으로 눕힌다 — 리졸버가 공격자에서
-    ///     제외하고 조준 상태를 해제하되, 피격 대상으로는 남는다.
+    ///     보유 오브마다 공격 액터를 만들고 전투 배율을 적용한다.
+    ///     본체는 피격 대상으로 남으며, 오브가 없으면 공격 액터를 추가하지 않는다.
     /// </summary>
     private void AddSwarmParticipantCombatActors(
         List<ProximityCombatActor> actors,
@@ -2101,17 +1859,12 @@ internal class MatchCombatService(
         ProximityCombatActor spatial,
         DateTime nowUtc)
     {
-        // DEV_CUT_DUMMY 매치는 절단 궤적만 읽는 실험장이다. 서버에서 공격 액터를
-        // 비무장으로 만들어 태양·바람 미사일과 실제 피해가 함께 발생하지 않게 한다.
-        // 교차사격 샌드박스(#232)는 반대다 — 더미도 몹을 쏴야 그 직선이 나를 지나는 장면이 나온다.
-        bool armed = !SwarmCutDummyAutoSetup &&
-                     (SwarmCrossfireSandbox || !IsSwarmCutDummyPlayer(matchingId, spatial.PlayerId));
         // 본체 우선(1). 동급(2)이면 최근접이 이기는데 구역당 몹이 8~28마리라 항상 몹이 더 가깝고, 표적 고정이
         // 걸려 죽으면 또 다음 몹을 문다 — 사람은 표적이 될 기회조차 없다. PvP 사거리가 구역 전체를 덮던 시절의
         // "적 플레이어가 있는 한 몹이 영영 표적이 안 된다"는 사거리가 짧아진 지금은 성립하지 않는다 — 적이 코앞에
         // 붙었을 때만 우선권을 가져간다.
         // 오브 액터는 발사 원점일 뿐 표적이 아니다(Untargetable).
-        var fallback = CreateSwarmParticipantActor(spatial, armed) with
+        var fallback = CreateSwarmParticipantActor(spatial) with
         {
             // 0 = 최상위 (유저 판정: 범위 안이면 사람 먼저 무조건).
             // 사거리 판정을 이미 필터가 하므로, 후보에 올라온 사람은 곧 사정권 안이다.
@@ -2185,11 +1938,9 @@ internal class MatchCombatService(
                 : SwarmPveSameAreaAttackRange;
             actors[index] = actor with
             {
-                Damage = armed
-                    ? Math.Max(1, (int)MathF.Round(
-                        OrbData.GetSwarmPveAttackDamage(actor.WeaponItemId) *
-                        sunAttackMultiplier * crossfireDamageMultiplier))
-                    : 0,
+                Damage = Math.Max(1, (int)MathF.Round(
+                    OrbData.GetSwarmPveAttackDamage(actor.WeaponItemId) *
+                    sunAttackMultiplier * crossfireDamageMultiplier)),
                 // 오브마다 제 박자를 준다 (유저 판정: 일제사가 어색하다).
                 // 전 오브가 같은 주기를 쓰면 한 번에 쏘고 한 번에 쉬는 호흡이 되어, 서로 다른
                 // 시기에 붙은 오브들이 한 몸처럼 읽힌다. 슬롯마다 주기를 ±12% 흔들어
@@ -2278,13 +2029,13 @@ internal class MatchCombatService(
         };
     }
 
-    private ProximityCombatActor CreateSwarmParticipantActor(ProximityCombatActor spatial, bool armed)
+    private ProximityCombatActor CreateSwarmParticipantActor(ProximityCombatActor spatial)
     {
         return spatial with
         {
             WeaponItemId = SwarmArenaWeaponItemId,
             AttackRange = SwarmArenaBasicRange,
-            Damage = armed ? SwarmArenaBasicDamage : 0,
+            Damage = SwarmArenaBasicDamage,
             AttackIntervalSeconds = SwarmArenaBasicAttackIntervalSeconds,
             WeaponItemUid = spatial.PlayerId,
             TargetPriority = 0

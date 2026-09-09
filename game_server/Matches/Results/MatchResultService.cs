@@ -21,7 +21,6 @@ internal sealed class MatchResultService(
     MatchRuntimeStore _matchRuntimes,
     GameEventLogManager _gameEventLogManager,
     MatchSummaryFileStore _matchSummaryFileStore,
-    GameServerDevOptions _devOptions,
     ILogger Logger)
 {
     /// <summary>
@@ -32,13 +31,7 @@ internal sealed class MatchResultService(
     public void SendGameResult(long winnerId, bool isTimeout, long matchingId,
         string endReason = "last_survivor", string tieBreakCriterion = "not_required")
     {
-        if (_devOptions.DisableGameEnd)
-        {
-            Logger.LogWarning(
-                "[DEV] 게임 종료 결과 전송 차단됨 (DISABLE_GAME_END=1): MatchingId={MatchingId}, reason={Reason}",
-                matchingId, endReason);
-            return;
-        }
+
 
         MatchRuntime? runtime = _matchRuntimes.GetOrNull(matchingId);
         if (runtime == null)

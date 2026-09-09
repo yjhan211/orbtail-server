@@ -322,7 +322,7 @@ internal class MatchZoneService(
 
         foreach (var bot in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
         {
-            if (!bot.IsEliminated && !bot.IsSwarmCutDummy)
+            if (!bot.IsEliminated)
                 owners.Add((bot.PlayerId, bot.Position, -1));
         }
 

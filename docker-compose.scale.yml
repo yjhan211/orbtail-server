@@ -27,8 +27,6 @@ services:
       - natsEndPoint=nats://nats:4222
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_USE_POLLING_FILE_WATCHER=true
-      - DISABLE_GAME_END=${DISABLE_GAME_END:-0}
-      - DEV_CROSSFIRE_SANDBOX=${DEV_CROSSFIRE_SANDBOX:-0}
       - MATCH_SUMMARY_DIRECTORY=/App/match-summaries
     depends_on:
       - redis

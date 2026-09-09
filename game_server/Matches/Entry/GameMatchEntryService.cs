@@ -22,7 +22,6 @@ namespace game_server.matches.entry;
 internal sealed class GameMatchEntryService(
     IRedisOperations RedisOperations,
     MatchRuntimeStore _matchRuntimes,
-    GameServerDevOptions _devOptions,
     ILogger Logger,
     GameEntryTicketService ticketService,
     GameServerNodeOptions nodeOptions,
@@ -67,7 +66,7 @@ internal sealed class GameMatchEntryService(
 
             IReadOnlyDictionary<long, Cell> spawnCells =
                 MatchSpawnPlanner.Plan(
-                    matchingId, mapId, humanPlayerIds.Concat(botPlayerIds), _devOptions.CrossfireSandbox);
+                    matchingId, humanPlayerIds.Concat(botPlayerIds));
             if (botPlayerIds.Count > 0)
             {
                 using (runtime.Enter())

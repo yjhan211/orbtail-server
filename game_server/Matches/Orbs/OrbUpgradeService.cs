@@ -18,7 +18,6 @@ namespace game_server.matches.orbs;
 internal sealed class OrbUpgradeService(
     MatchRuntimeStore matchRuntimes,
     GameEventLogManager eventLogs,
-    GameServerDevOptions devOptions,
     ILogger<OrbUpgradeService> logger)
 {
     internal static int[] CreateStartingOrbPool()
@@ -41,12 +40,11 @@ internal sealed class OrbUpgradeService(
 
     /// <summary>
     ///     사람은 시작 오브 대신 소환 비용만큼의 소환석을 받는다.
-    ///     교차사격 샌드박스에서는 사람에게 고정 색 순서로 오브를 주고, 봇에게는 시작 오브를 직접 준다.
+    ///     봇에게는 시작 오브를 직접 지급한다.
     /// </summary>
     public void GrantStartingOrbs(long matchingId, long playerId, bool isBot)
     {
-        bool fixedSet = devOptions.CrossfireSandbox && !isBot;
-        if (!isBot && !fixedSet)
+        if (!isBot)
         {
             int stonesInsteadOfOrbs = 0;
             for (int index = 0; index < Config.SWARM_STARTING_ORB_GRANT_COUNT; index++)
@@ -55,12 +53,10 @@ internal sealed class OrbUpgradeService(
             return;
         }
 
-        int grantCount = !isBot ? Config.SWARM_STARTING_ORB_GRANT_COUNT : BotStartingOrbCount;
+        int grantCount = BotStartingOrbCount;
         for (int index = 0; index < grantCount; index++)
         {
-            int itemId = fixedSet
-                ? StartingOrbPool[index % StartingOrbPool.Length]
-                : StartingOrbPool[Random.Shared.Next(StartingOrbPool.Length)];
+            int itemId = StartingOrbPool[Random.Shared.Next(StartingOrbPool.Length)];
             matchRuntimes.GetOrThrow(matchingId).Inventory.TryAddItemWithCapacity(
                 playerId, itemId, Config.SWARM_ORB_CAPACITY, out _);
         }

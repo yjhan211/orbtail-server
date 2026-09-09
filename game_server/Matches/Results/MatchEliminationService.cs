@@ -20,7 +20,6 @@ internal sealed class MatchEliminationService(
     GameEventLogManager _gameEventLogManager,
     MatchResultService _matchResults,
     GroundItemDropService groundItemDrop,
-    GameServerDevOptions _devOptions,
     ILogger Logger)
 {
     /// <summary>
@@ -137,13 +136,7 @@ internal sealed class MatchEliminationService(
 
     public void EndMatch(long matchingId, long winnerId, string criterion)
     {
-        if (_devOptions.DisableGameEnd)
-        {
-            Logger.LogWarning(
-                "[DEV] 게임 종료 차단됨 (DISABLE_GAME_END=1): EndMatch winner={WinnerId}, criterion={Criterion}",
-                winnerId, criterion);
-            return;
-        }
+
         var runtime = _matchRuntimes.GetOrNull(matchingId);
         if (runtime == null)
             return;

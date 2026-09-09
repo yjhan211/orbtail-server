@@ -88,9 +88,6 @@ internal static class Program
         services.AddSingleton<IRedisOperations, RedisOperations>();
         services.AddGameEntryTicket(hostContext.Configuration);
 
-        var devOptions = GameServerDevOptions.FromConfiguration(hostContext.Configuration);
-        devOptions.Validate(hostContext.HostingEnvironment.IsDevelopment());
-        services.AddSingleton(devOptions);
 
         services.AddSingleton<IGameServerRegistry, RedisGameServerRegistry>();
         services.AddSingleton<GameSessionRegistry>();
@@ -126,7 +123,6 @@ internal static class Program
         services.AddSingleton<GameMatchEntryService>(sp => new GameMatchEntryService(
             sp.GetRequiredService<IRedisOperations>(),
             sp.GetRequiredService<MatchRuntimeStore>(),
-            sp.GetRequiredService<GameServerDevOptions>(),
             sp.GetRequiredService<ILogger<GameMatchEntryService>>(),
             sp.GetRequiredService<GameEntryTicketService>(),
             sp.GetRequiredService<GameServerNodeOptions>(),
@@ -135,14 +131,12 @@ internal static class Program
             sp.GetRequiredService<MatchRuntimeStore>(),
             sp.GetRequiredService<GameEventLogManager>(),
             sp.GetRequiredService<MatchSummaryFileStore>(),
-            sp.GetRequiredService<GameServerDevOptions>(),
             sp.GetRequiredService<ILogger<MatchResultService>>()));
         services.AddSingleton<MatchEliminationService>(sp => new MatchEliminationService(
             sp.GetRequiredService<MatchRuntimeStore>(),
             sp.GetRequiredService<GameEventLogManager>(),
             sp.GetRequiredService<MatchResultService>(),
             sp.GetRequiredService<GroundItemDropService>(),
-            sp.GetRequiredService<GameServerDevOptions>(),
             sp.GetRequiredService<ILogger<MatchEliminationService>>()));
         services.AddSingleton<BotEliminationService>(sp => new BotEliminationService(
             sp.GetRequiredService<GameEventLogManager>(),

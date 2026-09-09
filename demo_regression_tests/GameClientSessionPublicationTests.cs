@@ -1338,12 +1338,12 @@ public sealed class GameClientSessionPublicationTests
                 static (_, _) => null,
 
                 eventLog,
-                TestGameSessionServices.CreateEliminationService(matchRuntimes, eventLog, summaries, GameServerDevOptions.Disabled, NullLogger.Instance),
+                TestGameSessionServices.CreateEliminationService(matchRuntimes, eventLog, summaries, NullLogger.Instance),
                 new FakePlayerGrowthHandler(),
                 new FakeGameSessionLifecycle(),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
-                TestGameSessionServices.CreateEntryService(null!, matchRuntimes, GameServerDevOptions.Disabled, NullLogger.Instance),
+                TestGameSessionServices.CreateEntryService(null!, matchRuntimes, NullLogger.Instance),
                 new MovementValidationService(NullLogger<MovementValidationService>.Instance),
                 orbInventory: new OrbInventoryService(eventLog))
         {

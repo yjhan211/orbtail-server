@@ -99,7 +99,7 @@ public sealed class GameMatchEntryServiceTests
         var redis = new InMemoryRedisOperations();
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var service = TestGameSessionServices.CreateEntryService(
-            redis, store, GameServerDevOptions.Disabled, NullLogger.Instance);
+            redis, store, NullLogger.Instance);
         var tickets = new GameEntryTicketService(new RedisGameEntryTicketStore(redis), new GameEntryTicketOptions());
         string ticket = await tickets.IssueAsync(new GameEntryContext
         {
@@ -130,7 +130,7 @@ public sealed class GameMatchEntryServiceTests
     {
         var service = TestGameSessionServices.CreateEntryService(
             new InMemoryRedisOperations(), TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance),
-            GameServerDevOptions.Disabled, NullLogger.Instance);
+            NullLogger.Instance);
 
         Assert.Null(await service.ConsumeTicketAsync(ticket));
     }
@@ -181,7 +181,7 @@ public sealed class GameMatchEntryServiceTests
     {
         var redis = new InMemoryRedisOperations();
         var service = TestGameSessionServices.CreateEntryService(
-            redis, TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance), GameServerDevOptions.Disabled, NullLogger.Instance);
+            redis, TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance), NullLogger.Instance);
         var tickets = new GameEntryTicketService(new RedisGameEntryTicketStore(redis), new GameEntryTicketOptions());
         string ticket = await tickets.IssueAsync(new GameEntryContext
         {
@@ -260,7 +260,7 @@ public sealed class GameMatchEntryServiceTests
         var redis = new InMemoryRedisOperations();
         await Seed(redis, id);
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
-        return (TestGameSessionServices.CreateEntryService(redis, store, GameServerDevOptions.Disabled, NullLogger.Instance),
+        return (TestGameSessionServices.CreateEntryService(redis, store, NullLogger.Instance),
             redis, store, store.GetOrCreate(id));
     }
 

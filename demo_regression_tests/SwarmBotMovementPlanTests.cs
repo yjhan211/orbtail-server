@@ -175,44 +175,6 @@ public sealed class SwarmBotMovementPlanTests
         Assert.DoesNotContain("plan.AutoEquips", dispatch);
     }
 
-    [Fact]
-    public void DummySetup_UsesLockedExternalPlanWithoutOrbitAdvance()
-    {
-        string root = FindRepositoryRoot();
-        string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
-        string coordinator = ReadNormalizedSource(
-            root, "game_server", "Matches", "Bots", "BotPlayerManager.MovementPlan.cs");
-        string adminSetup = ReadMethodSlice(
-            combat,
-            "public object SetupSwarmCutDummy(long matchingId)",
-            "private object SetupSwarmCutDummyCore(");
-        string external = ReadMethodSlice(
-            ReadNormalizedSource(root, "game_server", "Matches", "Bots", "BotMovementService.cs"),
-            "public void DispatchExternalMovement(",
-            "private static double CalculatePercentile(");
-        string externalPrepare = ReadMethodSlice(
-            coordinator,
-            "internal SwarmBotMovementPlan PrepareExternalMovement(",
-            "private SwarmBotMovementPlan PrepareResult(");
-
-        AssertInOrder(
-            adminSetup,
-            "matchRuntimes.Enter(matchingId, out MatchLockScope scope)",
-            "scope.Runtime.IsEnded",
-            "SetupSwarmCutDummyCore(",
-            "botMovement.DispatchExternalMovement(scope.Runtime, movement)");
-        AssertInOrder(
-            external,
-            "runtime.Sessions.Values.ToList()",
-            "CaptureSwarmBotObservers(matchingId, sessionSnapshot)",
-            "PrepareExternalMovement(",
-            "DispatchSwarmBotMovementPlan(plan, sessionSnapshot)");
-        Assert.Contains("advanceOrbOrbit: false", externalPrepare);
-        Assert.Contains("session.CurrentMapId == Config.SWARM_MATCH_MAP", external);
-        Assert.DoesNotContain("PacketMaker", external);
-        Assert.DoesNotContain("BroadcastBotMovement(", combat);
-    }
-
     private static MatchRuntime CreateMatch()
     {
         var matches = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);

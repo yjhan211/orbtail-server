@@ -57,15 +57,6 @@ services:
       - natsEndPoint=nats://nats:4222
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_USE_POLLING_FILE_WATCHER=true
-      # #79 RNG 채집 시연/테스트용 — 모든 게임 종료 트리거 차단. 운영/시연 빌드에서는 제거
-      - DISABLE_GAME_END=${DISABLE_GAME_END:-0}
-      # 교차사격 샌드박스 (#232): 1이면 전원 운동장 스폰 + 더미 봇 1 + 나머지 봇 퇴장 + 몹 접촉 포함
-      - DEV_CROSSFIRE_SANDBOX=${DEV_CROSSFIRE_SANDBOX:-0}
-      # 몹 스폰 끄기 (촬영·PvP 검증용): 1이면 잔상을 전혀 세우지 않는다. 봇·폐쇄·전투는 그대로
-      # 탐사 모드에서 캠프 몹만 되살림 (봇 없이 몹 상대 검증)
-      - SOLO_MONSTERS=${SOLO_MONSTERS:-0}
-      # 절단 가독성 실험: 1이면 운동장에 정지·불사 더미 1명을 자동 배치
-      - DEV_CUT_DUMMY=${DEV_CUT_DUMMY:-0}
       - MATCH_SUMMARY_DIRECTORY=/App/match-summaries
       - MATCH_SUMMARY_MAX_FILES=50
     depends_on:

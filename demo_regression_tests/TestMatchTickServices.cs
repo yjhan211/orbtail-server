@@ -125,14 +125,14 @@ internal static class TestMatchTickServices
     }
 
     private sealed class Combat(Action<long, List<GameClientSession>> run)
-        : MatchCombatService(null!, GameServerDevOptions.Disabled, null!, null!, null!, null!,
-            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, NullLogger<MatchCombatService>.Instance)
+        : MatchCombatService(null!, null!, null!, null!, null!,
+            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, NullLogger<MatchCombatService>.Instance)
     {
         public override void ProcessTick(long id, List<GameClientSession> sessions) => run(id, sessions);
     }
 
     private sealed class Environment(Action<MatchRuntime, List<GameClientSession>> run)
-        : MatchEnvironmentService(null!, null!, null!, null!, GameServerDevOptions.Disabled, NullLogger<MatchEnvironmentService>.Instance)
+        : MatchEnvironmentService(null!, null!, null!, null!, NullLogger<MatchEnvironmentService>.Instance)
     {
         public override void ProcessTick(MatchRuntime runtime, List<GameClientSession> sessions) => run(runtime, sessions);
     }

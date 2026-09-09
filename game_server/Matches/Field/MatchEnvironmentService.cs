@@ -19,7 +19,6 @@ internal class MatchEnvironmentService(
     MatchCleanupService matchCleanup,
     BotEliminationService botEliminations,
     MatchEliminationService matchEliminations,
-    GameServerDevOptions devOptions,
     ILogger<MatchEnvironmentService> logger)
 {
     /// <summary>매치의 5초 환경 정산. 50ms 틱이 전투 처리 후 같은 매치 잠금 안에서 호출한다.</summary>
@@ -47,8 +46,6 @@ internal class MatchEnvironmentService(
         int aliveCount = humans.Count + bots.Count;
         if (aliveCount <= 1)
         {
-            if (devOptions.DisableGameEnd || devOptions.CutDummy || devOptions.CrossfireSandbox)
-                return;
 
             if (aliveCount == 1 && humans.Count > 0)
             {

@@ -671,13 +671,13 @@ public sealed class GameClientSessionConnectPublicationTests
                 TestGameEventLogs.Create(),
                 TestGameSessionServices.CreateEliminationService(Store, TestGameEventLogs.Create(),
                     new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
-                    GameServerDevOptions.Disabled, NullLogger.Instance),
+                    NullLogger.Instance),
                 new FakePlayerGrowthHandler(),
 
                 new FakeGameSessionLifecycle(),
                 static () => false,
                 new FakeMatchEntryFailureHandler(recordEntryFailure),
-                TestGameSessionServices.CreateEntryService(Redis, Store, GameServerDevOptions.Disabled, NullLogger.Instance),
+                TestGameSessionServices.CreateEntryService(Redis, Store, NullLogger.Instance),
                 new MovementValidationService(NullLogger<MovementValidationService>.Instance),
                 orbInventory: new OrbInventoryService(TestGameEventLogs.Create()),
                 trySendConnectSuccessResponse: sender);
