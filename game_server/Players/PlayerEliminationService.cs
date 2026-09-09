@@ -26,8 +26,7 @@ internal sealed class PlayerEliminationService(
     ///     플레이어 탈락 처리 + 탈락 브로드캐스트
     /// </summary>
     public void EliminatePlayer(long matchingId, long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null,
-        bool deferGameOver = false, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
-        bool isOvertimeElimination = false, int forcedRank = 0)
+        bool deferGameOver = false, long attackerPlayerId = 0, int forcedRank = 0)
     {
         var allSessions = _matchRuntimes.GetOrThrow(matchingId).Sessions.Values.ToList();
         var eliminatedSession = allSessions.FirstOrDefault(session => session.PlayerId == eliminatedPlayerId);
@@ -37,7 +36,7 @@ internal sealed class PlayerEliminationService(
 
         int finalOrbTier = _matchRuntimes.GetOrThrow(matchingId).Inventory.GetHighestOrbTier(eliminatedPlayerId);
         bool eliminated = _matchRuntimes.GetOrThrow(matchingId).Roster.TryEliminatePlayer(eliminatedPlayerId, reason,
-            resolvedAttackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank,
+            resolvedAttackerPlayerId, eliminatedArea, forcedRank,
             finalOrbTier);
         if (!eliminated)
         {
@@ -62,9 +61,7 @@ internal sealed class PlayerEliminationService(
             eliminatedPlayerId,
             reason.ToString(),
             isBot: eliminatedBot != null,
-            attackerPlayerId: resolvedAttackerPlayerId,
-            isAreaClosureElimination: isAreaClosureElimination,
-            isOvertimeElimination: isOvertimeElimination);
+            attackerPlayerId: resolvedAttackerPlayerId);
 
         if (eliminatedSession != null)
             groundItemDrop.DropAll(eliminatedSession);

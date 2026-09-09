@@ -101,14 +101,12 @@ public class GameEventLogManager
         long playerId,
         string reason,
         bool isBot,
-        long attackerPlayerId = 0,
-        bool isAreaClosureElimination = false,
-        bool isOvertimeElimination = false)
+        long attackerPlayerId = 0)
     {
         var occurredAt = DateTimeOffset.UtcNow;
         LogFirstElimination(matchingId, playerId, reason, isBot, occurredAt);
-        string sourceType = isAreaClosureElimination || isOvertimeElimination
-            ? "closure"
+        string sourceType = reason == nameof(EliminationReason.PRESSURE_FIELD)
+            ? "pressure_field"
             : attackerPlayerId != 0
                 ? "pvp"
                 : "mental";
@@ -118,8 +116,6 @@ public class GameEventLogManager
             entry.TargetPlayerId = playerId;
             entry.DamageSourceType = sourceType;
             entry.Outcome = reason;
-            entry.IsAreaClosureElimination = isAreaClosureElimination;
-            entry.IsOvertimeElimination = isOvertimeElimination;
         });
     }
 
@@ -1712,8 +1708,6 @@ public class GameEventEntry
     public long? FirstAttackerPlayerId { get; set; }
     public long? LastAttackerPlayerId { get; set; }
     public List<MonsterDamageContribution>? MonsterDamageContributions { get; set; }
-    public bool? IsAreaClosureElimination { get; set; }
-    public bool? IsOvertimeElimination { get; set; }
     public int? HealthBefore { get; set; }
     public int? HealthAfter { get; set; }
     public int? Damage { get; set; }

@@ -98,7 +98,7 @@ public sealed class SwarmArenaTickOrderTests
             "matchEliminations.EliminatePlayer(",
             "botEliminations.Process(",
             "Roster.CheckGameOver()",
-            "matchResults.FinalizeMatch(matchingId, winnerId.Value, MatchEndReason.OvertimeSettlement, resolution.DecisiveCriterion);");
+            "matchResults.FinalizeMatch(matchingId, winnerId.Value, MatchEndReason.PressureFieldSettlement, resolution.DecisiveCriterion);");
         Assert.DoesNotContain("Enter(", matchingSettlement);
         Assert.DoesNotContain("ProcessProximityAutoCombatForMatching(", matchingSettlement);
         Assert.DoesNotContain("PublicationTurn", matchingSettlement);

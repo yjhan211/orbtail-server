@@ -26,7 +26,7 @@ public sealed class MatchRosterTests
     }
 
     [Fact]
-    public void Elimination_PreservesAttackerAndClosureContextInGameResult()
+    public void Elimination_PreservesAttackerAndAreaInGameResult()
     {
         const long matchingId = 194002;
         var manager = MatchTestServices.Roster(matchingId, NullLogger.Instance);
@@ -35,13 +35,13 @@ public sealed class MatchRosterTests
         manager.RegisterParticipant(CreateLink(2, 1));
 
         manager.TryEliminatePlayer(2, EliminationReason.HEALTH_ZERO,
-            attackerPlayerId: 1, eliminatedArea: AreaType.S2Library1, isAreaClosureElimination: true);
+            attackerPlayerId: 1, eliminatedArea: AreaType.S2Library1);
 
         var result = Assert.Single(manager.BuildGameResult(), row => row.playerId == 2);
 
         Assert.Equal(1, result.attackerPlayerId);
         Assert.Equal(AreaType.S2Library1, result.eliminatedArea);
-        Assert.True(result.isAreaClosureElimination);
+        Assert.Equal(EliminationReason.HEALTH_ZERO, result.reason);
     }
     [Fact]
     public void Elimination_FixesRankTierAndEnvironmentalCauseAtEliminationTime()
@@ -55,16 +55,14 @@ public sealed class MatchRosterTests
 
         manager.TryEliminatePlayer(
             2,
-            EliminationReason.HEALTH_ZERO,
-            isOvertimeElimination: true,
+            EliminationReason.PRESSURE_FIELD,
             forcedRank: 3,
             finalOrbTier: 2);
 
         var result = Assert.Single(manager.BuildGameResult(), row => row.playerId == 2);
         Assert.Equal(3, result.eliminationRank);
         Assert.Equal(2, result.finalOrbTier);
-        Assert.True(result.isOvertimeElimination);
-        Assert.False(result.isAreaClosureElimination);
+        Assert.Equal(EliminationReason.PRESSURE_FIELD, result.reason);
     }
     [Fact]
     public void Elimination_AppliesOnlyOnceAndPreservesTheFirstResult()
@@ -93,7 +91,7 @@ public sealed class MatchRosterTests
         Assert.Equal(2, result.finalOrbTier);
     }
 
-    // #227 1단계: 본체 HP 0과 시간 종료·폐쇄가 같은 틱에 겹쳐도 탈락은 한 번만 확정되어야 한다.
+    // #227 1단계: 본체 HP 0과 전투·자기장가 같은 틱에 겹쳐도 탈락은 한 번만 확정되어야 한다.
     // 중복이 통과하면 생존 수가 여러 번 줄어 뒤 사람의 등수가 밀리고, 절단 보상과 탈락 드롭이
     // 겹쳐 지급된다. 등수는 남은 생존 수에서 나오므로 다음 탈락자의 등수가 그 증거다.
     [Fact]
@@ -109,15 +107,15 @@ public sealed class MatchRosterTests
         // 본체 HP 0 — 첫 확정.
         var byBodyHp = manager.TryEliminatePlayer(
             2, EliminationReason.HEALTH_ZERO, attackerPlayerId: 1);
-        // 같은 틱의 시간 종료·폐쇄 정산이 같은 사람을 다시 밀어 넣는다.
-        var byOvertime = manager.TryEliminatePlayer(
-            2, EliminationReason.HEALTH_ZERO, isOvertimeElimination: true);
-        var byClosure = manager.TryEliminatePlayer(
-            2, EliminationReason.HEALTH_ZERO, isAreaClosureElimination: true);
+        // 같은 틱의 전투·자기장 정산이 같은 사람을 다시 밀어 넣는다.
+        var byPressureField = manager.TryEliminatePlayer(
+            2, EliminationReason.PRESSURE_FIELD);
+        var byDuplicate = manager.TryEliminatePlayer(
+            2, EliminationReason.HEALTH_ZERO);
 
         Assert.True(byBodyHp);
-        Assert.False(byOvertime);
-        Assert.False(byClosure);
+        Assert.False(byPressureField);
+        Assert.False(byDuplicate);
 
         // 생존 수가 한 번만 줄었다면 다음 탈락자의 등수는 2다 — 세 번 줄었으면 0으로 밀린다.
         Assert.True(manager.TryEliminatePlayer(3, EliminationReason.HEALTH_ZERO));
@@ -134,21 +132,45 @@ public sealed class MatchRosterTests
     public void Release_ClearsStateAndRejectsFurtherRegistration()
     {
         var roster = new MatchRoster(1, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
-        roster.RegisterParticipant(new MatchParticipant { PlayerId = 10, Name = "player", WearItemIdList = [1] });
+        roster.RegisterParticipant(new MatchParticipant { Profile = new network.common.data.models.PlayerInfo { PlayerId = 10, Name = "player", WearItemIdList = [1] } });
 
         roster.Release();
         roster.Release();
 
         Assert.DoesNotContain(roster.BuildGameResult(), row => row.playerId == 10);
-        Assert.Null(roster.GetPlayerProfile(10));
+        Assert.Null(roster.GetParticipant(10)?.Profile);
         Assert.Empty(roster.BuildGameResult());
         Assert.Equal((false, (long?)null), roster.CheckGameOver());
         Assert.False(roster.TryEliminatePlayer(10, EliminationReason.HEALTH_ZERO));
         Assert.Throws<InvalidOperationException>(() =>
-            roster.RegisterParticipant(new MatchParticipant { PlayerId = 20 }));
+            roster.RegisterParticipant(new MatchParticipant { Profile = new network.common.data.models.PlayerInfo { PlayerId = 20  }}));
+    }
+    [Fact]
+    public void Participant_OwnsTheProfileUsedByPacketsAndResults()
+    {
+        var roster = new MatchRoster(1, NullLogger.Instance);
+        var profile = new network.common.data.models.PlayerInfo
+        {
+            PlayerId = 10, Name = "player", WearItemIdList = [123]
+        };
+        var participant = new MatchParticipant { Profile = profile };
+        roster.RegisterParticipant(participant);
+
+        Assert.Same(participant, roster.GetParticipant(10));
+        var profiles = roster.GetPlayerProfiles();
+        Assert.Same(profile, Assert.Single(profiles));
+        profiles.Clear();
+        Assert.Same(profile, Assert.Single(roster.GetPlayerProfiles()));
+
+        Assert.True(roster.TryEliminatePlayer(10, EliminationReason.HEALTH_ZERO));
+        Assert.Equal(PlayerMatchStatus.ELIMINATED, participant.Status);
+        Assert.Same(profile, roster.GetParticipant(10)!.Profile);
+        Assert.Equal(123, Assert.Single(profile.WearItemIdList));
+        roster.Release();
+        Assert.Empty(roster.GetPlayerProfiles());
     }
     private static MatchParticipant CreateLink(long playerId, long _) => new()
     {
-        PlayerId = playerId
+        Profile = new network.common.data.models.PlayerInfo { PlayerId = playerId }
     };
 }

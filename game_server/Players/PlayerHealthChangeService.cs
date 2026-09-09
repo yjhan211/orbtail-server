@@ -21,7 +21,7 @@ internal sealed class PlayerHealthChangeService(
 
 
     public void Handle(PlayerCondition.HealthChange change, long attackerPlayerId = 0,
-        bool isAreaClosureElimination = false, bool isOvertimeElimination = false, bool deferElimination = false)
+        bool deferElimination = false)
     {
         // 값이 변경되지 않았으면 패킷 전송 안함
         if (!change.Changed) return;
@@ -47,9 +47,7 @@ internal sealed class PlayerHealthChangeService(
             session.PlayerId.HasValue && !session.IsGameEnded && !session.IsEliminated && session.CurrentHealth <= 0)
         {
             eliminations.EliminatePlayer(session.MatchingId, session.PlayerId.Value, EliminationReason.HEALTH_ZERO,
-                attackerPlayerId: attackerPlayerId,
-                isAreaClosureElimination: isAreaClosureElimination,
-                isOvertimeElimination: isOvertimeElimination);
+                attackerPlayerId: attackerPlayerId);
         }
     }
 }

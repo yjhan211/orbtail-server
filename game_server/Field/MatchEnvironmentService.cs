@@ -51,7 +51,7 @@ internal class MatchEnvironmentService(
 
             if (aliveCount == 1 && humans.Count > 0)
             {
-                matchResults.FinalizeMatch(matchingId, humans[0].PlayerId ?? 0, MatchEndReason.LastSurvivorBeforeOvertime);
+                matchResults.FinalizeMatch(matchingId, humans[0].PlayerId ?? 0, MatchEndReason.LastSurvivor);
                 match.AutoAttack.Clear();
                 return;
             }
@@ -66,44 +66,33 @@ internal class MatchEnvironmentService(
             return;
         }
 
-        int overtimeDelta = match.Closures.GetOvertimeDamagePerTick(
-            Config.ENVIRONMENTAL_TICK_INTERVAL_SECONDS);
         var targets = new List<EnvironmentalTarget>(aliveCount);
 
         foreach (var session in humans)
         {
-            int closureDelta = match.Closures.GetClosedAreaDamagePerTick(
-                session.CurrentArea,
-                Config.ENVIRONMENTAL_TICK_INTERVAL_SECONDS);
-            if (session.LastValidatedPosition != null)
-                closureDelta += MatchPressureFieldPolicy.GetDamagePerTick(match, session.LastValidatedPosition, DateTime.UtcNow);
+            int fieldDamage = MatchPressureFieldPolicy.GetDamagePerTick(match, session.LastValidatedPosition, DateTime.UtcNow);
             targets.Add(new EnvironmentalTarget(
                 session.PlayerId!.Value,
                 session.CurrentHealth,
-                closureDelta,
-                overtimeDelta,
+                fieldDamage,
                 session,
                 null));
         }
 
         foreach (var bot in bots)
         {
-            int closureDelta = match.Closures.GetClosedAreaDamagePerTick(
-                bot.CurrentArea,
-                Config.ENVIRONMENTAL_TICK_INTERVAL_SECONDS);
-            closureDelta += MatchPressureFieldPolicy.GetDamagePerTick(match, bot.Position, DateTime.UtcNow);
+            int fieldDamage = MatchPressureFieldPolicy.GetDamagePerTick(match, bot.Position, DateTime.UtcNow);
             targets.Add(new EnvironmentalTarget(
                 bot.PlayerId,
                 bot.Health,
-                closureDelta,
-                overtimeDelta,
+                fieldDamage,
                 null,
                 bot));
         }
 
         foreach (var target in targets)
         {
-            int totalDelta = target.ClosureDelta + target.OvertimeDelta;
+            int totalDelta = target.FieldDamage;
             if (totalDelta == 0)
                 continue;
 
@@ -120,7 +109,7 @@ internal class MatchEnvironmentService(
         }
 
         var eliminatedTargets = targets
-            .Where(target => target.PreDamageHealth - target.ClosureDelta - target.OvertimeDelta <= 0)
+            .Where(target => target.FieldDamage > 0 && target.PreDamageHealth - target.FieldDamage <= 0)
             .ToList();
         if (eliminatedTargets.Count == 0)
             return;
@@ -161,18 +150,12 @@ internal class MatchEnvironmentService(
         foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())
         {
             var target = eliminatedTargets.First(entry => entry.PlayerId == candidate.PlayerId);
-            bool closureElimination =
-                target.ClosureDelta > 0 &&
-                target.PreDamageHealth - target.ClosureDelta <= 0;
-            bool overtimeElimination = !closureElimination && target.OvertimeDelta > 0;
 
             if (target.Session != null)
             {
                 matchEliminations.EliminatePlayer(
-                    matchingId, target.PlayerId, EliminationReason.HEALTH_ZERO,
+                    matchingId, target.PlayerId, EliminationReason.PRESSURE_FIELD,
                     deferGameOver: true,
-                    isAreaClosureElimination: closureElimination,
-                    isOvertimeElimination: overtimeElimination,
                     forcedRank: rank);
             }
             else if (target.Bot != null)
@@ -180,9 +163,7 @@ internal class MatchEnvironmentService(
                 botEliminations.Process(
                     match,
                     target.PlayerId,
-                    EliminationReason.HEALTH_ZERO,
-                    isAreaClosureElimination: closureElimination,
-                    isOvertimeElimination: overtimeElimination,
+                    EliminationReason.PRESSURE_FIELD,
                     deferGameOver: true,
                     forcedRank: rank);
             }
@@ -194,7 +175,7 @@ internal class MatchEnvironmentService(
         bool hasActiveSession = match.Sessions.Values.ToList().Any(session => !session.IsGameEnded);
         if (isGameOver && winnerId.HasValue && hasActiveSession)
         {
-            matchResults.FinalizeMatch(matchingId, winnerId.Value, MatchEndReason.OvertimeSettlement, resolution.DecisiveCriterion);
+            matchResults.FinalizeMatch(matchingId, winnerId.Value, MatchEndReason.PressureFieldSettlement, resolution.DecisiveCriterion);
             match.AutoAttack.Clear();
         }
     }
@@ -202,8 +183,7 @@ internal class MatchEnvironmentService(
     private sealed record EnvironmentalTarget(
         long PlayerId,
         int PreDamageHealth,
-        int ClosureDelta,
-        int OvertimeDelta,
+        int FieldDamage,
         GameClientSession? Session,
         BotPlayerState? Bot);
 

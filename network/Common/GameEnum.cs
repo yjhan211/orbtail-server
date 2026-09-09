@@ -189,6 +189,7 @@ namespace network.common
         HEALTH_ZERO = 2,
         RACE_LOST = 4,
         SETTLEMENT_LOW_CONTRIBUTION = 5,
+        PRESSURE_FIELD = 6,
     }
 
     public enum PlayerMatchStatus : short

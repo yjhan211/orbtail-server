@@ -190,7 +190,7 @@ internal sealed class MatchResultService(
             long playerId = row.playerId;
             var session = allSessions.FirstOrDefault(session => session.PlayerId == playerId);
             var bot = runtime.Bots.GetBot(matchingId, playerId);
-            var playerProfile = runtime.Roster.GetPlayerProfile(playerId);
+            var playerProfile = runtime.Roster.GetParticipant(playerId)?.Profile;
             var stats = gameEventLogManager.GetResultStats(matchingId, playerId);
 
             string? name = playerProfile?.Name;
@@ -229,8 +229,6 @@ internal sealed class MatchResultService(
                 TotalRecovery = stats.TotalRecovery,
                 AttackerPlayerId = row.attackerPlayerId,
                 EliminatedArea = row.eliminatedArea,
-                IsAreaClosureElimination = row.isAreaClosureElimination,
-                IsOvertimeElimination = row.isOvertimeElimination,
                 Rank = rank,
                 FinalOrbTier = finalOrbTier,
                 OrbCount = orbCount

@@ -21,8 +21,7 @@ internal sealed class BotEliminationService(
     MatchResultService matchResults,
     ILogger logger)
 {
-    public void Process(MatchRuntime match, long botId, EliminationReason reason, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
-        bool isOvertimeElimination = false, bool deferGameOver = false, int forcedRank = 0)
+    public void Process(MatchRuntime match, long botId, EliminationReason reason, long attackerPlayerId = 0, bool deferGameOver = false, int forcedRank = 0)
     {
         long matchingId = match.MatchingId;
         try
@@ -31,7 +30,7 @@ internal sealed class BotEliminationService(
             var eliminatedArea = eliminatedBot?.CurrentArea ?? AreaType.None;
             int finalOrbTier = match.Inventory.GetHighestOrbTier(botId);
             bool eliminated = match.Roster.TryEliminatePlayer(botId, reason,
-                attackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank,
+                attackerPlayerId, eliminatedArea, forcedRank,
                 finalOrbTier);
             if (!eliminated)
             {
@@ -47,9 +46,7 @@ internal sealed class BotEliminationService(
                 botId,
                 reason.ToString(),
                 isBot: true,
-                attackerPlayerId: attackerPlayerId,
-                isAreaClosureElimination: isAreaClosureElimination,
-                isOvertimeElimination: isOvertimeElimination);
+                attackerPlayerId: attackerPlayerId);
             var matchingSessions = match.Sessions.Values.ToList();
             DropBotInventoryAtCurrentPosition(match, botId, matchingSessions);
 

@@ -16,7 +16,7 @@ public class AreaClosureManager
     ///     아래로 내려가는 순간)을 폐쇄 시각으로 삼는다 — 기존 웨이브 배선(경고 15초·문 잠금·
     ///     꼬리 파괴·봇 대피·재접속 스냅샷)이 그대로 소비한다. 폐쇄 구역 틱 피해은 0 —
     ///     압박은 자기장 경사(경계 초과 거리 비례)가 전담한다.
-    ///     운동장(중심 거리 0)은 수축 완료 시각에 닫힌다 — 최종 폐쇄 = 타이머 만료 = 오버타임 개시.
+    ///     운동장(중심 거리 0)은 수축 완료 시각에 닫힌다 — 최종 폐쇄 시점에는 점수로 매치를 종료한다.
     /// </summary>
     public static List<ClosureWaveDefinition> BuildSwarmFieldWaves(double holdSeconds, double shrinkSeconds)
     {
@@ -272,35 +272,12 @@ public class AreaClosureManager
         }
     }
 
-    public int GetOvertimeDamagePerTick(int tickSeconds = ResourceTickSeconds)
-    {
-        if (tickSeconds <= 0 || Volatile.Read(ref _state) is not { } state) return 0;
-        lock (state.SyncRoot)
-        {
-            return GetOvertimeDamagePerSecond(state) * tickSeconds;
-        }
-    }
-
     public GlobalClosureClientState GetGlobalClosureClientState()
     {
         _ = _matchingId;
         return GlobalClosureClientState.Empty;
     }
 
-
-    /// <summary>전역 오버타임 단계. 마지막 복도 폐쇄 완료 시각(5:20)부터 시작한다.</summary>
-    private int GetOvertimeDamagePerSecond(MatchingClosureState state)
-    {
-        if (state.PhaseDriven || state.Waves.Count == 0) return 0;
-
-        double elapsedSeconds = (_utcNow() - state.GameStartTime).TotalSeconds;
-        double overtimeStartSeconds = state.Waves[^1].ClosureAtSeconds;
-        if (elapsedSeconds < overtimeStartSeconds) return 0;
-        if (elapsedSeconds < overtimeStartSeconds + 30) return 2;
-        if (elapsedSeconds < overtimeStartSeconds + 50) return 4;
-        if (elapsedSeconds < overtimeStartSeconds + 70) return 8;
-        return 16;
-    }
 
     private static int GetCurrentClosedAreaDamagePerSecond(MatchingClosureState state)
     {

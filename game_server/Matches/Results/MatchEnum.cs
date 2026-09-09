@@ -5,9 +5,8 @@ public enum MatchEndReason
 {
     LastSurvivor,
     LastSurvivorAfterCombat,
-    LastSurvivorBeforeOvertime,
     OrbScoreTimeout,
-    OvertimeSettlement,
+    PressureFieldSettlement,
     LastHumanLeft,
     LastSurvivorBotOnly
 }

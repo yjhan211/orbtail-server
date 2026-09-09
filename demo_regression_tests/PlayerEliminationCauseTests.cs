@@ -37,8 +37,7 @@ public sealed class PlayerEliminationCauseTests
             PlayerId = 20,
             Rank = 4,
             FinalOrbTier = 3,
-            IsAreaClosureElimination = false,
-            IsOvertimeElimination = true
+            EliminationReason = EliminationReason.PRESSURE_FIELD
         };
 
         byte[] bytes = MessagePackSerializer.Serialize(source);
@@ -46,8 +45,7 @@ public sealed class PlayerEliminationCauseTests
 
         Assert.Equal(4, result.Rank);
         Assert.Equal(3, result.FinalOrbTier);
-        Assert.False(result.IsAreaClosureElimination);
-        Assert.True(result.IsOvertimeElimination);
+        Assert.Equal(EliminationReason.PRESSURE_FIELD, result.EliminationReason);
     }
     [Fact]
     public void BotDamage_RemembersFirstAttackerThatReachesEliminationThreshold()

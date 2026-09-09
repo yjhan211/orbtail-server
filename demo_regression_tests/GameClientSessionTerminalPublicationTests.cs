@@ -60,7 +60,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         });
         Assert.True(lockHeld.Wait(TimeSpan.FromSeconds(5)));
 
-        Task terminal = Task.Run(() => fixture.Results.FinalizeMatch(matchingId, winner.PlayerId!.Value, MatchEndReason.OvertimeSettlement));
+        Task terminal = Task.Run(() => fixture.Results.FinalizeMatch(matchingId, winner.PlayerId!.Value, MatchEndReason.PressureFieldSettlement));
         try
         {
             await Task.Delay(100);
@@ -158,7 +158,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         Task[] finalizers = sessions.Select(session => Task.Run(() =>
         {
             Assert.True(start.Wait(TimeSpan.FromSeconds(5)));
-            fixture.Results.FinalizeMatch(matchingId, session.PlayerId!.Value, MatchEndReason.OvertimeSettlement);
+            fixture.Results.FinalizeMatch(matchingId, session.PlayerId!.Value, MatchEndReason.PressureFieldSettlement);
         })).ToArray();
         start.Set();
         await Task.WhenAll(finalizers).WaitAsync(TimeSpan.FromSeconds(5));
@@ -206,7 +206,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         fixture.ConnectionFor(resultFailure).ThrowOnceOn = Protocol.G_TO_C_GAME_RESULT;
         fixture.ConnectionFor(endFailure).ThrowOnceOn = Protocol.G_TO_C_GAME_END;
 
-        fixture.Results.FinalizeMatch(matchingId, markFailure.PlayerId!.Value, MatchEndReason.OvertimeSettlement);
+        fixture.Results.FinalizeMatch(matchingId, markFailure.PlayerId!.Value, MatchEndReason.PressureFieldSettlement);
 
         Assert.Single(fixture.ConnectionFor(markFailure)
             .DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT));
@@ -246,7 +246,7 @@ public sealed class GameClientSessionTerminalPublicationTests
     public void EndMatch_MissingOrTerminalMatchDoesNotPublishAgain()
     {
         using var fixture = new TerminalFixture();
-        fixture.Results.FinalizeMatch(73990, 101, MatchEndReason.OvertimeSettlement);
+        fixture.Results.FinalizeMatch(73990, 101, MatchEndReason.PressureFieldSettlement);
         Assert.Empty(fixture.Deliveries);
         Assert.Empty(fixture.SummaryFiles);
 
@@ -254,7 +254,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         using (runtime.Enter())
         {
             Assert.True(runtime.TryMarkEnded());
-            fixture.Results.FinalizeMatch(73991, 101, MatchEndReason.OvertimeSettlement);
+            fixture.Results.FinalizeMatch(73991, 101, MatchEndReason.PressureFieldSettlement);
             Assert.Empty(fixture.Deliveries);
             Assert.Empty(fixture.SummaryFiles);
             Assert.Equal(0, fixture.CleanupCount);
@@ -262,7 +262,7 @@ public sealed class GameClientSessionTerminalPublicationTests
 
         // terminal 매치는 최외곽 scope 해제 시 한 번 정리된다.
         Assert.Equal(1, fixture.CleanupCount);
-        fixture.Results.FinalizeMatch(73991, 101, MatchEndReason.OvertimeSettlement);
+        fixture.Results.FinalizeMatch(73991, 101, MatchEndReason.PressureFieldSettlement);
         Assert.Equal(1, fixture.CleanupCount);
         Assert.Empty(fixture.Deliveries);
         Assert.Empty(fixture.SummaryFiles);
@@ -353,17 +353,15 @@ public sealed class GameClientSessionTerminalPublicationTests
         {
             Assert.True(totalEntries >= humanSessions.Count);
             var entries = humanSessions
-                .Select(session => new MatchParticipant
-                {
-                    PlayerId = session.PlayerId!.Value,
+                .Select(session => new MatchParticipant {
+                    Profile = new network.common.data.models.PlayerInfo { PlayerId = session.PlayerId!.Value },
                     Status = session.PlayerMatchStatus
                 })
                 .ToList();
             for (int index = entries.Count; index < totalEntries; index++)
             {
-                entries.Add(new MatchParticipant
-                {
-                    PlayerId = 80_000 + index,
+                entries.Add(new MatchParticipant {
+                    Profile = new network.common.data.models.PlayerInfo { PlayerId = 80_000 + index },
                     Status = PlayerMatchStatus.ACTIVE
                 });
             }
@@ -375,8 +373,8 @@ public sealed class GameClientSessionTerminalPublicationTests
                 string name = useLongProfiles
                     ? $"Player{entry.PlayerId}_{new string('x', 300)}"
                     : $"Player{entry.PlayerId}";
-                entry.Name = name;
-                entry.WearItemIdList = [1001, 1002, 1003, 1004];
+                entry.Profile.Name = name;
+                entry.Profile.WearItemIdList = [1001, 1002, 1003, 1004];
                 Store.GetOrThrow(matchingId).Roster.RegisterParticipant(entry);
             }
         }

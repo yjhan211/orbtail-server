@@ -258,7 +258,8 @@ public partial class GameClientSession : SessionBase
                 }
                 if (!runtime.IsSetupComplete)
                     throw new InvalidOperationException("Match setup is not complete.");
-                foreach (var participant in runtime.PlayerRoster)
+                var playerProfiles = runtime.Roster.GetPlayerProfiles();
+                foreach (var participant in playerProfiles)
                 {
                     if (participant.PlayerId > 0)
                         humanPlayerIds.Add(participant.PlayerId);
@@ -269,7 +270,7 @@ public partial class GameClientSession : SessionBase
 
                 EnsureConnectionActive();
 
-                using (var rosterPacket = PacketMaker.G_TO_C_MATCH_ROSTER(matchingId, runtime.PlayerRoster.ToList()))
+                using (var rosterPacket = PacketMaker.G_TO_C_MATCH_ROSTER(matchingId, playerProfiles))
                 {
                     if (!TrySend(rosterPacket))
                     {

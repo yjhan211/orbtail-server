@@ -62,6 +62,35 @@ public sealed class MatchEnvironmentServiceTests
             now.AddSeconds(MatchPressureFieldPolicy.ShrinkSeconds)));
     }
 
+    [Fact]
+    public void Process_AfterFinalClosure_DoesNotApplyOvertimeDamageInSafeCenter()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null && !Directory.Exists(Path.Combine(directory.FullName, "network", "Common", "csv")))
+            directory = directory.Parent;
+        network.common.data.helpers.GameDataHelper.SetBasePath(Path.Combine(directory!.FullName, "network"));
+        network.common.data.helpers.GameDataHelper.Initialize();
+        var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947007);
+        var center = SwarmPressureField.CenterCell;
+        var cell = new network.common.data.models.Cell((int)center.X, (int)center.Y);
+        match.Bots.RegisterBots(match.MatchingId, network.common.Config.SWARM_MATCH_MAP,
+            [-1, -2], new Dictionary<long, network.common.data.models.Cell> { [-1] = cell, [-2] = cell });
+        var closure = match.Closures.InitializeMatching(wavesOverride:
+            AreaClosureManager.BuildSwarmFieldWaves(MatchPressureFieldPolicy.HoldSeconds, MatchPressureFieldPolicy.ShrinkSeconds));
+        Assert.NotEmpty(closure.Waves);
+        closure.GameStartTime = DateTime.UtcNow.AddSeconds(-network.common.Config.SWARM_MATCH_DURATION_SECONDS - 100);
+        var bots = match.Bots.GetBots(match.MatchingId).ToList();
+        var healthBefore = bots.Select(bot => bot.Health).ToArray();
+        foreach (var bot in bots)
+            Assert.Equal(0, MatchPressureFieldPolicy.GetDamagePerTick(match, bot.Position, DateTime.UtcNow));
+
+        lock (match.MatchLock)
+            CreateService().ProcessTick(match, []);
+
+        Assert.Equal(healthBefore, bots.Select(bot => bot.Health).ToArray());
+        Assert.All(bots, bot => Assert.False(bot.IsEliminated));
+    }
+
     private static MatchEnvironmentService CreateService()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);

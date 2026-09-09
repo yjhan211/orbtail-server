@@ -1,11 +1,14 @@
+using network.common.data.models;
 using Microsoft.Extensions.Logging;
 using network.common;
 
 namespace game_server.matches;
 
 /// <summary>
-///     매치 하나의 참가 명단과 탈락 기록을 관리한다.
-///     탈락 기록, 최후 1인 판정, 게임 결과 생성.
+///     매치 하나의 참가자 프로필과 생존·탈락 상태를 관리한다.
+///     입장 시 참가자를 등록하고, 탈락 시 사유·시각·순위를 기록한다.
+///     참가자 프로필은 패킷과 결과 생성에 사용하며, 생존자 수로 게임 종료 여부를 판단한다.
+///     매치 정리 후에는 참가 정보를 비우고 새 등록을 거부한다.
 /// </summary>
 public class MatchRoster
 {
@@ -48,11 +51,11 @@ public class MatchRoster
             }
 
             _aliveCount = _participants.Count;
-            _logger.LogInformation("로스터 엔트리 등록: MatchingId={MatchingId}, PlayerId={PlayerId}, 현재 {Count}명", _matchingId, participant.PlayerId, _aliveCount);
+            _logger.LogInformation("Roster entry registered: MatchingId={MatchingId}, PlayerId={PlayerId}, Count={Count}", _matchingId, participant.PlayerId, _aliveCount);
         }
     }
 
-    public MatchPlayerProfile? GetPlayerProfile(long playerId)
+    public MatchParticipant? GetParticipant(long playerId)
     {
         lock (_rosterLock)
         {
@@ -61,17 +64,23 @@ public class MatchRoster
                 return null;
             }
 
-            return new MatchPlayerProfile(entry.Name, entry.WearItemIdList.ToArray());
+            return entry;
+        }
+    }
+
+    public List<PlayerInfo> GetPlayerProfiles()
+    {
+        lock (_rosterLock)
+        {
+            return _participants.Values.Select(participant => participant.Profile).ToList();
         }
     }
 
     public bool TryEliminatePlayer(long playerId, EliminationReason reason,
-        long attackerPlayerId = 0, AreaType eliminatedArea = AreaType.None, bool isAreaClosureElimination = false,
-        bool isOvertimeElimination = false, int forcedRank = 0, int finalOrbTier = 0)
+        long attackerPlayerId = 0, AreaType eliminatedArea = AreaType.None, int forcedRank = 0, int finalOrbTier = 0)
     {
         lock (_rosterLock)
         {
-
             if (_released)
             {
                 return false;
@@ -84,16 +93,11 @@ public class MatchRoster
             participant.EliminatedAt = DateTime.UtcNow;
             participant.AttackerPlayerId = attackerPlayerId;
             participant.EliminatedArea = eliminatedArea;
-            participant.IsAreaClosureElimination = isAreaClosureElimination;
-            participant.IsOvertimeElimination = isOvertimeElimination;
             participant.FinalOrbTier = finalOrbTier;
             participant.EliminationRank = forcedRank > 0 ? forcedRank : _aliveCount;
             _aliveCount--;
 
-            _logger.LogInformation("플레이어 탈락: MatchingId={MatchingId}, PlayerId={PlayerId}, 사유={Reason}, 생존={Alive}",
-                _matchingId, playerId, reason, _aliveCount);
-
-
+            _logger.LogInformation("플레이어 탈락: MatchingId={MatchingId}, PlayerId={PlayerId}, 사유={Reason}, 생존={Alive}", _matchingId, playerId, reason, _aliveCount);
             return true;
         }
     }
@@ -124,8 +128,7 @@ public class MatchRoster
 
     public List<(long playerId,
         EliminationReason reason, PlayerMatchStatus finalStatus, DateTime? eliminatedAt,
-        long attackerPlayerId, AreaType eliminatedArea, bool isAreaClosureElimination,
-        bool isOvertimeElimination, int eliminationRank, int finalOrbTier)> BuildGameResult()
+        long attackerPlayerId, AreaType eliminatedArea, int eliminationRank, int finalOrbTier)> BuildGameResult()
     {
         lock (_rosterLock)
         {
@@ -133,13 +136,13 @@ public class MatchRoster
                 return new();
 
             var result = new List<(long, EliminationReason, PlayerMatchStatus, DateTime?, long,
-                AreaType, bool, bool, int, int)>();
+                AreaType, int, int)>();
 
             foreach (var participant in _participants.Values)
             {
                 result.Add((participant.PlayerId,
                     participant.EliminationReason, participant.Status, participant.EliminatedAt, participant.AttackerPlayerId,
-                    participant.EliminatedArea, participant.IsAreaClosureElimination, participant.IsOvertimeElimination,
+                    participant.EliminatedArea,
                     participant.EliminationRank, participant.FinalOrbTier));
             }
 
@@ -149,20 +152,16 @@ public class MatchRoster
 
 }
 
-public sealed record MatchPlayerProfile(string Name, IReadOnlyList<int> WearItemIdList);
 
 public class MatchParticipant
 {
-    public long PlayerId { get; set; }
+    public long PlayerId => Profile.PlayerId;
+    public required PlayerInfo Profile { get; init; }
     public PlayerMatchStatus Status { get; set; } = PlayerMatchStatus.ACTIVE;
     public EliminationReason EliminationReason { get; set; } = EliminationReason.NONE;
     public DateTime? EliminatedAt { get; set; }
     public long AttackerPlayerId { get; set; }
     public AreaType EliminatedArea { get; set; } = AreaType.None;
-    public bool IsAreaClosureElimination { get; set; }
-    public bool IsOvertimeElimination { get; set; }
     public int EliminationRank { get; set; }
     public int FinalOrbTier { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public List<int> WearItemIdList { get; set; } = [];
 }

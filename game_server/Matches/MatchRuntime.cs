@@ -32,7 +32,6 @@ internal sealed class MatchRuntime
     public bool IsSetupComplete => Volatile.Read(ref _isSetupComplete);
     public MatchMode Mode { get; private set; }
     public IReadOnlyDictionary<long, Cell> SpawnCells { get; private set; } = new Dictionary<long, Cell>();
-    public IReadOnlyList<PlayerInfo> PlayerRoster { get; private set; } = [];
 
     // 참가자
     // 접속한 사람 세션만 보관한다. 등록·교체·조건부 제거는 GameSessionRegistry가 조율한다.
@@ -131,9 +130,9 @@ internal sealed class MatchRuntime
 
         Mode = mode;
         SpawnCells = spawnCells;
-        PlayerRoster = playerRoster;
         foreach (var player in playerRoster)
         {
+            Roster.RegisterParticipant(new MatchParticipant { Profile = player });
             OrbUpgradeService.GrantStartingResources(this, player.PlayerId);
         }
         if (playerRoster.Count > 0 && playerRoster.All(player => player.PlayerId < 0))
@@ -148,7 +147,7 @@ internal sealed class MatchRuntime
     {
         lock (MatchLock)
         {
-            if (IsEnded || !IsSetupComplete || playerId <= 0 || PlayerRoster.All(p => p.PlayerId != playerId))
+            if (IsEnded || !IsSetupComplete || playerId <= 0 || Roster.GetParticipant(playerId) == null)
             {
                 return;
             }
@@ -160,12 +159,12 @@ internal sealed class MatchRuntime
     {
         lock (MatchLock)
         {
-            if (IsEnded || !_entryDeadlineUtc.HasValue || playerId <= 0 || PlayerRoster.All(p => p.PlayerId != playerId))
+            if (IsEnded || !_entryDeadlineUtc.HasValue || playerId <= 0 || Roster.GetParticipant(playerId) == null)
             {
                 return;
             }
             _readyPlayerIds.Add(playerId);
-            if (PlayerRoster.Any(player => player.PlayerId > 0 && !_readyPlayerIds.Contains(player.PlayerId)))
+            if (Roster.GetPlayerProfiles().Any(player => player.PlayerId > 0 && !_readyPlayerIds.Contains(player.PlayerId)))
             {
                 return;
             }
