@@ -91,7 +91,7 @@ public class ProtocolWiringGuardTests
         Assert.True(roster >= 0 && roster < area && roster < join);
         string entry = File.ReadAllText(Path.Combine(root, "game_server", "Matches", "Entry", "GameMatchEntryService.cs"));
         Assert.True(entry.IndexOf("if (runtime.IsSetupComplete", StringComparison.Ordinal) <
-                    entry.IndexOf("MatchRosterBuilder.CreateBotIds", StringComparison.Ordinal));
+                    entry.IndexOf("Interlocked.Decrement(ref _botIdCounter)", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -82,11 +82,16 @@ namespace network.common.data
                     (shuffledRooms[swapIndex], shuffledRooms[index]);
             }
 
-            return orderedPlayerIds
-                .Select((playerId, index) => new KeyValuePair<long, Cell>(
-                    playerId,
-                    Cell.Clone(GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, shuffledRooms[index]))))
-                .ToDictionary(pair => pair.Key, pair => pair.Value);
+            // 사람·봇을 구분하지 않고 같은 배정 순서와 스폰 규칙을 사용한다.
+            var spawnCells = new Dictionary<long, Cell>();
+            for (int index = 0; index < orderedPlayerIds.Count; index++)
+            {
+                long playerId = orderedPlayerIds[index];
+                AreaType spawnRoom = shuffledRooms[index];
+                Cell spawnCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, spawnRoom);
+                spawnCells.Add(playerId, Cell.Clone(spawnCell));
+            }
+            return spawnCells;
         }
 
         public static int GetDeterministicSeed(long matchingId) =>

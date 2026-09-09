@@ -245,7 +245,7 @@ internal sealed class MatchResultService(
             {
                 var session = allSessions.FirstOrDefault(s => s.PlayerId == d.playerId);
                 var bot = _matchRuntimes.GetOrThrow(matchingId).Bots.GetBot(matchingId, d.playerId);
-                var playerInfo = bot == null ? null : _matchRuntimes.GetOrThrow(matchingId).Bots.SynthesizePlayerInfo(matchingId, d.playerId);
+                var playerInfo = bot == null ? null : _matchRuntimes.GetOrThrow(matchingId).Bots.CreatePlayerInfo(matchingId, d.playerId);
                 var playerProfile = _matchRuntimes.GetOrThrow(matchingId).Roster.GetPlayerProfile(d.playerId);
                 var stats = _gameEventLogManager.GetResultStats(matchingId, d.playerId);
                 var orbScore = ResolveResultOrbScore(matchingId, d.playerId);

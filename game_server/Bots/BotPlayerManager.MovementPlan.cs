@@ -195,7 +195,7 @@ public partial class BotPlayerManager
         SwarmBotPlayerInfoSnapshot? enteringBot = null;
         if (movement.IsAreaTransition)
         {
-            PlayerInfo? botInfo = SynthesizePlayerInfo(matchingId, movement.BotPlayerId);
+            PlayerInfo? botInfo = CreatePlayerInfo(matchingId, movement.BotPlayerId);
             GameObjectInfo? objectInfo = SynthesizeGameObjectInfo(matchingId, movement.BotPlayerId);
             if (botInfo != null && objectInfo != null)
                 enteringBot = SwarmBotPlayerInfoSnapshot.Capture(botInfo, objectInfo);

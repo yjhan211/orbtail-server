@@ -162,7 +162,7 @@ public partial class BotPlayerManager
         return list;
     }
 
-    public PlayerInfo? SynthesizePlayerInfo(long matchingId, long botPlayerId)
+    public PlayerInfo? CreatePlayerInfo(long matchingId, long botPlayerId)
     {
         var bot = GetBot(matchingId, botPlayerId);
         if (bot == null) return null;

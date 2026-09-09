@@ -247,7 +247,7 @@ public partial class GameClientSession : SessionBase
                 previousSession.ForceDisconnect();
             }
 
-            await _matchEntry.PrepareMatchAsync(matchingId, CurrentMapId, runtime);
+            await _matchEntry.PrepareMatchAsync(matchingId, runtime);
             EnsureConnectionActive();
             Cell matchingSpawnCell;
             var humanPlayerIds = new List<long>();
@@ -288,17 +288,7 @@ public partial class GameClientSession : SessionBase
                     PlayerId, CurrentArea, LastValidatedPosition?.X, LastValidatedPosition?.Y, _playerMovement.LastValidatedCell?.X,
                     _playerMovement.LastValidatedCell?.Y);
 
-                _gameEventLogManager.LogSpawnAssignment(
-                    MatchingId,
-                    PlayerId.Value,
-                    MatchSpawnData.GetDeterministicSeed(MatchingId),
-                    MatchSpawnData.GetAnchorIndex(matchingSpawnCell),
-                    matchingSpawnCell.X,
-                    matchingSpawnCell.Y,
-                    CurrentArea.ToString(),
-                    isBot: false);
 
-                _gameEventLogManager.SetPlayerArea(MatchingId, PlayerId.Value, CurrentArea.ToString());
 
                 _playerMovement.SendInteractableList(CurrentArea);
 
@@ -314,7 +304,7 @@ public partial class GameClientSession : SessionBase
                 EnsureConnectionActive();
             }
 
-            await _matchEntry.CommitAsync(matchingId, PlayerId.Value, humanPlayerIds);
+            await _matchEntry.CommitEntryAsync(matchingId, PlayerId.Value, humanPlayerIds);
             EnsureConnectionActive();
 
             if (humanPlayerIds.Count == 1)
