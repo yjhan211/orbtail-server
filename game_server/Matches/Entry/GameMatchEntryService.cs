@@ -12,9 +12,10 @@ using StackExchange.Redis;
 namespace game_server.matches.entry;
 
 /// <summary>
-///     Game Server 입장에 필요한 티켓 확인과 매치 초기화, 입장 완료 기록을 담당한다.
-///     Redis에서 매치 구성과 입장 준비 여부, 참가자의 매칭 예약을 확인한다.
-///     매치당 한 번 사람 프로필을 조회하고 봇을 생성해 참가자 명단과 스폰 위치를 확정한다.
+///     GameServer 입장 준비와 입장 기록을 담당한다.
+///     매치당 한 번 사람 프로필·봇·스폰 위치·참가자 명단을 초기화한다.
+///     참가자가 입장하면 Redis의 매칭 예약을 연장하고 입장 여부를 기록하며,
+///     모든 사람이 입장하면 매치 입장 상태를 completed로 변경한다.
 /// </summary>
 internal sealed class GameMatchEntryService(
     IRedisOperations redisOperations,
