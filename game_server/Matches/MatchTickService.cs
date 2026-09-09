@@ -4,9 +4,9 @@ namespace game_server.matches;
 
 /// <summary>
 ///     매치별 틱 루프의 시작과 종료를 관리한다.
-///     새 매치가 생성되면 틱 루프를 연결하고, 실행이 끝난 루프는 추적 목록에서 제거한다.
-///     서버 종료 시 새 루프 등록을 막고, 모든 루프를 중단한 뒤 진행 중인 처리가 끝날 때까지 기다린다.
-///     실행 주기는 MatchTickLoop가, 실제 게임 처리는 MatchTickRunner가 담당한다.
+///     MatchRuntimeStore의 매치 생성 알림을 받아 루프를 연결하고, 루프가 끝나면 추적 목록에서 제거한다.
+///     서버 종료 시 새 루프 등록을 막고, 모든 루프를 중단한 뒤 실행 중인 처리가 끝날 때까지 기다린다.
+///     실행 주기는 MatchTickLoop가, 매 틱의 게임 처리는 MatchTickRunner가 담당한다.
 /// </summary>
 internal sealed class MatchTickService(
     MatchRuntimeStore matchRuntimes,
@@ -64,11 +64,11 @@ internal sealed class MatchTickService(
 
             _matchTickLoops.Add(runtime, loop);
             loop.Start();
-            _ = ForgetCompletedLoopAsync(runtime, loop);
+            _ = RemoveCompletedLoopAsync(runtime, loop);
         }
     }
 
-    private async Task ForgetCompletedLoopAsync(MatchRuntime runtime, MatchTickLoop loop)
+    private async Task RemoveCompletedLoopAsync(MatchRuntime runtime, MatchTickLoop loop)
     {
         try
         {

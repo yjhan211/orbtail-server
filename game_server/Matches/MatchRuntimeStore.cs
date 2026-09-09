@@ -25,27 +25,27 @@ internal sealed class MatchRuntimeStore(ILogger<MatchRuntime> runtimeLogger, Mat
             return existing;
         }
 
-        var candidate = new MatchRuntime(this, matchingId, runtimeLogger, _matchingLifecycle);
-        lock (candidate.MatchLock)
+        var newRuntime = new MatchRuntime(this, matchingId, runtimeLogger, _matchingLifecycle);
+        lock (newRuntime.MatchLock)
         {
-            var runtime = _runtimes.GetOrAdd(matchingId, candidate);
-            if (!ReferenceEquals(runtime, candidate))
+            var runtime = _runtimes.GetOrAdd(matchingId, newRuntime);
+            if (!ReferenceEquals(runtime, newRuntime))
             {
                 return runtime;
             }
 
             try
             {
-                MatchCreated?.Invoke(candidate);
+                MatchCreated?.Invoke(newRuntime);
             }
             catch
             {
-                candidate.TickLoop?.Stop();
-                _runtimes.TryRemove(new KeyValuePair<long, MatchRuntime>(matchingId, candidate));
+                newRuntime.TickLoop?.Stop();
+                _runtimes.TryRemove(new KeyValuePair<long, MatchRuntime>(matchingId, newRuntime));
                 throw;
             }
 
-            return candidate;
+            return newRuntime;
         }
     }
 
