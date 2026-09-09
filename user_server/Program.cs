@@ -51,7 +51,7 @@ internal static class Program
 
     internal static void ConfigureServices(HostBuilderContext hostContext, IServiceCollection services)
     {
-        services.AddSingleton<UserServerNodeIdentity>();
+        services.AddSingleton<UserServerNodeOptions>();
 
         services.AddSingleton<NetworkService>();
         string natsEndpoint = hostContext.Configuration["natsEndPoint"]
@@ -77,7 +77,7 @@ internal static class Program
         services.AddSingleton<NatsPlayerSessionRouter>(sp => new NatsPlayerSessionRouter(
             sp.GetRequiredService<INatsClient>(),
             sp.GetRequiredService<PlayerSessionRegistry>().Get,
-            sp.GetRequiredService<UserServerNodeIdentity>().NodeId,
+            sp.GetRequiredService<UserServerNodeOptions>().NodeId,
             sp.GetRequiredService<ILogger<NatsPlayerSessionRouter>>()));
         services.AddSingleton<IPlayerSessionRouter>(sp => sp.GetRequiredService<NatsPlayerSessionRouter>());
 
@@ -112,7 +112,7 @@ internal static class Program
             sp.GetRequiredService<BackgroundTaskTracker>().ShutdownToken));
         services.AddSingleton<MatchingLeaderLease>(sp => new MatchingLeaderLease(
             sp.GetRequiredService<IRedisOperations>(),
-            sp.GetRequiredService<UserServerNodeIdentity>().NodeId,
+            sp.GetRequiredService<UserServerNodeOptions>().NodeId,
             sp.GetRequiredService<ILogger<MatchingLeaderLease>>()));
         services.AddSingleton<MatchingManager>();
         services.AddSingleton<IMatchingManager>(sp => sp.GetRequiredService<MatchingManager>());

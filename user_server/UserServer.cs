@@ -37,7 +37,7 @@ internal sealed class UserServer(
     IPlayerService playerService,
     AccountTokenService accountTokenService,
     ServerReadinessState readinessState,
-    UserServerNodeIdentity node,
+    UserServerNodeOptions node,
     PlayerSessionRegistry sessions,
     NatsPlayerSessionRouter sessionRouter,
     MatchingManager matchingManager,
