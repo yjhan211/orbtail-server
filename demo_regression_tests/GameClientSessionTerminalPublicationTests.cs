@@ -86,10 +86,11 @@ public sealed class GameClientSessionTerminalPublicationTests
 
         long[] recipientIds = sessions.Select(session => session.PlayerId!.Value).ToArray();
         Assert.Equal(
-            recipientIds,
+            recipientIds.OrderBy(id => id),
             fixture.Deliveries
                 .Where(delivery => delivery.Protocol == Protocol.G_TO_C_GAME_RESULT)
                 .Select(delivery => delivery.PlayerId)
+                .OrderBy(id => id)
                 .ToArray());
         Assert.Equal(
             Enumerable.Repeat(Protocol.G_TO_C_GAME_RESULT, sessions.Length)
@@ -335,7 +336,7 @@ public sealed class GameClientSessionTerminalPublicationTests
                 PrepareGameCompletion);
             SetIdentity(session, matchingId, playerId, status);
             _sessions.Add(session);
-            session.Match.Sessions.Add(playerId, session);
+            session.Match.Sessions[playerId] = session;
             _connections.Add(session, connection);
             return session;
         }

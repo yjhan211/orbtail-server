@@ -174,12 +174,17 @@ internal sealed class PlayerMovementService(
             logger.LogInformation("Player {PlayerId} moved from Area {OldArea} to {NewArea}", player.PlayerId, oldArea,
                 newArea);
 
-            var allSessions = player.Match.Sessions.Snapshot();
+            var allSessions = player.Match.Sessions.Values.ToList();
 
             // 1. 이전 Area의 플레이어들에게 퇴장 알림 + 나에게 기존 플레이어 삭제 알림
             if (oldArea != AreaType.None)
             {
-                var oldAreaSessions = MatchSessionCollection.FilterInArea(allSessions, oldArea, player.PlayerId);
+                var oldAreaSessions = new List<GameClientSession>();
+                foreach (var session in allSessions)
+                {
+                    if (!session.IsEliminated && session.CurrentArea == oldArea && session.PlayerId != player.PlayerId)
+                        oldAreaSessions.Add(session);
+                }
                 using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(player.PlayerId.Value);
 
                 foreach (var session in oldAreaSessions)
@@ -212,7 +217,12 @@ internal sealed class PlayerMovementService(
             // 2. 새 Area의 플레이어들에게 진입 알림 (내 최신 Cell 포함)
             if (newArea != AreaType.None)
             {
-                var newAreaSessions = MatchSessionCollection.FilterInArea(allSessions, newArea, player.PlayerId);
+                var newAreaSessions = new List<GameClientSession>();
+                foreach (var session in allSessions)
+                {
+                    if (!session.IsEliminated && session.CurrentArea == newArea && session.PlayerId != player.PlayerId)
+                        newAreaSessions.Add(session);
+                }
                 using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(CaptureGameObjectInfo(player.Condition.State));
 
                 foreach (var session in newAreaSessions) session.TrySend(enterPacket);
@@ -301,11 +311,14 @@ internal sealed class PlayerMovementService(
 
     public void Broadcast(Packet packet)
     {
-        foreach (var other in player.Match.Sessions.GetInArea(CurrentArea, player.PlayerId))
+        var targetSessions = new List<GameClientSession>();
+        foreach (var other in player.Match.Sessions.Values.ToList())
         {
-            if (other.PlayerId != player.PlayerId)
-                other.TrySend(packet);
+            if (!other.IsEliminated && other.CurrentArea == CurrentArea && other.PlayerId != player.PlayerId)
+                targetSessions.Add(other);
         }
+        foreach (var other in targetSessions)
+            other.TrySend(packet);
     }
 
     private Cell ToCell(Vector3f position) =>

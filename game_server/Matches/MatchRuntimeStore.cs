@@ -88,14 +88,13 @@ internal sealed class MatchRuntimeStore(ILogger<MatchRuntime> runtimeLogger, Mat
         {
             return false;
         }
-        lock (runtime.MatchLock)
+        using (runtime.Enter())
         {
             if (!_runtimes.TryRemove(new KeyValuePair<long, MatchRuntime>(matchingId, runtime)))
             {
                 return false;
             }
-            runtime.TickLoop?.Stop();
-            runtime.Sessions.Close();
+            runtime.TryMarkEnded();
             return true;
         }
     }

@@ -52,7 +52,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             proximityTick,
             "matchRuntimes.TryEnter(matchingId, out MatchLockScope scope)",
-            "runtime.Sessions.Snapshot()",
+            "runtime.Sessions.Values.ToList()",
             "Match session snapshot failed",
             "try",
             "processCombat(matchingId, activeSessions);",

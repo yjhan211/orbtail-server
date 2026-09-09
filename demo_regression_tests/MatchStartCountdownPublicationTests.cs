@@ -275,7 +275,7 @@ public sealed class MatchStartCountdownPublicationTests
         SetSessionIdentity(server.GetMatchRuntimes(), other, playerId: 202, matchingId);
         Assert.Null(sessionRegistry.Register(101, anchor));
         Assert.Null(sessionRegistry.Register(202, other));
-        Assert.Equal(2, anchor.Match.Sessions.Snapshot().Count);
+        Assert.Equal(2, anchor.Match.Sessions.Values.ToList().Count);
 
         InvokeEntryAbort(server, anchor);
 
@@ -285,7 +285,7 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.Equal(1, anchor.DisconnectCount);
         Assert.Equal(1, other.FatalCount);
         Assert.Equal(1, other.DisconnectCount);
-        Assert.Empty(anchor.Match.Sessions.Snapshot());
+        Assert.Empty(anchor.Match.Sessions.Values.ToList());
         ConcurrentDictionary<long, string> playerSubjects = GetTerminalSubjects(server)[matchingId];
         Assert.Equal(MatchingLifecycleSubjects.PlayerEntryFailed, playerSubjects[101]);
         if (hasComposition)
@@ -324,7 +324,7 @@ public sealed class MatchStartCountdownPublicationTests
         var completedSession = new RecordingEntrySession();
         SetSessionIdentity(server.GetMatchRuntimes(), completedSession, completedPlayerId, matchingId);
         Assert.Null(sessionRegistry.Register(completedPlayerId, completedSession));
-        Assert.Same(completedSession, Assert.Single(completedSession.Match.Sessions.Snapshot()));
+        Assert.Same(completedSession, Assert.Single(completedSession.Match.Sessions.Values.ToList()));
 
         // 정상 종료가 잠금 안에서 subject를 먼저 선점하고 터미널로 끝난다.
         MatchRuntime runtime = server.GetMatchRuntimes().GetOrCreate(matchingId);

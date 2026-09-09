@@ -84,7 +84,15 @@ public partial class GameClientSession
         {
             return;
         }
-        var targetSessions = Match.Sessions.GetInArea(CurrentArea, includeSelf ? null : PlayerId);
+        var targetSessions = new List<GameClientSession>();
+        foreach (var session in Match.Sessions.Values.ToList())
+        {
+            if (session.IsEliminated || session.CurrentArea != CurrentArea)
+                continue;
+            if (!includeSelf && session.PlayerId == PlayerId)
+                continue;
+            targetSessions.Add(session);
+        }
         using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, Condition.State);
         foreach (var targetSession in targetSessions)
         {

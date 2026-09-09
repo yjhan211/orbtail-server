@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using game_server.matches.entry;
 using game_server.matches.lifecycle;
 using game_server.matches.results;
@@ -61,7 +62,8 @@ internal sealed class MatchRuntime
     public IReadOnlyList<PlayerInfo> PlayerRoster { get; private set; } = [];
 
     // 참가자
-    public MatchSessionCollection Sessions { get; } = new();
+    // 접속한 사람 세션만 보관한다. 등록·교체·조건부 제거는 GameSessionRegistry가 조율한다.
+    public ConcurrentDictionary<long, GameClientSession> Sessions { get; } = new();
     public RosterManager Roster { get; }
     public BotPlayerManager Bots { get; }
     public BotTacticalState BotTactics { get; } = new();
@@ -169,7 +171,7 @@ internal sealed class MatchRuntime
             {
                 _cleanupStarted = true;
                 TickLoop?.Stop();
-                Sessions.Close();
+                Sessions.Clear();
                 Doors.Clear();
                 try
                 {

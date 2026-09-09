@@ -28,7 +28,7 @@ internal sealed class BotMovementService(
             throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
         long matchingId = runtime.MatchingId;
         long tickStartedAt = Stopwatch.GetTimestamp();
-        GameClientSession[] sessionSnapshot = runtime.Sessions.Snapshot()
+        GameClientSession[] sessionSnapshot = runtime.Sessions.Values.ToList()
             .Where(session =>
                 session.PlayerId is > 0 &&
                 session.CurrentMapId == Config.SWARM_MATCH_MAP &&
@@ -203,7 +203,7 @@ internal sealed class BotMovementService(
         if (runtime.IsEnded)
             throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
         long matchingId = runtime.MatchingId;
-        GameClientSession[] sessionSnapshot = runtime.Sessions.Snapshot()
+        GameClientSession[] sessionSnapshot = runtime.Sessions.Values.ToList()
             .Where(session =>
                 session.PlayerId is > 0 &&
                 session.CurrentMapId == Config.SWARM_MATCH_MAP &&

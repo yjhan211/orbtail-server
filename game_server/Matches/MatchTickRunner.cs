@@ -40,7 +40,7 @@ internal sealed class MatchTickRunner(
             List<GameClientSession> activeSessions;
             try
             {
-                countdownSessions = runtime.Sessions.Snapshot()
+                countdownSessions = runtime.Sessions.Values.ToList()
                     .Where(static session => session.PlayerId.HasValue).ToList();
                 activeSessions = countdownSessions
                     .Where(static session => !session.IsEliminated && !session.IsGameEnded).ToList();

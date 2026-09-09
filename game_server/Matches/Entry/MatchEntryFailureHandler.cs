@@ -54,7 +54,7 @@ internal sealed class MatchEntryFailureHandler(
                 }
 
                 wonTerminal = runtime.TryMarkEnded();
-                List<GameClientSession> affectedSessions = runtime.Sessions.Snapshot();
+                List<GameClientSession> affectedSessions = runtime.Sessions.Values.ToList();
                 foreach (GameClientSession affectedSession in affectedSessions)
                     affectedSession.MarkMatchEndHandledExternally();
 

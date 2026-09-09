@@ -52,7 +52,7 @@ internal sealed class MatchResultService(
             return;
         }
 
-        List<GameClientSession> sessionSnapshot = _matchRuntimes.GetOrThrow(matchingId).Sessions.Snapshot();
+        List<GameClientSession> sessionSnapshot = _matchRuntimes.GetOrThrow(matchingId).Sessions.Values.ToList();
         var players = BuildGameResultPlayers(sessionSnapshot, matchingId, winnerId);
         byte[] resultPayload = MessagePackSerializer.Serialize(new G_TO_C_GAME_RESULT
         {

@@ -31,7 +31,7 @@ public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
         {
             if (!_sessionsByPlayer.TryGetValue(playerId, out var existingSession))
             {
-                match.Sessions.Add(playerId, session);
+                match.Sessions[playerId] = session;
                 _sessionsByPlayer[playerId] = session;
                 logger.LogInformation("Game client session registered: PlayerId={PlayerId}", playerId);
                 return null;
@@ -42,9 +42,9 @@ public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
                 return null;
             }
 
-            match.Sessions.Add(playerId, session);
+            match.Sessions[playerId] = session;
             _sessionsByPlayer[playerId] = session;
-            existingSession.Match.Sessions.Remove(playerId, existingSession);
+            existingSession.Match.Sessions.TryRemove(new KeyValuePair<long, GameClientSession>(playerId, existingSession));
             logger.LogWarning("Game client session replaced: PlayerId={PlayerId}", playerId);
             return existingSession;
         }
@@ -64,7 +64,7 @@ public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
                 .Remove(new KeyValuePair<long, GameClientSession>(session.PlayerId.Value, session));
             if (removed)
             {
-                session.Match.Sessions.Remove(session.PlayerId.Value, session);
+                session.Match.Sessions.TryRemove(new KeyValuePair<long, GameClientSession>(session.PlayerId.Value, session));
             }
             return removed;
         }

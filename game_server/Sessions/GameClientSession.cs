@@ -379,7 +379,7 @@ public partial class GameClientSession : SessionBase
             }
 
             var sessions = new List<GameClientSession>();
-            foreach (var session in match.Sessions.Snapshot())
+            foreach (var session in match.Sessions.Values.ToList())
             {
                 if (!session.PlayerId.HasValue || session.PlayerId == PlayerId)
                 {
@@ -711,7 +711,7 @@ public partial class GameClientSession : SessionBase
         {
             using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(PlayerId.Value);
             var sameAreaSessions = new List<GameClientSession>();
-            foreach (var other in Match.Sessions.Snapshot())
+            foreach (var other in Match.Sessions.Values.ToList())
             {
                 if (ReferenceEquals(other, this))
                 {

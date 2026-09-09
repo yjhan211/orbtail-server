@@ -136,7 +136,13 @@ internal sealed class GroundItemAutoPickupService(
         using (var removed = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(
                    claimedItem.GroundItemUid, session.PlayerId.Value, pickup.AutoUsed))
         {
-            foreach (var other in session.Match.Sessions.GetInArea((AreaType)claimedItem.AreaType))
+            var targetSessions = new List<GameClientSession>();
+            foreach (var other in session.Match.Sessions.Values.ToList())
+            {
+                if (!other.IsEliminated && other.CurrentArea == (AreaType)claimedItem.AreaType)
+                    targetSessions.Add(other);
+            }
+            foreach (var other in targetSessions)
                 other.TrySend(removed);
         }
         eventLogs.LogGroundItemPickup(

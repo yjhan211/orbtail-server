@@ -787,7 +787,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             connection.SetSession(session);
             SetIdentity(session, matchingId, playerId);
             _sessions.Add(session);
-            session.Match.Sessions.Add(playerId, session);
+            session.Match.Sessions[playerId] = session;
             _connections.Add(session, connection);
             return session;
         }

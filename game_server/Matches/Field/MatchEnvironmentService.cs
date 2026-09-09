@@ -190,7 +190,7 @@ internal sealed class MatchEnvironmentService(
         }
 
         (bool isGameOver, long? winnerId) = match.Roster.CheckGameOver();
-        bool hasActiveSession = match.Sessions.Snapshot().Any(session => !session.IsGameEnded);
+        bool hasActiveSession = match.Sessions.Values.ToList().Any(session => !session.IsGameEnded);
         if (isGameOver && winnerId.HasValue && hasActiveSession)
         {
             matchEliminations.EndMatch(matchingId, winnerId.Value, resolution.DecisiveCriterion);

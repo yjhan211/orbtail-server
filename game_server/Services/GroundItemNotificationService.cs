@@ -29,7 +29,12 @@ internal static class GroundItemNotificationService
         {
             return;
         }
-        var sessions = match.Sessions.GetInArea(area);
+        var sessions = new List<GameClientSession>();
+        foreach (var session in match.Sessions.Values.ToList())
+        {
+            if (!session.IsEliminated && session.CurrentArea == area)
+                sessions.Add(session);
+        }
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, spawned.ToList());
         foreach (var session in sessions)
         {

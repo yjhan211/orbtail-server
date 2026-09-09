@@ -128,6 +128,9 @@ public sealed class GameServerTickServiceTests
         service.Start(_ => calls++);
         var match = store.GetOrCreate(401);
         Assert.True(store.Remove(401));
+        Assert.True(match.IsEnded);
+        Assert.Null(store.GetOrNull(401));
+        Assert.False(store.Remove(401));
         await match.TickLoop!.Completion.WaitAsync(TimeSpan.FromSeconds(5));
         clock.Timers[0].Fire();
         Assert.Equal(0, calls);

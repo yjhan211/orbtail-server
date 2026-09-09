@@ -29,7 +29,12 @@ public partial class GameClientSession
                 return Task.CompletedTask;
             }
 
-            var sameAreaSessions = match.Sessions.GetInArea(CurrentArea);
+            var sameAreaSessions = new List<GameClientSession>();
+            foreach (var session in match.Sessions.Values.ToList())
+            {
+                if (!session.IsEliminated && session.CurrentArea == CurrentArea)
+                    sameAreaSessions.Add(session);
+            }
             var broadcast = new G_TO_C_SOCIAL_ACTION
             {
                 PlayerId = PlayerId.Value,

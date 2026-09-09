@@ -108,7 +108,7 @@ public partial class GameClientSession
                 MatchInteractionService.FinishDoor(match, _interactions, doorId);
                 completed = true;
                 using var updatePacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, PlayerId.Value);
-                foreach (var session in match.Sessions.Snapshot())
+                foreach (var session in match.Sessions.Values.ToList())
                 {
                     session.TrySend(updatePacket);
                 }
