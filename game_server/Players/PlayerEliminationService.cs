@@ -1,5 +1,5 @@
-using game_server;
-using game_server.bots;
+using game_server.matches;
+using game_server.matches.results;
 using game_server.items;
 using game_server.logging;
 using MessagePack;
@@ -8,14 +8,14 @@ using network.common;
 using network.common.data.models;
 using network.packets;
 
-namespace game_server.matches.results;
+namespace game_server.players;
 
 /// <summary>
 ///     매치 잠금 안에서 탈락을 확정하고 인벤토리 드롭·탈락 알림·승자 판정을 순서대로 처리한다.
 ///     세션의 관전 상태는 전용 메서드로 반영하며, 결과 발행은 MatchResultService에 맡긴다.
 ///     호출자는 해당 매치 잠금을 소유해야 한다.
 /// </summary>
-internal sealed class MatchEliminationService(
+internal sealed class PlayerEliminationService(
     MatchRuntimeStore _matchRuntimes,
     GameEventLogManager _gameEventLogManager,
     MatchResultService _matchResults,
@@ -25,7 +25,7 @@ internal sealed class MatchEliminationService(
     /// <summary>
     ///     플레이어 탈락 처리 + 탈락 브로드캐스트
     /// </summary>
-    public void Process(long matchingId, long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null,
+    public void EliminatePlayer(long matchingId, long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null,
         bool deferGameOver = false, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
         bool isOvertimeElimination = false, int forcedRank = 0)
     {
@@ -132,28 +132,6 @@ internal sealed class MatchEliminationService(
             _matchResults.SendGameResult(winnerId ?? 0, false, matchingId);
         }
 
-    }
-
-    public void EndMatch(long matchingId, long winnerId, string criterion)
-    {
-
-        var runtime = _matchRuntimes.GetOrNull(matchingId);
-        if (runtime == null)
-            return;
-        using var scope = runtime.Enter();
-        if (runtime.IsEnded)
-            return;
-
-        Logger.LogInformation(
-            "Swarm match resolved: matchingId={MatchingId}, WinnerId={WinnerId}, Criterion={Criterion}",
-            matchingId, winnerId, criterion);
-        _gameEventLogManager.LogSystem(
-            matchingId,
-            $"survivor_settlement winner={winnerId} criterion={criterion}");
-        // 오브 점수 만료(#226 단계 B)는 요약 EndReason에도 그대로 남긴다 — 계측에서
-        // 연장전 정산과 섞이면 5분 판정 발화율을 셀 수 없다.
-        string endReason = criterion == "orb_score_timeout" ? criterion : "overtime_settlement";
-        _matchResults.SendGameResult(winnerId, false, matchingId, endReason, criterion);
     }
 
     private void DropBotInventoryAtCurrentPosition(long matchingId, long botPlayerId)

@@ -1,3 +1,4 @@
+using game_server.players;
 using game_server.items;
 using game_server.logging;
 using game_server.matches.results;
@@ -17,7 +18,7 @@ namespace game_server.bots;
 /// </summary>
 internal sealed class BotEliminationService(
     GameEventLogManager eventLogs,
-    MatchEliminationService matchEliminations,
+    MatchResultService matchResults,
     ILogger logger)
 {
     public void Process(MatchRuntime match, long botId, EliminationReason reason, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
@@ -90,7 +91,7 @@ internal sealed class BotEliminationService(
             {
                 logger.LogInformation("게임 종료(봇 탈락 후): MatchingId={MatchingId}, Winner={WinnerId}",
                     matchingId, winnerId);
-                matchEliminations.EndMatch(matchingId, winnerId ?? 0, "last_survivor_after_combat");
+                matchResults.EndMatch(matchingId, winnerId ?? 0, "last_survivor_after_combat");
             }
         }
         catch (Exception ex)

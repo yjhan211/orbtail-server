@@ -1,3 +1,4 @@
+using game_server.players;
 using game_server.logging;
 using game_server.matches.results;
 using game_server.matches;
@@ -14,7 +15,7 @@ namespace game_server.players;
 internal sealed class PlayerHealthChangeService(
     GameClientSession session,
     GameEventLogManager eventLogs,
-    MatchEliminationService eliminations,
+    PlayerEliminationService eliminations,
     ILogger logger)
 {
 
@@ -45,7 +46,7 @@ internal sealed class PlayerHealthChangeService(
         if (change.IsDepleted && !deferElimination &&
             session.PlayerId.HasValue && !session.IsGameEnded && !session.IsEliminated && session.CurrentHealth <= 0)
         {
-            eliminations.Process(session.MatchingId, session.PlayerId.Value, EliminationReason.HEALTH_ZERO,
+            eliminations.EliminatePlayer(session.MatchingId, session.PlayerId.Value, EliminationReason.HEALTH_ZERO,
                 attackerPlayerId: attackerPlayerId,
                 isAreaClosureElimination: isAreaClosureElimination,
                 isOvertimeElimination: isOvertimeElimination);

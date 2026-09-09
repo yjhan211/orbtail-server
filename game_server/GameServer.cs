@@ -42,7 +42,7 @@ internal sealed class GameServer(
     GameSessionRegistry sessions,
     MatchRuntimeStore matchRuntimes,
     GameEventLogManager eventLogs,
-    MatchEliminationService matchEliminations,
+    PlayerEliminationService matchEliminations,
     GameMatchEntryService matchEntry,
     MovementValidationService movementValidation,
     OrbInventoryService orbInventory,

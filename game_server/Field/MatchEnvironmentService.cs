@@ -1,3 +1,4 @@
+using game_server.players;
 using game_server.matches;
 using game_server;
 using game_server.bots;
@@ -18,7 +19,8 @@ internal class MatchEnvironmentService(
     GameEventLogManager eventLogs,
     MatchCleanupService matchCleanup,
     BotEliminationService botEliminations,
-    MatchEliminationService matchEliminations,
+    PlayerEliminationService matchEliminations,
+    MatchResultService matchResults,
     ILogger<MatchEnvironmentService> logger)
 {
     /// <summary>매치의 5초 환경 정산. 50ms 틱이 전투 처리 후 같은 매치 잠금 안에서 호출한다.</summary>
@@ -49,7 +51,7 @@ internal class MatchEnvironmentService(
 
             if (aliveCount == 1 && humans.Count > 0)
             {
-                matchEliminations.EndMatch(matchingId, humans[0].PlayerId ?? 0, "last_survivor_before_overtime");
+                matchResults.EndMatch(matchingId, humans[0].PlayerId ?? 0, "last_survivor_before_overtime");
                 match.AutoAttack.Clear();
                 return;
             }
@@ -166,7 +168,7 @@ internal class MatchEnvironmentService(
 
             if (target.Session != null)
             {
-                matchEliminations.Process(
+                matchEliminations.EliminatePlayer(
                     matchingId, target.PlayerId, EliminationReason.HEALTH_ZERO,
                     deferGameOver: true,
                     isAreaClosureElimination: closureElimination,
@@ -192,7 +194,7 @@ internal class MatchEnvironmentService(
         bool hasActiveSession = match.Sessions.Values.ToList().Any(session => !session.IsGameEnded);
         if (isGameOver && winnerId.HasValue && hasActiveSession)
         {
-            matchEliminations.EndMatch(matchingId, winnerId.Value, resolution.DecisiveCriterion);
+            matchResults.EndMatch(matchingId, winnerId.Value, resolution.DecisiveCriterion);
             match.AutoAttack.Clear();
         }
     }

@@ -164,7 +164,7 @@ public sealed class MatchOwnedStateTests
         var bot = match.Bots.GetBot(match.MatchingId, botId)!;
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var service = new BotEliminationService(logs,
-            TestGameSessionServices.CreateEliminationService(
+            new game_server.matches.results.MatchResultService(
                 store, logs, new MatchSummaryFileStore(), NullLogger.Instance),
             NullLogger.Instance);
         using (MatchRuntimeStore.Enter(match))

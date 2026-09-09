@@ -64,7 +64,7 @@ public partial class GameClientSession : SessionBase
         MatchCleanupService matchCleanup,
         Func<long, GameClientSession, GameClientSession?> registerSessionCallback,
         GameEventLogManager gameEventLogManager,
-        MatchEliminationService matchEliminations,
+        PlayerEliminationService matchEliminations,
         IPlayerGrowthHandler growth,
         IMatchSessionCleanup matchSessionCleanup,
         Func<bool> isServerStopping,

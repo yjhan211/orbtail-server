@@ -115,14 +115,14 @@ internal static class TestGameSessionServices
             new GameEventLogManager(id => store.GetOrNull(id)?.EventLog));
     }
 
-    public static MatchEliminationService CreateEliminationService(
+    public static PlayerEliminationService CreateEliminationService(
         MatchRuntimeStore store,
         GameEventLogManager logs,
         MatchSummaryFileStore summaries,
         Microsoft.Extensions.Logging.ILogger logger)
     {
         var results = new MatchResultService(store, logs, summaries, logger);
-        return new MatchEliminationService(store, logs, results, new GroundItemDropService(logs), logger);
+        return new PlayerEliminationService(store, logs, results, new GroundItemDropService(logs), logger);
     }
     public static MatchCleanupService CreateMatchCleanupService()
     {

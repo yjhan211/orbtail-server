@@ -1,7 +1,5 @@
-using game_server;
 using game_server.bots;
 using game_server.logging;
-using game_server.matches.entry;
 using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -18,10 +16,10 @@ namespace game_server.matches.results;
 ///     세션의 인증·연결 상태는 직접 수정하지 않고 세션의 종료 통보 메서드를 사용한다.
 /// </summary>
 internal sealed class MatchResultService(
-    MatchRuntimeStore _matchRuntimes,
-    GameEventLogManager _gameEventLogManager,
-    MatchSummaryFileStore _matchSummaryFileStore,
-    ILogger Logger)
+    MatchRuntimeStore matchRuntimes,
+    GameEventLogManager gameEventLogManager,
+    MatchSummaryFileStore matchSummaryFileStore,
+    ILogger logger)
 {
     /// <summary>
     ///     매치 종료 결과를 매치 잠금 안에서 확정·전송한다: 터미널 표시 → 결과표 동결 → 이벤트 로그·요약 캡처 →
@@ -33,21 +31,21 @@ internal sealed class MatchResultService(
     {
 
 
-        MatchRuntime? runtime = _matchRuntimes.GetOrNull(matchingId);
+        MatchRuntime? runtime = matchRuntimes.GetOrNull(matchingId);
         if (runtime == null)
         {
-            Logger.LogDebug("Terminal match result preparation rejected: MatchingId={MatchingId}", matchingId);
+            logger.LogDebug("Terminal match result preparation rejected: MatchingId={MatchingId}", matchingId);
             return;
         }
 
         using MatchLockScope scope = runtime.Enter();
         if (!runtime.TryMarkEnded())
         {
-            Logger.LogDebug("Duplicate match finalization ignored: MatchingId={MatchingId}", matchingId);
+            logger.LogDebug("Duplicate match finalization ignored: MatchingId={MatchingId}", matchingId);
             return;
         }
 
-        List<GameClientSession> sessionSnapshot = _matchRuntimes.GetOrThrow(matchingId).Sessions.Values.ToList();
+        List<GameClientSession> sessionSnapshot = matchRuntimes.GetOrThrow(matchingId).Sessions.Values.ToList();
         var players = BuildGameResultPlayers(sessionSnapshot, matchingId, winnerId);
         byte[] resultPayload = MessagePackSerializer.Serialize(new G_TO_C_GAME_RESULT
         {
@@ -70,11 +68,11 @@ internal sealed class MatchResultService(
             sessionPublications);
 
         MatchSummaryPersistenceRequest? summaryRequest = null;
-        if (_gameEventLogManager.TryBeginFinalization(matchingId))
+        if (gameEventLogManager.TryBeginFinalization(matchingId))
         {
             try
             {
-                _gameEventLogManager.LogMatchEnded(
+                gameEventLogManager.LogMatchEnded(
                     matchingId,
                     winnerId,
                     endReason,
@@ -90,7 +88,7 @@ internal sealed class MatchResultService(
             }
             catch (Exception ex)
             {
-                Logger.LogWarning(
+                logger.LogWarning(
                     ex,
                     "Final match event logging failed; summary capture will continue: MatchingId={MatchingId}",
                     matchingId);
@@ -99,15 +97,15 @@ internal sealed class MatchResultService(
             try
             {
                 summaryRequest = MatchSummaryPersistence.Capture(
-                    _gameEventLogManager,
-                    Logger,
+                    gameEventLogManager,
+                    logger,
                     matchingId,
                     endReason,
                     winnerId);
             }
             catch (Exception ex)
             {
-                Logger.LogWarning(
+                logger.LogWarning(
                     ex,
                     "Final match summary capture failed; terminal publication will continue: MatchingId={MatchingId}",
                     matchingId);
@@ -126,8 +124,8 @@ internal sealed class MatchResultService(
             {
                 MatchSummaryPersistence.Persist(
                     capturedSummary,
-                    _matchSummaryFileStore,
-                    Logger);
+                    matchSummaryFileStore,
+                    logger);
             }
         });
     }
@@ -188,7 +186,7 @@ internal sealed class MatchResultService(
             }
             catch (Exception ex)
             {
-                Logger.LogWarning(
+                logger.LogWarning(
                     ex,
                     "Deferred matching lifecycle dispatch failed: MatchingId={MatchingId}",
                     matchingId);
@@ -208,7 +206,7 @@ internal sealed class MatchResultService(
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(
+            logger.LogWarning(
                 ex,
                 "Match terminal publication failed: MatchingId={MatchingId}, PlayerId={PlayerId}, Component={Component}",
                 matchingId,
@@ -233,8 +231,8 @@ internal sealed class MatchResultService(
         long winnerId)
     {
         DateTime endedAtUtc = DateTime.UtcNow;
-        DateTime startedAtUtc = _matchRuntimes.GetOrThrow(matchingId).StartsAtUtc ?? endedAtUtc;
-        var resultRows = _matchRuntimes.GetOrThrow(matchingId).Roster.BuildGameResult();
+        DateTime startedAtUtc = matchRuntimes.GetOrThrow(matchingId).StartsAtUtc ?? endedAtUtc;
+        var resultRows = matchRuntimes.GetOrThrow(matchingId).Roster.BuildGameResult();
         var killCountsByPlayerId = resultRows
             .Where(row => row.attackerPlayerId != 0 && row.reason == EliminationReason.HEALTH_ZERO)
             .GroupBy(row => row.attackerPlayerId)
@@ -244,10 +242,10 @@ internal sealed class MatchResultService(
             .Select(d =>
             {
                 var session = allSessions.FirstOrDefault(s => s.PlayerId == d.playerId);
-                var bot = _matchRuntimes.GetOrThrow(matchingId).Bots.GetBot(matchingId, d.playerId);
-                var playerInfo = bot == null ? null : _matchRuntimes.GetOrThrow(matchingId).Bots.CreatePlayerInfo(matchingId, d.playerId);
-                var playerProfile = _matchRuntimes.GetOrThrow(matchingId).Roster.GetPlayerProfile(d.playerId);
-                var stats = _gameEventLogManager.GetResultStats(matchingId, d.playerId);
+                var bot = matchRuntimes.GetOrThrow(matchingId).Bots.GetBot(matchingId, d.playerId);
+                var playerInfo = bot == null ? null : matchRuntimes.GetOrThrow(matchingId).Bots.CreatePlayerInfo(matchingId, d.playerId);
+                var playerProfile = matchRuntimes.GetOrThrow(matchingId).Roster.GetPlayerProfile(d.playerId);
+                var stats = gameEventLogManager.GetResultStats(matchingId, d.playerId);
                 var orbScore = ResolveResultOrbScore(matchingId, d.playerId);
                 DateTime survivalEndUtc = d.eliminatedAt ?? endedAtUtc;
                 int survivalSeconds = Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds));
@@ -279,7 +277,7 @@ internal sealed class MatchResultService(
                         IsAreaClosureElimination = d.isAreaClosureElimination,
                         IsOvertimeElimination = d.isOvertimeElimination,
                         Rank = d.playerId == winnerId ? 1 : d.eliminationRank,
-                        FinalOrbTier = d.playerId == winnerId ? _matchRuntimes.GetOrThrow(matchingId).Inventory.GetHighestOrbTier(d.playerId) : d.finalOrbTier,
+                        FinalOrbTier = d.playerId == winnerId ? matchRuntimes.GetOrThrow(matchingId).Inventory.GetHighestOrbTier(d.playerId) : d.finalOrbTier,
                         // 결과 승점은 오브 수 (#229): 인게임 순위와 같은 눈금을 쓴다.
                         OrbCount = orbScore.OrbCount
                     },
@@ -298,7 +296,7 @@ internal sealed class MatchResultService(
     /// </summary>
     private (int OrbCount, int TierSum) ResolveResultOrbScore(long matchingId, long playerId)
     {
-        var inventory = _matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId);
+        var inventory = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId);
         int orbCount = 0;
         int tierSum = 0;
         foreach (var item in inventory.GetAllItems())
@@ -353,4 +351,26 @@ internal sealed class MatchResultService(
 
         return ordered;
     }
+    public void EndMatch(long matchingId, long winnerId, string criterion)
+    {
+
+        var runtime = matchRuntimes.GetOrNull(matchingId);
+        if (runtime == null)
+            return;
+        using var scope = runtime.Enter();
+        if (runtime.IsEnded)
+            return;
+
+        logger.LogInformation(
+            "Swarm match resolved: matchingId={MatchingId}, WinnerId={WinnerId}, Criterion={Criterion}",
+            matchingId, winnerId, criterion);
+        gameEventLogManager.LogSystem(
+            matchingId,
+            $"survivor_settlement winner={winnerId} criterion={criterion}");
+        // 오브 점수 만료(#226 단계 B)는 요약 EndReason에도 그대로 남긴다 — 계측에서
+        // 연장전 정산과 섞이면 5분 판정 발화율을 셀 수 없다.
+        string endReason = criterion == "orb_score_timeout" ? criterion : "overtime_settlement";
+        SendGameResult(winnerId, false, matchingId, endReason, criterion);
+    }
+
 }

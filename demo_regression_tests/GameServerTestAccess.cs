@@ -66,7 +66,8 @@ internal static class GameServerTestAccess
         var cleanup = new MatchCleanupService(runtimes, logs, summaries, logger);
         var matchEliminations = TestGameSessionServices.CreateEliminationService(
             runtimes, logs, summaries, logger);
-        var eliminations = new BotEliminationService(logs, matchEliminations, logger);
+        var results = new MatchResultService(runtimes, logs, summaries, logger);
+        var eliminations = new BotEliminationService(logs, results, logger);
         var growth = new MatchGrowthService(runtimes, logs, orbUpgrades,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchGrowthService>.Instance);
         var movement = new BotMovementService( logs,
@@ -74,7 +75,7 @@ internal static class GameServerTestAccess
         var decisions = new BotDecisionService(runtimes, logs, growth, orbTrails,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotDecisionService>.Instance);
         var environment = new MatchEnvironmentService(logs,
-            cleanup, eliminations, matchEliminations,
+            cleanup, eliminations, matchEliminations, results,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchEnvironmentService>.Instance);
         var groundPickup = new GroundItemAutoPickupService(logs,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<GroundItemAutoPickupService>.Instance);
@@ -83,7 +84,7 @@ internal static class GameServerTestAccess
         var field = new MatchZoneService(runtimes, logs, orbTrails,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchZoneService>.Instance);
         var combat = new MatchCombatService(runtimes, logs, cleanup,
-            eliminations, matchEliminations, growth,
+            eliminations, results, growth,
             new OrbRecoveryService(runtimes, logs,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbRecoveryService>.Instance),
             new OrbVisualStatePublisher(runtimes), orbTrails,

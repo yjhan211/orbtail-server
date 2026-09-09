@@ -95,10 +95,10 @@ public sealed class SwarmArenaTickOrderTests
             "target.Session.HealthChanges.Handle(",
             "var eliminatedTargets = targets",
             "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
-            "matchEliminations.Process(",
+            "matchEliminations.EliminatePlayer(",
             "botEliminations.Process(",
             "Roster.CheckGameOver()",
-            "matchEliminations.EndMatch(matchingId, winnerId.Value, resolution.DecisiveCriterion);");
+            "matchResults.EndMatch(matchingId, winnerId.Value, resolution.DecisiveCriterion);");
         Assert.DoesNotContain("Enter(", matchingSettlement);
         Assert.DoesNotContain("ProcessProximityAutoCombatForMatching(", matchingSettlement);
         Assert.DoesNotContain("PublicationTurn", matchingSettlement);
@@ -184,7 +184,7 @@ public sealed class SwarmArenaTickOrderTests
         string sessionCombat = ReadNormalizedSource(
             root, "game_server", "Combat", "MatchCombatDamageService.cs");
         string sessionMatchEnd = ReadNormalizedSource(
-            root, "game_server", "Matches", "Results", "MatchEliminationService.cs");
+            root, "game_server", "Players", "PlayerEliminationService.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string proximity = ReadNormalizedSource(
             root, "game_server", "Orbs", "OrbVisualStatePublisher.cs");
@@ -196,7 +196,7 @@ public sealed class SwarmArenaTickOrderTests
             healthNotification,
             "if (!change.Changed) return;",
             "session.SendHealth(",
-            "eliminations.Process(");
+            "eliminations.EliminatePlayer(");
 
         string applyProximityHit = ReadMethodSlice(
             sessionCombat,
@@ -238,8 +238,8 @@ public sealed class SwarmArenaTickOrderTests
 
         string humanElimination = ReadMethodSlice(
             sessionMatchEnd,
-            "public void Process(",
-            "public void EndMatch(");
+            "public void EliminatePlayer(",
+            "private void DropBotInventoryAtCurrentPosition(");
         AssertInOrder(
             humanElimination,
             "Roster.TryEliminatePlayer(",

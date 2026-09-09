@@ -132,15 +132,15 @@ internal static class Program
             sp.GetRequiredService<GameEventLogManager>(),
             sp.GetRequiredService<MatchSummaryFileStore>(),
             sp.GetRequiredService<ILogger<MatchResultService>>()));
-        services.AddSingleton<MatchEliminationService>(sp => new MatchEliminationService(
+        services.AddSingleton<PlayerEliminationService>(sp => new PlayerEliminationService(
             sp.GetRequiredService<MatchRuntimeStore>(),
             sp.GetRequiredService<GameEventLogManager>(),
             sp.GetRequiredService<MatchResultService>(),
             sp.GetRequiredService<GroundItemDropService>(),
-            sp.GetRequiredService<ILogger<MatchEliminationService>>()));
+            sp.GetRequiredService<ILogger<PlayerEliminationService>>()));
         services.AddSingleton<BotEliminationService>(sp => new BotEliminationService(
             sp.GetRequiredService<GameEventLogManager>(),
-            sp.GetRequiredService<MatchEliminationService>(),
+            sp.GetRequiredService<MatchResultService>(),
             sp.GetRequiredService<ILogger<BotEliminationService>>()));
         services.AddSingleton<MatchEnvironmentService>();
         services.AddSingleton<OrbUpgradeService>();
