@@ -1443,7 +1443,7 @@ internal class MatchCombatService(
     /// <summary>
     ///     5분 점수 만료 판정 (#226 단계 B): 개전 후 5분이 지나면 생존자 중 오브 최다
     ///     보유자가 승리한다. 동점은 총 티어 합 → (철갑, 단계 C 예정) → 본체 게이지(오염
-    ///     낮은 쪽) → PlayerId 낮은 쪽. 단독 생존 조기 종료와 같은 MatchResultService.EndMatch
+    ///     낮은 쪽) → PlayerId 낮은 쪽. 단독 생존 조기 종료와 같은 MatchResultService.FinalizeMatch
     ///     경로라 결과 화면도 같다. 잼 승점(#222 M3-2)은 퇴역.
     /// </summary>
     private bool ProcessSwarmScoreTimeout(
@@ -1509,7 +1509,7 @@ internal class MatchCombatService(
 
         if (sessions.Any(session => !session.IsGameEnded))
         {
-            matchResults.EndMatch(matchingId, winnerId, "orb_score_timeout");
+            matchResults.FinalizeMatch(matchingId, winnerId, MatchEndReason.OrbScoreTimeout);
             matchRuntimes.GetOrNull(matchingId)?.AutoAttack.Clear();
             return true;
         }

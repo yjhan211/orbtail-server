@@ -91,7 +91,7 @@ internal sealed class BotEliminationService(
             {
                 logger.LogInformation("게임 종료(봇 탈락 후): MatchingId={MatchingId}, Winner={WinnerId}",
                     matchingId, winnerId);
-                matchResults.EndMatch(matchingId, winnerId ?? 0, "last_survivor_after_combat");
+                matchResults.FinalizeMatch(matchingId, winnerId ?? 0, MatchEndReason.LastSurvivorAfterCombat);
             }
         }
         catch (Exception ex)

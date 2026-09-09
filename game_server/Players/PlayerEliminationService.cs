@@ -73,7 +73,7 @@ internal sealed class PlayerEliminationService(
             DropBotInventoryAtCurrentPosition(matchingId, eliminatedPlayerId);
 
         // 1. 전체에게 탈락 알림. 탈락자에게만 결과표를 함께 보낸다.
-        var eliminatedResultPlayers = _matchResults.BuildGameResultPlayers(allSessions, matchingId, 0);
+        var eliminatedResultPlayers = _matchResults.BuildPlayerResults(allSessions, matchingId, 0);
 
         foreach (var session in allSessions)
         {
@@ -129,7 +129,7 @@ internal sealed class PlayerEliminationService(
         if (!deferGameOver && isGameOver)
         {
             Logger.LogInformation("게임 종료! 최후의 1인: {WinnerId}", winnerId);
-            _matchResults.SendGameResult(winnerId ?? 0, false, matchingId);
+            _matchResults.FinalizeMatch(matchingId, winnerId ?? 0);
         }
 
     }

@@ -137,12 +137,12 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             "MatchResultService.cs");
         string normalFinalization = ReadMethodSlice(
             sessionSource,
-            "public void SendGameResult(",
-            "private void PublishTerminalResult(");
+            "public void FinalizeMatch(",
+            "private void SendResultsAndMarkEnded(");
         string terminalPublication = ReadMethodSlice(
             sessionSource,
-            "private void PublishTerminalResult(",
-            "private void RunTerminalPublicationStep(");
+            "private void SendResultsAndMarkEnded(",
+            "private void TryRunSessionEndStep(");
 
         int runtimeLookup = Find(normalFinalization, "_matchRuntimes.GetOrNull(matchingId)");
         int lockEntry = Find(normalFinalization, "runtime.Enter()");
@@ -154,7 +154,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         int eventLogFailure = Find(normalFinalization, "Final match event logging failed;");
         int normalCapture = Find(normalFinalization, "MatchSummaryPersistence.Capture(");
         int summaryCaptureFailure = Find(normalFinalization, "Final match summary capture failed;");
-        int inLockPublication = Find(normalFinalization, "PublishTerminalResult(terminalPlan);");
+        int inLockPublication = Find(normalFinalization, "SendResultsAndMarkEnded(terminalPlan);");
         int afterRelease = Find(normalFinalization, "runtime.AfterRelease.Add(");
         int lifecyclePlanDispatch = Find(
             normalFinalization,
@@ -201,7 +201,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                 """
                 runtime\.AfterRelease\.Add\s*\(\s*\(\s*\)\s*=>\s*
                 \{\s*
-                    DispatchMatchingLifecyclePublications\s*
+                    SendCompletionNotifications\s*
                     \(\s*
                         matchingId\s*,\s*
                         terminalPlan\.LifecyclePublications\s*
@@ -262,7 +262,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                 sourceContractOptions),
             noHumanFinalization);
         Assert.DoesNotContain("PersistMatchSummary(", noHumanFinalization);
-        Assert.DoesNotContain("PublishTerminalResult", noHumanFinalization);
+        Assert.DoesNotContain("SendResultsAndMarkEnded", noHumanFinalization);
         Assert.DoesNotContain(".TrySend(", noHumanFinalization);
     }
 

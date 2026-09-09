@@ -15,7 +15,7 @@ public sealed class MatchSettlementResolverTests
         });
 
         Assert.Equal(2, result.BestToWorst[0].PlayerId);
-        Assert.Equal("pre_damage_health", result.DecisiveCriterion);
+        Assert.Equal(MatchTieBreakCriterion.PreDamageHealth, result.DecisiveCriterion);
     }
 
     [Fact]
@@ -28,7 +28,7 @@ public sealed class MatchSettlementResolverTests
         });
 
         Assert.Equal(2, result.BestToWorst[0].PlayerId);
-        Assert.Equal("cumulative_pvp_damage", result.DecisiveCriterion);
+        Assert.Equal(MatchTieBreakCriterion.CumulativePvpDamage, result.DecisiveCriterion);
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public sealed class MatchSettlementResolverTests
         var first = MatchSettlementResolver.Resolve(195003, candidates);
         var second = MatchSettlementResolver.Resolve(195003, candidates.Reverse());
 
-        Assert.Equal("match_seed_priority", first.DecisiveCriterion);
+        Assert.Equal(MatchTieBreakCriterion.MatchSeedPriority, first.DecisiveCriterion);
         Assert.Equal(
             first.BestToWorst.Select(candidate => candidate.PlayerId),
             second.BestToWorst.Select(candidate => candidate.PlayerId));

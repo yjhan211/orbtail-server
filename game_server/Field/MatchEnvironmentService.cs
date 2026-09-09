@@ -51,7 +51,7 @@ internal class MatchEnvironmentService(
 
             if (aliveCount == 1 && humans.Count > 0)
             {
-                matchResults.EndMatch(matchingId, humans[0].PlayerId ?? 0, "last_survivor_before_overtime");
+                matchResults.FinalizeMatch(matchingId, humans[0].PlayerId ?? 0, MatchEndReason.LastSurvivorBeforeOvertime);
                 match.AutoAttack.Clear();
                 return;
             }
@@ -194,7 +194,7 @@ internal class MatchEnvironmentService(
         bool hasActiveSession = match.Sessions.Values.ToList().Any(session => !session.IsGameEnded);
         if (isGameOver && winnerId.HasValue && hasActiveSession)
         {
-            matchResults.EndMatch(matchingId, winnerId.Value, resolution.DecisiveCriterion);
+            matchResults.FinalizeMatch(matchingId, winnerId.Value, MatchEndReason.OvertimeSettlement, resolution.DecisiveCriterion);
             match.AutoAttack.Clear();
         }
     }

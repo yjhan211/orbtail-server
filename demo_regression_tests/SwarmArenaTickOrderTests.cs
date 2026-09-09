@@ -98,7 +98,7 @@ public sealed class SwarmArenaTickOrderTests
             "matchEliminations.EliminatePlayer(",
             "botEliminations.Process(",
             "Roster.CheckGameOver()",
-            "matchResults.EndMatch(matchingId, winnerId.Value, resolution.DecisiveCriterion);");
+            "matchResults.FinalizeMatch(matchingId, winnerId.Value, MatchEndReason.OvertimeSettlement, resolution.DecisiveCriterion);");
         Assert.DoesNotContain("Enter(", matchingSettlement);
         Assert.DoesNotContain("ProcessProximityAutoCombatForMatching(", matchingSettlement);
         Assert.DoesNotContain("PublicationTurn", matchingSettlement);
@@ -246,7 +246,7 @@ public sealed class SwarmArenaTickOrderTests
             "groundItemDrop.DropAll(eliminatedSession);",
             "session.TrySend(eliminatedPacket);",
             "Roster.CheckGameOver(",
-            "SendGameResult(");
+            "FinalizeMatch(");
         Assert.False(ContainsCodeToken(humanElimination, "catch"));
     }
 

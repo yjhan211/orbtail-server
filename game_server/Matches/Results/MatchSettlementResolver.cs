@@ -9,7 +9,7 @@ public readonly record struct MatchSettlementCandidate(
 public sealed class MatchSettlementResolution
 {
     public required IReadOnlyList<MatchSettlementCandidate> BestToWorst { get; init; }
-    public required string DecisiveCriterion { get; init; }
+    public required MatchTieBreakCriterion DecisiveCriterion { get; init; }
 }
 
 public static class MatchSettlementResolver
@@ -26,16 +26,16 @@ public static class MatchSettlementResolver
             .ThenBy(candidate => candidate.PlayerId)
             .ToList();
 
-        string criterion = "single_candidate";
+        MatchTieBreakCriterion criterion = MatchTieBreakCriterion.SingleCandidate;
         if (ordered.Count > 1)
         {
             var first = ordered[0];
             var second = ordered[1];
             criterion = first.PreDamageHealth != second.PreDamageHealth
-                ? "pre_damage_health"
+                ? MatchTieBreakCriterion.PreDamageHealth
                 : first.TotalPvpDamage != second.TotalPvpDamage
-                    ? "cumulative_pvp_damage"
-                    : "match_seed_priority";
+                    ? MatchTieBreakCriterion.CumulativePvpDamage
+                    : MatchTieBreakCriterion.MatchSeedPriority;
         }
 
         return new MatchSettlementResolution

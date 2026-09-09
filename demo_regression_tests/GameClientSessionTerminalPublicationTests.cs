@@ -60,7 +60,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         });
         Assert.True(lockHeld.Wait(TimeSpan.FromSeconds(5)));
 
-        Task terminal = Task.Run(() => fixture.Results.EndMatch(matchingId, winner.PlayerId!.Value, "terminal_behavior"));
+        Task terminal = Task.Run(() => fixture.Results.FinalizeMatch(matchingId, winner.PlayerId!.Value, MatchEndReason.OvertimeSettlement));
         try
         {
             await Task.Delay(100);
@@ -158,7 +158,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         Task[] finalizers = sessions.Select(session => Task.Run(() =>
         {
             Assert.True(start.Wait(TimeSpan.FromSeconds(5)));
-            fixture.Results.EndMatch(matchingId, session.PlayerId!.Value, "concurrent_terminal_behavior");
+            fixture.Results.FinalizeMatch(matchingId, session.PlayerId!.Value, MatchEndReason.OvertimeSettlement);
         })).ToArray();
         start.Set();
         await Task.WhenAll(finalizers).WaitAsync(TimeSpan.FromSeconds(5));
@@ -206,7 +206,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         fixture.ConnectionFor(resultFailure).ThrowOnceOn = Protocol.G_TO_C_GAME_RESULT;
         fixture.ConnectionFor(endFailure).ThrowOnceOn = Protocol.G_TO_C_GAME_END;
 
-        fixture.Results.EndMatch(matchingId, markFailure.PlayerId!.Value, "isolated_terminal_failures");
+        fixture.Results.FinalizeMatch(matchingId, markFailure.PlayerId!.Value, MatchEndReason.OvertimeSettlement);
 
         Assert.Single(fixture.ConnectionFor(markFailure)
             .DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT));
@@ -246,7 +246,7 @@ public sealed class GameClientSessionTerminalPublicationTests
     public void EndMatch_MissingOrTerminalMatchDoesNotPublishAgain()
     {
         using var fixture = new TerminalFixture();
-        fixture.Results.EndMatch(73990, 101, "missing");
+        fixture.Results.FinalizeMatch(73990, 101, MatchEndReason.OvertimeSettlement);
         Assert.Empty(fixture.Deliveries);
         Assert.Empty(fixture.SummaryFiles);
 
@@ -254,7 +254,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         using (runtime.Enter())
         {
             Assert.True(runtime.TryMarkEnded());
-            fixture.Results.EndMatch(73991, 101, "already_terminal");
+            fixture.Results.FinalizeMatch(73991, 101, MatchEndReason.OvertimeSettlement);
             Assert.Empty(fixture.Deliveries);
             Assert.Empty(fixture.SummaryFiles);
             Assert.Equal(0, fixture.CleanupCount);
@@ -262,7 +262,7 @@ public sealed class GameClientSessionTerminalPublicationTests
 
         // terminal 매치는 최외곽 scope 해제 시 한 번 정리된다.
         Assert.Equal(1, fixture.CleanupCount);
-        fixture.Results.EndMatch(73991, 101, "already_removed");
+        fixture.Results.FinalizeMatch(73991, 101, MatchEndReason.OvertimeSettlement);
         Assert.Equal(1, fixture.CleanupCount);
         Assert.Empty(fixture.Deliveries);
         Assert.Empty(fixture.SummaryFiles);

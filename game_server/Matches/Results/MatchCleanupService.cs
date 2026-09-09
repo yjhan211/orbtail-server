@@ -14,12 +14,6 @@ internal sealed class MatchCleanupService(
     MatchSummaryFileStore summaryFileStore,
     ILogger logger)
 {
-    public enum EndReason
-    {
-        LastHumanLeft,
-        LastSurvivorBotOnly
-    }
-
     public void EndBotOnlyMatchIfSettled(long matchingId, long winnerPlayerId)
     {
         if (matchRuntimes.GetOrNull(matchingId)?.Sessions.IsEmpty == false)
@@ -27,10 +21,10 @@ internal sealed class MatchCleanupService(
             return;
         }
 
-        CleanupIfNoHumanSessionsRemain(matchingId, EndReason.LastSurvivorBotOnly, winnerPlayerId);
+        CleanupIfNoHumanSessionsRemain(matchingId, MatchEndReason.LastSurvivorBotOnly, winnerPlayerId);
     }
 
-    public void CleanupIfNoHumanSessionsRemain(long matchingId, EndReason endReason = EndReason.LastHumanLeft, long winnerPlayerId = 0)
+    public void CleanupIfNoHumanSessionsRemain(long matchingId, MatchEndReason endReason = MatchEndReason.LastHumanLeft, long winnerPlayerId = 0)
     {
         if (matchRuntimes.GetOrNull(matchingId)?.Sessions.IsEmpty == false)
         {
