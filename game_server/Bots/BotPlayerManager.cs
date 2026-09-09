@@ -62,7 +62,7 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     매치 구성이 정한 봇 ID와 스폰으로 봇 상태를 만든다. 스폰은 MatchSpawnPlanner가 사람과 함께 배정한 값이다.
+    ///     매치 구성이 정한 봇 ID와 스폰으로 봇 상태를 만든다. 스폰은 MatchSpawnData가 사람과 함께 배정한 값이다.
     /// </summary>
     public void RegisterBots(long matchingId, MapId mapId, IReadOnlyList<long> botPlayerIds,
         IReadOnlyDictionary<long, Cell> spawnCells)

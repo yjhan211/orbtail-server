@@ -101,7 +101,7 @@ internal sealed class GameMatchEntryService(
             var humanPlayerIds = manifest.HumanPlayerIds.ToList();
             var botPlayerIds = Enumerable.Range(0, manifest.BotCount).Select(_ => Interlocked.Decrement(ref _botIdCounter)).ToList();
             List<long> participantIds = [..humanPlayerIds, ..botPlayerIds];
-            var spawnCells = MatchSpawnPlanner.Plan(matchingId, participantIds);
+            var spawnCells = MatchSpawnData.CreatePhaseRoomAssignments(matchingId, participantIds);
             var roster = new List<PlayerInfo>();
 
             foreach (long playerId in humanPlayerIds)

@@ -6,9 +6,10 @@ using network.common;
 namespace game_server.matches.entry;
 
 /// <summary>
-///     입장에 실패한 매치를 중단하고 관련 세션에 실패를 알린다.
-///     매치 잠금 안에서 중단 여부와 대상자를 확정하고, 종료 알림은 잠금을 푼 뒤 발행한다.
-///     이미 교체된 세션이나 종료된 매치의 늦은 실패가 현재 상태를 덮어쓰지 않도록 검사한다.
+///     게임 입장에 실패하면 해당 매치를 중단하고 참가자들의 연결을 종료한다.
+///     매치 잠금 안에서 종료 사유와 대상자를 확정하고,
+///     잠금을 푼 뒤 서버 간 실패 알림과 매칭 예약 정리를 시작한다.
+///     교체된 이전 세션의 실패가 현재 세션의 매치를 중단하지 않도록 확인한다.
 /// </summary>
 internal sealed class MatchEntryFailureHandler(
     MatchRuntimeStore matchRuntimes,
@@ -16,63 +17,53 @@ internal sealed class MatchEntryFailureHandler(
     MatchingLifecycleService lifecycle,
     ILogger logger) : IMatchEntryFailureHandler
 {
-    /// <summary>
-    ///     입장 실패로 매치를 중단한다. 터미널 전이를 이긴 호출이 잠금 안에서 로스터 전원의 lifecycle subject
-    ///     선점과 FATAL 응답·끊기를 소유하고(발행은 잠금 밖 후처리), 이미 끝난 매치에 늦게 온 호출은
-    ///     자기 세션의 entry_failed 발행과 끊기만 한다 — 정상 종료가 먼저 선점한 subject는 중복 제거된다.
-    /// </summary>
     public void Handle(GameClientSession session)
     {
         if (!session.PlayerId.HasValue || session.MatchingId <= 0)
-            return;
-
-        long playerId = session.PlayerId.Value;
-        long matchingId = session.MatchingId;
-        MatchRuntime? runtime = matchRuntimes.GetOrNull(matchingId);
-        if (runtime == null)
         {
-            PublishLateEntryFailure(session, playerId, matchingId);
             return;
         }
 
-        bool wonTerminal = false;
+        long playerId = session.PlayerId.Value;
+        long matchingId = session.MatchingId;
+        var runtime = matchRuntimes.GetOrNull(matchingId);
+        if (runtime == null)
+        {
+            HandleLateEntryFailure(session, playerId, matchingId);
+            return;
+        }
+
+        bool isFirstEndRequest = false;
         using (runtime.Enter())
         {
             if (!runtime.IsEnded)
             {
-                if (sessions.TryGetSession(playerId, out GameClientSession? currentSession) &&
-                    currentSession != null &&
-                    !ReferenceEquals(currentSession, session) &&
-                    currentSession.MatchingId == matchingId)
+                if (sessions.TryGetSession(playerId, out var currentSession) && currentSession != null && !ReferenceEquals(currentSession, session) && currentSession.MatchingId == matchingId)
                 {
-                    logger.LogDebug(
-                        "Skipped entry-failed reservation release for superseded session: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                        playerId,
-                        matchingId);
+                    logger.LogDebug("Skipped entry-failed reservation release for superseded session: PlayerId={PlayerId}, MatchingId={MatchingId}", playerId, matchingId);
                     return;
                 }
 
-                wonTerminal = runtime.TryMarkEnded();
-                List<GameClientSession> affectedSessions = runtime.Sessions.Values.ToList();
-                foreach (GameClientSession affectedSession in affectedSessions)
+                isFirstEndRequest = runtime.TryMarkEnded();
+                var affectedSessions = runtime.Sessions.Values.ToList();
+                foreach (var affectedSession in affectedSessions)
+                {
                     affectedSession.MarkMatchEndHandledExternally();
+                }
 
                 var affectedPlayerIds = new List<long>();
                 if (runtime.IsSetupComplete)
                 {
-                    foreach (var participant in runtime.PlayerRoster)
-                    {
-                        if (participant.PlayerId > 0)
-                            affectedPlayerIds.Add(participant.PlayerId);
-                    }
+                    affectedPlayerIds.AddRange(runtime.PlayerRoster.Select(participant => participant.PlayerId));
                 }
                 else
                 {
                     affectedPlayerIds.Add(playerId);
                 }
-                var lifecyclePublications = new List<Action>();
-                PrepareEntryFailureLifecycle(matchingId, affectedPlayerIds, lifecyclePublications);
-                foreach (GameClientSession affectedSession in affectedSessions)
+
+                var failureNotifications = new List<Action>();
+                PrepareFailureNotifications(matchingId, affectedPlayerIds, failureNotifications);
+                foreach (var affectedSession in affectedSessions)
                 {
                     try
                     {
@@ -80,88 +71,57 @@ internal sealed class MatchEntryFailureHandler(
                     }
                     catch (Exception ex)
                     {
-                        logger.LogWarning(
-                            ex,
-                            "Failed to deliver entry failure disconnect: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                            affectedSession.PlayerId,
-                            matchingId);
+                        logger.LogWarning(ex, "Failed to deliver entry failure disconnect: PlayerId={PlayerId}, MatchingId={MatchingId}", affectedSession.PlayerId, matchingId);
                     }
                 }
-
-                runtime.AfterRelease.Add(
-                    () => DispatchPreparedEntryFailureLifecycle(matchingId, lifecyclePublications));
+                runtime.AfterRelease.Add(() => SendFailureNotifications(matchingId, failureNotifications));
             }
         }
 
-        if (wonTerminal)
+        if (isFirstEndRequest)
         {
-            logger.LogWarning(
-                "Match aborted after client entry failure: MatchingId={MatchingId}, FailedPlayerId={PlayerId}",
-                matchingId,
-                playerId);
+            logger.LogWarning("Match aborted after client entry failure: MatchingId={MatchingId}, FailedPlayerId={PlayerId}", matchingId, playerId);
             return;
         }
 
-        PublishLateEntryFailure(session, playerId, matchingId);
+        HandleLateEntryFailure(session, playerId, matchingId);
     }
 
-    /// <summary>이미 끝난 매치에 늦게 도착한 입장 실패 — 이 세션 한 명만 발행·끊는다.</summary>
-    private void PublishLateEntryFailure(GameClientSession session, long playerId, long matchingId)
+    private void HandleLateEntryFailure(GameClientSession session, long playerId, long matchingId)
     {
-        lifecycle.Publish(
-            MatchingLifecycleSubjects.PlayerEntryFailed,
-            playerId,
-            matchingId);
+        lifecycle.Publish(MatchingLifecycleSubjects.PlayerEntryFailed, playerId, matchingId);
         try
         {
             session.DisconnectForEntryFailure();
         }
         catch (Exception ex)
         {
-            logger.LogWarning(
-                ex,
-                "Failed to disconnect late entry failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                playerId,
-                matchingId);
+            logger.LogWarning(ex, "Failed to disconnect late entry failure: PlayerId={PlayerId}, MatchingId={MatchingId}", playerId, matchingId);
         }
     }
 
-    /// <summary>
-    ///     잠금 안에서 플레이어별 subject를 선점하고 발행 작업만 남긴다 — 정상 종료가 먼저 선점한 subject는
-    ///     늦은 입장 중단이 덮어쓰지 못한다.
-    /// </summary>
-    private void PrepareEntryFailureLifecycle(
-        long matchingId,
-        IReadOnlyCollection<long> playerIds,
-        List<Action> lifecyclePublications)
+    private void PrepareFailureNotifications(long matchingId, IReadOnlyCollection<long> playerIds, List<Action> failureNotifications)
     {
         foreach (long playerId in playerIds)
         {
             try
             {
-                Action? publication = lifecycle.PreparePublication(
-                    MatchingLifecycleSubjects.PlayerEntryFailed,
-                    playerId,
-                    matchingId);
+                var publication = lifecycle.PreparePublication(MatchingLifecycleSubjects.PlayerEntryFailed, playerId, matchingId);
                 if (publication != null)
-                    lifecyclePublications.Add(publication);
+                {
+                    failureNotifications.Add(publication);
+                }
             }
             catch (Exception ex)
             {
-                logger.LogError(
-                    ex,
-                    "Failed to prepare entry failure lifecycle publication: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                    playerId,
-                    matchingId);
+                logger.LogError(ex, "Failed to prepare entry failure lifecycle publication: PlayerId={PlayerId}, MatchingId={MatchingId}", playerId, matchingId);
             }
         }
     }
 
-    private void DispatchPreparedEntryFailureLifecycle(
-        long matchingId,
-        IReadOnlyList<Action> lifecyclePublications)
+    private void SendFailureNotifications(long matchingId, IReadOnlyList<Action> failureNotifications)
     {
-        foreach (Action publication in lifecyclePublications)
+        foreach (var publication in failureNotifications)
         {
             try
             {
@@ -169,12 +129,8 @@ internal sealed class MatchEntryFailureHandler(
             }
             catch (Exception ex)
             {
-                logger.LogError(
-                    ex,
-                    "Failed to dispatch prepared entry failure lifecycle: MatchingId={MatchingId}",
-                    matchingId);
+                logger.LogError(ex, "Failed to dispatch prepared entry failure lifecycle: MatchingId={MatchingId}", matchingId);
             }
         }
     }
-
 }
