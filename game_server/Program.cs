@@ -156,30 +156,29 @@ internal static class Program
         services.AddSingleton<MatchCombatDamageService>();
         services.AddSingleton<WindOrbAttackService>();
         services.AddSingleton<SunOrbAttackService>();
-        services.AddSingleton<MatchFieldService>();
+        services.AddSingleton<MatchZoneService>();
         services.AddSingleton<MatchCountdownService>(sp => new MatchCountdownService(
             sp.GetRequiredService<MatchRuntimeStore>(), sp.GetRequiredService<MatchEntryFailureHandler>(),
             sp.GetRequiredService<ILogger<MatchCountdownService>>()));
         services.AddSingleton<BotMovementService>();
         services.AddSingleton<BotDecisionService>();
-        services.AddSingleton<MatchArenaService>();
-        services.AddSingleton<MatchTickRunner>(sp =>
+        services.AddSingleton<MatchCombatService>();
+        // 생성 함수만 공유하고, 실행 루프는 매치마다 새로 만든다.
+        services.AddSingleton<Func<MatchRuntime, TimeProvider, MatchTickLoop>>(sp =>
         {
             var countdown = sp.GetRequiredService<MatchCountdownService>();
-            var arena = sp.GetRequiredService<MatchArenaService>();
+            var combat = sp.GetRequiredService<MatchCombatService>();
             var environment = sp.GetRequiredService<MatchEnvironmentService>();
             var botMovement = sp.GetRequiredService<BotMovementService>();
             var botDecisions = sp.GetRequiredService<BotDecisionService>();
-            var field = sp.GetRequiredService<MatchFieldService>();
-            return new MatchTickRunner(
-                sp.GetRequiredService<MatchRuntimeStore>(),
-                sp.GetRequiredService<ILogger<MatchTickRunner>>(),
-                sp.GetRequiredService<GroundItemAutoPickupService>(),
-                countdown.Broadcast,
-                arena.ProcessSwarmArenaForMatching,
-                environment.Process,
-                runtime => botMovement.Process(runtime, botDecisions.ResolveSwarmBotDirective),
-                field.Process);
+            var zones = sp.GetRequiredService<MatchZoneService>();
+            var runtimes = sp.GetRequiredService<MatchRuntimeStore>();
+            var loopLogger = sp.GetRequiredService<ILogger<MatchTickLoop>>();
+            var pickup = sp.GetRequiredService<GroundItemAutoPickupService>();
+            return (runtime, clock) => new MatchTickLoop(
+                runtime,
+                runtimes, loopLogger, pickup,
+                countdown, combat, environment, botMovement, botDecisions, zones, clock);
         });
         services.AddSingleton<MatchTickService>();
         services.AddSingleton<GameServer>();

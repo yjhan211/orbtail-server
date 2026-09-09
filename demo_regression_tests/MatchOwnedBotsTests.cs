@@ -24,7 +24,7 @@ public sealed class MatchOwnedBotsTests
         {
             first.TryMarkEnded();
             var movementService = new BotMovementService(logs, NullLogger<BotMovementService>.Instance);
-            Assert.Throws<InvalidOperationException>(() => movementService.Process(first, (_, _) => default));
+            Assert.Throws<InvalidOperationException>(() => movementService.ProcessTick(first, (_, _) => default));
         }
         Assert.Throws<InvalidOperationException>(() => first.Bots.PrepareMovementTick(first.Closures, first.Inventory, first.GroundItems, first.SummonStones, first.Encounters, logs, [], (_, _) => default));
         using (MatchRuntimeStore.Enter(second))

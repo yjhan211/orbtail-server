@@ -242,7 +242,7 @@ public sealed class SwarmMonsterDirector
     private const float EscalationStage2MoveSpeedMultiplier = 1.1f;
 
     /// <summary>
-    ///     이 매치의 자기장 스폰 위치 계산 함수. MatchFieldService의 규칙을 연결한다.
+    ///     이 매치의 자기장 스폰 위치 계산 함수. MatchZoneService의 규칙을 연결한다.
     ///     경계가 통과 중이면 경계 바깥에서, 안전한 구역이면 바깥쪽 띠에서 스폰해 안쪽으로 이동한다.
     /// </summary>
     public Func<long, AreaType, (Cell Spawn, Cell Anchor)?>? FieldSpawnCellResolver { get; set; }

@@ -15,14 +15,14 @@ namespace game_server.services;
 ///     호출자는 매치 잠금을 보유한다. 다른 매치 조회나 타이머 관리는 하지 않는다.
 ///     봇의 전술 판단은 전달받은 함수에 위임한다.
 /// </summary>
-internal sealed class BotMovementService(
+internal class BotMovementService(
     GameEventLogManager eventLogs,
     ILogger<BotMovementService> logger)
 {
-    // MatchTickRunner가 전투 뒤 같은 매치 잠금 안에서 봇 이동을 실행한다.
+    // MatchTickLoop가 전투 뒤 같은 매치 잠금 안에서 봇 이동을 실행한다.
 
     /// <summary>매치 잠금 안에서 봇 걸음을 확정하고 같은 순서로 바로 송신한다.</summary>
-    public void Process(MatchRuntime runtime, Func<long, long, SwarmBotDirective> resolveDirective)
+    public virtual void ProcessTick(MatchRuntime runtime, Func<long, long, SwarmBotDirective> resolveDirective)
     {
         if (runtime.IsEnded)
             throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
@@ -81,13 +81,12 @@ internal sealed class BotMovementService(
             batch.BroadcastSamples.OrderBy(value => value).ToArray(),
             0.95);
         logger.LogInformation(
-            "Bot movement tick: MatchingId={MatchingId} avg={Avg:F1}ms max={Max:F1}ms skips={Skips} over {Count} ticks; " +
+            "Bot movement tick: MatchingId={MatchingId} avg={Avg:F1}ms max={Max:F1}ms over {Count} ticks; " +
             "p95 snapshot={SnapshotP95:F1}ms planning={PlanningP95:F1}ms walking={WalkingP95:F1}ms " +
             "broadcast={BroadcastP95:F1}ms",
             batch.MatchingId,
             batch.TotalElapsedMilliseconds / batch.TickSamples.Length,
             batch.MaxElapsedMilliseconds,
-            batch.BusySkips,
             batch.TickSamples.Length,
             snapshotP95Milliseconds,
             planningP95Milliseconds,
@@ -102,9 +101,7 @@ internal sealed class BotMovementService(
             planningP95Milliseconds,
             walkingP95Milliseconds,
             broadcastP95Milliseconds,
-            batch.TickSamples.Length,
-            batch.BusySkips,
-            batch.MaxConsecutiveBusySkips);
+            batch.TickSamples.Length);
     }
 
     private static ImmutableArray<SwarmBotObserverSnapshot> CaptureSwarmBotObservers(

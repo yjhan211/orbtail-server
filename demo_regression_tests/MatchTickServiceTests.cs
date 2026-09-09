@@ -14,7 +14,7 @@ public sealed class MatchTickServiceTests
         var clock = new ManualTimers();
         Action<MatchRuntime> processMatchTick = _ => { };
         var service = new MatchTickService(store,
-            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            TestGameSessionServices.CreateTickLoopFactory(store, runtime => processMatchTick(runtime)),
             NullLogger<MatchTickService>.Instance, clock);
         var firstTick = Signal();
         var secondTick = Signal();
@@ -46,7 +46,7 @@ public sealed class MatchTickServiceTests
         var clock = new ManualTimers();
         Action<MatchRuntime> processMatchTick = _ => { };
         var service = new MatchTickService(store,
-            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            TestGameSessionServices.CreateTickLoopFactory(store, runtime => processMatchTick(runtime)),
             NullLogger<MatchTickService>.Instance, clock);
         var entered = Signal();
         var otherRan = Signal();
@@ -66,9 +66,10 @@ public sealed class MatchTickServiceTests
         service.Start();
         var first = store.GetOrCreate(201);
         store.GetOrCreate(202);
+        // 콜백에서 틱이 인라인 실행될 수 있으므로 테스트 제어 흐름과 분리한다.
+        Task firstFire = Task.Run(() => clock.Timers[0].Fire());
         try
         {
-            clock.Timers[0].Fire();
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             for (int i = 0; i < 10; i++) clock.Timers[0].Fire();
             clock.Timers[1].Fire();
@@ -86,6 +87,7 @@ public sealed class MatchTickServiceTests
         {
             release.Set();
             await service.StopAsync();
+            await firstFire.WaitAsync(TimeSpan.FromSeconds(5));
         }
     }
 
@@ -104,7 +106,7 @@ public sealed class MatchTickServiceTests
         });
         Action<MatchRuntime> processMatchTick = _ => { };
         var service = new MatchTickService(store,
-            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            TestGameSessionServices.CreateTickLoopFactory(store, runtime => processMatchTick(runtime)),
             NullLogger<MatchTickService>.Instance, clock);
         int calls = 0;
         processMatchTick = runtime =>
@@ -137,7 +139,7 @@ public sealed class MatchTickServiceTests
         var clock = new ManualTimers();
         Action<MatchRuntime> processMatchTick = _ => { };
         var service = new MatchTickService(store,
-            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            TestGameSessionServices.CreateTickLoopFactory(store, runtime => processMatchTick(runtime)),
             NullLogger<MatchTickService>.Instance, clock);
         int calls = 0;
         processMatchTick = _ => calls++;
@@ -160,7 +162,7 @@ public sealed class MatchTickServiceTests
         var clock = new ManualTimers();
         Action<MatchRuntime> processMatchTick = _ => { };
         var service = new MatchTickService(store,
-            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            TestGameSessionServices.CreateTickLoopFactory(store, runtime => processMatchTick(runtime)),
             NullLogger<MatchTickService>.Instance, clock);
         var failed = Signal();
         var recovered = Signal();
@@ -193,7 +195,7 @@ public sealed class MatchTickServiceTests
         var clock = new ManualTimers();
         Action<MatchRuntime> processMatchTick = _ => { };
         var service = new MatchTickService(store,
-            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            TestGameSessionServices.CreateTickLoopFactory(store, runtime => processMatchTick(runtime)),
             NullLogger<MatchTickService>.Instance, clock);
         await service.StopAsync();
         Assert.Throws<InvalidOperationException>(() => service.Start());
@@ -208,7 +210,7 @@ public sealed class MatchTickServiceTests
         var clock = new ManualTimers();
         Action<MatchRuntime> processMatchTick = _ => { };
         var service = new MatchTickService(store,
-            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            TestGameSessionServices.CreateTickLoopFactory(store, runtime => processMatchTick(runtime)),
             NullLogger<MatchTickService>.Instance, clock);
         processMatchTick = _ => { };
         service.Start();
@@ -231,7 +233,7 @@ public sealed class MatchTickServiceTests
         var clock = new ManualTimers();
         Action<MatchRuntime> processMatchTick = _ => { };
         var service = new MatchTickService(store,
-            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            TestGameSessionServices.CreateTickLoopFactory(store, runtime => processMatchTick(runtime)),
             NullLogger<MatchTickService>.Instance, clock);
         processMatchTick = _ => { };
         service.Start();
@@ -252,7 +254,7 @@ public sealed class MatchTickServiceTests
         var clock = new ManualTimers();
         Action<MatchRuntime> processMatchTick = _ => { };
         var service = new MatchTickService(store,
-            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            TestGameSessionServices.CreateTickLoopFactory(store, runtime => processMatchTick(runtime)),
             NullLogger<MatchTickService>.Instance, clock);
         var timerCreated = Signal();
         using var allowAttachment = new ManualResetEventSlim();
@@ -297,7 +299,7 @@ public sealed class MatchTickServiceTests
         var runtime = store.GetOrCreate(1302);
         var clock = new ManualTimers();
         int ticks = 0;
-        var loop = new MatchTickLoop(runtime, _ => Interlocked.Increment(ref ticks), NullLogger.Instance, clock);
+        var loop = TestGameSessionServices.CreateTickLoopFactory(store, _ => Interlocked.Increment(ref ticks))(runtime, clock);
         runtime.TickLoop = loop;
 
         Assert.True(store.Remove(1302));
@@ -316,7 +318,7 @@ public sealed class MatchTickServiceTests
         var clock = new ManualTimers();
         Action<MatchRuntime> processMatchTick = _ => { };
         var service = new MatchTickService(store,
-            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            TestGameSessionServices.CreateTickLoopFactory(store, runtime => processMatchTick(runtime)),
             NullLogger<MatchTickService>.Instance, clock);
         processMatchTick = _ => { };
         service.Start();

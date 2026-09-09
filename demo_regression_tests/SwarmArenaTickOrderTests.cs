@@ -15,27 +15,24 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string source = ReadNormalizedSource(root, "game_server", "GameServer.cs");
-        string runner = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickRunner.cs");
+        string runner = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs");
         string timers = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs");
         Assert.Contains("TimeSpan.FromMilliseconds(50)", timers);
-        Assert.Contains("new PeriodicTimer(", timers);
+        Assert.Contains("private readonly PeriodicTimer _timer = new(", timers);
         Assert.Contains("tickService.StopAsync()", source);
         string composition = ReadNormalizedSource(root, "game_server", "Program.cs");
         Assert.Contains("tickService.Start();", source);
         Assert.DoesNotContain("new MatchTickRunner(", source);
         AssertInOrder(composition,
-            "services.AddSingleton<MatchTickRunner>",
-            "return new MatchTickRunner(",
-            "countdown.Broadcast,",
-            "environment.Process,",
-            "runtime => botMovement.Process(runtime, botDecisions.ResolveSwarmBotDirective),",
+            "services.AddSingleton<Func<MatchRuntime, TimeProvider, MatchTickLoop>>",
+            "return (runtime, clock) => new MatchTickLoop(",
+            "countdown, combat, environment, botMovement, botDecisions, zones, clock);",
+
             "services.AddSingleton<MatchTickService>");
         AssertInOrder(runner,
-            "matchRuntimes.TryEnter(matchingId, out MatchLockScope scope)",
-            "return;",
-            "using (scope)",
-            "scope.Runtime.IsEnded",
-            "processCombat(matchingId, activeSessions);");
+            "using var scope = runtime.Enter();",
+            "runtime.IsEnded",
+            "combat.ProcessTick(matchingId, activeSessions);");
         Assert.DoesNotContain("matchRuntimes.Enter(", runner);
     }
 
@@ -50,18 +47,21 @@ public sealed class SwarmArenaTickOrderTests
             root, "game_server", "Matches", "Field", "MatchEnvironmentService.cs");
 
         string proximityTick = ReadMethodSlice(
-            ReadNormalizedSource(root, "game_server", "Matches", "MatchTickRunner.cs"),
-            "public void Run(MatchRuntime runtime)",
-            "private static bool ShouldMoveBots(");
+            ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs"),
+            "internal void ProcessTick()",
+            "\n}");
         AssertInOrder(
             proximityTick,
-            "matchRuntimes.TryEnter(matchingId, out MatchLockScope scope)",
+            "using var scope = runtime.Enter();",
             "runtime.Sessions.Values.ToList()",
-            "Match session snapshot failed",
-            "try",
-            "processCombat(matchingId, activeSessions);",
+            "countdown.CheckEntryAndBroadcast([matchingId], playerSessions);",
+            "combat.ProcessTick(matchingId, activeSessions);");
+        Assert.DoesNotContain("catch (", proximityTick);
+        string loopSource = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs");
+        AssertInOrder(loopSource,
+            "ProcessTick();",
             "catch (Exception ex)",
-            "MatchingId={MatchingId}");
+            "Match tick failed: MatchingId={MatchingId}");
         Assert.DoesNotContain("_proximityAutoCombatProcessing", proximity);
         Assert.DoesNotContain("Interlocked.Exchange(", proximityTick);
         Assert.DoesNotContain("Volatile.Write(", proximityTick);
@@ -73,17 +73,17 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("StartResourceTickTimer", server);
         AssertInOrder(
             proximityTick,
-            "using (scope)",
-            "processCombat(matchingId, activeSessions);",
-            "scope.Runtime.TickSchedule.TryBeginEnvironmentalTick(",
+            "using var scope = runtime.Enter();",
+            "combat.ProcessTick(matchingId, activeSessions);",
+            "runtime.TickSchedule.TryBeginEnvironmentalTick(",
             "MatchStartGate.GetGameplayStartedAtUtc(matchingId)",
-            "processEnvironment(scope.Runtime, activeSessions);",
-            "scope.Runtime.IsEnded ||",
-            "moveBots(scope.Runtime);");
+            "environment.ProcessTick(runtime, activeSessions);",
+            "runtime.IsEnded ||",
+            "botMovement.ProcessTick(runtime, botDecisions.DecideMovement);");
 
         string matchingSettlement = ReadMethodSlice(
             settlement,
-            "public void Process(",
+            "public void ProcessTick(",
             "private sealed record EnvironmentalTarget(");
         AssertInOrder(
             matchingSettlement,
@@ -276,7 +276,7 @@ public sealed class SwarmArenaTickOrderTests
     public void SwarmCleanup_AlwaysDropsMatchOwnedRuntimeAfterMonsterCleanup()
     {
         string root = FindRepositoryRoot();
-        string source = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchArenaService.cs");
+        string source = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
         string cleanupBody = ReadNormalizedSource(root, "game_server", "Matches", "MatchRuntime.cs");
         Assert.Contains("Monsters.Release();", cleanupBody);
         Assert.DoesNotContain("CleanupSwarmArenaState", source);
@@ -291,11 +291,11 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string composition = ReadNormalizedSource(root, "game_server", "Program.cs");
-        string field = ReadNormalizedSource(root, "game_server", "Matches", "Field", "MatchFieldService.cs");
-        Assert.Contains("field.Process", composition);
+        string field = ReadNormalizedSource(root, "game_server", "Matches", "Field", "MatchZoneService.cs");
+        Assert.Contains("botDecisions, zones, clock)", composition);
         string tick = ReadMethodSlice(
             field,
-            "public void Process(",
+            "public void ProcessTick(",
             "    // #272 경계 토출 스폰: 구역별");
         string prepare = ReadMethodSlice(
             field,
@@ -308,12 +308,11 @@ public sealed class SwarmArenaTickOrderTests
         string orbPrepare = field[field.IndexOf("private void PrepareDestroySwarmOrbsInClosedAreas(", StringComparison.Ordinal)..];
 
         // 독립 루프의 매치 잠금 안에서 1초 주기를 확인하고 상태 확정 → 송신한다.
-        string runner = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickRunner.cs");
+        string runner = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs");
         AssertInOrder(runner,
-            "matchRuntimes.TryEnter(matchingId, out MatchLockScope scope)",
-            "using (scope)",
+            "using var scope = runtime.Enter();",
             "TryBeginAreaClosureTick(",
-            "processAreaClosure(matchingId, countdownSessions.ToArray());");
+            "zones.ProcessTick(matchingId, playerSessions.ToArray());");
         AssertInOrder(
             tick,
             "PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);",
@@ -419,7 +418,7 @@ public sealed class SwarmArenaTickOrderTests
             root, "game_server", "Matches", "MatchRuntime.cs");
         string runtimeStates = ReadNormalizedSource(
             root, "game_server", "Matches", "States", "MatchProgressState.cs");
-        string arena = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchArenaService.cs");
+        string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
         string crossfire = ReadNormalizedSource(root, "game_server", "Services", "SunOrbAttackService.cs");
 
         // 매치 하나에 모니터 하나 — 블로킹 진입과 펄스용 TryEnter가 같은 잠금 객체를 쓴다.
@@ -427,16 +426,16 @@ public sealed class SwarmArenaTickOrderTests
         Assert.Contains("Monitor.Enter(MatchLock);", store);
         Assert.Contains("Monitor.TryEnter(MatchLock, ref lockTaken);", store);
         Assert.Contains("Monitor.Exit(MatchLock);", store);
-        Assert.Contains("if (IsMatchTerminal(matchingId))", arena);
+        Assert.Contains("if (IsMatchTerminal(matchingId))", combat);
 
-        Assert.DoesNotContain("_swarmCriticalRng", arena);
+        Assert.DoesNotContain("_swarmCriticalRng", combat);
         Assert.DoesNotContain("_swarmCriticalRng", crossfire);
         Assert.Contains("private readonly Random _criticalRng = new();", runtimeStates);
         string damage = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatDamageService.cs");
         Assert.Contains(".Progress.RollCritical(", damage);
         Assert.Contains("runtime.Progress.RollCritical(", damage);
 
-        string field = ReadNormalizedSource(root, "game_server", "Matches", "Field", "MatchFieldService.cs");
+        string field = ReadNormalizedSource(root, "game_server", "Matches", "Field", "MatchZoneService.cs");
         Assert.Contains(
             "Lazy<IReadOnlyDictionary<AreaType, IReadOnlyList<(Cell Cell, int Distance)>>>",
             field);
@@ -453,10 +452,10 @@ public sealed class SwarmArenaTickOrderTests
     private static string ReadSwarmArenaTick()
     {
         string root = FindRepositoryRoot();
-        string source = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchArenaService.cs");
+        string source = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
         return ReadMethodSlice(
             source,
-            "public void ProcessSwarmArenaForMatching(",
+            "public void ProcessTick(",
             "// 쌍 깔때기:");
     }
 
@@ -703,7 +702,7 @@ public sealed class SwarmArenaTickOrderTests
     {
         string[] fullPathParts = [repositoryRoot, .. pathParts];
         return File.ReadAllText(Path.Combine(fullPathParts))
-            .Replace("\r\n", "\n")
+            .Replace("\r\n", "\n").Replace("public virtual void ", "public void ", StringComparison.Ordinal)
             // 표기 차이만 정규화하고 잠금·상태 확정·발행 순서 검사는 유지한다.
             .Replace("matchRuntimes.Enter(matchingId, out var scope)",
                 "matchRuntimes.Enter(matchingId, out MatchLockScope scope)", StringComparison.Ordinal);

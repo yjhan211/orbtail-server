@@ -68,7 +68,7 @@ public sealed class GameServerShutdownTests
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var release = new ManualResetEventSlim();
         using var provider = GameServerDependencyInjectionTests.CreateProvider(nats, services =>
-            services.AddSingleton<MatchTickRunner>(sp => TestGameSessionServices.CreateTickRunner(
+            services.AddSingleton<Func<MatchRuntime, TimeProvider, MatchTickLoop>>(sp => TestGameSessionServices.CreateTickLoopFactory(
                 sp.GetRequiredService<MatchRuntimeStore>(), _ =>
                 {
                     entered.TrySetResult();

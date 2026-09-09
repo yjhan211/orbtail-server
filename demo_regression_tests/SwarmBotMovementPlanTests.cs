@@ -118,14 +118,14 @@ public sealed class SwarmBotMovementPlanTests
         string coordinator = ReadNormalizedSource(
             root, "game_server", "Services", "Bots", "BotPlayerManager.MovementPlan.cs");
         string server = ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotMovementService.cs");
-        string combat = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickRunner.cs");
+        string combat = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs");
         string tick = ReadMethodSlice(
             combat,
-"public void Run(MatchRuntime runtime)",
-            "private static bool ShouldMoveBots(");
+"internal void ProcessTick()",
+            "\n}");
         string process = ReadMethodSlice(
             server,
-            "public void Process(",
+            "public void ProcessTick(",
             "private void PublishBotMovementMetrics(");
         string dispatch = ReadMethodSlice(
             server,
@@ -145,17 +145,15 @@ public sealed class SwarmBotMovementPlanTests
         // 같은 주기로 맞물려 뒤에 오는 쪽이 매 펄스 잠금을 놓치던 문제의 재발 방지.
         Assert.DoesNotContain("StartBotMovementTimer", server);
         Assert.DoesNotContain("Task.Run(", server);
-        // 바쁜 펄스는 버리고(따라잡기 없음) 스킵만 센다; 잠금 안에서 전투→걸음, 준비→송신이 한 순서다.
+        // 잠금을 기다린 뒤 종료를 다시 확인한다. 전투→걸음, 준비→송신은 같은 잠금 안에서 실행한다.
         AssertInOrder(
             tick,
-            "matchRuntimes.TryEnter(matchingId, out MatchLockScope scope)",
-            "RecordBotTickBusySkip(matchingId);",
-            "return;",
-            "using (scope)",
-            "scope.Runtime.IsEnded",
-            "processCombat(matchingId, activeSessions);",
-            "ShouldMoveBots(scope.Runtime)",
-            "moveBots(scope.Runtime);");
+            "using var scope = runtime.Enter();",
+            "runtime.IsEnded",
+            "combat.ProcessTick(matchingId, activeSessions);",
+            "!MatchStartGate.IsGameplayActive(matchingId)",
+            "!runtime.Bots.HasBots(matchingId)",
+            "botMovement.ProcessTick(runtime, botDecisions.DecideMovement);");
         AssertInOrder(
             process,
             "runtime.Sessions.Values.ToList()",
@@ -180,11 +178,11 @@ public sealed class SwarmBotMovementPlanTests
     public void DummySetup_UsesLockedExternalPlanWithoutOrbitAdvance()
     {
         string root = FindRepositoryRoot();
-        string arena = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchArenaService.cs");
+        string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
         string coordinator = ReadNormalizedSource(
             root, "game_server", "Services", "Bots", "BotPlayerManager.MovementPlan.cs");
         string adminSetup = ReadMethodSlice(
-            arena,
+            combat,
             "public object SetupSwarmCutDummy(long matchingId)",
             "private object SetupSwarmCutDummyCore(");
         string external = ReadMethodSlice(
@@ -211,7 +209,7 @@ public sealed class SwarmBotMovementPlanTests
         Assert.Contains("advanceOrbOrbit: false", externalPrepare);
         Assert.Contains("session.CurrentMapId == Config.SWARM_MATCH_MAP", external);
         Assert.DoesNotContain("PacketMaker", external);
-        Assert.DoesNotContain("BroadcastBotMovement(", arena);
+        Assert.DoesNotContain("BroadcastBotMovement(", combat);
     }
 
     private static MatchRuntime CreateMatch()
@@ -262,6 +260,6 @@ public sealed class SwarmBotMovementPlanTests
     private static string ReadNormalizedSource(string repositoryRoot, params string[] pathParts)
     {
         string[] fullPathParts = [repositoryRoot, .. pathParts];
-        return File.ReadAllText(Path.Combine(fullPathParts)).Replace("\r\n", "\n");
+        return File.ReadAllText(Path.Combine(fullPathParts)).Replace("\r\n", "\n").Replace("public virtual void ", "public void ", StringComparison.Ordinal);
     }
 }

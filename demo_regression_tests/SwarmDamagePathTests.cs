@@ -26,7 +26,7 @@ public class SwarmDamagePathTests
     public void TailCut_RemovesSuffixAndChargesAttacker()
     {
         string source = File.ReadAllText(
-            Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "Combat", "MatchArenaService.cs"));
+            Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "Combat", "MatchCombatService.cs"));
 
         // 2026-09-02 재무장 — 절단은 켜져 있어야 한다 (끌 때는 이 어서션도 같이 바꾼다).
         Assert.Contains("SwarmTrailCutEnabled = true", source);
@@ -111,7 +111,7 @@ public class SwarmDamagePathTests
     {
         // #312 분리: 절단 기계는 SwarmArena, 봇 판단(자제·도주·치명상)은 SwarmBots가 소유한다.
         string source = File.ReadAllText(
-            Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "Combat", "MatchArenaService.cs"));
+            Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "Combat", "MatchCombatService.cs"));
         string botSource = File.ReadAllText(
             Path.Combine(FindRepositoryRoot(), "game_server", "Services", "Bots", "BotDecisionService.cs"));
 
@@ -146,29 +146,29 @@ public class SwarmDamagePathTests
     public void SwarmSleepRecovery_KeepsWarmupCombatLockAndBreakConditions()
     {
         string root = FindRepositoryRoot();
-        string combat = File.ReadAllText(
+        string condition = File.ReadAllText(
             Path.Combine(root, "game_server", "Players", "PlayerCondition.cs"));
 
         // 수치 계약: 1초 준비 · 1초 틱당 최대 HP 5% · 가해·피해 뒤 3초 진입 잠금.
-        Assert.Contains("SwarmSleepWarmupSeconds = 1d", combat);
-        Assert.Contains("SwarmSleepRecoveryRatioPerSecond = 0.05f", combat);
-        Assert.Contains("SwarmSleepCombatLockSeconds = 3d", combat);
+        Assert.Contains("SwarmSleepWarmupSeconds = 1d", condition);
+        Assert.Contains("SwarmSleepRecoveryRatioPerSecond = 0.05f", condition);
+        Assert.Contains("SwarmSleepCombatLockSeconds = 3d", condition);
         // 회복은 연속 이월이 아니라 1초 단위 틱으로 센다.
-        Assert.Contains("_swarmSleepGrantedTicks", combat);
+        Assert.Contains("_swarmSleepGrantedTicks", condition);
 
         // 중단 경로는 이동 하나뿐이다.
         string movement = File.ReadAllText(
             Path.Combine(root, "game_server", "Services", "PlayerMovementService.cs"));
         Assert.Contains("player.Condition.TryStopSleep()", movement);
 
-        string arena = File.ReadAllText(
-            Path.Combine(root, "game_server", "Matches", "Combat", "MatchArenaService.cs"));
+        string combat = File.ReadAllText(
+            Path.Combine(root, "game_server", "Matches", "Combat", "MatchCombatService.cs"));
         // 피격·절단 가해는 수면을 깨지 않고 교전 잠금만 찍는다.
-        Assert.Contains("MarkSwarmCombat(DateTime.UtcNow)", arena);
-        Assert.Contains("MarkSwarmCombat(nowUtc)", arena);
+        Assert.Contains("MarkSwarmCombat(DateTime.UtcNow)", combat);
+        Assert.Contains("MarkSwarmCombat(nowUtc)", combat);
         // 아레나에서 수면을 깨우는 호출이 되살아나면 계약 위반이다 (폐쇄·경고 깨우기 퇴역).
-        Assert.DoesNotContain("BreakSwarmSleep", arena);
-        Assert.Contains("ProcessSwarmSleepRecovery(aliveSessions, nowUtc)", arena);
+        Assert.DoesNotContain("BreakSwarmSleep", combat);
+        Assert.Contains("ProcessSwarmSleepRecovery(aliveSessions, nowUtc)", combat);
         // 봇 파셜(#312)도 같은 계약을 진다.
         Assert.DoesNotContain("BreakSwarmSleep", File.ReadAllText(
             Path.Combine(root, "game_server", "Services", "Bots", "BotDecisionService.cs")));

@@ -9,10 +9,10 @@ namespace game_server.matches.field;
 
 /// <summary>
 ///     매치의 환경 피해와 동시 탈락 순위를 정산하고 승자를 확정한다.
-///     MatchTickRunner가 매치 잠금 안에서 5초 간격으로 호출한다.
+///     MatchTickLoop가 매치 잠금 안에서 5초 간격으로 호출한다.
 ///     매치 상태는 전달받은 MatchRuntime을 사용하며 별도 상태나 타이머를 소유하지 않는다.
 /// </summary>
-internal sealed class MatchEnvironmentService(
+internal class MatchEnvironmentService(
     GameEventLogManager eventLogs,
     MatchCleanupService matchCleanup,
     BotEliminationService botEliminations,
@@ -21,7 +21,7 @@ internal sealed class MatchEnvironmentService(
     ILogger<MatchEnvironmentService> logger)
 {
     /// <summary>매치의 5초 환경 정산. 50ms 틱이 전투 처리 후 같은 매치 잠금 안에서 호출한다.</summary>
-    public void Process(
+    public virtual void ProcessTick(
         MatchRuntime match,
         List<GameClientSession> activeSessions)
     {

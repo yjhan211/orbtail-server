@@ -249,8 +249,8 @@ public sealed class GameClientSessionPublicationTests
         using (session.Match.Enter())
         {
             Assert.True(session.Condition.TryStartSleep(now));
-            MatchArenaService.ProcessSwarmSleepRecovery([session], now);
-            MatchArenaService.ProcessSwarmSleepRecovery([session], now.AddSeconds(1));
+            MatchCombatService.ProcessSwarmSleepRecovery([session], now);
+            MatchCombatService.ProcessSwarmSleepRecovery([session], now.AddSeconds(1));
         }
         var packet = fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_HEALTH_RECOVERY>(Protocol.G_TO_C_HEALTH_RECOVERY);
@@ -803,7 +803,7 @@ public sealed class GameClientSessionPublicationTests
             "GameClientSession.OrbSummon.cs");
         string doors = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Doors.cs");
         string connection = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
-        string arena = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchArenaService.cs");
+        string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
         string bots = ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotDecisionService.cs");
         string botPickup = ReadNormalizedSource(
             root,
@@ -826,16 +826,16 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(2, CountOccurrences(orbSummon, "if (match.IsEnded"));
         Assert.DoesNotContain("SwarmGrowthPickCallback", session);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
-        Assert.DoesNotContain("SwarmGrowthPickCallback", arena);
-        Assert.DoesNotContain("SwarmOrbDecisionCallback", arena);
+        Assert.DoesNotContain("SwarmGrowthPickCallback", combat);
+        Assert.DoesNotContain("SwarmOrbDecisionCallback", combat);
         string playerState = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.PlayerState.cs");
         Assert.DoesNotContain("RunWithMatchLock", playerState);
         Assert.DoesNotContain("ProcessPlayerState", playerState);
         Assert.DoesNotContain("OnPeriodicBuffTick", playerState);
         Assert.DoesNotContain("_periodicBuffTimer", session);
         Assert.DoesNotContain("new Timer(", playerState);
-        Assert.Contains("ProcessPeriodicBuffs(matchingId, aliveSessions, nowUtc)", arena);
-        Assert.Contains("session.Condition.UpdatePeriodicBuffs(nowUtc", arena);
+        Assert.Contains("ProcessPeriodicBuffs(matchingId, aliveSessions, nowUtc)", combat);
+        Assert.Contains("session.Condition.UpdatePeriodicBuffs(nowUtc", combat);
         Assert.Equal(2, CountOccurrences(playerState, "MatchInteractionService.CancelPendingInteractions(match, _interactions)"));
 
         Assert.DoesNotContain("ProcessUseInGameItem", playerState);
@@ -854,10 +854,10 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("ProcessDoorOpenRequest", doors);
         Assert.DoesNotContain("RunWithMatchLock(", ReadMethodSlice(connection,
             "private async Task HandleConnect(", "private void LogInitialInventory("));
-        Assert.DoesNotContain("RunWithMatchLock", arena);
+        Assert.DoesNotContain("RunWithMatchLock", combat);
         Assert.DoesNotContain("RunWithMatchLock", bots);
         Assert.DoesNotContain("RunWithMatchLock", botPickup);
-        Assert.Contains("session.BreakDoorUnlockGauge();", arena);
+        Assert.Contains("session.BreakDoorUnlockGauge();", combat);
 
         Assert.DoesNotContain(
             "RunWithMatchLock",
@@ -1016,15 +1016,15 @@ public sealed class GameClientSessionPublicationTests
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
         var item = fixture.SpawnAtSession(session, Config.SUMMON_STONE_GROUND_ITEM_ID);
-        var runner = CreatePickupTickRunner(fixture);
-        runner.Run(session.Match);
+        var loop = CreatePickupTickLoop(fixture, session.Match);
+        loop.ProcessTick();
         Assert.NotNull(session.Match.GroundItems.GetItem(item.GroundItemUid));
         Assert.Empty(fixture.ConnectionFor(session).DeliveredProtocols);
 
         // 테스트에서 대기 없이 활성 게이트를 연다.
         MatchStartGate.RegisterBotOnlyMatch(session.MatchingId);
-        runner.Run(session.Match);
-        runner.Run(session.Match);
+        loop.ProcessTick();
+        loop.ProcessTick();
         Assert.Null(session.Match.GroundItems.GetItem(item.GroundItemUid));
         Assert.Equal(1, session.Match.SummonStones.GetSnapshot(session.PlayerId!.Value).StoneCount);
         Assert.Single(fixture.ConnectionFor(session).DeserializeAll<G_TO_C_GROUND_ITEM_PICKUP_RESULT>(
@@ -1041,7 +1041,7 @@ public sealed class GameClientSessionPublicationTests
         TestGameSessionServices.SetMovementProperty(second, "LastValidatedPosition", first.LastValidatedPosition);
         MatchStartGate.RegisterBotOnlyMatch(first.MatchingId);
 
-        CreatePickupTickRunner(fixture).Run(first.Match);
+        CreatePickupTickLoop(fixture, first.Match).ProcessTick();
 
         Assert.Equal(1, first.Match.SummonStones.GetSnapshot(first.PlayerId!.Value).StoneCount + second.Match.SummonStones.GetSnapshot(second.PlayerId!.Value).StoneCount);
         Assert.Null(first.Match.GroundItems.GetItem(item.GroundItemUid));
@@ -1058,7 +1058,7 @@ public sealed class GameClientSessionPublicationTests
         fixture.ConnectionFor(first).ThrowOnceOn = Protocol.G_TO_C_SUMMON_STONE_STATE;
         MatchStartGate.RegisterBotOnlyMatch(first.MatchingId);
 
-        CreatePickupTickRunner(fixture).Run(first.Match);
+        CreatePickupTickLoop(fixture, first.Match).ProcessTick();
 
         Assert.Equal(1, first.Match.SummonStones.GetSnapshot(first.PlayerId!.Value).StoneCount);
         Assert.Equal(1, second.Match.SummonStones.GetSnapshot(second.PlayerId!.Value).StoneCount);
@@ -1162,11 +1162,15 @@ public sealed class GameClientSessionPublicationTests
         Assert.Empty(fixture.ConnectionFor(eliminated).DeliveredProtocols);
     }
 
-    private static MatchTickRunner CreatePickupTickRunner(SessionFixture fixture) =>
-        new(fixture.Store, NullLogger.Instance,
+    private static MatchTickLoop CreatePickupTickLoop(SessionFixture fixture, MatchRuntime runtime)
+    {
+        var loop = TestMatchTickServices.CreateLoop(runtime, fixture.Store, NullLogger.Instance,
             new GroundItemAutoPickupService(fixture.EventLog, NullLogger<GroundItemAutoPickupService>.Instance),
             static (_, _) => { }, static (_, _) => { },
             static (_, _) => { }, static _ => { }, static (_, _) => { });
+        fixture.TickLoops.Add(loop);
+        return loop;
+    }
 
     private static Task RunPickupTickAsync(GameClientSession session, GameEventLogManager eventLogs)
     {
@@ -1193,6 +1197,7 @@ public sealed class GameClientSessionPublicationTests
             GameClientSession.SwarmHeartPickupCallback = null;
         }
 
+        public List<MatchTickLoop> TickLoops { get; } = [];
         public MatchRuntimeStore Store { get; }
         public ConcurrentQueue<string>? CleanupTimeline { get; set; }
 
@@ -1269,6 +1274,7 @@ public sealed class GameClientSessionPublicationTests
 
         public void Dispose()
         {
+            foreach (var loop in TickLoops) loop.Stop();
             GameClientSession.SwarmHeartPickupCallback = null;
             foreach (long matchingId in _sessions.Select(session => session.MatchingId).Distinct())
                 MatchStartGate.RemoveMatching(matchingId);

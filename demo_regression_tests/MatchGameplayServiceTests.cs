@@ -15,33 +15,33 @@ public sealed class MatchGameplayServiceTests
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var decisions = provider.GetRequiredService<BotDecisionService>();
-        var arena = provider.GetRequiredService<MatchArenaService>();
+        var combat = provider.GetRequiredService<MatchCombatService>();
         var store = provider.GetRequiredService<MatchRuntimeStore>();
-        Assert.Same(arena, provider.GetRequiredService<MatchArenaService>());
-        Assert.Same(decisions, Read<BotDecisionService>(arena));
-        Assert.Same(store, Read<MatchRuntimeStore>(arena));
+        Assert.Same(combat, provider.GetRequiredService<MatchCombatService>());
+        Assert.Same(decisions, Read<BotDecisionService>(combat));
+        Assert.Same(store, Read<MatchRuntimeStore>(combat));
         Assert.Same(store, Read<MatchRuntimeStore>(decisions));
-        Assert.DoesNotContain(Fields(arena), field => field.FieldType == typeof(GameServer));
+        Assert.DoesNotContain(Fields(combat), field => field.FieldType == typeof(GameServer));
         Assert.DoesNotContain(Fields(decisions), field =>
-            field.FieldType == typeof(GameServer) || field.FieldType == typeof(MatchArenaService));
+            field.FieldType == typeof(GameServer) || field.FieldType == typeof(MatchCombatService));
     }
 
     [Fact]
     public void Arena_SkipsMissingAndTerminalMatchesWithoutRecreatingThem()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var arena = provider.GetRequiredService<MatchArenaService>();
+        var combat = provider.GetRequiredService<MatchCombatService>();
         var store = provider.GetRequiredService<MatchRuntimeStore>();
-        arena.ProcessSwarmArenaForMatching(947701, []);
+        combat.ProcessTick(947701, []);
         Assert.Null(store.GetOrNull(947701));
         var match = store.GetOrCreate(947702);
         using (MatchRuntimeStore.Enter(match))
         {
             match.TryMarkEnded();
-            arena.ProcessSwarmArenaForMatching(match.MatchingId, []);
+            combat.ProcessTick(match.MatchingId, []);
         }
         Assert.Null(store.GetOrNull(match.MatchingId));
-        arena.ProcessSwarmArenaForMatching(match.MatchingId, []);
+        combat.ProcessTick(match.MatchingId, []);
         Assert.Null(store.GetOrNull(match.MatchingId));
     }
 

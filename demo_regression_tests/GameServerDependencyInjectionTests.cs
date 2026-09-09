@@ -18,28 +18,50 @@ namespace demo_regression_tests;
 public sealed class GameServerDependencyInjectionTests
 {
     [Fact]
-    public void MatchTickServiceUsesRunnerSingletonWithoutGameServerComposition()
+    public void MatchTickServiceCreatesSeparateLoopsUsingSharedGameplayServices()
     {
         using var provider = CreateProvider();
         var service = provider.GetRequiredService<MatchTickService>();
-        var runner = provider.GetRequiredService<MatchTickRunner>();
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        var injectedRunner = typeof(MatchTickService).GetFields(flags)
-            .Single(field => field.FieldType == typeof(MatchTickRunner)).GetValue(service);
-        Assert.Same(runner, injectedRunner);
-        Assert.Same(runner, provider.GetRequiredService<MatchTickRunner>());
-        Assert.DoesNotContain(typeof(MatchTickService).GetFields(flags),
-            field => field.FieldType == typeof(Action<MatchRuntime>));
-
-        var processCombat = Assert.IsType<Action<long, List<GameClientSession>>>(
-            typeof(MatchTickRunner).GetFields(flags)
-                .Single(field => field.FieldType == typeof(Action<long, List<GameClientSession>>)).GetValue(runner));
-        Assert.Same(provider.GetRequiredService<MatchArenaService>(), processCombat.Target);
-        Assert.DoesNotContain(typeof(GameServer).GetConstructors().Single().GetParameters(),
-            parameter => parameter.ParameterType == typeof(MatchArenaService)
-                || parameter.ParameterType == typeof(MatchCountdownService));
+        var factory = provider.GetRequiredService<Func<MatchRuntime, TimeProvider, MatchTickLoop>>();
+        var store = provider.GetRequiredService<MatchRuntimeStore>();
+        var first = store.GetOrCreate(990001);
+        var second = store.GetOrCreate(990002);
+        var firstLoop = factory(first, TimeProvider.System);
+        var secondLoop = factory(second, TimeProvider.System);
+        try
+        {
+            Assert.NotSame(firstLoop, secondLoop);
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            Assert.Same(factory, typeof(MatchTickService).GetFields(flags)
+                .Single(field => field.FieldType == factory.GetType()).GetValue(service));
+            foreach (var loop in new[] { firstLoop, secondLoop })
+            {
+                Type[] dependencyTypes =
+                [
+                    typeof(MatchCountdownService), typeof(MatchCombatService),
+                    typeof(game_server.matches.field.MatchEnvironmentService),
+                    typeof(game_server.services.BotMovementService), typeof(game_server.services.BotDecisionService),
+                    typeof(game_server.matches.field.MatchZoneService)
+                ];
+                foreach (var type in dependencyTypes)
+                {
+                    var dependency = typeof(MatchTickLoop).GetFields(flags)
+                        .Single(field => field.FieldType == type).GetValue(loop);
+                    Assert.Same(provider.GetRequiredService(type), dependency);
+                }
+                Assert.DoesNotContain(typeof(MatchTickLoop).GetFields(flags),
+                    field => typeof(Delegate).IsAssignableFrom(field.FieldType));
+            }
+            Assert.DoesNotContain(typeof(GameServer).GetConstructors().Single().GetParameters(),
+                parameter => parameter.ParameterType == typeof(MatchCombatService)
+                    || parameter.ParameterType == typeof(MatchCountdownService));
+        }
+        finally
+        {
+            firstLoop.Stop();
+            secondLoop.Stop();
+        }
     }
-
     [Fact]
     public void GameServerUsesTheRegistrySingletonRegisteredByProgram()
     {

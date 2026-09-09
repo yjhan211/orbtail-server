@@ -36,9 +36,9 @@ public sealed class MatchStartCountdownPublicationTests
 
         string broadcast = ReadNormalizedSource(repositoryRoot, "game_server", "Matches", "Entry", "MatchCountdownService.cs");
         string matchTick = ReadMethodSlice(
-            ReadNormalizedSource(repositoryRoot, "game_server", "Matches", "MatchTickRunner.cs"),
-"public void Run(MatchRuntime runtime)",
-            "private static bool ShouldMoveBots(");
+            ReadNormalizedSource(repositoryRoot, "game_server", "Matches", "MatchTickLoop.cs"),
+"internal void ProcessTick()",
+            "\n}");
 
         Assert.DoesNotContain("_lastMatchStartCountdownBroadcast", server);
         AssertInOrder(
@@ -63,11 +63,10 @@ public sealed class MatchStartCountdownPublicationTests
         // 매치 틱은 잠금 안에서 카운트다운을 먼저 보내고 전투·봇 걸음을 잇는다.
         AssertInOrder(
             matchTick,
-            "matchRuntimes.TryEnter(matchingId, out MatchLockScope scope)",
-            "using (scope)",
-            "publishCountdown([matchingId], countdownSessions);",
-            "processCombat(matchingId, activeSessions);",
-            "moveBots(scope.Runtime)");
+            "using var scope = runtime.Enter();",
+            "countdown.CheckEntryAndBroadcast([matchingId], playerSessions);",
+            "combat.ProcessTick(matchingId, activeSessions);",
+            "botMovement.ProcessTick(runtime, botDecisions.DecideMovement)");
     }
 
     [Fact]
@@ -402,7 +401,7 @@ public sealed class MatchStartCountdownPublicationTests
     {
         var countdown = new MatchCountdownService(
             server.GetMatchRuntimes(), server.GetEntryFailureHandler(), NullLogger.Instance);
-        countdown.Broadcast(matchingIds, sessions);
+        countdown.CheckEntryAndBroadcast(matchingIds, sessions);
     }
 
     private static void InvokeEntryAbort(GameServer server, GameClientSession session)
@@ -485,7 +484,7 @@ public sealed class MatchStartCountdownPublicationTests
     private static string ReadNormalizedSource(string repositoryRoot, params string[] parts)
     {
         return File.ReadAllText(Path.Combine([repositoryRoot, .. parts]))
-            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace("\r\n", "\n", StringComparison.Ordinal).Replace("public virtual void ", "public void ", StringComparison.Ordinal)
             // 명시 타입과 var 표기는 같은 잠금 호출로 취급한다.
             .Replace("matchRuntimes.Enter(matchingId, out var scope)",
                 "matchRuntimes.Enter(matchingId, out MatchLockScope scope)", StringComparison.Ordinal);

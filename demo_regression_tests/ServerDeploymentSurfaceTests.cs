@@ -14,7 +14,7 @@ public sealed class ServerDeploymentSurfaceTests
         Assert.DoesNotContain("GetFullInstanceSnapshot", source);
         Assert.DoesNotContain("GetInstanceSnapshot", source);
         Assert.DoesNotContain("GetActiveMatchingIds", source);
-        Assert.DoesNotContain("GetActiveMatchingIds", Read("game_server/Matches/Combat/MatchArenaService.cs"));
+        Assert.DoesNotContain("GetActiveMatchingIds", Read("game_server/Matches/Combat/MatchCombatService.cs"));
         Assert.DoesNotContain("GetActiveMatchingIds", Read("game_server/Sessions/GameSessionRegistry.cs"));
         Assert.Contains("EndBotOnlyMatchIfSettled", Read("game_server/Matches/Results/MatchCleanupService.cs"));
     }
@@ -29,7 +29,7 @@ public sealed class ServerDeploymentSurfaceTests
         var runtime = store.GetOrCreate(70001);
         var server = GameServerTestAccess.Create(store);
 
-        object result = server.GetArena().SetupSwarmCutDummy(matchingId);
+        object result = server.GetCombat().SetupSwarmCutDummy(matchingId);
 
         Assert.Equal("no active match", result.GetType().GetProperty("error")!.GetValue(result));
         Assert.Same(runtime, store.GetOrNull(70001));

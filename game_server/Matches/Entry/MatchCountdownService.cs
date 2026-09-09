@@ -12,12 +12,12 @@ namespace game_server.matches.entry;
 ///     매치 잠금 안에서 마지막으로 보낸 남은 초를 기록하여 같은 값을 중복 전송하지 않는다.
 ///     입장 시간 초과는 MatchEntryFailureHandler에 위임하며, 타이머 수명은 관리하지 않는다.
 /// </summary>
-internal sealed class MatchCountdownService(
+internal class MatchCountdownService(
     MatchRuntimeStore matchRuntimes,
     MatchEntryFailureHandler entryFailureHandler,
     ILogger logger)
 {
-    public void Broadcast(
+    public virtual void CheckEntryAndBroadcast(
         IEnumerable<long> matchingIds,
         IReadOnlyCollection<GameClientSession> activeSessions)
     {

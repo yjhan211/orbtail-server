@@ -4,7 +4,7 @@ namespace game_server.services;
 
 /// <summary>
 ///     봇 이동 틱 계측 창 — 매치 하나가 소유한다(<see cref="game_server.matches.MatchRuntime"/>). 샘플 기록은 그 매치의
-///     잠금 안에서만 돌고, 잠금이 바빠 버린 펄스는 잠금 밖에서 Interlocked로만 누적한다. 200틱마다
+///     잠금 안에서만 수행한다. 200틱마다
 ///     불변 배치를 내보내고 창을 비운다.
 /// </summary>
 internal sealed class SwarmBotTickMetrics
@@ -18,34 +18,12 @@ internal sealed class SwarmBotTickMetrics
     private readonly List<double> _broadcastSamples = new(WindowSize);
     private double _totalElapsedMilliseconds;
     private double _maxElapsedMilliseconds;
-    private int _busySkips;
-    private int _consecutiveBusySkips;
-    private int _maxConsecutiveBusySkips;
-
-    public int BusySkips => Volatile.Read(ref _busySkips);
-    public int ConsecutiveBusySkips => Volatile.Read(ref _consecutiveBusySkips);
     public int SampleCount => _tickSamples.Count;
-
-    /// <summary>잠금이 바빠 펄스를 버렸다 — 잠금 밖에서 호출되므로 Interlocked만 쓴다.</summary>
-    public void RecordBusySkip()
-    {
-        Interlocked.Increment(ref _busySkips);
-        int consecutive = Interlocked.Increment(ref _consecutiveBusySkips);
-        int observedMax = Volatile.Read(ref _maxConsecutiveBusySkips);
-        while (consecutive > observedMax)
-        {
-            int previous = Interlocked.CompareExchange(ref _maxConsecutiveBusySkips, consecutive, observedMax);
-            if (previous == observedMax)
-                break;
-            observedMax = previous;
-        }
-    }
 
     /// <summary>완료한 틱을 기록한다 (매치 잠금 안). 창이 차면 배치를 돌려주고 창을 비운다.</summary>
     public SwarmBotTickMetricsBatch? Record(long matchingId, SwarmBotTickSample sample)
     {
         ArgumentNullException.ThrowIfNull(sample);
-        Interlocked.Exchange(ref _consecutiveBusySkips, 0);
         _tickSamples.Add(sample.TotalElapsedMilliseconds);
         _snapshotSamples.Add(sample.SnapshotElapsedMilliseconds);
         _planningSamples.Add(sample.PlanningElapsedMilliseconds);
@@ -64,9 +42,7 @@ internal sealed class SwarmBotTickMetrics
             _walkingSamples.ToImmutableArray(),
             _broadcastSamples.ToImmutableArray(),
             _totalElapsedMilliseconds,
-            _maxElapsedMilliseconds,
-            Interlocked.Exchange(ref _busySkips, 0),
-            Interlocked.Exchange(ref _maxConsecutiveBusySkips, 0));
+            _maxElapsedMilliseconds);
         _tickSamples.Clear();
         _snapshotSamples.Clear();
         _planningSamples.Clear();
@@ -93,6 +69,4 @@ internal sealed record SwarmBotTickMetricsBatch(
     ImmutableArray<double> WalkingSamples,
     ImmutableArray<double> BroadcastSamples,
     double TotalElapsedMilliseconds,
-    double MaxElapsedMilliseconds,
-    int BusySkips,
-    int MaxConsecutiveBusySkips);
+    double MaxElapsedMilliseconds);

@@ -25,7 +25,7 @@ internal sealed class BotDecisionService(
     OrbTrailService orbTrails,
     ILogger<BotDecisionService> logger)
 {
-    // 봇은 매치 참가자다. 각 처리 단계의 호출 순서는 MatchArenaService가 정한다.
+    // 봇은 매치 참가자다. 각 처리 단계의 호출 순서는 MatchCombatService가 정한다.
 
     // 봇 체력 자연 회복: 회복 오브 운에 기대지 않는 생존 바닥. 마지막 피격 후 유예가 지나면 초당 일정량
     // 회복한다 — "도망 성공"이 실제 생존이 되게. 사람은 위로 오브가 같은 역할을 하므로 제외. 유예 6초·초당 2는
@@ -169,7 +169,7 @@ internal sealed class BotDecisionService(
         {
             var area = region.AreaType;
             if (area == AreaType.None) continue;
-            var cells = MatchFieldService.GetSwarmAreaCellsByDistance(area);
+            var cells = MatchZoneService.GetSwarmAreaCellsByDistance(area);
             if (cells.Count == 0 ||
                 cells[0].Distance > safeDistance - SwarmBotFieldEvacuateMarginCells * 2)
                 continue;
@@ -187,9 +187,9 @@ internal sealed class BotDecisionService(
         return (bestArea, bestCell);
     }
 
-    public SwarmBotDirective ResolveSwarmBotDirective(long matchingId, long botPlayerId)
+    public SwarmBotDirective DecideMovement(long matchingId, long botPlayerId)
     {
-        var directive = ResolveSwarmBotDirectiveCore(matchingId, botPlayerId);
+        var directive = DecideMovementCore(matchingId, botPlayerId);
         var bot = matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId)
             .FirstOrDefault(candidate => candidate.PlayerId == botPlayerId);
         if (bot == null || bot.IsEliminated || bot.CurrentArea == AreaType.None)
@@ -230,7 +230,7 @@ internal sealed class BotDecisionService(
         return directive;
     }
 
-    private SwarmBotDirective ResolveSwarmBotDirectiveCore(long matchingId, long botPlayerId)
+    private SwarmBotDirective DecideMovementCore(long matchingId, long botPlayerId)
     {
         matchRuntimes.GetOrThrow(matchingId).BotTactics.FleeDirective.Remove((matchingId, botPlayerId));
         var directive = matchRuntimes.GetOrThrow(matchingId).Monsters.GetBotDirective(matchingId, botPlayerId);
@@ -296,7 +296,7 @@ internal sealed class BotDecisionService(
                 // 같은 구역에서 여유 두 배(6셀)까지 안전한 셀 중 가장 가까운 곳으로.
                 Cell? retreatCell = null;
                 float retreatBestSq = float.MaxValue;
-                foreach (var entry in MatchFieldService.GetSwarmAreaCellsByDistance(bot.CurrentArea))
+                foreach (var entry in MatchZoneService.GetSwarmAreaCellsByDistance(bot.CurrentArea))
                 {
                     if (entry.Distance > fieldSafeDistance - SwarmBotFieldEvacuateMarginCells * 2)
                         break;

@@ -18,12 +18,11 @@ internal static class GameServerTestAccess
     internal static MatchRuntimeStore GetMatchRuntimes(this GameServer server) =>
         Read<MatchRuntimeStore>(server);
 
-    internal static MatchArenaService GetArena(this GameServer server)
+    internal static MatchCombatService GetCombat(this GameServer server)
     {
         var ticks = Read<MatchTickService>(server);
-        var runner = Read<MatchTickRunner>(ticks);
-        var processCombat = Read<Action<long, List<GameClientSession>>>(runner);
-        return Assert.IsType<MatchArenaService>(processCombat.Target);
+        var factory = Read<Func<MatchRuntime, TimeProvider, MatchTickLoop>>(ticks);
+        return Read<MatchCombatService>(factory.Target!);
     }
     internal static MatchGrowthService GetGrowth(this GameServer server) => Read<MatchGrowthService>(server);
 
@@ -38,7 +37,7 @@ internal static class GameServerTestAccess
 
     private static T Read<T>(object instance) where T : class =>
         Assert.IsType<T>(instance.GetType()
-            .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+            .GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
             .Single(field => field.FieldType == typeof(T))
             .GetValue(instance));
 
@@ -64,29 +63,28 @@ internal static class GameServerTestAccess
         var eliminations = new BotEliminationService(logs, matchEliminations, logger);
         var growth = new MatchGrowthService(runtimes, logs, orbUpgrades,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchGrowthService>.Instance);
-        var field = new MatchFieldService(runtimes, logs, orbTrails,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchFieldService>.Instance);
+        var field = new MatchZoneService(runtimes, logs, orbTrails,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchZoneService>.Instance);
         var movement = new BotMovementService( logs,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotMovementService>.Instance);
         var decisions = new BotDecisionService(runtimes, logs, growth, orbTrails,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotDecisionService>.Instance);
-        var arena = new MatchArenaService(runtimes, GameServerDevOptions.Disabled, logs, cleanup,
+        var combat = new MatchCombatService(runtimes, GameServerDevOptions.Disabled, logs, cleanup,
             eliminations, matchEliminations, orbUpgrades, growth,
             new OrbRecoveryService(runtimes, logs,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbRecoveryService>.Instance),
             new OrbVisualStatePublisher(runtimes), orbTrails, combatDamage,
             new WindOrbAttackService(runtimes, orbTrails, combatDamage, logs),
             new SunOrbAttackService(runtimes, combatDamage, logs), field, movement, decisions,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchArenaService>.Instance);
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatService>.Instance);
         var countdown = new MatchCountdownService(runtimes, entryFailure, logger);
         var environment = new MatchEnvironmentService(logs,
             cleanup, eliminations, matchEliminations, GameServerDevOptions.Disabled,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchEnvironmentService>.Instance);
         var groundPickup = new GroundItemAutoPickupService(logs,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<GroundItemAutoPickupService>.Instance);
-        var runner = new MatchTickRunner(runtimes, logger, groundPickup,
-            countdown.Broadcast, arena.ProcessSwarmArenaForMatching, environment.Process,
-            runtime => movement.Process(runtime, decisions.ResolveSwarmBotDirective), field.Process);
+        Func<MatchRuntime, TimeProvider, MatchTickLoop> createLoop = (runtime, clock) => new MatchTickLoop(runtime, runtimes, logger, groundPickup,
+            countdown, combat, environment, movement, decisions, field, clock);
         return new GameServer(
             configuration: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
             logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServer>.Instance,
@@ -108,6 +106,6 @@ internal static class GameServerTestAccess
             entryFailureHandler: entryFailure,
             matchCleanup: cleanup,
             growth: growth,
-            tickService: new MatchTickService(runtimes, runner, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchTickService>.Instance));
+            tickService: new MatchTickService(runtimes, createLoop, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchTickService>.Instance));
     }
 }

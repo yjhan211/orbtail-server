@@ -17,13 +17,13 @@ namespace game_server.matches.field;
 ///     매치 잠금 안에서 상태 변경을 완료한 뒤 확정된 순서로 패킷을 전송한다.
 ///     전송 실패 시 이미 적용한 상태를 되돌리지 않는다.
 /// </summary>
-internal sealed class MatchFieldService(
+internal class MatchZoneService(
     MatchRuntimeStore matchRuntimes,
     GameEventLogManager eventLogs,
     OrbTrailService orbTrails,
-    ILogger<MatchFieldService> logger)
+    ILogger<MatchZoneService> logger)
 {
-    public void Process(long matchingId, GameClientSession[] sessionSnapshot)
+    public virtual void ProcessTick(long matchingId, GameClientSession[] sessionSnapshot)
     {
         var plan = PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);
         if (plan != null)

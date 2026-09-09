@@ -16,7 +16,7 @@ public sealed class MatchEnvironmentServiceTests
     {
         var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947001);
         var service = CreateService(GameServerDevOptions.Disabled);
-        Assert.Throws<InvalidOperationException>(() => service.Process(match, []));
+        Assert.Throws<InvalidOperationException>(() => service.ProcessTick(match, []));
     }
 
     [Fact]
@@ -27,7 +27,7 @@ public sealed class MatchEnvironmentServiceTests
         lock (match.MatchLock)
         {
             match.TryMarkEnded();
-            service.Process(match, []);
+            service.ProcessTick(match, []);
             Assert.True(match.IsEnded);
         }
     }
@@ -45,7 +45,7 @@ public sealed class MatchEnvironmentServiceTests
         });
         lock (match.MatchLock)
         {
-            service.Process(match, []);
+            service.ProcessTick(match, []);
             Assert.False(match.IsEnded);
         }
     }

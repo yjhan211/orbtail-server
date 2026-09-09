@@ -558,9 +558,7 @@ public class GameEventLogManager
         double planningP95Milliseconds,
         double walkingP95Milliseconds,
         double broadcastP95Milliseconds,
-        int sampleCount,
-        int skippedTickCount,
-        int maxConsecutiveSkippedTicks)
+        int sampleCount)
     {
         if (matchingId <= 0 || sampleCount <= 0)
             return;
@@ -568,7 +566,7 @@ public class GameEventLogManager
         Append(matchingId, "SURVIVOR_BOT_MOVEMENT_TICK_PERFORMANCE", 0, false,
             $"Bot movement tick: p50={p50Milliseconds:F1}ms, p95={p95Milliseconds:F1}ms, p99={p99Milliseconds:F1}ms, " +
             $"sections p95 snapshot={snapshotP95Milliseconds:F1}ms, planning={planningP95Milliseconds:F1}ms, " +
-            $"walking={walkingP95Milliseconds:F1}ms, broadcast={broadcastP95Milliseconds:F1}ms, skips={skippedTickCount}.",
+            $"walking={walkingP95Milliseconds:F1}ms, broadcast={broadcastP95Milliseconds:F1}ms.",
             entry =>
             {
                 entry.BotMovementTickP50Milliseconds = p50Milliseconds;
@@ -579,8 +577,6 @@ public class GameEventLogManager
                 entry.BotMovementWalkingP95Milliseconds = walkingP95Milliseconds;
                 entry.BotMovementBroadcastP95Milliseconds = broadcastP95Milliseconds;
                 entry.BotMovementTickSampleCount = sampleCount;
-                entry.BotMovementTickSkipCount = skippedTickCount;
-                entry.BotMovementMaxConsecutiveSkipCount = maxConsecutiveSkippedTicks;
             });
     }
 
@@ -1683,6 +1679,7 @@ public class GameEventEntry
     public double? BotMovementWalkingP95Milliseconds { get; set; }
     public double? BotMovementBroadcastP95Milliseconds { get; set; }
     public int? BotMovementTickSampleCount { get; set; }
+    // 과거 매치 로그를 읽기 위한 필드. 현재 틱 루프는 잠금 경합 시 건너뛰지 않는다.
     public int? BotMovementTickSkipCount { get; set; }
     public int? BotMovementMaxConsecutiveSkipCount { get; set; }
     public int? CoreCurrentHealth { get; set; }

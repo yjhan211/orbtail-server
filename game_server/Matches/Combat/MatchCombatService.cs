@@ -21,7 +21,7 @@ namespace game_server.matches.combat;
 ///     상태는 MatchRuntime이 소유하며 틱 호출자는 해당 매치 잠금을 보유한다.
 ///     봇 판단과 개별 무기·성장·피해 규칙은 각 서비스에 위임한다.
 /// </summary>
-internal sealed class MatchArenaService(
+internal class MatchCombatService(
     MatchRuntimeStore matchRuntimes,
     GameServerDevOptions devOptions,
     GameEventLogManager eventLogs,
@@ -36,10 +36,10 @@ internal sealed class MatchArenaService(
     MatchCombatDamageService combatDamage,
     WindOrbAttackService windOrbAttacks,
     SunOrbAttackService sunOrbAttacks,
-    MatchFieldService fieldService,
+    MatchZoneService zones,
     BotMovementService botMovement,
     BotDecisionService botDecisions,
-    ILogger<MatchArenaService> logger)
+    ILogger<MatchCombatService> logger)
 {
     private const int SwarmArenaBasicDamage = 12;
     // 봇도 사람과 동일한 접촉 피해 규칙을 적용한다.
@@ -149,7 +149,7 @@ internal sealed class MatchArenaService(
     ///     흐름이 소유하고, 여기서는 스웜 디렉터 틱·접촉 피해·전투 액터·PvP만 돌린다.
     ///     호출자(50ms 전투 틱·5초 정산 틱)가 매치 잠금을 쥔 채 부른다.
     /// </summary>
-    public void ProcessSwarmArenaForMatching(
+    public virtual void ProcessTick(
         long matchingId,
         List<GameClientSession> activeSessions)
     {
@@ -180,7 +180,7 @@ internal sealed class MatchArenaService(
                 return;
 
             // 자기장 경계 스폰 규칙을 이 매치의 몬스터 처리기에 연결한다.
-            matchRuntimes.GetOrThrow(matchingId).Monsters.FieldSpawnCellResolver ??= fieldService.ResolveSpawn;
+            matchRuntimes.GetOrThrow(matchingId).Monsters.FieldSpawnCellResolver ??= zones.ResolveSpawn;
             LogSwarmPairZoneDistances(matchingId);
             // #272 자기장: 수축 시계는 폐쇄 시계와 같은 앵커(AreaClosureManager.GameStartTime)를 쓴다 —
             // 무장은 폐쇄 틱(PrepareSwarmScheduledClosureTick)의 최초 InitializeMatching이 담당한다.

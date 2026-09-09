@@ -241,11 +241,11 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             FirstPlayerId, 107000010, Config.SWARM_ORB_CAPACITY, out _));
         var condition = (PlayerCondition)typeof(GameClientSession)
             .GetField("_condition", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session)!;
-        var buildActors = typeof(MatchArenaService).GetMethod(
+        var buildActors = typeof(MatchCombatService).GetMethod(
             "BuildSwarmArenaCombatActors", BindingFlags.Instance | BindingFlags.NonPublic)!;
         var now = DateTime.UtcNow;
         List<ProximityCombatActor> Build() => (List<ProximityCombatActor>)buildActors.Invoke(
-            fixture.Server.GetArena(),
+            fixture.Server.GetCombat(),
             [FirstMatchingId, new List<GameClientSession> { session }, new List<BotPlayerState>(), now])!;
 
         var awake = Build();
@@ -650,15 +650,15 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             "game_server",
             "Sessions",
             "GameClientSession.OrbSummon.cs");
-        string arena = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchArenaService.cs");
+        string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
         string orbBoard = ReadNormalizedSource(root, "game_server", "Services", "OrbUpgradeService.cs");
 
         Assert.Contains("IPlayerGrowthHandler _growth", session);
         Assert.Contains("_growth.HandleUpgradeOrb(", orbSummon);
         Assert.DoesNotContain("SwarmGrowthPickCallback", session);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
-        Assert.DoesNotContain("SwarmGrowthPickCallback", arena);
-        Assert.DoesNotContain("SwarmOrbDecisionCallback", arena);
+        Assert.DoesNotContain("SwarmGrowthPickCallback", combat);
+        Assert.DoesNotContain("SwarmOrbDecisionCallback", combat);
         Assert.DoesNotContain("RunWithMatchLock", orbSummon);
         Assert.Equal(2, CountOccurrences(orbSummon, "using (match.Enter())"));
         Assert.Equal(2, CountOccurrences(orbSummon, "if (match.IsEnded"));
@@ -673,7 +673,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             "private Task HandleUpgradeOrb("));
         Assert.DoesNotContain("HandleDestroyOrb", orbSummon);
         Assert.DoesNotContain("C_TO_G_DESTROY_ORB", session);
-        Assert.DoesNotContain("RunWithMatchLock", arena);
+        Assert.DoesNotContain("RunWithMatchLock", combat);
         Assert.DoesNotContain("RunWithMatchLock", orbBoard);
     }
 
