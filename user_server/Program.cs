@@ -88,18 +88,7 @@ internal static class Program
         services.AddSingleton<IGameServerAllocator, GameServerAllocator>();
         services.AddSingleton<BackgroundTaskTracker>(sp =>
             new BackgroundTaskTracker(sp.GetRequiredService<ILogger<BackgroundTaskTracker>>()));
-        services.AddSingleton<MatchEntryService>(sp =>
-        {
-            var taskTracker = sp.GetRequiredService<BackgroundTaskTracker>();
-            return new MatchEntryService(
-                sp.GetRequiredService<IRedisOperations>(),
-                sp.GetRequiredService<GameEntryTicketService>(),
-                sp.GetRequiredService<MatchingReservationService>(),
-                sp.GetRequiredService<IPlayerSessionRouter>(),
-                taskTracker.TryRun,
-                sp.GetRequiredService<ILogger<MatchEntryService>>(),
-                taskTracker.ShutdownToken);
-        });
+        services.AddSingleton<MatchEntryService>();
         services.AddSingleton<IMatchEntryService>(sp => sp.GetRequiredService<MatchEntryService>());
         services.AddSingleton<MatchCreationService>(sp => new MatchCreationService(
             sp.GetRequiredService<IRedisOperations>(),

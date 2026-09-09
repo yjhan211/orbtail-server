@@ -5,6 +5,7 @@ using network.common;
 using network.common.data.models;
 using network.gameentry;
 using network.infrastructure.redis;
+using network.infrastructure;
 using user_server.sessions;
 
 namespace user_server.matching;
@@ -22,9 +23,8 @@ internal sealed class MatchEntryService(
     GameEntryTicketService gameEntryTicketService,
     MatchingReservationService reservations,
     IPlayerSessionRouter sessions,
-    Func<Func<Task>, string, bool> tryRunBackgroundOperation,
-    ILogger<MatchEntryService> logger,
-    CancellationToken shutdownToken) : IMatchEntryService
+    BackgroundTaskTracker taskTracker,
+    ILogger<MatchEntryService> logger) : IMatchEntryService
 {
     public async Task StoreMatchManifestAsync(long matchingId, MatchManifest manifest)
     {
@@ -179,7 +179,7 @@ internal sealed class MatchEntryService(
             return false;
 
         long[] playerIds = humanPlayerIds.ToArray();
-        return tryRunBackgroundOperation(
+        return taskTracker.TryRun(
             () => CheckEntryTimeoutAsync(matchingId, playerIds),
             $"matching-entry-timeout:{matchingId}");
     }
@@ -188,8 +188,8 @@ internal sealed class MatchEntryService(
     {
         try
         {
-            await Task.Delay(MatchingRedisKeys.EntryTimeout, shutdownToken);
-            shutdownToken.ThrowIfCancellationRequested();
+            await Task.Delay(MatchingRedisKeys.EntryTimeout, taskTracker.ShutdownToken);
+            taskTracker.ShutdownToken.ThrowIfCancellationRequested();
 
             string stateKey = MatchingRedisKeys.EntryStateKey(matchingId);
 
@@ -251,7 +251,7 @@ internal sealed class MatchEntryService(
                 }
             }
         }
-        catch (OperationCanceledException) when (shutdownToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (taskTracker.ShutdownToken.IsCancellationRequested)
         {
             // 서버 종료 시 입장 대기를 중단한다.
         }

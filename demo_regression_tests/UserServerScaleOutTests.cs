@@ -291,12 +291,13 @@ public sealed class UserServerScaleOutTests
         var receiver = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "receiver", logger.For<NatsPlayerSessionRouter>());
         sender.Start();
         receiver.Start();
+        using var entryTasks = new network.infrastructure.BackgroundTaskTracker(logger);
         var entryService = new MatchEntryService(
             cache,
             new GameEntryTicketService(new RedisGameEntryTicketStore(cache), new GameEntryTicketOptions()),
             reservations, sender,
-            (_, _) => throw new InvalidOperationException("Failed delivery must not start the entry watchdog"),
-            logger.For<MatchEntryService>(), CancellationToken.None);
+            entryTasks,
+            logger.For<MatchEntryService>());
         var pass = new MatchCreationService(
             cache, queue, reservations, entryService,
             new FixedGameServerAllocator(),

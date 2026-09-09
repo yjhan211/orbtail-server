@@ -1,4 +1,5 @@
 using network.common;
+using network.infrastructure;
 using network.common.data.models;
 using network.gameentry;
 using user_server.matching;
@@ -131,12 +132,12 @@ public sealed class MatchEntryServiceTests
     }
 
     [Fact]
-    public void EntryTimeout_EmptyRosterDoesNotRegisterTask()
+    public async Task EntryTimeout_EmptyRosterDoesNotRegisterTask()
     {
-        bool registered = false;
-        var service = CreateService(new InMemoryRedisOperations(), (_, _) => { registered = true; return true; });
+        using var tracker = new BackgroundTaskTracker(new RecordingLogger());
+        var service = CreateService(new InMemoryRedisOperations(), tracker);
         Assert.False(service.StartEntryTimeoutCheck(42, []));
-        Assert.False(registered);
+        await tracker.DrainAsync().WaitAsync(TimeSpan.FromSeconds(2));
     }
 
     [Theory]
@@ -144,19 +145,13 @@ public sealed class MatchEntryServiceTests
     [InlineData(true)]
     public async Task EntryTimeout_ReturnsRegistrationResultAndStopsOnShutdown(bool accepted)
     {
-        Func<Task>? operation = null;
-        using var cancellation = new CancellationTokenSource();
+        using var tracker = new BackgroundTaskTracker(new RecordingLogger());
         var redis = new InMemoryRedisOperations();
-        var service = CreateService(redis, (task, name) =>
-        {
-            Assert.Equal("matching-entry-timeout:42", name);
-            operation = task;
-            return accepted;
-        }, cancellation.Token);
+        var service = CreateService(redis, tracker);
+        if (!accepted) tracker.Shutdown();
         Assert.Equal(accepted, service.StartEntryTimeoutCheck(42, [7]));
-        Assert.NotNull(operation);
-        cancellation.Cancel();
-        await operation!();
+        tracker.Shutdown();
+        await tracker.DrainAsync().WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal(0, redis.StringSetIfEqualsCalls);
         Assert.Equal(0, redis.StringGetCalls);
     }
@@ -194,8 +189,7 @@ public sealed class MatchEntryServiceTests
 
     private static MatchEntryService CreateService(
         InMemoryRedisOperations redis,
-        Func<Func<Task>, string, bool>? registerTask = null,
-        CancellationToken shutdownToken = default,
+        BackgroundTaskTracker? taskTracker = null,
         IPlayerSessionRouter? sessionRouter = null)
     {
         var logger = new RecordingLogger();
@@ -205,9 +199,8 @@ public sealed class MatchEntryServiceTests
             new GameEntryTicketService(new RedisGameEntryTicketStore(redis), new GameEntryTicketOptions()),
             new MatchingReservationService(redis, logger.For<MatchingReservationService>()),
             router,
-            registerTask ?? ((_, _) => false),
-            logger.For<MatchEntryService>(),
-            shutdownToken);
+            taskTracker ?? new BackgroundTaskTracker(logger),
+            logger.For<MatchEntryService>());
     }
 
     private sealed class UnusedSessionRouter : IPlayerSessionRouter
