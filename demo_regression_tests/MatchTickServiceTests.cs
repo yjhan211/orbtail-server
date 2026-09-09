@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace demo_regression_tests;
 
-public sealed class GameServerTickServiceTests
+public sealed class MatchTickServiceTests
 {
     [Fact]
     public async Task CreatesOneLoopPerExistingOrNewMatchAndStopsAll()
@@ -12,10 +12,14 @@ public sealed class GameServerTickServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(101);
         var clock = new ManualTimers();
-        var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
+        Action<MatchRuntime> processMatchTick = _ => { };
+        var service = new MatchTickService(store,
+            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            NullLogger<MatchTickService>.Instance, clock);
         var firstTick = Signal();
         var secondTick = Signal();
-        service.Start(runtime => (runtime.MatchingId == 101 ? firstTick : secondTick).TrySetResult());
+        processMatchTick = runtime => (runtime.MatchingId == 101 ? firstTick : secondTick).TrySetResult();
+        service.Start();
         var second = store.GetOrCreate(102);
         Assert.Equal(2, clock.Timers.Count);
         Assert.Same(first, store.GetOrCreate(101));
@@ -40,12 +44,15 @@ public sealed class GameServerTickServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var clock = new ManualTimers();
-        var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
+        Action<MatchRuntime> processMatchTick = _ => { };
+        var service = new MatchTickService(store,
+            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            NullLogger<MatchTickService>.Instance, clock);
         var entered = Signal();
         var otherRan = Signal();
         using var release = new ManualResetEventSlim();
         int firstCalls = 0;
-        service.Start(runtime =>
+        processMatchTick = runtime =>
         {
             if (runtime.MatchingId != 201)
             {
@@ -55,7 +62,8 @@ public sealed class GameServerTickServiceTests
             Interlocked.Increment(ref firstCalls);
             entered.TrySetResult();
             release.Wait(TimeSpan.FromSeconds(10));
-        });
+        };
+        service.Start();
         var first = store.GetOrCreate(201);
         store.GetOrCreate(202);
         try
@@ -94,9 +102,12 @@ public sealed class GameServerTickServiceTests
             Assert.True(clock.Timers[0].Disposed);
             cleaned.TrySetResult();
         });
-        var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
+        Action<MatchRuntime> processMatchTick = _ => { };
+        var service = new MatchTickService(store,
+            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            NullLogger<MatchTickService>.Instance, clock);
         int calls = 0;
-        service.Start(runtime =>
+        processMatchTick = runtime =>
         {
             using (MatchRuntimeStore.Enter(runtime))
             {
@@ -104,7 +115,8 @@ public sealed class GameServerTickServiceTests
                 runtime.TryMarkEnded();
                 workFinished = true;
             }
-        });
+        };
+        service.Start();
         match = store.GetOrCreate(301);
         try
         {
@@ -123,9 +135,13 @@ public sealed class GameServerTickServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var clock = new ManualTimers();
-        var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
+        Action<MatchRuntime> processMatchTick = _ => { };
+        var service = new MatchTickService(store,
+            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            NullLogger<MatchTickService>.Instance, clock);
         int calls = 0;
-        service.Start(_ => calls++);
+        processMatchTick = _ => calls++;
+        service.Start();
         var match = store.GetOrCreate(401);
         Assert.True(store.Remove(401));
         Assert.True(match.IsEnded);
@@ -142,11 +158,14 @@ public sealed class GameServerTickServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var clock = new ManualTimers();
-        var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
+        Action<MatchRuntime> processMatchTick = _ => { };
+        var service = new MatchTickService(store,
+            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            NullLogger<MatchTickService>.Instance, clock);
         var failed = Signal();
         var recovered = Signal();
         int calls = 0;
-        service.Start(_ =>
+        processMatchTick = _ =>
         {
             if (Interlocked.Increment(ref calls) == 1)
             {
@@ -154,7 +173,8 @@ public sealed class GameServerTickServiceTests
                 throw new InvalidOperationException("tick failure");
             }
             recovered.TrySetResult();
-        });
+        };
+        service.Start();
         store.GetOrCreate(501);
         try
         {
@@ -171,9 +191,12 @@ public sealed class GameServerTickServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var clock = new ManualTimers();
-        var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
+        Action<MatchRuntime> processMatchTick = _ => { };
+        var service = new MatchTickService(store,
+            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            NullLogger<MatchTickService>.Instance, clock);
         await service.StopAsync();
-        Assert.Throws<InvalidOperationException>(() => service.Start(_ => { }));
+        Assert.Throws<InvalidOperationException>(() => service.Start());
         Assert.Null(store.GetOrCreate(601).TickLoop);
         Assert.Empty(clock.Timers);
     }
@@ -183,8 +206,12 @@ public sealed class GameServerTickServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var clock = new ManualTimers();
-        var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
-        service.Start(_ => { });
+        Action<MatchRuntime> processMatchTick = _ => { };
+        var service = new MatchTickService(store,
+            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            NullLogger<MatchTickService>.Instance, clock);
+        processMatchTick = _ => { };
+        service.Start();
         var creation = Enumerable.Range(1001, 100)
             .Select(id => Task.Run(() => store.GetOrCreate(id))).ToArray();
         Task stopping = Task.Run(async () => await service.StopAsync());
@@ -202,9 +229,13 @@ public sealed class GameServerTickServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(1101);
         var clock = new ManualTimers();
-        var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
-        service.Start(_ => { });
-        Assert.Throws<InvalidOperationException>(() => service.Start(_ => { }));
+        Action<MatchRuntime> processMatchTick = _ => { };
+        var service = new MatchTickService(store,
+            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            NullLogger<MatchTickService>.Instance, clock);
+        processMatchTick = _ => { };
+        service.Start();
+        Assert.Throws<InvalidOperationException>(() => service.Start());
         await service.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(Assert.Single(clock.Timers).Disposed);
         Assert.True(first.TickLoop!.Completion.IsCompleted);
@@ -213,15 +244,114 @@ public sealed class GameServerTickServiceTests
 
     private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+    [Fact]
+    public async Task MatchEndingBeforeLoopAttachmentDisposesUnstartedLoop()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(1301);
+        var clock = new ManualTimers();
+        Action<MatchRuntime> processMatchTick = _ => { };
+        var service = new MatchTickService(store,
+            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            NullLogger<MatchTickService>.Instance, clock);
+        var timerCreated = Signal();
+        using var allowAttachment = new ManualResetEventSlim();
+        clock.OnCreated = _ =>
+        {
+            timerCreated.TrySetResult();
+            if (!allowAttachment.Wait(TimeSpan.FromSeconds(10)))
+                throw new TimeoutException("Loop attachment was not released.");
+        };
+        int ticks = 0;
+        processMatchTick = _ => Interlocked.Increment(ref ticks);
+        Task starting = Task.Run(() => service.Start());
+        try
+        {
+            await timerCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Null(runtime.TickLoop);
+            // 기존 매치 잠금이 잡혀 있었다면 이 제거는 시작 작업을 기다리게 된다.
+            Assert.True(await Task.Run(() => store.Remove(1301)).WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.True(runtime.IsEnded);
+            allowAttachment.Set();
+            await starting.WaitAsync(TimeSpan.FromSeconds(5));
+
+            var timer = Assert.Single(clock.Timers);
+            Assert.True(timer.Disposed);
+            Assert.NotNull(runtime.TickLoop);
+            Assert.True(runtime.TickLoop.Completion.IsCompleted);
+            timer.Fire();
+            Assert.Equal(0, Volatile.Read(ref ticks));
+        }
+        finally
+        {
+            allowAttachment.Set();
+            await starting.WaitAsync(TimeSpan.FromSeconds(5));
+            await service.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Fact]
+    public async Task MatchEndingAfterLoopAttachmentBeforeStartDoesNotRunTick()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(1302);
+        var clock = new ManualTimers();
+        int ticks = 0;
+        var loop = new MatchTickLoop(runtime, _ => Interlocked.Increment(ref ticks), NullLogger.Instance, clock);
+        runtime.TickLoop = loop;
+
+        Assert.True(store.Remove(1302));
+        Assert.True(Assert.Single(clock.Timers).Disposed);
+        loop.Start();
+        await loop.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+
+        clock.Timers[0].Fire();
+        Assert.Equal(0, Volatile.Read(ref ticks));
+    }
+
+    [Fact]
+    public async Task StopDisposesTimersOutsideLifecycleLockAndReusesStopTask()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var clock = new ManualTimers();
+        Action<MatchRuntime> processMatchTick = _ => { };
+        var service = new MatchTickService(store,
+            TestGameSessionServices.CreateTickRunner(store, runtime => processMatchTick(runtime)),
+            NullLogger<MatchTickService>.Instance, clock);
+        processMatchTick = _ => { };
+        service.Start();
+        store.GetOrCreate(1201);
+        var lifecycleLock = typeof(MatchTickService).GetField(
+            "_lifecycleLock", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(service)!;
+        bool disposedUnderLock = true;
+        Task? repeatedStop = null;
+        Assert.Single(clock.Timers).OnDispose = () =>
+        {
+            disposedUnderLock = Monitor.IsEntered(lifecycleLock);
+            repeatedStop = service.StopAsync();
+        };
+
+        Task stopping = service.StopAsync();
+        await stopping.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(disposedUnderLock);
+        Assert.Same(stopping, repeatedStop);
+        Assert.Same(stopping, service.StopAsync());
+        Assert.Null(store.GetOrCreate(1202).TickLoop);
+    }
+
     internal sealed class ManualTimers : TimeProvider
     {
         public List<ManualTimer> Timers { get; } = [];
+        public Action<ManualTimer>? OnCreated { get; set; }
 
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
 
             var timer = new ManualTimer(callback, state, period);
             Timers.Add(timer);
+            OnCreated?.Invoke(timer);
             return timer;
         }
     }
@@ -230,10 +360,15 @@ public sealed class GameServerTickServiceTests
     {
         public TimeSpan Period { get; } = period;
         private int _disposed;
+        public Action? OnDispose { get; set; }
         public bool Disposed => Volatile.Read(ref _disposed) != 0;
         public void Fire() { if (!Disposed) callback(state); }
         public bool Change(TimeSpan dueTime, TimeSpan interval) => !Disposed;
-        public void Dispose() => Volatile.Write(ref _disposed, 1);
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                OnDispose?.Invoke();
+        }
         public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
     }
 }

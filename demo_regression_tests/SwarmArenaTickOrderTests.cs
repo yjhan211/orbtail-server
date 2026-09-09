@@ -20,12 +20,16 @@ public sealed class SwarmArenaTickOrderTests
         Assert.Contains("TimeSpan.FromMilliseconds(50)", timers);
         Assert.Contains("new PeriodicTimer(", timers);
         Assert.Contains("tickService.StopAsync()", source);
-        AssertInOrder(source,
-            "var tickRunner = new MatchTickRunner(",
+        string composition = ReadNormalizedSource(root, "game_server", "Program.cs");
+        Assert.Contains("tickService.Start();", source);
+        Assert.DoesNotContain("new MatchTickRunner(", source);
+        AssertInOrder(composition,
+            "services.AddSingleton<MatchTickRunner>",
+            "return new MatchTickRunner(",
             "countdown.Broadcast,",
-            "environmentService.Process,",
+            "environment.Process,",
             "runtime => botMovement.Process(runtime, botDecisions.ResolveSwarmBotDirective),",
-            "tickService.Start(tickRunner.Run);");
+            "services.AddSingleton<MatchTickService>");
         AssertInOrder(runner,
             "matchRuntimes.TryEnter(matchingId, out MatchLockScope scope)",
             "return;",
@@ -286,9 +290,9 @@ public sealed class SwarmArenaTickOrderTests
     public void ScheduledClosureTick_CommitsStateThenPublishesInsideMatchLock()
     {
         string root = FindRepositoryRoot();
-        string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
+        string composition = ReadNormalizedSource(root, "game_server", "Program.cs");
         string field = ReadNormalizedSource(root, "game_server", "Matches", "Field", "MatchFieldService.cs");
-        Assert.Contains("fieldService.Process", server);
+        Assert.Contains("field.Process", composition);
         string tick = ReadMethodSlice(
             field,
             "public void Process(",

@@ -18,6 +18,29 @@ namespace demo_regression_tests;
 public sealed class GameServerDependencyInjectionTests
 {
     [Fact]
+    public void MatchTickServiceUsesRunnerSingletonWithoutGameServerComposition()
+    {
+        using var provider = CreateProvider();
+        var service = provider.GetRequiredService<MatchTickService>();
+        var runner = provider.GetRequiredService<MatchTickRunner>();
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var injectedRunner = typeof(MatchTickService).GetFields(flags)
+            .Single(field => field.FieldType == typeof(MatchTickRunner)).GetValue(service);
+        Assert.Same(runner, injectedRunner);
+        Assert.Same(runner, provider.GetRequiredService<MatchTickRunner>());
+        Assert.DoesNotContain(typeof(MatchTickService).GetFields(flags),
+            field => field.FieldType == typeof(Action<MatchRuntime>));
+
+        var processCombat = Assert.IsType<Action<long, List<GameClientSession>>>(
+            typeof(MatchTickRunner).GetFields(flags)
+                .Single(field => field.FieldType == typeof(Action<long, List<GameClientSession>>)).GetValue(runner));
+        Assert.Same(provider.GetRequiredService<MatchArenaService>(), processCombat.Target);
+        Assert.DoesNotContain(typeof(GameServer).GetConstructors().Single().GetParameters(),
+            parameter => parameter.ParameterType == typeof(MatchArenaService)
+                || parameter.ParameterType == typeof(MatchCountdownService));
+    }
+
+    [Fact]
     public void GameServerUsesTheRegistrySingletonRegisteredByProgram()
     {
         using var provider = CreateProvider();
@@ -41,11 +64,7 @@ public sealed class GameServerDependencyInjectionTests
             typeof(game_server.matches.entry.GameMatchEntryService),
             typeof(game_server.services.MovementValidationService),
             typeof(game_server.matches.entry.MatchEntryFailureHandler),
-            typeof(game_server.matches.combat.MatchArenaService),
-            typeof(game_server.services.BotDecisionService),
-            typeof(game_server.matches.entry.MatchCountdownService),
-            typeof(game_server.matches.GameServerTickService),
-            typeof(game_server.services.BotMovementService)
+            typeof(game_server.matches.MatchTickService)
         ];
         foreach (var type in serviceTypes)
         {
@@ -70,7 +89,8 @@ public sealed class GameServerDependencyInjectionTests
                 .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic),
             field => field.FieldType == typeof(game_server.matches.results.MatchSummaryFileStore));
     }
-    internal static ServiceProvider CreateProvider(network.infrastructure.messaging.INatsClient? natsClient = null)
+    internal static ServiceProvider CreateProvider(network.infrastructure.messaging.INatsClient? natsClient = null,
+        Action<IServiceCollection>? configure = null)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(
             new Dictionary<string, string?>
@@ -93,6 +113,7 @@ public sealed class GameServerDependencyInjectionTests
         services.RemoveAll<IRedisOperations>();
         services.AddSingleton<IRedisOperations>(new InMemoryRedisOperations());
 
+        configure?.Invoke(services);
         return services.BuildServiceProvider();
     }
 }

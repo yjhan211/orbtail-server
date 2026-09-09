@@ -24,6 +24,16 @@ internal sealed class FakePlayerGrowthHandler(
 
 internal static class TestGameSessionServices
 {
+    // 실제 Runner의 첫 처리 단계만 바꿔 틱 지연·예외·종료를 재현한다.
+    public static MatchTickRunner CreateTickRunner(MatchRuntimeStore store, Action<MatchRuntime> processTick)
+    {
+        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
+        return new MatchTickRunner(store, NullLogger<MatchTickRunner>.Instance,
+            new GroundItemAutoPickupService(logs, NullLogger<GroundItemAutoPickupService>.Instance),
+            (matchingIds, _) => processTick(store.GetOrThrow(matchingIds.Single())),
+            (_, _) => { }, (_, _) => { }, _ => { }, (_, _) => { });
+    }
+
     // 단위 테스트도 실제 Lifecycle을 사용한다. Redis/NATS만 인메모리 구현으로 대체한다.
     public static MatchRuntimeStore CreateMatchRuntimeStore(
         Microsoft.Extensions.Logging.ILogger logger,

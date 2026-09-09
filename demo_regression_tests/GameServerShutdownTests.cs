@@ -65,17 +65,19 @@ public sealed class GameServerShutdownTests
     public async Task ShutdownWaitsForMatchLoopBeforeClosingNats()
     {
         var nats = new BlockingCloseClient();
-        using var provider = GameServerDependencyInjectionTests.CreateProvider(nats);
-        var server = provider.GetRequiredService<GameServer>();
-        var ticks = provider.GetRequiredService<game_server.matches.GameServerTickService>();
-        var matches = provider.GetRequiredService<game_server.matches.MatchRuntimeStore>();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var release = new ManualResetEventSlim();
-        ticks.Start(_ =>
-        {
-            entered.TrySetResult();
-            release.Wait(TimeSpan.FromSeconds(10));
-        });
+        using var provider = GameServerDependencyInjectionTests.CreateProvider(nats, services =>
+            services.AddSingleton<MatchTickRunner>(sp => TestGameSessionServices.CreateTickRunner(
+                sp.GetRequiredService<MatchRuntimeStore>(), _ =>
+                {
+                    entered.TrySetResult();
+                    release.Wait(TimeSpan.FromSeconds(10));
+                })));
+        var server = provider.GetRequiredService<GameServer>();
+        var ticks = provider.GetRequiredService<game_server.matches.MatchTickService>();
+        var matches = provider.GetRequiredService<game_server.matches.MatchRuntimeStore>();
+        ticks.Start();
         matches.GetOrCreate(701);
         try
         {

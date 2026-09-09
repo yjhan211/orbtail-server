@@ -1,6 +1,5 @@
 using game_server.matches.combat;
 using game_server.matches.entry;
-using game_server.matches.field;
 using game_server.matches.lifecycle;
 using game_server.matches.results;
 using game_server.matches;
@@ -46,19 +45,12 @@ internal sealed class GameServer(
     GameEventLogManager eventLogs,
     MatchEliminationService matchEliminations,
     GameMatchEntryService matchEntry,
-    GroundItemAutoPickupService groundItemAutoPickup,
     MovementValidationService movementValidation,
     OrbInventoryService orbInventory,
     MatchEntryFailureHandler entryFailureHandler,
     MatchCleanupService matchCleanup,
-    MatchCountdownService countdown,
-    MatchEnvironmentService environmentService,
     MatchGrowthService growth,
-    MatchFieldService fieldService,
-    MatchArenaService arena,
-    BotDecisionService botDecisions,
-    GameServerTickService tickService,
-    BotMovementService botMovement)
+    MatchTickService tickService)
     : IHostedService
 {
     private GameServerNodeAdvertiser? _nodeAdvertiser;
@@ -76,7 +68,7 @@ internal sealed class GameServer(
             int port = ResolveServicePort(configuration);
             InitializeServices(cancellationToken);
             StartNetworkService(port);
-            StartGameTicks();
+            tickService.Start();
             await StartNodeAdvertisementAsync();
             readinessState.MarkReady();
             logger.LogInformation("Game server started successfully.");
@@ -198,18 +190,6 @@ internal sealed class GameServer(
         networkService.SessionFactory = CreateClientSession;
         networkService.Listen(IPAddress.Any, port);
         logger.LogInformation("Listening on port {Port}", port);
-    }
-
-    private void StartGameTicks()
-    {
-        var tickRunner = new MatchTickRunner(
-            matchRuntimes, logger, groundItemAutoPickup,
-            countdown.Broadcast,
-            arena.ProcessSwarmArenaForMatching,
-            environmentService.Process,
-            runtime => botMovement.Process(runtime, botDecisions.ResolveSwarmBotDirective),
-            fieldService.Process);
-        tickService.Start(tickRunner.Run);
     }
 
     private GameClientSession? CreateClientSession(TcpConnection connection)

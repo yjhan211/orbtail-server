@@ -163,7 +163,25 @@ internal static class Program
         services.AddSingleton<BotMovementService>();
         services.AddSingleton<BotDecisionService>();
         services.AddSingleton<MatchArenaService>();
-        services.AddSingleton<GameServerTickService>();
+        services.AddSingleton<MatchTickRunner>(sp =>
+        {
+            var countdown = sp.GetRequiredService<MatchCountdownService>();
+            var arena = sp.GetRequiredService<MatchArenaService>();
+            var environment = sp.GetRequiredService<MatchEnvironmentService>();
+            var botMovement = sp.GetRequiredService<BotMovementService>();
+            var botDecisions = sp.GetRequiredService<BotDecisionService>();
+            var field = sp.GetRequiredService<MatchFieldService>();
+            return new MatchTickRunner(
+                sp.GetRequiredService<MatchRuntimeStore>(),
+                sp.GetRequiredService<ILogger<MatchTickRunner>>(),
+                sp.GetRequiredService<GroundItemAutoPickupService>(),
+                countdown.Broadcast,
+                arena.ProcessSwarmArenaForMatching,
+                environment.Process,
+                runtime => botMovement.Process(runtime, botDecisions.ResolveSwarmBotDirective),
+                field.Process);
+        });
+        services.AddSingleton<MatchTickService>();
         services.AddSingleton<GameServer>();
 
         services.AddSingleton<ServerReadinessState>();

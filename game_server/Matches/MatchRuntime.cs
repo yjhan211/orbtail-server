@@ -96,7 +96,8 @@ internal sealed class MatchRuntime
     internal MatchTickLoop? TickLoop
     {
         get => Volatile.Read(ref _tickLoop);
-        set => Volatile.Write(ref _tickLoop, value);
+        // 연결 뒤 종료 상태를 읽기 전에 루프 참조를 게시한다.
+        set => Interlocked.Exchange(ref _tickLoop, value);
     }
 
     public void InitializeMatch(MatchMode mode, IReadOnlyDictionary<long, Cell> spawnCells, IReadOnlyList<PlayerInfo> playerRoster)

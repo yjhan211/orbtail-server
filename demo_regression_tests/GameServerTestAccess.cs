@@ -18,7 +18,13 @@ internal static class GameServerTestAccess
     internal static MatchRuntimeStore GetMatchRuntimes(this GameServer server) =>
         Read<MatchRuntimeStore>(server);
 
-    internal static MatchArenaService GetArena(this GameServer server) => Read<MatchArenaService>(server);
+    internal static MatchArenaService GetArena(this GameServer server)
+    {
+        var ticks = Read<MatchTickService>(server);
+        var runner = Read<MatchTickRunner>(ticks);
+        var processCombat = Read<Action<long, List<GameClientSession>>>(runner);
+        return Assert.IsType<MatchArenaService>(processCombat.Target);
+    }
     internal static MatchGrowthService GetGrowth(this GameServer server) => Read<MatchGrowthService>(server);
 
     internal static GameEventLogManager GetEventLogs(this GameServer server) =>
@@ -30,11 +36,11 @@ internal static class GameServerTestAccess
     internal static MatchingLifecycleService GetMatchingLifecycle(this GameServer server) =>
         Read<MatchingLifecycleService>(server);
 
-    private static T Read<T>(GameServer server) where T : class =>
-        Assert.IsType<T>(typeof(GameServer)
+    private static T Read<T>(object instance) where T : class =>
+        Assert.IsType<T>(instance.GetType()
             .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
             .Single(field => field.FieldType == typeof(T))
-            .GetValue(server));
+            .GetValue(instance));
 
     internal static GameServer Create(MatchRuntimeStore? runtimes = null)
     {
@@ -72,6 +78,15 @@ internal static class GameServerTestAccess
             new WindOrbAttackService(runtimes, orbTrails, combatDamage, logs),
             new SunOrbAttackService(runtimes, combatDamage, logs), field, movement, decisions,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchArenaService>.Instance);
+        var countdown = new MatchCountdownService(runtimes, entryFailure, logger);
+        var environment = new MatchEnvironmentService(logs,
+            cleanup, eliminations, matchEliminations, GameServerDevOptions.Disabled,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchEnvironmentService>.Instance);
+        var groundPickup = new GroundItemAutoPickupService(logs,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<GroundItemAutoPickupService>.Instance);
+        var runner = new MatchTickRunner(runtimes, logger, groundPickup,
+            countdown.Broadcast, arena.ProcessSwarmArenaForMatching, environment.Process,
+            runtime => movement.Process(runtime, decisions.ResolveSwarmBotDirective), field.Process);
         return new GameServer(
             configuration: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
             logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServer>.Instance,
@@ -88,21 +103,11 @@ internal static class GameServerTestAccess
             devOptions: GameServerDevOptions.Disabled,
             sessions: sessions, matchRuntimes: runtimes, eventLogs: logs, matchEliminations: matchEliminations,
             matchEntry: TestGameSessionServices.CreateEntryService(new InMemoryRedisOperations(), runtimes, GameServerDevOptions.Disabled, logger),
-            groundItemAutoPickup: new GroundItemAutoPickupService(logs,
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<GroundItemAutoPickupService>.Instance),
             movementValidation: new MovementValidationService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MovementValidationService>.Instance),
             orbInventory: new OrbInventoryService(logs),
             entryFailureHandler: entryFailure,
             matchCleanup: cleanup,
-            countdown: new MatchCountdownService(runtimes, entryFailure, logger),
-            fieldService: field,
             growth: growth,
-            arena: arena,
-            botDecisions: decisions,
-            environmentService: new MatchEnvironmentService( logs,
-                cleanup, eliminations, matchEliminations, GameServerDevOptions.Disabled,
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchEnvironmentService>.Instance),
-            tickService: new GameServerTickService(runtimes, Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServerTickService>.Instance),
-            botMovement: movement);
+            tickService: new MatchTickService(runtimes, runner, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchTickService>.Instance));
     }
 }

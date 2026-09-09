@@ -3,53 +3,66 @@ using Microsoft.Extensions.Logging;
 namespace game_server.matches;
 
 /// <summary>
-///     매치 생성에 맞춰 독립적인 틱 루프를 시작하고, 서버 종료 시 모든 루프의 완료를 기다린다.
-///     공용 매치 순회 타이머는 없다. 게임 상태는 각 루프가 호출하는 처리기가 매치 잠금 안에서 다룬다.
+///     매치별 틱 루프의 시작과 종료를 관리한다.
+///     새 매치가 생성되면 틱 루프를 연결하고, 실행이 끝난 루프는 추적 목록에서 제거한다.
+///     서버 종료 시 새 루프 등록을 막고, 모든 루프를 중단한 뒤 진행 중인 처리가 끝날 때까지 기다린다.
+///     실행 주기는 MatchTickLoop가, 실제 게임 처리는 MatchTickRunner가 담당한다.
 /// </summary>
-internal sealed class GameServerTickService(
+internal sealed class MatchTickService(
     MatchRuntimeStore matchRuntimes,
-    ILogger<GameServerTickService> logger,
+    MatchTickRunner tickRunner,
+    ILogger<MatchTickService> logger,
     TimeProvider? timeProvider = null)
 {
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+    private readonly Dictionary<MatchRuntime, MatchTickLoop> _matchTickLoops = new();
+
     private readonly object _lifecycleLock = new();
-    private readonly Dictionary<MatchRuntime, MatchTickLoop> _loops = new();
-    private Action<MatchRuntime>? _tick;
+    private bool _started;
     private Task? _stopTask;
 
-    public void Start(Action<MatchRuntime> tick)
+    public void Start()
     {
-        ArgumentNullException.ThrowIfNull(tick);
         lock (_lifecycleLock)
         {
-            if (_tick != null || _stopTask != null)
+            if (_started || _stopTask != null)
+            {
                 throw new InvalidOperationException("Game server ticks cannot be started again.");
-            _tick = tick;
+            }
+            _started = true;
             matchRuntimes.MatchCreated += StartMatchTickLoop;
         }
 
-        // 구독 직전 만들어진 매치도 포함한다. 구독과 목록 조회 양쪽에 잡힌 매치는 한 번만 시작한다.
         foreach (long matchingId in matchRuntimes.ActiveIds())
         {
             if (matchRuntimes.GetOrNull(matchingId) is { } runtime)
+            {
                 StartMatchTickLoop(runtime);
+            }
         }
-        logger.LogInformation("Per-match tick loops started: IntervalMs=50");
+        logger.LogInformation("Match tick loops started");
     }
 
     private void StartMatchTickLoop(MatchRuntime runtime)
     {
-        // 생성·제거와 루프 연결이 엇갈리지 않게 매치 잠금을 먼저 잡는다.
-        lock (runtime.MatchLock)
         lock (_lifecycleLock)
         {
-            if (_stopTask != null || runtime.IsEnded || _loops.ContainsKey(runtime) ||
+            if (_stopTask != null || runtime.IsEnded || _matchTickLoops.ContainsKey(runtime) ||
                 !ReferenceEquals(matchRuntimes.GetOrNull(runtime.MatchingId), runtime))
+            {
                 return;
+            }
 
-            var loop = new MatchTickLoop(runtime, _tick!, logger, _timeProvider);
+            var loop = new MatchTickLoop(runtime, tickRunner.Run, logger, _timeProvider);
             runtime.TickLoop = loop;
-            _loops.Add(runtime, loop);
+
+            if (runtime.IsEnded || !ReferenceEquals(matchRuntimes.GetOrNull(runtime.MatchingId), runtime))
+            {
+                loop.Stop();
+                return;
+            }
+
+            _matchTickLoops.Add(runtime, loop);
             loop.Start();
             _ = ForgetCompletedLoopAsync(runtime, loop);
         }
@@ -68,23 +81,30 @@ internal sealed class GameServerTickService(
         finally
         {
             lock (_lifecycleLock)
-                _loops.Remove(runtime);
+            {
+                _matchTickLoops.Remove(runtime);
+            }
         }
     }
 
     public Task StopAsync()
     {
+        TaskCompletionSource completion;
+        MatchTickLoop[] loops;
         lock (_lifecycleLock)
         {
-            // _stopTask를 먼저 확정해 새 매치의 등록을 막는다.
             if (_stopTask != null)
+            {
                 return _stopTask;
-            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+            completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             _stopTask = completion.Task;
-            matchRuntimes.MatchCreated -= StartMatchTickLoop;
-            _ = StopLoopsAsync(_loops.Values.ToArray(), completion);
-            return _stopTask;
+            loops = _matchTickLoops.Values.ToArray();
         }
+
+        matchRuntimes.MatchCreated -= StartMatchTickLoop;
+        _ = StopLoopsAsync(loops, completion);
+        return completion.Task;
     }
 
     private static async Task StopLoopsAsync(MatchTickLoop[] loops, TaskCompletionSource completion)
@@ -92,7 +112,9 @@ internal sealed class GameServerTickService(
         try
         {
             foreach (var loop in loops)
+            {
                 loop.Stop();
+            }
             await Task.WhenAll(loops.Select(loop => loop.Completion));
             completion.SetResult();
         }
