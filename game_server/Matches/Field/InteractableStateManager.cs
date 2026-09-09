@@ -2,7 +2,7 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 
-namespace game_server.services;
+namespace game_server.matches.field;
 
 /// <summary>
 ///     공용 상호작용 정의를 클라이언트에 보낼 구역별 목록으로 변환한다.

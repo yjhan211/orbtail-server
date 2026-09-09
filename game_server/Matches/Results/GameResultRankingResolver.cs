@@ -1,6 +1,6 @@
 using network.common.data.models;
 
-namespace game_server.services;
+namespace game_server.matches.results;
 
 public static class GameResultRankingResolver
 {

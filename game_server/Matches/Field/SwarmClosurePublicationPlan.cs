@@ -2,7 +2,7 @@ using System.Collections.Immutable;
 using network.common;
 using network.common.data.models;
 
-namespace game_server.services;
+namespace game_server.matches.field;
 
 /// <summary>
 ///     예정 폐쇄 틱의 불변 송신 계획. 권위 상태 변경과 계획 동결은 매치 잠금 안에서 함께 끝나고,

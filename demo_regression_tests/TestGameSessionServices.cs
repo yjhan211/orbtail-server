@@ -1,3 +1,4 @@
+using game_server.matches.combat;
 using game_server.matches.entry;
 using game_server.matches.lifecycle;
 using game_server.matches.results;

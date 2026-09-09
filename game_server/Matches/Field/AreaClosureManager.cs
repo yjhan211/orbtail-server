@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 
-namespace game_server.services;
+namespace game_server.matches.field;
 
 /// <summary>매치 런타임이 소유한 폐쇄 시간표를 초기화하고 진행·조회한다.</summary>
 public class AreaClosureManager

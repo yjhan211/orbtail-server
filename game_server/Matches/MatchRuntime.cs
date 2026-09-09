@@ -1,3 +1,4 @@
+using game_server.matches.field;
 using System.Collections.Concurrent;
 using game_server.matches.entry;
 using game_server.matches.lifecycle;
@@ -19,6 +20,20 @@ namespace game_server.matches;
 /// </summary>
 internal sealed class MatchRuntime
 {
+    public bool IsEnded => Volatile.Read(ref _ended) != 0;
+    public object MatchLock { get; } = new();
+    public SemaphoreSlim EntryInitializationLock { get; } = new(1, 1);
+
+    // 한 번 확정하는 시작 구성
+    public bool IsSetupComplete => Volatile.Read(ref _isSetupComplete);
+    public MatchMode Mode { get; private set; }
+    public IReadOnlyDictionary<long, Cell> SpawnCells { get; private set; } = new Dictionary<long, Cell>();
+    public IReadOnlyList<PlayerInfo> PlayerRoster { get; private set; } = [];
+
+    // 참가자
+    // 접속한 사람 세션만 보관한다. 등록·교체·조건부 제거는 GameSessionRegistry가 조율한다.
+    public ConcurrentDictionary<long, GameClientSession> Sessions { get; } = new();
+
     private readonly MatchRuntimeStore _runtimeStore;
     private readonly MatchingLifecycleService _matchingLifecycle;
     private readonly ILogger<MatchRuntime> _logger;
@@ -50,19 +65,6 @@ internal sealed class MatchRuntime
 
     // 매치 식별과 수명·잠금
     public long MatchingId { get; }
-    public bool IsEnded => Volatile.Read(ref _ended) != 0;
-    public object MatchLock { get; } = new();
-    public SemaphoreSlim EntryInitializationLock { get; } = new(1, 1);
-
-    // 한 번 확정하는 시작 구성
-    public bool IsSetupComplete => Volatile.Read(ref _isSetupComplete);
-    public MatchMode Mode { get; private set; }
-    public IReadOnlyDictionary<long, Cell> SpawnCells { get; private set; } = new Dictionary<long, Cell>();
-    public IReadOnlyList<PlayerInfo> PlayerRoster { get; private set; } = [];
-
-    // 참가자
-    // 접속한 사람 세션만 보관한다. 등록·교체·조건부 제거는 GameSessionRegistry가 조율한다.
-    public ConcurrentDictionary<long, GameClientSession> Sessions { get; } = new();
     public RosterManager Roster { get; }
     public BotPlayerManager Bots { get; }
     public BotTacticalState BotTactics { get; } = new();

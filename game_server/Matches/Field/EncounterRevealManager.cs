@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using network.common;
 using network.common.data.models;
 
-namespace game_server.services;
+namespace game_server.matches.field;
 
 /// <summary>매치 런타임의 플레이어 쌍별 쿨타임을 사용해 복도 발견·힌트를 판정한다.</summary>
 public sealed class EncounterRevealManager

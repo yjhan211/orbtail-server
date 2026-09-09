@@ -1,6 +1,6 @@
 using network.common;
 
-namespace game_server.services;
+namespace game_server.matches.combat;
 
 /// <summary>봇이 즉시 선택하고 적용할 성장 카드 구성과 비용.</summary>
 // Cost는 대표값(가장 싼 카드)이고, 실제 차감·표시는 카드별 비용이 한다 (#229).

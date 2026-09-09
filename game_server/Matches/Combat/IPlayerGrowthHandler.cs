@@ -1,7 +1,7 @@
 using game_server.sessions;
 using network.common.data.models;
 
-namespace game_server.services;
+namespace game_server.matches.combat;
 
 /// <summary>
 ///     세션이 요청하는 오브 강화와 계열별 비용 갱신을 처리한다. 강화 결과 응답은 세션 핸들러가 보낸다.
