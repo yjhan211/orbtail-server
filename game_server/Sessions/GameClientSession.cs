@@ -9,7 +9,6 @@ using game_server.players;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.common.data;
 using network.common.data.models;
 using network.core;
 using network.infrastructure.redis;

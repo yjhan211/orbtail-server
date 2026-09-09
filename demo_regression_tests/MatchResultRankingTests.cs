@@ -3,12 +3,12 @@ using network.common.data.models;
 
 namespace demo_regression_tests;
 
-public sealed class GameResultRankingResolverTests
+public sealed class MatchResultRankingTests
 {
     [Fact]
-    public void Resolve_OrdersBySurvivalKillsDamageAndRecovery()
+    public void AssignRankings_OrdersBySurvivalKillsDamageAndRecovery()
     {
-        var result = GameResultRankingResolver.Resolve(new[]
+        var result = MatchResultService.AssignRankings(new[]
         {
             CreatePlayer(1, survival: 100, kills: 9, damage: 900, recovery: 900),
             CreatePlayer(2, survival: 200, kills: 1, damage: 100, recovery: 100),
@@ -22,9 +22,9 @@ public sealed class GameResultRankingResolverTests
     }
 
     [Fact]
-    public void Resolve_PutsWinnerFirstEvenWhenStatisticsSortLower()
+    public void AssignRankings_PutsWinnerFirstEvenWhenStatisticsSortLower()
     {
-        var result = GameResultRankingResolver.Resolve(new[]
+        var result = MatchResultService.AssignRankings(new[]
         {
             CreatePlayer(10, survival: 99, kills: 1, damage: 100, recovery: 10),
             CreatePlayer(20, survival: 100, kills: 3, damage: 300, recovery: 30)
@@ -35,9 +35,9 @@ public sealed class GameResultRankingResolverTests
     }
 
     [Fact]
-    public void Resolve_UsesPlayerIdAsStableFinalTieBreaker()
+    public void AssignRankings_UsesPlayerIdAsStableFinalTieBreaker()
     {
-        var result = GameResultRankingResolver.Resolve(new[]
+        var result = MatchResultService.AssignRankings(new[]
         {
             CreatePlayer(20, survival: 100, kills: 1, damage: 10, recovery: 5),
             CreatePlayer(10, survival: 100, kills: 1, damage: 10, recovery: 5)
@@ -47,9 +47,9 @@ public sealed class GameResultRankingResolverTests
     }
 
     [Fact]
-    public void Resolve_UsesAuthoritativeEliminationRankBeforeStatistics()
+    public void AssignRankings_UsesAuthoritativeEliminationRankBeforeStatistics()
     {
-        var result = GameResultRankingResolver.Resolve(new[]
+        var result = MatchResultService.AssignRankings(new[]
         {
             CreatePlayer(10, survival: 200, kills: 9, damage: 900, recovery: 900, rank: 2),
             CreatePlayer(20, survival: 1, kills: 0, damage: 0, recovery: 0, rank: 0)
@@ -83,7 +83,7 @@ public sealed class GameResultRankingResolverTests
     {
         // #229: 인게임 순위가 오브 수로 매겨지는데 결과표는 처치·피해·회복만 봤다.
         // 스웜에서 그 셋은 상시 0이라 동순위가 PlayerId 순으로 잘렸다.
-        var result = GameResultRankingResolver.Resolve(new[]
+        var result = MatchResultService.AssignRankings(new[]
         {
             new GameResultPlayerInfo { PlayerId = 1, Rank = 0, OrbCount = 3, SurvivalTimeSeconds = 200 },
             new GameResultPlayerInfo { PlayerId = 2, Rank = 0, OrbCount = 8, SurvivalTimeSeconds = 200 },

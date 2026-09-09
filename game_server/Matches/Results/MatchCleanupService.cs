@@ -14,75 +14,72 @@ internal sealed class MatchCleanupService(
     MatchSummaryFileStore summaryFileStore,
     ILogger logger)
 {
+    public enum EndReason
+    {
+        LastHumanLeft,
+        LastSurvivorBotOnly
+    }
+
     public void EndBotOnlyMatchIfSettled(long matchingId, long winnerPlayerId)
     {
         if (matchRuntimes.GetOrNull(matchingId)?.Sessions.IsEmpty == false)
+        {
             return;
+        }
 
-        CleanupIfNoHumanSessionsRemain(matchingId, "last_survivor_bot_only", winnerPlayerId);
+        CleanupIfNoHumanSessionsRemain(matchingId, EndReason.LastSurvivorBotOnly, winnerPlayerId);
     }
 
-    public void CleanupIfNoHumanSessionsRemain(long matchingId) =>
-        CleanupIfNoHumanSessionsRemain(matchingId, "last_human_left", 0);
-
-    /// <summary>
-    ///     사람 세션이 하나도 남지 않은 매치를 잠금 안에서 터미널로 표시한다. 마지막 이벤트·요약은 잠금 안에서
-    ///     캡처하고 파일 쓰기는 잠금 밖 후처리로 돈다. 사람 수신자가 없으므로 결과 패킷은 없다.
-    /// </summary>
-    private void CleanupIfNoHumanSessionsRemain(long matchingId, string endReason, long winnerPlayerId)
+    public void CleanupIfNoHumanSessionsRemain(long matchingId, EndReason endReason = EndReason.LastHumanLeft, long winnerPlayerId = 0)
     {
         if (matchRuntimes.GetOrNull(matchingId)?.Sessions.IsEmpty == false)
+        {
             return;
+        }
 
         var runtime = matchRuntimes.GetOrNull(matchingId);
         if (runtime == null)
+        {
             return;
+        }
 
         using var scope = runtime.Enter();
         if (runtime.IsEnded || !runtime.Sessions.IsEmpty)
+        {
             return;
+        }
 
         runtime.TryMarkEnded();
         if (eventLogs.TryBeginFinalization(matchingId))
         {
             var endedAtUtc = DateTime.UtcNow;
-            var startedAtUtc =
-                runtime.Closures.GetMatchingState()?.GameStartTime ?? endedAtUtc;
-            var finalPlayerStats = runtime.Roster.BuildGameResult()
-                .Select(row =>
-                {
-                    var stats = eventLogs.GetResultStats(matchingId, row.playerId);
-                    var survivalEndUtc = row.eliminatedAt ?? endedAtUtc;
-                    return new MatchFinalPlayerStats(
-                        row.playerId,
-                        row.eliminationRank,
-                        Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
-                        stats.KillCount + stats.MonsterKillCount,
-                        stats.TotalDamageDealt + stats.MonsterDamageDealt,
-                        stats.TotalRecovery,
-                        // 승점 (#229): 사람이 나간 매치도 오브 수를 남긴다 — 봇 매치가 유일한
-                        // 자동 검증 창구라 여기서 빠지면 결과 집계를 로그로 확인할 수 없다.
-                        runtime.Inventory.GetOrbScore(row.playerId).OrbCount);
-                })
-                .ToList();
-            eventLogs.LogMatchAbandoned(matchingId, endReason, finalPlayerStats);
-            var summaryRequest = MatchSummaryPersistence.Capture(
-                eventLogs,
-                logger,
-                matchingId,
-                endReason,
-                winnerPlayerId);
+            var startedAtUtc = runtime.Closures.GetMatchingState()?.GameStartTime ?? endedAtUtc;
+            var finalPlayerStats = new List<MatchFinalPlayerStats>();
+            foreach (var row in runtime.Roster.BuildGameResult())
+            {
+                var stats = eventLogs.GetResultStats(matchingId, row.playerId);
+                var survivalEndUtc = row.eliminatedAt ?? endedAtUtc;
+                int survivalSeconds = Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds));
+                int orbCount = runtime.Inventory.GetOrbScore(row.playerId).OrbCount;
+                var playerStats = new MatchFinalPlayerStats(
+                    row.playerId,
+                    row.eliminationRank,
+                    survivalSeconds,
+                    stats.KillCount + stats.MonsterKillCount,
+                    stats.TotalDamageDealt + stats.MonsterDamageDealt,
+                    stats.TotalRecovery,
+                    orbCount);
+                finalPlayerStats.Add(playerStats);
+            }
+
+            eventLogs.LogMatchAbandoned(matchingId, endReason.ToString(), finalPlayerStats);
+            var summaryRequest = MatchSummaryPersistence.Capture(eventLogs, logger, matchingId, endReason.ToString(), winnerPlayerId);
             if (summaryRequest != null)
             {
-                runtime.AfterRelease.Add(() => MatchSummaryPersistence.Persist(
-                    summaryRequest,
-                    summaryFileStore,
-                    logger));
+                runtime.AfterRelease.Add(() => MatchSummaryPersistence.Persist(summaryRequest, summaryFileStore, logger));
             }
         }
 
-        logger.LogInformation(
-            "Removed matching without human sessions: MatchingId={MatchingId}, EndReason={EndReason}",
-            matchingId, endReason);
+        logger.LogInformation("Removed matching without human sessions: MatchingId={MatchingId}, EndReason={EndReason}", matchingId, endReason);
     }
 }

@@ -27,8 +27,8 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         $"manitto-match-summary-persistence-tests-{Guid.NewGuid():N}");
 
     [Theory]
-    [InlineData(false, "last_human_left", 0)]
-    [InlineData(true, "last_survivor_bot_only", 11)]
+    [InlineData(false, "LastHumanLeft", 0)]
+    [InlineData(true, "LastSurvivorBotOnly", 11)]
     public void NoHumanCleanup_CapturesOnce_AndPersistsAfterOuterLock(
         bool botOnly, string expectedReason, long expectedWinner)
     {
