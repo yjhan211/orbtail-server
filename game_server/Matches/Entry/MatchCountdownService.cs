@@ -8,7 +8,7 @@ using network.packets;
 namespace game_server.matches.entry;
 
 /// <summary>
-///     매치 입장 마감을 확인하고 시작까지 남은 초를 참가자에게 보낸다.
+///     매치 루프마다 생성되며 해당 매치의 입장 마감을 확인하고 시작까지 남은 초를 참가자에게 보낸다.
 ///     매치 잠금 안에서 마지막으로 보낸 남은 초를 기록하여 같은 값을 중복 전송하지 않는다.
 ///     입장 시간 초과는 MatchEntryFailureHandler에 위임하며, 타이머 수명은 관리하지 않는다.
 /// </summary>
@@ -17,60 +17,58 @@ internal class MatchCountdownService(
     MatchEntryFailureHandler entryFailureHandler,
     ILogger logger)
 {
+    private int? _lastCountdownSecondsSent;
+
     public virtual void CheckEntryAndBroadcast(
-        IEnumerable<long> matchingIds,
+        long matchingId,
         IReadOnlyCollection<GameClientSession> activeSessions)
     {
-        foreach (long matchingId in matchingIds)
+        if (MatchStartGate.IsEntryTimedOut(matchingId, DateTime.UtcNow))
         {
-            if (MatchStartGate.IsEntryTimedOut(matchingId, DateTime.UtcNow))
+            var anchorSession = activeSessions.FirstOrDefault(
+                session => session.MatchingId == matchingId && session.PlayerId.HasValue);
+            if (anchorSession != null)
             {
-                var anchorSession = activeSessions.FirstOrDefault(
-                    session => session.MatchingId == matchingId && session.PlayerId.HasValue);
-                if (anchorSession != null)
-                {
-                    logger.LogWarning(
-                        "Match entry deadline expired before every human became ready: MatchingId={MatchingId}",
-                        matchingId);
-                    entryFailureHandler.Handle(anchorSession);
-                }
-                continue;
+                logger.LogWarning(
+                    "Match entry deadline expired before every human became ready: MatchingId={MatchingId}",
+                    matchingId);
+                entryFailureHandler.Handle(anchorSession);
             }
+            return;
+        }
 
-            if (!matchRuntimes.Enter(matchingId, out var scope))
-                continue;
+        if (!matchRuntimes.Enter(matchingId, out var scope))
+            return;
 
-            using (scope)
+        using (scope)
+        {
+            if (scope.Runtime.IsEnded)
+                return;
+
+            var snapshot = MatchStartGate.GetSnapshot(matchingId);
+            if (!snapshot.IsKnown)
+                return;
+
+            if (_lastCountdownSecondsSent == snapshot.RemainingSeconds)
+                return;
+
+            _lastCountdownSecondsSent = snapshot.RemainingSeconds;
+            var matchingSessions = activeSessions
+                .Where(session => session.MatchingId == matchingId)
+                .ToList();
+            if (matchingSessions.Count == 0)
+                return;
+
+            using var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MATCH_START_COUNTDOWN
             {
-                if (scope.Runtime.IsEnded)
-                    continue;
+                MatchingId = matchingId,
+                RemainingSeconds = snapshot.RemainingSeconds,
+                ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            }));
 
-                var snapshot = MatchStartGate.GetSnapshot(matchingId);
-                if (!snapshot.IsKnown)
-                    continue;
-
-                var pacing = scope.Runtime.Progress;
-                if (pacing.LastCountdownSecondsPublished == snapshot.RemainingSeconds)
-                    continue;
-
-                pacing.LastCountdownSecondsPublished = snapshot.RemainingSeconds;
-                var matchingSessions = activeSessions
-                    .Where(session => session.MatchingId == matchingId)
-                    .ToList();
-                if (matchingSessions.Count == 0)
-                    continue;
-
-                using var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN);
-                packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MATCH_START_COUNTDOWN
-                {
-                    MatchingId = matchingId,
-                    RemainingSeconds = snapshot.RemainingSeconds,
-                    ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                }));
-
-                foreach (var session in matchingSessions)
-                    session.TrySend(packet);
-            }
+            foreach (var session in matchingSessions)
+                session.TrySend(packet);
         }
     }
 }

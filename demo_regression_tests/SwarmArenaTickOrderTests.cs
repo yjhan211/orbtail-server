@@ -27,7 +27,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("new MatchTickRunner(", source);
         AssertInOrder(composition,
             "services.AddSingleton<Func<MatchRuntime, TimeProvider, MatchTickLoop>>",
-            "return (runtime, clock) => new MatchTickLoop(",
+            "return (runtime, clock) =>",
             "countdown, combat, environment, botMovement, botDecisions, zones, clock);",
 
             "services.AddSingleton<MatchTickService>");
@@ -56,7 +56,7 @@ public sealed class SwarmArenaTickOrderTests
             proximityTick,
             "using var scope = runtime.Enter();",
             "runtime.Sessions.Values.ToList()",
-            "countdown.CheckEntryAndBroadcast([matchingId], playerSessions);",
+            "countdown.CheckEntryAndBroadcast(matchingId, playerSessions);",
             "combat.ProcessTick(matchingId, activeSessions);");
         Assert.DoesNotContain("catch (", proximityTick);
         string loopSource = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs");
@@ -130,6 +130,8 @@ public sealed class SwarmArenaTickOrderTests
     {
         string arenaTickSource = ReadSwarmArenaTick();
         string arenaTick = MaskCommentsAndLiterals(arenaTickSource);
+        Assert.DoesNotContain("GrantStartingResources", arenaTick);
+        Assert.DoesNotContain("StartingOrbGrantedPlayers", arenaTick);
         string inactiveGameplayBranch = MaskCommentsAndLiterals(
             ReadBracedBlockAfterMarker(
                 arenaTickSource,
@@ -141,8 +143,6 @@ public sealed class SwarmArenaTickOrderTests
 
         AssertInOrder(
             arenaTick,
-            "orbUpgrades.GrantStartingOrbs(matchingId, session.PlayerId.Value, isBot: false);",
-            "session.SendSummonStoneState();",
             "matchRuntimes.GetOrThrow(matchingId).Monsters.Tick(",
             "if (!MatchStartGate.IsGameplayActive(matchingId))",
             "UpdateSwarmOrbTrails(",
@@ -162,9 +162,9 @@ public sealed class SwarmArenaTickOrderTests
             "BroadcastSwarmOrbRankings(",
             "growth.ProcessOffers(",
             "ProcessSwarmScoreTimeout(",
-            "ProcessPendingSwarmMonsterHits(",
+            "ProcessPendingMonsterHits(",
             "ProcessSwarmCrossfires(",
-            "ApplySwarmPvpAttack(matchingId, pending.Attack",
+            "ProcessPendingPvpHits(",
             "CollectSwarmCrossfireCappedOwners(",
             "CollectSwarmCrossfireAnchoredTargets(",
             "AutoAttack.ResolveAttacks(",
@@ -391,7 +391,7 @@ public sealed class SwarmArenaTickOrderTests
         string root = FindRepositoryRoot();
         string crossfire = ReadNormalizedSource(root, "game_server", "Orbs", "SunOrbAttackService.cs");
         string botDodge = ReadNormalizedSource(root, "game_server", "Matches", "MatchRuntime.cs");
-        string runtimeStates = ReadNormalizedSource(root, "game_server", "Matches", "MatchProgressState.cs");
+        string runtimeStates = ReadNormalizedSource(root, "game_server", "Matches", "MatchRuntime.cs");
 
         Assert.DoesNotContain("_swarmCrossfireShapes", crossfire);
         Assert.DoesNotContain("_swarmCrossfireDodgeSnapshot", crossfire);
@@ -416,7 +416,7 @@ public sealed class SwarmArenaTickOrderTests
         string store = ReadNormalizedSource(
             root, "game_server", "Matches", "MatchRuntime.cs");
         string runtimeStates = ReadNormalizedSource(
-            root, "game_server", "Matches", "MatchProgressState.cs");
+            root, "game_server", "Matches", "MatchRuntime.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Combat", "MatchCombatService.cs");
         string crossfire = ReadNormalizedSource(root, "game_server", "Orbs", "SunOrbAttackService.cs");
 

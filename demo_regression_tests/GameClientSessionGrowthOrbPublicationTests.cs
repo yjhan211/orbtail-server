@@ -247,7 +247,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             "BuildSwarmArenaCombatActors", BindingFlags.Instance | BindingFlags.NonPublic)!;
         var now = DateTime.UtcNow;
         List<ProximityCombatActor> Build() => (List<ProximityCombatActor>)buildActors.Invoke(
-            fixture.Server.GetCombat(),
+            fixture.Server.GetCombat(FirstMatchingId),
             [FirstMatchingId, new List<GameClientSession> { session }, new List<BotPlayerState>(), now])!;
 
         var awake = Build();

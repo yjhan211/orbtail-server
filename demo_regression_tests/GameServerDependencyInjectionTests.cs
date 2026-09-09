@@ -46,7 +46,7 @@ public sealed class GameServerDependencyInjectionTests
     }
 
     [Fact]
-    public void MatchTickServiceCreatesSeparateLoopsUsingSharedGameplayServices()
+    public void MatchTickServiceCreatesSeparateStatefulServicesForEachMatch()
     {
         using var provider = CreateProvider();
         var service = provider.GetRequiredService<MatchTickService>();
@@ -75,10 +75,27 @@ public sealed class GameServerDependencyInjectionTests
                 {
                     var dependency = typeof(MatchTickLoop).GetFields(flags)
                         .Single(field => field.FieldType == type).GetValue(loop);
-                    Assert.Same(provider.GetRequiredService(type), dependency);
+                    var firstDependency = typeof(MatchTickLoop).GetFields(flags)
+                        .Single(field => field.FieldType == type).GetValue(firstLoop);
+                    var secondDependency = typeof(MatchTickLoop).GetFields(flags)
+                        .Single(field => field.FieldType == type).GetValue(secondLoop);
+                    if (type == typeof(MatchCountdownService) || type == typeof(MatchCombatService) ||
+                        type == typeof(game_server.field.MatchZoneService))
+                        Assert.NotSame(firstDependency, secondDependency);
+                    else
+                        Assert.Same(provider.GetRequiredService(type), dependency);
                 }
                 Assert.DoesNotContain(typeof(MatchTickLoop).GetFields(flags),
                     field => typeof(Delegate).IsAssignableFrom(field.FieldType));
+            }
+            foreach (var loop in new[] { firstLoop, secondLoop })
+            {
+                var combat = typeof(MatchTickLoop).GetFields(flags)
+                    .Single(field => field.FieldType == typeof(MatchCombatService)).GetValue(loop)!;
+                var zone = typeof(MatchTickLoop).GetFields(flags)
+                    .Single(field => field.FieldType == typeof(game_server.field.MatchZoneService)).GetValue(loop);
+                Assert.Same(zone, typeof(MatchCombatService).GetFields(flags)
+                    .Single(field => field.FieldType == typeof(game_server.field.MatchZoneService)).GetValue(combat));
             }
             Assert.DoesNotContain(typeof(GameServer).GetConstructors().Single().GetParameters(),
                 parameter => parameter.ParameterType == typeof(MatchCombatService)

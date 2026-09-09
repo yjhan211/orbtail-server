@@ -121,12 +121,12 @@ internal static class TestMatchTickServices
     private sealed class Countdown(Action<IEnumerable<long>, IReadOnlyCollection<GameClientSession>> run)
         : MatchCountdownService(null!, null!, NullLogger.Instance)
     {
-        public override void CheckEntryAndBroadcast(IEnumerable<long> ids, IReadOnlyCollection<GameClientSession> sessions) => run(ids, sessions);
+        public override void CheckEntryAndBroadcast(long matchingId, IReadOnlyCollection<GameClientSession> sessions) => run([matchingId], sessions);
     }
 
     private sealed class Combat(Action<long, List<GameClientSession>> run)
         : MatchCombatService(null!, null!, null!, null!, null!,
-            null!, null!, null!, null!, null!, null!, null!, null!, null!, NullLogger<MatchCombatService>.Instance)
+            null!, null!, null!, null!, null!, null!, null!, null!, NullLogger<MatchCombatService>.Instance)
     {
         public override void ProcessTick(long id, List<GameClientSession> sessions) => run(id, sessions);
     }

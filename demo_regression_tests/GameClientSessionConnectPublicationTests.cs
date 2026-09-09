@@ -44,7 +44,7 @@ public sealed class GameClientSessionConnectPublicationTests
         {
             using var wire = Packet.Create(packet.ToBytes());
             var protocol = (Protocol)wire.PopProtocolId();
-            if (protocol is Protocol.G_TO_C_MATCH_ROSTER or Protocol.G_TO_C_ORB_LIST or Protocol.G_TO_C_OBJECT_INFO)
+            if (protocol is Protocol.G_TO_C_MATCH_ROSTER or Protocol.G_TO_C_ORB_LIST or Protocol.G_TO_C_OBJECT_INFO or Protocol.G_TO_C_ORB_UPGRADE_INFO)
                 initialPackets.Add((protocol, Monitor.IsEntered(runtime.MatchLock)));
             if (protocol == Protocol.G_TO_C_ORB_LIST)
             {
@@ -58,6 +58,8 @@ public sealed class GameClientSessionConnectPublicationTests
 
         Assert.Contains(initialPackets, packet => packet.Protocol == Protocol.G_TO_C_MATCH_ROSTER);
         Assert.Contains(initialPackets, packet => packet.Protocol == Protocol.G_TO_C_ORB_LIST);
+        if (!failInitialSend)
+            Assert.Contains(initialPackets, packet => packet.Protocol == Protocol.G_TO_C_ORB_UPGRADE_INFO);
         Assert.All(initialPackets, packet => Assert.True(packet.HeldLock));
         Assert.True(spawnInitialized);
         Assert.Equal(!failInitialSend, successSent);

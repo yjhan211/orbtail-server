@@ -11,13 +11,13 @@ namespace demo_regression_tests;
 public sealed class MatchGameplayServiceTests
 {
     [Fact]
-    public void Composition_SharesServicesWithoutDependingBackOnHost()
+    public void Composition_CreatesCombatPerResolutionWithoutDependingBackOnHost()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var decisions = provider.GetRequiredService<BotDecisionService>();
         var combat = provider.GetRequiredService<MatchCombatService>();
         var store = provider.GetRequiredService<MatchRuntimeStore>();
-        Assert.Same(combat, provider.GetRequiredService<MatchCombatService>());
+        Assert.NotSame(combat, provider.GetRequiredService<MatchCombatService>());
         Assert.Same(decisions, Read<BotDecisionService>(combat));
         Assert.Same(store, Read<MatchRuntimeStore>(combat));
         Assert.Same(store, Read<MatchRuntimeStore>(decisions));

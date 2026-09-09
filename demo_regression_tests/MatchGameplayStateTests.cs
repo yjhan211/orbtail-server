@@ -203,7 +203,6 @@ public sealed class MatchGameplayStateTests
 
         removed.TrailCombat.OrbTrails[(removedMatchingId, removedPlayerId)] = [];
         removed.BotTactics.FleeDirective.Add((removedMatchingId, removedPlayerId));
-        removed.Progress.StartingOrbGrantedPlayers.Add((removedMatchingId, removedPlayerId));
         removed.WindOrbAttacks.ApplyWound(removedPlayerId, DateTime.MaxValue);
         removed.OrbUpgrades.IncrementFamilyUpgradeCount(removedPlayerId, OrbColor.Green);
         removed.SunOrbAttacks.AddShape(CreateCrossfireShape(
@@ -223,7 +222,6 @@ public sealed class MatchGameplayStateTests
 
         sibling.TrailCombat.OrbTrails[(siblingMatchingId, siblingPlayerId)] = [];
         sibling.BotTactics.FleeDirective.Add((siblingMatchingId, siblingPlayerId));
-        sibling.Progress.StartingOrbGrantedPlayers.Add((siblingMatchingId, siblingPlayerId));
         sibling.WindOrbAttacks.ApplyWound(siblingPlayerId, DateTime.MaxValue);
         sibling.OrbUpgrades.IncrementFamilyUpgradeCount(siblingPlayerId, OrbColor.Blue);
         sibling.SunOrbAttacks.AddShape(CreateCrossfireShape(
@@ -249,7 +247,6 @@ public sealed class MatchGameplayStateTests
         Assert.Same(sibling, preservedSibling);
         Assert.Contains((siblingMatchingId, siblingPlayerId), sibling.TrailCombat.OrbTrails.Keys);
         Assert.Contains((siblingMatchingId, siblingPlayerId), sibling.BotTactics.FleeDirective);
-        Assert.Contains((siblingMatchingId, siblingPlayerId), sibling.Progress.StartingOrbGrantedPlayers);
         Assert.True(sibling.WindOrbAttacks.IsWounded(siblingPlayerId, DateTime.UtcNow));
         Assert.Equal(1, sibling.OrbUpgrades.GetFamilyUpgradeCount(siblingPlayerId, OrbColor.Blue));
         Assert.Equal(1, sibling.SunOrbAttacks.ShapeCount);
@@ -266,7 +263,6 @@ public sealed class MatchGameplayStateTests
         Assert.NotSame(removed, replacement);
         Assert.Empty(replacement.TrailCombat.OrbTrails);
         Assert.Empty(replacement.BotTactics.FleeDirective);
-        Assert.Empty(replacement.Progress.StartingOrbGrantedPlayers);
         Assert.False(replacement.WindOrbAttacks.IsWounded(removedPlayerId, DateTime.UtcNow));
         Assert.Equal(0, replacement.OrbUpgrades.GetFamilyUpgradeCount(removedPlayerId, OrbColor.Green));
         Assert.NotSame(removed.SunOrbAttacks, replacement.SunOrbAttacks);

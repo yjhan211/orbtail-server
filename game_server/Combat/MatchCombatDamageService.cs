@@ -5,6 +5,7 @@ using game_server.logging;
 using game_server.monsters;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
+using MessagePack;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -14,7 +15,7 @@ namespace game_server.combat;
 
 /// <summary>
 ///     오브 공격의 치명타·몬스터 피해·처치 보상과 플레이어 충격을 적용한다.
-///     매치마다 생성되며 해당 매치와 치명타 난수를 소유한다. 호출자는 매치 잠금을 보유한다.
+///     매치마다 생성되며 예약된 몬스터·PvP 피해, 소수점 잔여 피해와 치명타 난수를 관리한다. 호출자는 매치 잠금을 보유한다.
 ///     상태 변경 뒤 피격·드롭 패킷을 보내며 전송 실패로 적용한 피해를 되돌리지 않는다.
 /// </summary>
 internal sealed class MatchCombatDamageService(
@@ -22,9 +23,47 @@ internal sealed class MatchCombatDamageService(
     GameEventLogManager eventLogs,
     ILogger<MatchCombatDamageService> logger)
 {
+    private readonly List<PendingMonsterHit> _pendingMonsterHits = new();
+    private readonly List<(ProximityCombatAttack Attack, DateTime DueAtUtc)> _pendingPvpHits = new();
+    private const int SwarmRingVfxKindRetaliationBlocked = 6;
+
     private readonly Random _criticalRng = new();
     private bool RollCritical(double chance) => _criticalRng.NextDouble() < chance;
 
+    private readonly Dictionary<long, float> _pvpDamageCarry = new();
+    private static float SwarmPvpDamagePerDamage =>
+        SwarmConfigData.GetFloat("SWARM_PVP_DAMAGE_PER_DAMAGE", 0.12f);
+
+    /// <summary>착탄 예정 피해를 이 매치의 대기열에 추가한다.</summary>
+    public void ScheduleMonsterHit(PendingMonsterHit hit) => _pendingMonsterHits.Add(hit);
+
+    public void SchedulePvpHit(ProximityCombatAttack attack, DateTime dueAtUtc) =>
+        _pendingPvpHits.Add((attack, dueAtUtc));
+
+    public void ProcessPendingPvpHits(DateTime nowUtc, List<GameClientSession> aliveSessions,
+        List<BotPlayerState> aliveBots, List<GameClientSession> sessions)
+    {
+        for (int index = _pendingPvpHits.Count - 1; index >= 0; index--)
+        {
+            var pending = _pendingPvpHits[index];
+            if (nowUtc < pending.DueAtUtc)
+                continue;
+            _pendingPvpHits.RemoveAt(index);
+            ApplySwarmPvpAttack(pending.Attack, aliveSessions, aliveBots, sessions, broadcastVfx: false);
+            if (runtime.IsEnded || sessions.Any(session => session.IsGameEnded))
+                return;
+        }
+    }
+
+    /// <summary>피해자별 소수점 잔여 피해를 누적하고 이번 공격에 적용할 정수 체력 피해를 반환한다.</summary>
+    internal int ConsumeSwarmPvpDamage(long victimId, int rawDamage)
+    {
+        float total = (_pvpDamageCarry.TryGetValue(victimId, out float carry) ? carry : 0f) +
+                      rawDamage * SwarmPvpDamagePerDamage;
+        int whole = (int)total;
+        _pvpDamageCarry[victimId] = total - whole;
+        return whole;
+    }
     public void SendPlayerHitNotification(GameClientSession? attackerSession, long targetPlayerId, AreaType area, int weaponItemId, int damage, int targetHealth, bool isPeriodicDamage = false)
     {
         if (attackerSession == null || !attackerSession.PlayerId.HasValue || targetPlayerId == 0)
@@ -317,4 +356,159 @@ internal sealed class MatchCombatDamageService(
             $"healthBefore={healthBefore} healthAfter={healthAfter}");
     }
 
+    /// <summary>착탄 시각이 된 피해를 한 번 적용하고 몬스터 처치를 정산한다.</summary>
+    public void ProcessPendingMonsterHits(
+        DateTime nowUtc, List<GameClientSession> sessions)
+    {
+        long matchingId = runtime.MatchingId;
+        for (int index = _pendingMonsterHits.Count - 1; index >= 0; index--)
+        {
+            var hit = _pendingMonsterHits[index];
+            if (nowUtc < hit.ApplyAtUtc)
+                continue;
+
+            _pendingMonsterHits.RemoveAt(index);
+            var damageResult = runtime.Monsters.ApplyMonsterDamage(
+                matchingId, hit.CombatTargetId, hit.AttackerId, hit.Damage);
+
+            // 결과 집계 (#229): 스웜 전투는 전부 여기를 지난다. 여기서 안 세면
+            // 결과 화면이 수백 킬을 "처치 0회"로 표시한다.
+            if (damageResult.Applied)
+            {
+                eventLogs.RecordMonsterHit(
+                    matchingId, hit.AttackerId, hit.Damage, damageResult.Killed);
+            }
+
+            // 처치 정산은 교차사격 즉시 타격과 같은 경로 — 계측·처치 로그·소환석 드롭.
+            if (damageResult.Applied && damageResult.Killed && damageResult.MonsterState != null)
+                SettleSwarmMonsterKill(damageResult, hit.AttackerId, hit.Damage, sessions);
+        }
+    }
+
+    public int ApplySwarmPvpAttack(
+        ProximityCombatAttack attack,
+        List<GameClientSession> aliveSessions,
+        List<BotPlayerState> aliveBots,
+        List<GameClientSession> allSessions,
+        bool broadcastVfx = true,
+        bool sendAttackerFeedback = true)
+    {
+        long matchingId = runtime.MatchingId;
+        // 반격 보호 (#227 7단계): 방금 이 표적의 꼬리를 자른 공격자의 본체 피해는 통과하지 못한다.
+        // 착탄 시점에 보므로 창이 열리기 '전에' 발사된 대기 투사체도 함께 걸린다.
+        // 제3자·잔상·폐쇄는 이 경로를 타지 않아 종전대로 들어간다.
+        var nowUtc = DateTime.UtcNow;
+        if (runtime.TrailCombat.CutRetaliationWindows.TryGetValue(
+                (matchingId, attack.AttackerPlayerId, attack.TargetPlayerId), out var guardWindow) &&
+            nowUtc < guardWindow.ExpiresAtUtc)
+        {
+            guardWindow.BlockedHits++;
+            guardWindow.BlockedDamage += attack.Damage;
+            // 잔광 앞에서 짧게 깨지는 연출만 — 피해 숫자·피격 눌림·인카운터 배너는 만들지 않는다.
+            SendSwarmRetaliationVfx(
+                attack.AttackerPlayerId, attack.TargetPlayerId, attack.Area,
+                SwarmRingVfxKindRetaliationBlocked, 0f, allSessions);
+            return 0;
+        }
+
+        int healthDamage = ConsumeSwarmPvpDamage(attack.TargetPlayerId, attack.Damage);
+        var attackerSession = allSessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId);
+        int attackerHealth = attackerSession?.CurrentHealth ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == attack.AttackerPlayerId)?.Health ?? -1;
+        int targetHealth;
+        var targetSession = aliveSessions.FirstOrDefault(session =>
+            session.PlayerId == attack.TargetPlayerId);
+        if (targetSession != null)
+        {
+            if (healthDamage > 0)
+            {
+                ApplyProximityAutoCombatHit(targetSession,
+                    attack.AttackerPlayerId, attack.Area, attack.WeaponItemId, healthDamage, sourceHealth: attackerHealth);
+            }
+            targetHealth = targetSession.CurrentHealth;
+        }
+        else
+        {
+            var bot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == attack.TargetPlayerId);
+            if (bot == null)
+                return 0;
+
+            // 오염이 0으로 이월돼도 "피격 중" 스탬프는 매 발 — 피격 반응 판단의 입력.
+            bot.LastProximityAttackerPlayerId = attack.AttackerPlayerId;
+            runtime.BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
+            bot.LastDamagedAtUtc = DateTime.UtcNow;
+            if (healthDamage > 0)
+            {
+                // 킬 크레딧 (#226 F 계측): 봇 표적도 사람 표적과 같은 피격 로그를 남긴다 —
+                // 이게 빠지면 사람이 봇을 잡아도 killCount·totalDamageDealt가 0으로 남는다.
+                eventLogs.LogHit(
+                    matchingId, attack.AttackerPlayerId, bot.PlayerId, attack.WeaponItemId,
+                    healthDamage,
+                    bot.Health > 0 &&
+                    bot.Health - healthDamage <= 0,
+                    BotPlayerManager.IsBotPlayerId(attack.AttackerPlayerId), DateTimeOffset.UtcNow);
+                bot.Health = Math.Max(0, bot.Health - healthDamage);
+            }
+            targetHealth = bot.Health;
+        }
+
+        if (healthDamage > 0 && sendAttackerFeedback)
+        {
+            SendPlayerHitNotification(attackerSession,
+                attack.TargetPlayerId, attack.Area, attack.WeaponItemId, healthDamage, targetHealth);
+        }
+        // 태양 착탄(#226)은 발사 시점에 이미 연출을 쐈다 — 이중 투사체 방지.
+        if (broadcastVfx)
+            BroadcastSwarmAttackVfxToTargetAndObservers(attack, allSessions);
+        return healthDamage;
+    }
+
+    public void SendSwarmRetaliationVfx(
+        long cutterId, long victimId, AreaType area, int kind, float seconds,
+        List<GameClientSession> allSessions)
+    {
+        using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_RING_EFFECT);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_RING_EFFECT
+        {
+            OwnerPlayerId = cutterId,
+            CenterX = 0f,
+            CenterY = 0f,
+            Radius = seconds,
+            Kind = kind,
+            VictimPlayerId = victimId,
+            FromOrdinal = 0
+        }));
+        foreach (var session in allSessions)
+        {
+            if (!session.PlayerId.HasValue || session.CurrentArea != area)
+                continue;
+            if (session.PlayerId.Value == victimId || session.PlayerId.Value == cutterId)
+                session.TrySend(packet);
+        }
+    }
+
+    public static void BroadcastSwarmAttackVfxToTargetAndObservers(
+        ProximityCombatAttack attack,
+        IReadOnlyCollection<GameClientSession> sessions)
+    {
+        foreach (var observer in sessions)
+        {
+            // 탈락자도 받는다 (#219): 관전 중에도 봇 전투 연출이 계속 보여야 한다.
+            if (!observer.PlayerId.HasValue ||
+                observer.PlayerId.Value == attack.AttackerPlayerId ||
+                observer.CurrentArea != attack.Area)
+            {
+                continue;
+            }
+
+            using var packet = Packet.Create((int)Protocol.G_TO_C_PROXIMITY_ATTACK_VFX);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_PROXIMITY_ATTACK_VFX
+            {
+                AttackerPlayerId = attack.AttackerPlayerId,
+                TargetPlayerId = attack.TargetPlayerId,
+                AreaType = attack.Area,
+                WeaponItemId = attack.WeaponItemId
+            }));
+            observer.TrySend(packet);
+        }
+    }
 }

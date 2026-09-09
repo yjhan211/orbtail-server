@@ -46,8 +46,8 @@ public sealed class MatchStartCountdownPublicationTests
             "matchRuntimes.Enter(matchingId, out MatchLockScope scope)",
             "scope.Runtime.IsEnded",
             "var snapshot = MatchStartGate.GetSnapshot(matchingId);",
-            "pacing.LastCountdownSecondsPublished == snapshot.RemainingSeconds",
-            "pacing.LastCountdownSecondsPublished = snapshot.RemainingSeconds;",
+            "_lastCountdownSecondsSent == snapshot.RemainingSeconds",
+            "_lastCountdownSecondsSent = snapshot.RemainingSeconds;",
             ".Where(session => session.MatchingId == matchingId)",
             "if (matchingSessions.Count == 0)",
             "Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN)",
@@ -62,7 +62,7 @@ public sealed class MatchStartCountdownPublicationTests
         AssertInOrder(
             matchTick,
             "using var scope = runtime.Enter();",
-            "countdown.CheckEntryAndBroadcast([matchingId], playerSessions);",
+            "countdown.CheckEntryAndBroadcast(matchingId, playerSessions);",
             "combat.ProcessTick(matchingId, activeSessions);",
             "botMovement.ProcessTick(runtime, botDecisions.DecideMovement)");
     }
@@ -199,7 +199,7 @@ public sealed class MatchStartCountdownPublicationTests
             try
             {
                 InvokePeriodicBroadcast(server, [noRecipientMatchingId], []);
-                Assert.Equal(-1, GetPacing(server, noRecipientMatchingId).LastCountdownSecondsPublished);
+                Assert.Equal(-1, GetLastCountdownSeconds(server, noRecipientMatchingId));
             }
             finally
             {
@@ -230,7 +230,7 @@ public sealed class MatchStartCountdownPublicationTests
             Assert.Throws<InvalidOperationException>(
                 () => InvokePeriodicBroadcast(server, [matchingId], [failing]));
             Assert.Equal(1, failing.SendCount);
-            Assert.Equal(-1, GetPacing(server, matchingId).LastCountdownSecondsPublished);
+            Assert.Equal(-1, GetLastCountdownSeconds(server, matchingId));
             // 실패해도 잠금은 풀린다.
             Assert.True(server.GetMatchRuntimes().TryEnter(matchingId, out MatchLockScope scope));
             scope.Dispose();
@@ -387,21 +387,18 @@ public sealed class MatchStartCountdownPublicationTests
         public void Close() { }
     }
 
-    private static MatchProgressState GetPacing(GameServer server, long matchingId)
-    {
-        return server.GetMatchRuntimes().GetOrThrow(matchingId).Progress;
-    }
+    private static int? GetLastCountdownSeconds(GameServer server, long matchingId) =>
+        (int?)typeof(MatchCountdownService).GetField("_lastCountdownSecondsSent",
+            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(server.GetCountdown(matchingId));
 
     private static void InvokePeriodicBroadcast(
         GameServer server,
         IReadOnlyCollection<long> matchingIds,
         IReadOnlyCollection<GameClientSession> sessions)
     {
-        var countdown = new MatchCountdownService(
-            server.GetMatchRuntimes(), server.GetEntryFailureHandler(), NullLogger.Instance);
-        countdown.CheckEntryAndBroadcast(matchingIds, sessions);
+        foreach (long matchingId in matchingIds)
+            server.GetCountdown(matchingId).CheckEntryAndBroadcast(matchingId, sessions);
     }
-
     private static void InvokeEntryAbort(GameServer server, GameClientSession session)
     {
         server.GetEntryFailureHandler().Handle(session);

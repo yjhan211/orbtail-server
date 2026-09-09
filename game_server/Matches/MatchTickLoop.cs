@@ -90,7 +90,7 @@ internal sealed class MatchTickLoop(
 
         var playerSessions = runtime.Sessions.Values.ToList();
         var activeSessions = playerSessions.Where(static session => session is { IsEliminated: false, IsGameEnded: false }).ToList();
-        countdown.CheckEntryAndBroadcast([matchingId], playerSessions);
+        countdown.CheckEntryAndBroadcast(matchingId, playerSessions);
         if (runtime.IsEnded)
         {
             return;

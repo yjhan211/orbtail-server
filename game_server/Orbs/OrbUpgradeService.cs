@@ -29,40 +29,17 @@ internal sealed class OrbUpgradeService(
         return pool.ToArray();
     }
 
-    // 공급이 활성화된 색만 시작 지급과 재건에 사용한다.
-    private static readonly int[] StartingOrbPool = CreateStartingOrbPool();
-
     private static readonly OrbColor[] FamilyColors =
         [OrbColor.Red, OrbColor.Green, OrbColor.Blue];
 
-    // 봇은 긴 꼬리를 가지고 시작해 초반부터 절단할 표적을 제공한다.
-    private const int BotStartingOrbCount = 10;
-
-    /// <summary>
-    ///     사람은 시작 오브 대신 소환 비용만큼의 소환석을 받는다.
-    ///     봇에게는 시작 오브를 직접 지급한다.
-    /// </summary>
-    public void GrantStartingOrbs(long matchingId, long playerId, bool isBot)
+    /// <summary>사람·봇 구분 없이 시작 오브의 소환 비용과 공통 시작 소환석을 한 번 지급한다.</summary>
+    internal static void GrantStartingResources(MatchRuntime runtime, long playerId)
     {
-        if (!isBot)
-        {
-            int stonesInsteadOfOrbs = 0;
-            for (int index = 0; index < Config.SWARM_STARTING_ORB_GRANT_COUNT; index++)
-                stonesInsteadOfOrbs += Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(index));
-            matchRuntimes.GetOrThrow(matchingId).SummonStones.AddStones(playerId, stonesInsteadOfOrbs);
-            return;
-        }
-
-        int grantCount = BotStartingOrbCount;
-        for (int index = 0; index < grantCount; index++)
-        {
-            int itemId = StartingOrbPool[Random.Shared.Next(StartingOrbPool.Length)];
-            matchRuntimes.GetOrThrow(matchingId).Inventory.TryAddItemWithCapacity(
-                playerId, itemId, Config.SWARM_ORB_CAPACITY, out _);
-        }
-
+        int startingStones = Config.SWARM_STARTING_STONE_GRANT;
+        for (int index = 0; index < Config.SWARM_STARTING_ORB_GRANT_COUNT; index++)
+            startingStones += Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(index));
+        runtime.SummonStones.AddStones(playerId, startingStones);
     }
-
     /// <summary>
     ///     계열 대표 레벨 = 보유 오브 중 최고 티어(없으면 1). 표시용 — 구매하는 "공유 레벨"은 퇴역했고
     ///     티어는 오브마다 따로 오른다.

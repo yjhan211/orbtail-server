@@ -95,7 +95,6 @@ internal sealed class MatchRuntime
     public DoorState Doors { get; } = new();
     public AreaClosureManager Closures { get; }
     public EncounterRevealManager Encounters { get; } = new();
-    public MatchProgressState Progress { get; } = new();
     public OrbVisualStateCache OrbVisualCache { get; } = new();
     public OrbRecoveryState OrbRecovery { get; } = new();
     public EventLogState EventLog { get; } = new();
@@ -108,6 +107,7 @@ internal sealed class MatchRuntime
         set => Interlocked.Exchange(ref _tickLoop, value);
     }
 
+    /// <summary>매치 구성과 참가자별 시작 자원을 한 번 초기화한다. 호출자는 매치 잠금을 보유한다.</summary>
     public void InitializeMatch(MatchMode mode, IReadOnlyDictionary<long, Cell> spawnCells, IReadOnlyList<PlayerInfo> playerRoster)
     {
         ArgumentNullException.ThrowIfNull(spawnCells);
@@ -130,6 +130,10 @@ internal sealed class MatchRuntime
         Mode = mode;
         SpawnCells = spawnCells;
         PlayerRoster = playerRoster;
+        foreach (var player in playerRoster)
+        {
+            OrbUpgradeService.GrantStartingResources(this, player.PlayerId);
+        }
         Volatile.Write(ref _isSetupComplete, true);
     }
 

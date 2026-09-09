@@ -22,11 +22,18 @@ internal static class GameServerTestAccess
     internal static MatchRuntimeStore GetMatchRuntimes(this GameServer server) =>
         Read<MatchRuntimeStore>(server);
 
-    internal static MatchCombatService GetCombat(this GameServer server)
+    internal static MatchCombatService GetCombat(this GameServer server, long matchingId) =>
+        Read<MatchCombatService>(GetLoop(server, matchingId));
+
+    internal static MatchCountdownService GetCountdown(this GameServer server, long matchingId) =>
+        Read<MatchCountdownService>(GetLoop(server, matchingId));
+
+    private static MatchTickLoop GetLoop(GameServer server, long matchingId)
     {
+        var runtime = server.GetMatchRuntimes().GetOrThrow(matchingId);
         var ticks = Read<MatchTickService>(server);
         var factory = Read<Func<MatchRuntime, TimeProvider, MatchTickLoop>>(ticks);
-        return Read<MatchCombatService>(factory.Target!);
+        return runtime.TickLoop ??= factory(runtime, TimeProvider.System);
     }
     internal static MatchGrowthService GetGrowth(this GameServer server) => Read<MatchGrowthService>(server);
 
@@ -66,14 +73,21 @@ internal static class GameServerTestAccess
         var eliminations = new BotEliminationService(logs, matchEliminations, logger);
         var growth = new MatchGrowthService(runtimes, logs, orbUpgrades,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchGrowthService>.Instance);
-        var field = new MatchZoneService(runtimes, logs, orbTrails,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchZoneService>.Instance);
         var movement = new BotMovementService( logs,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotMovementService>.Instance);
         var decisions = new BotDecisionService(runtimes, logs, growth, orbTrails,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotDecisionService>.Instance);
+        var environment = new MatchEnvironmentService(logs,
+            cleanup, eliminations, matchEliminations,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchEnvironmentService>.Instance);
+        var groundPickup = new GroundItemAutoPickupService(logs,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<GroundItemAutoPickupService>.Instance);
+        Func<MatchRuntime, TimeProvider, MatchTickLoop> createLoop = (runtime, clock) =>
+        {
+        var field = new MatchZoneService(runtimes, logs, orbTrails,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchZoneService>.Instance);
         var combat = new MatchCombatService(runtimes, logs, cleanup,
-            eliminations, matchEliminations, orbUpgrades, growth,
+            eliminations, matchEliminations, growth,
             new OrbRecoveryService(runtimes, logs,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbRecoveryService>.Instance),
             new OrbVisualStatePublisher(runtimes), orbTrails,
@@ -81,13 +95,9 @@ internal static class GameServerTestAccess
             new SunOrbAttackService(runtimes, logs), field, decisions,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatService>.Instance);
         var countdown = new MatchCountdownService(runtimes, entryFailure, logger);
-        var environment = new MatchEnvironmentService(logs,
-            cleanup, eliminations, matchEliminations,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchEnvironmentService>.Instance);
-        var groundPickup = new GroundItemAutoPickupService(logs,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<GroundItemAutoPickupService>.Instance);
-        Func<MatchRuntime, TimeProvider, MatchTickLoop> createLoop = (runtime, clock) => new MatchTickLoop(runtime, runtimes, logger, groundPickup,
+            return new MatchTickLoop(runtime, runtimes, logger, groundPickup,
             countdown, combat, environment, movement, decisions, field, clock);
+        };
         return new GameServer(
             configuration: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
             logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServer>.Instance,

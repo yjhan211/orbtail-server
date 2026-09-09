@@ -14,6 +14,42 @@ namespace demo_regression_tests;
 public sealed class GameMatchEntryServiceTests
 {
     [Fact]
+    public async Task SetupGrantsResourcesBeforeConnectionsAndLaterEntryDoesNotGrantAgain()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var (service, redis, store, runtime) = await Prepare(981015);
+        await new PlayerInfo(1002, false) { Name = "LateHuman" }.Save(redis);
+        await redis.HashSetAsync(MatchingRedisKeys.Key(runtime.MatchingId), MatchingRedisKeys.ManifestField,
+            MessagePackSerializer.Serialize(new MatchManifest { HumanPlayerIds = [1001, 1002], BotCount = 1, Mode = MatchMode.Normal }));
+        await redis.StringSetAsync(MatchingRedisKeys.ReservationKey(1002), runtime.MatchingId, TimeSpan.FromMinutes(2));
+
+        await service.PrepareMatchAsync(runtime.MatchingId, Config.SWARM_MATCH_MAP, runtime);
+
+        Assert.Empty(runtime.Sessions);
+        int humanStones = Config.SWARM_STARTING_STONE_GRANT;
+        for (int index = 0; index < Config.SWARM_STARTING_ORB_GRANT_COUNT; index++)
+            humanStones += Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(index));
+        Assert.Equal(humanStones, runtime.SummonStones.GetSnapshot(1001).StoneCount);
+        Assert.Equal(humanStones, runtime.SummonStones.GetSnapshot(1002).StoneCount);
+        Assert.Empty(runtime.Inventory.GetPlayerInventory(1001).GetOrderedOrbs());
+        long botId = Assert.Single(runtime.PlayerRoster, player => player.PlayerId < 0).PlayerId;
+        Assert.Empty(runtime.Inventory.GetPlayerInventory(botId).GetOrderedOrbs());
+        Assert.Equal(humanStones, runtime.SummonStones.GetSnapshot(botId).StoneCount);
+
+        using (runtime.Enter())
+        {
+            Assert.True(runtime.SummonStones.TrySpendStones(1001, 1, out _));
+            Assert.Throws<InvalidOperationException>(() =>
+                runtime.InitializeMatch(runtime.Mode, runtime.SpawnCells, runtime.PlayerRoster));
+        }
+        await service.PrepareMatchAsync(runtime.MatchingId, Config.SWARM_MATCH_MAP, runtime);
+        Assert.Equal(humanStones, runtime.SummonStones.GetSnapshot(botId).StoneCount);
+        Assert.Equal(humanStones - 1, runtime.SummonStones.GetSnapshot(1001).StoneCount);
+        Assert.Equal(humanStones, runtime.SummonStones.GetSnapshot(1002).StoneCount);
+        Assert.Empty(runtime.Inventory.GetPlayerInventory(botId).GetOrderedOrbs());
+    }
+
+    [Fact]
     public async Task EntryRosterContainsBotAppearanceWithoutSeparateAppearancePacket()
     {
         var (service, redis, store, runtime) = await Prepare(981014);

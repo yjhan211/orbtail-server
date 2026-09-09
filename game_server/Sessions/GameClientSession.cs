@@ -304,6 +304,7 @@ public partial class GameClientSession : SessionBase
 
                 GroundItemNotificationService.SendSnapshot(this, CurrentArea);
                 SendOrbList();
+                SendOrbUpgradeInfo(_growth.GetOrbUpgradeInfo(matchingId, PlayerId.Value));
                 SendSummonStoneState();
                 SendDoorStateList();
                 SendPressureFieldState();
