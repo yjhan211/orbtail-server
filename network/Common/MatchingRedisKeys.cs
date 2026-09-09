@@ -30,7 +30,7 @@ namespace network.common
         public static string EntryStateKey(long matchingId) =>
             $"matching:{matchingId}:entry-state";
 
-        public static string AdmittedPlayerField(long playerId) => $"admitted:{playerId}";
+        public static string EnteredPlayerField(long playerId) => $"entered:{playerId}";
 
         public static string ReservationKey(long playerId) => $"{MatchingHashTag}:reservation:{playerId}";
     }

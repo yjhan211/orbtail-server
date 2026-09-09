@@ -521,7 +521,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Contains("using (runtime.Enter())", initialization);
         Assert.Contains("if (runtime.IsEnded)", initialization);
         int synchronization = source.IndexOf("SyncPlayersOnEntry();", inventorySnapshot, StringComparison.Ordinal);
-        int commit = source.IndexOf("await _matchEntry.CommitEntryAsync(", synchronization, StringComparison.Ordinal);
+        int commit = source.IndexOf("await _matchEntry.RecordEntryAsync(", synchronization, StringComparison.Ordinal);
         Assert.True(synchronization > inventorySnapshot && commit > synchronization);
         Assert.DoesNotContain("await ", source[inventorySnapshot..commit]);
         Assert.EndsWith("}", source[synchronization..commit].TrimEnd());

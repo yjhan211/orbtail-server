@@ -7,6 +7,7 @@ using network.common.data;
 using network.common.data.models;
 using network.gameentry;
 using network.infrastructure.redis;
+using StackExchange.Redis;
 
 namespace game_server.matches.entry;
 
@@ -25,10 +26,8 @@ internal sealed class GameMatchEntryService(
 {
     private static long _botIdCounter;
 
-    private readonly GameEntryStateCommitter _entryStateCommitter = new(redisOperations, logger);
     public MatchRuntime GetOrCreateMatch(long matchingId) => matchRuntimes.GetOrCreate(matchingId);
     public Task<GameEntryContext?> ConsumeTicketAsync(string? ticket) => ticketService.ConsumeAsync(ticket, nodeOptions.NodeId);
-    public Task CommitEntryAsync(long matchingId, long playerId, IReadOnlyCollection<long> humanPlayerIds) => _entryStateCommitter.CommitAsync(matchingId, playerId, humanPlayerIds);
 
     public async Task PrepareMatchAsync(long matchingId, MatchRuntime runtime)
     {
@@ -167,5 +166,102 @@ internal sealed class GameMatchEntryService(
         {
             initializationLock.Release();
         }
+    }
+
+    public async Task RecordEntryAsync(long matchingId, long playerId, IReadOnlyCollection<long> expectedHumanPlayerIds)
+    {
+        const string pendingState = MatchingRedisKeys.EntryPendingState;
+        const string completedState = MatchingRedisKeys.EntryCompletedState;
+        const string canceledState = MatchingRedisKeys.EntryCanceledState;
+        const byte enteredValue = MatchingRedisKeys.EntryReadyValue;
+        var entryStateLifetime = MatchingRedisKeys.EntryStateLifetime;
+
+        string entryStateKey = MatchingRedisKeys.EntryStateKey(matchingId);
+        var entryState = await redisOperations.StringGetAsync(entryStateKey);
+        if (entryState.IsNullOrEmpty || !string.Equals(entryState.ToString(), pendingState, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Entry is not pending for match {matchingId}: '{entryState}'.");
+        }
+
+        string reservationKey = MatchingRedisKeys.ReservationKey(playerId);
+        string expectedReservation = matchingId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        bool reservationRenewed = await redisOperations.StringSetIfEqualsAsync(
+            reservationKey,
+            expectedReservation,
+            expectedReservation,
+            MatchingRedisKeys.PostEntryReservationLifetime);
+
+        if (!reservationRenewed)
+        {
+            throw new InvalidOperationException($"Matching reservation changed before entry for player {playerId} in match {matchingId}.");
+        }
+
+        string matchingKey = MatchingRedisKeys.Key(matchingId);
+        string enteredField = MatchingRedisKeys.EnteredPlayerField(playerId);
+        try
+        {
+            await redisOperations.HashSetWithExpiryAsync(matchingKey, enteredField, [enteredValue], entryStateLifetime);
+        }
+        catch (Exception ex)
+        {
+            var marker = await redisOperations.HashGetAsync(matchingKey, enteredField);
+            if (marker.IsNullOrEmpty || !((byte[])marker!).AsSpan().SequenceEqual([enteredValue]))
+            {
+                throw new InvalidOperationException($"Could not confirm player {playerId} entry for match {matchingId}.", ex);
+            }
+            logger.LogWarning(ex, "Player entry write failed, but entry record was confirmed: PlayerId={PlayerId}, MatchingId={MatchingId}", playerId, matchingId);
+        }
+
+        var enteredFields = expectedHumanPlayerIds
+            .Select(id => (RedisValue)MatchingRedisKeys.EnteredPlayerField(id))
+            .ToArray();
+
+        var enteredValues = await redisOperations.HashGetAsync(matchingKey, enteredFields);
+        if (enteredValues.Length != enteredFields.Length)
+        {
+            return;
+        }
+        foreach (var playerEntry in enteredValues)
+        {
+            if (playerEntry.IsNullOrEmpty)
+            {
+                return;
+            }
+            byte[] value = (byte[])playerEntry!;
+            if (value is not [enteredValue])
+            {
+                return;
+            }
+        }
+
+        Exception? lastError = null;
+        try
+        {
+            bool completed = await redisOperations.StringSetIfEqualsAsync(entryStateKey, pendingState, completedState, entryStateLifetime);
+            if (completed)
+            {
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            lastError = ex;
+        }
+
+        var state = await redisOperations.StringGetAsync(entryStateKey);
+        if (string.Equals(state.ToString(), completedState, StringComparison.Ordinal))
+        {
+            if (lastError != null)
+            {
+                logger.LogWarning(lastError, "Entry completion write failed, but completed state was confirmed: MatchingId={MatchingId}", matchingId);
+            }
+            return;
+        }
+
+        if (string.Equals(state.ToString(), canceledState, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Entry timeout canceled match {matchingId} before completion.");
+        }
+        throw new InvalidOperationException($"Could not confirm entry completion for match {matchingId}.", lastError);
     }
 }

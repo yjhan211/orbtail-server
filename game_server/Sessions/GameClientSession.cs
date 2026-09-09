@@ -304,7 +304,7 @@ public partial class GameClientSession : SessionBase
                 EnsureConnectionActive();
             }
 
-            await _matchEntry.CommitEntryAsync(matchingId, PlayerId.Value, humanPlayerIds);
+            await _matchEntry.RecordEntryAsync(matchingId, PlayerId.Value, humanPlayerIds);
             EnsureConnectionActive();
 
             if (humanPlayerIds.Count == 1)
