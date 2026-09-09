@@ -125,7 +125,7 @@ internal class MatchEnvironmentService(
         if (eliminatedTargets.Count == 0)
             return;
 
-        var resolution = MatchSettlementResolver.Resolve(
+        var resolution = ResolveEliminationOrder(
             matchingId,
             eliminatedTargets.Select(target =>
             {
@@ -206,4 +206,55 @@ internal class MatchEnvironmentService(
         int OvertimeDelta,
         GameClientSession? Session,
         BotPlayerState? Bot);
+
+    internal readonly record struct MatchSettlementCandidate(
+        long PlayerId,
+        int PreDamageHealth,
+        int TotalPvpDamage);
+
+    internal sealed class MatchSettlementResolution
+    {
+        public required IReadOnlyList<MatchSettlementCandidate> BestToWorst { get; init; }
+        public required MatchTieBreakCriterion DecisiveCriterion { get; init; }
+    }
+
+    internal static MatchSettlementResolution ResolveEliminationOrder(
+        long matchingId,
+        IEnumerable<MatchSettlementCandidate> candidates)
+    {
+        var ordered = candidates
+            .DistinctBy(candidate => candidate.PlayerId)
+            .OrderByDescending(candidate => candidate.PreDamageHealth)
+            .ThenByDescending(candidate => candidate.TotalPvpDamage)
+            .ThenBy(candidate => GetMatchSeedPriority(matchingId, candidate.PlayerId))
+            .ThenBy(candidate => candidate.PlayerId)
+            .ToList();
+
+        MatchTieBreakCriterion criterion = MatchTieBreakCriterion.SingleCandidate;
+        if (ordered.Count > 1)
+        {
+            var first = ordered[0];
+            var second = ordered[1];
+            criterion = first.PreDamageHealth != second.PreDamageHealth
+                ? MatchTieBreakCriterion.PreDamageHealth
+                : first.TotalPvpDamage != second.TotalPvpDamage
+                    ? MatchTieBreakCriterion.CumulativePvpDamage
+                    : MatchTieBreakCriterion.MatchSeedPriority;
+        }
+
+        return new MatchSettlementResolution
+        {
+            BestToWorst = ordered,
+            DecisiveCriterion = criterion
+        };
+    }
+
+    internal static ulong GetMatchSeedPriority(long matchingId, long playerId)
+    {
+        ulong value = unchecked((ulong)matchingId) ^
+                      (unchecked((ulong)playerId) + 0x9E3779B97F4A7C15UL);
+        value = (value ^ (value >> 30)) * 0xBF58476D1CE4E5B9UL;
+        value = (value ^ (value >> 27)) * 0x94D049BB133111EBUL;
+        return value ^ (value >> 31);
+    }
 }

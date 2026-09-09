@@ -299,7 +299,7 @@ public class SwarmDamagePathTests
     {
         // #229: 스웜 전투는 전부 몹 상대인데 어떤 카운터에도 안 쌓여 결과가 "처치 0회"였다.
         // 단 PvP 피해와 같은 칸에 넣으면 안 된다 — 그 칸은 동시 탈락 시 생존자를 가르는
-        // 기준(MatchSettlementResolver)이라 의미가 섞이면 판정이 바뀐다.
+        // 기준(MatchEnvironmentService.ResolveEliminationOrder)이라 의미가 섞이면 판정이 바뀐다.
         var manager = TestGameEventLogs.Create();
         const long matchingId = 771001;
         const long playerId = 4242;

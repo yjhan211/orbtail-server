@@ -1374,7 +1374,7 @@ public class GameEventLogManager
         public Dictionary<long, int> DamageDealtByPlayer { get; } = new();
 
         // 몹 처치·피해는 PvP와 따로 센다 (#229). DamageDealtByPlayer는 동시 탈락 시
-        // 생존자를 가르는 기준(MatchSettlementResolver)이라 의미를 섞으면 판정이 바뀐다.
+        // 생존자를 가르는 기준(MatchEnvironmentService.ResolveEliminationOrder)이라 의미를 섞으면 판정이 바뀐다.
         public Dictionary<long, int> MonsterKillsByPlayer { get; } = new();
         public Dictionary<long, int> MonsterDamageByPlayer { get; } = new();
         public Dictionary<long, int> RecoveryByPlayer { get; } = new();

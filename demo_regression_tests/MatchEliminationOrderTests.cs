@@ -1,14 +1,16 @@
+using game_server.field;
+using static game_server.field.MatchEnvironmentService;
 using game_server.matches.results;
 using game_server.matches;
 
 namespace demo_regression_tests;
 
-public sealed class MatchSettlementResolverTests
+public sealed class MatchEliminationOrderTests
 {
     [Fact]
     public void Resolve_PrefersHigherPreDamageHealth()
     {
-        var result = MatchSettlementResolver.Resolve(195001, new[]
+        var result = MatchEnvironmentService.ResolveEliminationOrder(195001, new[]
         {
             new MatchSettlementCandidate(1, 60, 500),
             new MatchSettlementCandidate(2, 70, 10)
@@ -21,7 +23,7 @@ public sealed class MatchSettlementResolverTests
     [Fact]
     public void Resolve_PrefersHigherPvpDamageWhenHealthMatches()
     {
-        var result = MatchSettlementResolver.Resolve(195002, new[]
+        var result = MatchEnvironmentService.ResolveEliminationOrder(195002, new[]
         {
             new MatchSettlementCandidate(1, 80, 100),
             new MatchSettlementCandidate(2, 80, 200)
@@ -41,8 +43,8 @@ public sealed class MatchSettlementResolverTests
             new MatchSettlementCandidate(13, 90, 300)
         };
 
-        var first = MatchSettlementResolver.Resolve(195003, candidates);
-        var second = MatchSettlementResolver.Resolve(195003, candidates.Reverse());
+        var first = MatchEnvironmentService.ResolveEliminationOrder(195003, candidates);
+        var second = MatchEnvironmentService.ResolveEliminationOrder(195003, candidates.Reverse());
 
         Assert.Equal(MatchTieBreakCriterion.MatchSeedPriority, first.DecisiveCriterion);
         Assert.Equal(
