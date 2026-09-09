@@ -49,13 +49,10 @@ internal sealed class GameMatchEntryService(
                 throw new InvalidOperationException($"Match manifest is empty for match {matchingId}.");
             }
 
-            // 모드별 규칙은 UserServer가 정하고, 여기서는 참가자 구성의 기본 조건만 확인한다.
-            var humanIds = manifest.HumanPlayerIds;
-            if (humanIds == null || humanIds.Count == 0 || humanIds.Any(id => id <= 0) ||
-                humanIds.Distinct().Count() != humanIds.Count || manifest.BotCount < 0 ||
-                manifest.BotCount > Config.SWARM_PLAYERS_PER_MATCH - humanIds.Count)
+            int humanCount = manifest.HumanPlayerIds.Count;
+            if (humanCount == 0 || manifest.BotCount < 0 || manifest.BotCount > Config.SWARM_PLAYERS_PER_MATCH - humanCount)
             {
-                throw new InvalidOperationException("Invalid match participant configuration.");
+                throw new InvalidOperationException("Invalid match participant count.");
             }
 
             var ready = await redisOperations.HashGetAsync(matchingKey, MatchingRedisKeys.EntryReadyField);

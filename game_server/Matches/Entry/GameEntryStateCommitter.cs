@@ -6,8 +6,9 @@ using StackExchange.Redis;
 namespace game_server.matches.entry;
 
 /// <summary>
-///     Commits a consumed GameServer entry into Redis entry state.
-///     This class owns the retry and exact read-back rules that make ambiguous Redis write responses safe.
+///     플레이어의 게임 입장을 Redis에 기록한다.
+///     매칭 예약의 유효 기간을 연장하고 참가자별 입장 여부를 저장하며,
+///     모든 사람이 입장하면 매치 입장 상태를 pending에서 completed로 변경한다.
 /// </summary>
 internal sealed class GameEntryStateCommitter(IRedisOperations redisOperations, ILogger logger)
 {
