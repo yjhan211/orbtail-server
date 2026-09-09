@@ -1,7 +1,6 @@
 using game_server.matches.combat;
 using game_server.matches.logging;
 using game_server.matches.orbs;
-using game_server.network;
 using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -9,7 +8,6 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 using network.packets;
-using static game_server.network.SessionSnapshotDelivery;
 using System.Collections.Immutable;
 
 namespace game_server.matches.field;
@@ -29,7 +27,7 @@ internal class MatchZoneService(
     {
         var plan = PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);
         if (plan != null)
-            DispatchSwarmClosurePublicationPlan(plan, sessionSnapshot);
+            DispatchSwarmClosurePublicationPlan(plan);
     }
 
     // #272 경계 토출 스폰: 구역별 walkable 셀을 중심 거리 오름차순으로 캐시 — 리졸버가 띠를 자른다.
@@ -143,9 +141,7 @@ internal class MatchZoneService(
         IReadOnlyList<GameClientSession> sessions)
     {
         var outbound = ImmutableArray.CreateBuilder<SwarmClosureOutbound>();
-        ImmutableArray<int> allRecipients = CaptureSwarmClosureRecipientOrdinals(
-            sessions,
-            static _ => true);
+        ImmutableArray<GameClientSession> allRecipients = sessions.ToImmutableArray();
         var closureState = matchRuntimes.GetOrThrow(matchingId).Closures.InitializeMatching(
             wavesOverride: MatchPressureFieldPolicy.Enabled ? GetSwarmFieldWaves() : null);
         if (MatchPressureFieldPolicy.Enabled && matchRuntimes.GetOrThrow(matchingId).Progress.FieldStateAnnounced.Add(matchingId))
@@ -197,27 +193,14 @@ internal class MatchZoneService(
             : new SwarmClosurePublicationPlan(matchingId, outbound.ToImmutable());
     }
 
-    private static ImmutableArray<int> CaptureSwarmClosureRecipientOrdinals(
-        IReadOnlyList<GameClientSession> sessions,
-        Func<GameClientSession, bool> predicate)
-    {
-        var recipients = ImmutableArray.CreateBuilder<int>();
-        for (int ordinal = 0; ordinal < sessions.Count; ordinal++)
-        {
-            if (predicate(sessions[ordinal]))
-                recipients.Add(ordinal);
-        }
 
-        return recipients.ToImmutable();
-    }
 
     /// <summary>
     ///     Dispatches one frozen closure plan in legacy packet order. The first transport exception
     ///     aborts the remaining projection; the match tick releases its lock in the surrounding scope.
     /// </summary>
     private void DispatchSwarmClosurePublicationPlan(
-        SwarmClosurePublicationPlan plan,
-        IReadOnlyList<GameClientSession> sessions)
+        SwarmClosurePublicationPlan plan)
     {
         foreach (SwarmClosureOutbound outbound in plan.Outbound)
         {
@@ -230,7 +213,8 @@ internal class MatchZoneService(
                         {
                             StartedAtUnixMs = fieldState.StartedAtUnixMs
                         }));
-                        SendToCapturedRecipients(packet, fieldState.RecipientOrdinals, sessions);
+                        foreach (var session in fieldState.Recipients)
+                            session.TrySend(packet);
                         break;
                     }
                 case SwarmClosureWarningOutbound warning:
@@ -242,7 +226,8 @@ internal class MatchZoneService(
                             SecondsRemaining = warning.SecondsRemaining,
                             ClosureAtUnixMs = warning.ClosureAtUnixMs
                         }));
-                        SendToCapturedRecipients(packet, warning.RecipientOrdinals, sessions);
+                        foreach (var session in warning.Recipients)
+                            session.TrySend(packet);
                         break;
                     }
                 case SwarmAreaClosedOutbound closed:
@@ -253,7 +238,8 @@ internal class MatchZoneService(
                             AreaType = closed.Area,
                             IsClosed = true
                         }));
-                        SendToCapturedRecipients(packet, closed.RecipientOrdinals, sessions);
+                        foreach (var session in closed.Recipients)
+                            session.TrySend(packet);
                         break;
                     }
                 case SwarmDoorStateOutbound door:
@@ -263,15 +249,15 @@ internal class MatchZoneService(
                             false,
                             ErrorCode.SUCCESS,
                             0);
-                        SendToCapturedRecipients(packet, door.RecipientOrdinals, sessions);
+                        foreach (var session in door.Recipients)
+                            session.TrySend(packet);
                         break;
                     }
                 case SwarmInventoryUpdateOutbound inventory:
                     {
-                        foreach (int ordinal in inventory.RecipientOrdinals)
+                        foreach (var session in inventory.Recipients)
                         {
-                            if (TryGetCapturedValue(sessions, ordinal, out GameClientSession session))
-                                session.SendOrbUpdate(inventory.Item.ToModel());
+                            session.SendOrbUpdate(inventory.Item.ToModel());
                         }
 
                         break;
@@ -289,7 +275,8 @@ internal class MatchZoneService(
                             VictimPlayerId = ring.VictimPlayerId,
                             FromOrdinal = ring.FromOrdinal
                         }));
-                        SendToCapturedRecipients(packet, ring.RecipientOrdinals, sessions);
+                        foreach (var session in ring.Recipients)
+                            session.TrySend(packet);
                         break;
                     }
                 default:
@@ -311,22 +298,21 @@ internal class MatchZoneService(
         ImmutableArray<SwarmClosureOutbound>.Builder outbound)
     {
         var closed = closedAreas.ToHashSet();
-        var owners = new List<(long PlayerId, Vector3f Position, int SessionOrdinal)>();
-        for (int ordinal = 0; ordinal < sessions.Count; ordinal++)
+        var owners = new List<(long PlayerId, Vector3f Position, GameClientSession? Session)>();
+        foreach (var session in sessions)
         {
-            GameClientSession session = sessions[ordinal];
             if (session.PlayerId.HasValue && !session.IsEliminated &&
                 session.LastValidatedPosition != null)
-                owners.Add((session.PlayerId.Value, session.LastValidatedPosition, ordinal));
+                owners.Add((session.PlayerId.Value, session.LastValidatedPosition, session));
         }
 
         foreach (var bot in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
         {
             if (!bot.IsEliminated)
-                owners.Add((bot.PlayerId, bot.Position, -1));
+                owners.Add((bot.PlayerId, bot.Position, null));
         }
 
-        foreach (var (playerId, ownerPosition, ownerSessionOrdinal) in owners)
+        foreach (var (playerId, ownerPosition, ownerSession) in owners)
         {
             // 본인이 폐쇄 구역 안이면 꼬리는 그대로 둔다: 즉사가 퇴역해 본인은 틱 피해을 받으며
             // 문을 따고 나가는 중이다 — 여기서 꼬리까지 지우면 나가도 빈손이라 살아남을 이유가 없다.
@@ -360,11 +346,11 @@ internal class MatchZoneService(
             foreach (var destroyedItem in destroyed)
             {
                 matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbDurabilityBonus.Remove((matchingId, playerId, destroyedItem.ItemUid));
-                if (ownerSessionOrdinal >= 0)
+                if (ownerSession != null)
                 {
                     outbound.Add(new SwarmInventoryUpdateOutbound(
                         SwarmInGameItemSnapshot.Capture(destroyedItem),
-                        [ownerSessionOrdinal]));
+                        [ownerSession]));
                 }
             }
 
@@ -372,9 +358,12 @@ internal class MatchZoneService(
             var closedArea = GameMapData.GetCurrentArea(
                 Config.SWARM_MATCH_MAP,
                 ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, suffixPosition));
-            ImmutableArray<int> ringRecipients = CaptureSwarmClosureRecipientOrdinals(
-                sessions,
-                session => session.PlayerId.HasValue && session.CurrentArea == closedArea);
+            var ringRecipients = ImmutableArray.CreateBuilder<GameClientSession>();
+            foreach (var session in sessions)
+            {
+                if (session.PlayerId.HasValue && session.CurrentArea == closedArea)
+                    ringRecipients.Add(session);
+            }
             outbound.Add(new SwarmRingVfxOutbound(
                 playerId,
                 suffixPosition.X,
@@ -383,7 +372,7 @@ internal class MatchZoneService(
                 OrbTrailService.CutVfxKind,
                 playerId,
                 suffixStart,
-                ringRecipients));
+                ringRecipients.ToImmutable()));
             eventLogs.LogSystem(
                 matchingId,
                 $"closure_orb_destroyed player={playerId} from={suffixStart} count={destroyed.Count}");

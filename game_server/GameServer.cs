@@ -7,7 +7,6 @@ using game_server.matches.lifecycle;
 using game_server.matches.results;
 using game_server.matches;
 using System.Net;
-using game_server.network;
 using game_server.sessions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;

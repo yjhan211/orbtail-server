@@ -1,3 +1,4 @@
+using game_server.sessions;
 using game_server.matches.field;
 using System.Collections.Immutable;
 using network.common;
@@ -8,6 +9,22 @@ namespace demo_regression_tests;
 public sealed class SwarmClosurePublicationPlanTests
 {
     [Fact]
+    public void Recipients_PreserveReferencesOrderAndDuplicatesAfterSourceChanges()
+    {
+        var first = TestGameSessionServices.CreateRecipientSession();
+        var second = TestGameSessionServices.CreateRecipientSession();
+        var recipients = new List<GameClientSession> { second, first, second };
+        var outbound = new SwarmFieldStateOutbound(1001, recipients.ToImmutableArray());
+
+        recipients.Clear();
+
+        Assert.Equal(3, outbound.Recipients.Length);
+        Assert.Same(second, outbound.Recipients[0]);
+        Assert.Same(first, outbound.Recipients[1]);
+        Assert.Same(second, outbound.Recipients[2]);
+    }
+
+    [Fact]
     public void ImmutableOutboundPlan_FreezesInventoryAndRecipientOrder()
     {
         var mutableItem = new InGameItemInfo
@@ -17,7 +34,8 @@ public sealed class SwarmClosurePublicationPlanTests
             Count = 0,
             GiftState = GiftState.Received
         };
-        ImmutableArray<int> recipients = [2, 0, 1];
+        GameClientSession[] sessions = Enumerable.Range(0, 3).Select(_ => TestGameSessionServices.CreateRecipientSession()).ToArray();
+        ImmutableArray<GameClientSession> recipients = [sessions[2], sessions[0], sessions[1]];
         SwarmInGameItemSnapshot itemSnapshot = SwarmInGameItemSnapshot.Capture(mutableItem);
         var plan = new SwarmClosurePublicationPlan(
             51_001,
@@ -30,7 +48,7 @@ public sealed class SwarmClosurePublicationPlanTests
 
         SwarmInventoryUpdateOutbound outbound =
             Assert.IsType<SwarmInventoryUpdateOutbound>(Assert.Single(plan.Outbound));
-        Assert.Equal([2, 0, 1], outbound.RecipientOrdinals.ToArray());
+        Assert.Equal([sessions[2], sessions[0], sessions[1]], outbound.Recipients.ToArray());
         Assert.Equal(7001, outbound.Item.ItemUid);
         Assert.Equal(107000010, outbound.Item.ItemId);
         Assert.Equal(0, outbound.Item.Count);
@@ -43,7 +61,7 @@ public sealed class SwarmClosurePublicationPlanTests
     [Fact]
     public void ImmutableOutboundPlan_PreservesClosureWireOrderAndScalarPayloads()
     {
-        ImmutableArray<int> allRecipients = [0, 1];
+        ImmutableArray<GameClientSession> allRecipients = [TestGameSessionServices.CreateRecipientSession(), TestGameSessionServices.CreateRecipientSession()];
         var plan = new SwarmClosurePublicationPlan(
             51_010,
             [
@@ -53,8 +71,8 @@ public sealed class SwarmClosurePublicationPlanTests
                 new SwarmDoorStateOutbound(3003, allRecipients),
                 new SwarmInventoryUpdateOutbound(
                     new SwarmInGameItemSnapshot(4004, 107000010, 0, GiftState.None),
-                    [1]),
-                new SwarmRingVfxOutbound(5005, 1.5f, 2.5f, 3.5f, 1, 5005, 2, [1, 0])
+                    [allRecipients[1]]),
+                new SwarmRingVfxOutbound(5005, 1.5f, 2.5f, 3.5f, 1, 5005, 2, [allRecipients[1], allRecipients[0]])
             ]);
 
         Assert.Collection(
@@ -84,7 +102,7 @@ public sealed class SwarmClosurePublicationPlanTests
                 Assert.Equal(1, value.Kind);
                 Assert.Equal(5005, value.VictimPlayerId);
                 Assert.Equal(2, value.FromOrdinal);
-                Assert.Equal([1, 0], value.RecipientOrdinals.ToArray());
+                Assert.Equal([allRecipients[1], allRecipients[0]], value.Recipients.ToArray());
             });
     }
 }

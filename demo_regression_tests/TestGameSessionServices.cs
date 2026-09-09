@@ -1,3 +1,4 @@
+using game_server.matches.orbs;
 using game_server;
 using game_server.matches.items;
 using game_server.matches.logging;
@@ -7,7 +8,6 @@ using game_server.matches.entry;
 using game_server.matches.lifecycle;
 using game_server.matches.results;
 using game_server.matches;
-using game_server.network;
 using network.common.data.models;
 using game_server.sessions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -28,6 +28,22 @@ internal sealed class FakePlayerGrowthHandler(
 
 internal static class TestGameSessionServices
 {
+    // 송신 계획의 수신자 참조를 검사하기 위한 소켓 없는 세션.
+    public static GameClientSession CreateRecipientSession()
+    {
+        var logs = TestGameEventLogs.Create();
+        var store = CreateMatchRuntimeStore(NullLogger.Instance);
+        return new GameClientSession(
+            new network.core.TcpConnection(), NullLogger.Instance, new InMemoryRedisOperations(),
+            static _ => false, CreateMatchCleanupService(), static (_, _) => null,
+            logs, CreateEliminationService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance),
+            new FakePlayerGrowthHandler(), new FakeGameSessionLifecycle(), static () => false,
+            new FakeMatchEntryFailureHandler(),
+            matchEntry: CreateEntryService(null, store, NullLogger.Instance),
+            movementValidation: new MovementValidationService(NullLogger<MovementValidationService>.Instance),
+            orbInventory: new OrbInventoryService(logs));
+    }
+
     // 실제 Loop의 첫 처리 단계만 바꿔 틱 지연·예외·종료를 재현한다.
     public static Func<MatchRuntime, TimeProvider, MatchTickLoop> CreateTickLoopFactory(MatchRuntimeStore store, Action<MatchRuntime> processTick)
     {

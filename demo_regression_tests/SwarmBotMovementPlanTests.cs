@@ -32,12 +32,13 @@ public sealed class SwarmBotMovementPlanTests
             Rotation = 17f,
             IsAreaTransition = true
         };
+        GameClientSession[] recipients = Enumerable.Range(0, 4).Select(_ => TestGameSessionServices.CreateRecipientSession()).ToArray();
         var observers = new List<SwarmBotObserverSnapshot>
         {
-            new(0, 101, AreaType.S2Gym1, false, null),
-            new(1, 201, AreaType.S2Ground, false, null),
-            new(2, 102, AreaType.S2Gym1, false, null),
-            new(3, 202, AreaType.S2Ground, false, null)
+            new(recipients[0], 101, AreaType.S2Gym1, false, null),
+            new(recipients[1], 201, AreaType.S2Ground, false, null),
+            new(recipients[2], 102, AreaType.S2Gym1, false, null),
+            new(recipients[3], 202, AreaType.S2Ground, false, null)
         };
 
         var match = CreateMatch();
@@ -59,8 +60,8 @@ public sealed class SwarmBotMovementPlanTests
         Assert.Equal(new SwarmVectorSnapshot(3f, 4f, 0f), publication.Velocity);
         Assert.Equal(new SwarmCellSnapshot(3, 4), publication.ToCell);
         Assert.Equal(17f, publication.Rotation);
-        Assert.Equal([0, 2], publication.LeaveRecipientOrdinals.ToArray());
-        Assert.Equal([1, 3], publication.DestinationRecipientOrdinals.ToArray());
+        Assert.Equal([recipients[0], recipients[2]], publication.LeaveRecipients.ToArray());
+        Assert.Equal([recipients[1], recipients[3]], publication.DestinationRecipients.ToArray());
     }
 
     [Fact]
@@ -96,22 +97,6 @@ public sealed class SwarmBotMovementPlanTests
     }
 
     [Fact]
-    public void CapturedOrdinalLookup_PreservesOrderAndSkipsInvalidSlots()
-    {
-        string[] snapshot = ["first", "second", "third"];
-        ImmutableArray<int> ordinals = [2, -1, 0, 99, 2];
-        var resolved = new List<string>();
-
-        foreach (int ordinal in ordinals)
-        {
-            if (game_server.network.SessionSnapshotDelivery.TryGetCapturedValue(snapshot, ordinal, out string value))
-                resolved.Add(value);
-        }
-
-        Assert.Equal(["third", "first", "third"], resolved);
-    }
-
-    [Fact]
     public void MovementSources_KeepPrepareTransportFreeAndDispatchInPacketOrder()
     {
         string root = FindRepositoryRoot();
@@ -135,7 +120,6 @@ public sealed class SwarmBotMovementPlanTests
         Assert.DoesNotContain("MatchRuntime", coordinator);
         Assert.DoesNotContain("PacketMaker", coordinator);
         Assert.DoesNotContain("MessagePackSerializer", coordinator);
-        Assert.DoesNotContain("GameClientSession", coordinator);
         Assert.DoesNotContain(".TrySend(", coordinator);
         Assert.DoesNotContain("ReservePublication", coordinator);
         Assert.DoesNotContain("DispatchInOrder", coordinator);
@@ -160,7 +144,7 @@ public sealed class SwarmBotMovementPlanTests
             "runtime.Sessions.Values.ToList()",
             "CaptureSwarmBotObservers(matchingId, sessionSnapshot)",
             "Bots.PrepareMovementTick(",
-            "DispatchSwarmBotMovementPlan(plan, sessionSnapshot)",
+            "DispatchSwarmBotMovementPlan(plan)",
             "BotTickMetrics.Record(",
             "PublishBotMovementMetrics(batch)");
         Assert.Contains("session.CurrentMapId == Config.SWARM_MATCH_MAP", process);

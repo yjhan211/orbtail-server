@@ -1,5 +1,4 @@
 using game_server.matches.logging;
-using game_server.network;
 using Microsoft.Extensions.Logging;
 
 namespace game_server.matches.results;

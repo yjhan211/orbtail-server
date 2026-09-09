@@ -1,3 +1,4 @@
+using game_server.sessions;
 using game_server.matches.combat;
 using game_server.matches.items;
 using game_server.matches.logging;
@@ -143,7 +144,7 @@ public partial class BotPlayerManager
                 pickup.Item.GroundItemUid,
                 pickup.BotPlayerId,
                 pickup.AutoUsed,
-                RecipientOrdinals(observers, observer => observer.Area == area)));
+                SelectRecipients(observers, observer => observer.Area == area)));
         }
 
         return new SwarmBotMovementPlan(
@@ -184,10 +185,10 @@ public partial class BotPlayerManager
         if (observers.Count == 0)
             return null;
 
-        ImmutableArray<int> leaveRecipients = movement.IsAreaTransition
-            ? RecipientOrdinals(observers, observer => observer.Area == movement.FromArea)
-            : ImmutableArray<int>.Empty;
-        ImmutableArray<int> destinationRecipients = RecipientOrdinals(
+        ImmutableArray<GameClientSession> leaveRecipients = movement.IsAreaTransition
+            ? SelectRecipients(observers, observer => observer.Area == movement.FromArea)
+            : ImmutableArray<GameClientSession>.Empty;
+        ImmutableArray<GameClientSession> destinationRecipients = SelectRecipients(
             observers,
             observer => observer.Area == movement.ToArea);
 
@@ -258,20 +259,20 @@ public partial class BotPlayerManager
         if (!decision.HasEvent)
             return null;
 
-        int targetOrdinal = -1;
+        GameClientSession? targetSession = null;
         foreach (SwarmBotObserverSnapshot observer in observers)
         {
             if (observer.PlayerId == decision.TargetPlayerId)
             {
-                targetOrdinal = observer.SessionOrdinal;
+                targetSession = observer.Session;
                 break;
             }
         }
-        if (targetOrdinal < 0)
+        if (targetSession == null)
             return null;
 
         return new SwarmBotEncounterDispatch(
-            targetOrdinal,
+            targetSession,
             decision.TargetPlayerId,
             movement.BotPlayerId,
             movement.ToArea,
@@ -339,15 +340,15 @@ public partial class BotPlayerManager
             isBot: true);
     }
 
-    private static ImmutableArray<int> RecipientOrdinals(
+    private static ImmutableArray<GameClientSession> SelectRecipients(
         IReadOnlyList<SwarmBotObserverSnapshot> observers,
         Func<SwarmBotObserverSnapshot, bool> predicate)
     {
-        var recipients = ImmutableArray.CreateBuilder<int>();
+        var recipients = ImmutableArray.CreateBuilder<GameClientSession>();
         foreach (SwarmBotObserverSnapshot observer in observers)
         {
             if (predicate(observer))
-                recipients.Add(observer.SessionOrdinal);
+                recipients.Add(observer.Session);
         }
 
         return recipients.ToImmutable();

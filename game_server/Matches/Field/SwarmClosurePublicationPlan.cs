@@ -1,3 +1,4 @@
+using game_server.sessions;
 using System.Collections.Immutable;
 using network.common;
 using network.common.data.models;
@@ -5,41 +6,41 @@ using network.common.data.models;
 namespace game_server.matches.field;
 
 /// <summary>
-///     예정 폐쇄 틱의 불변 송신 계획. 권위 상태 변경과 계획 동결은 매치 잠금 안에서 함께 끝나고,
-///     패킷 생성·전송은 같은 잠금 안에서 계획 순서대로 이어진다.
+///     폐쇄 틱에서 보낼 데이터와 수신 세션 목록. 데이터는 복사하고 수신자 순서를 고정한다.
+///     계획 작성과 패킷 전송은 같은 매치 잠금 안에서 순서대로 처리한다.
 /// </summary>
 internal sealed record SwarmClosurePublicationPlan(
     long MatchingId,
     ImmutableArray<SwarmClosureOutbound> Outbound);
 
-internal abstract record SwarmClosureOutbound(ImmutableArray<int> RecipientOrdinals);
+internal abstract record SwarmClosureOutbound(ImmutableArray<GameClientSession> Recipients);
 
 internal sealed record SwarmFieldStateOutbound(
     long StartedAtUnixMs,
-    ImmutableArray<int> RecipientOrdinals)
-    : SwarmClosureOutbound(RecipientOrdinals);
+    ImmutableArray<GameClientSession> Recipients)
+    : SwarmClosureOutbound(Recipients);
 
 internal sealed record SwarmClosureWarningOutbound(
     AreaType Area,
     int SecondsRemaining,
     long ClosureAtUnixMs,
-    ImmutableArray<int> RecipientOrdinals)
-    : SwarmClosureOutbound(RecipientOrdinals);
+    ImmutableArray<GameClientSession> Recipients)
+    : SwarmClosureOutbound(Recipients);
 
 internal sealed record SwarmAreaClosedOutbound(
     AreaType Area,
-    ImmutableArray<int> RecipientOrdinals)
-    : SwarmClosureOutbound(RecipientOrdinals);
+    ImmutableArray<GameClientSession> Recipients)
+    : SwarmClosureOutbound(Recipients);
 
 internal sealed record SwarmDoorStateOutbound(
     int DoorId,
-    ImmutableArray<int> RecipientOrdinals)
-    : SwarmClosureOutbound(RecipientOrdinals);
+    ImmutableArray<GameClientSession> Recipients)
+    : SwarmClosureOutbound(Recipients);
 
 internal sealed record SwarmInventoryUpdateOutbound(
     SwarmInGameItemSnapshot Item,
-    ImmutableArray<int> RecipientOrdinals)
-    : SwarmClosureOutbound(RecipientOrdinals);
+    ImmutableArray<GameClientSession> Recipients)
+    : SwarmClosureOutbound(Recipients);
 
 internal sealed record SwarmRingVfxOutbound(
     long OwnerPlayerId,
@@ -49,8 +50,8 @@ internal sealed record SwarmRingVfxOutbound(
     int Kind,
     long VictimPlayerId,
     int FromOrdinal,
-    ImmutableArray<int> RecipientOrdinals)
-    : SwarmClosureOutbound(RecipientOrdinals);
+    ImmutableArray<GameClientSession> Recipients)
+    : SwarmClosureOutbound(Recipients);
 
 internal readonly record struct SwarmInGameItemSnapshot(
     long ItemUid,

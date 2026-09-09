@@ -300,7 +300,7 @@ public sealed class SwarmArenaTickOrderTests
         string prepare = ReadMethodSlice(
             field,
             "private SwarmClosurePublicationPlan? PrepareSwarmScheduledClosureTick(",
-            "private static ImmutableArray<int> CaptureSwarmClosureRecipientOrdinals(");
+            "private void DispatchSwarmClosurePublicationPlan(");
         string dispatch = ReadMethodSlice(
             field,
             "private void DispatchSwarmClosurePublicationPlan(",
@@ -316,7 +316,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             tick,
             "PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);",
-            "DispatchSwarmClosurePublicationPlan(plan, sessionSnapshot)");
+            "DispatchSwarmClosurePublicationPlan(plan)");
         Assert.DoesNotContain("TryEnter", tick);
         Assert.DoesNotContain(".TrySend(", tick);
 
@@ -364,7 +364,7 @@ public sealed class SwarmArenaTickOrderTests
             "session.SendOrbUpdate(",
             "case SwarmRingVfxOutbound",
             "Protocol.G_TO_C_ORB_RING_EFFECT");
-        Assert.Contains("SendToCapturedRecipients(", dispatch);
+        Assert.Contains("session.TrySend(packet)", dispatch);
         Assert.DoesNotContain("catch", dispatch);
         Assert.Contains("first transport exception", field);
     }

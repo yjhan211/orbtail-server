@@ -7,7 +7,6 @@ using game_server.matches.entry;
 using game_server.matches.field;
 using game_server.matches.results;
 using game_server.matches.states;
-using game_server.network;
 using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -15,7 +14,6 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 using network.packets;
-using static game_server.network.SessionSnapshotDelivery;
 using System.Collections.Immutable;
 
 namespace game_server.matches.combat;

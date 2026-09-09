@@ -8,7 +8,6 @@ using game_server.matches;
 using game_server.sessions;
 using System.Reflection;
 using game_server;
-using game_server.network;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;

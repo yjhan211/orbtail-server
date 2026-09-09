@@ -3,7 +3,6 @@ using game_server.matches.items;
 using game_server.matches.logging;
 using game_server.matches.entry;
 using game_server.matches;
-using game_server.network;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data.helpers;

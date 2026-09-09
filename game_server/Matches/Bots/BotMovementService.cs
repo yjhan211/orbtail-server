@@ -3,12 +3,10 @@ using game_server.matches.logging;
 using game_server.matches;
 using System.Collections.Immutable;
 using System.Diagnostics;
-using game_server.network;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.packets;
-using static game_server.network.SessionSnapshotDelivery;
 
 namespace game_server.matches.bots;
 
@@ -47,7 +45,7 @@ internal class BotMovementService(
             resolveDirective);
 
         long dispatchStartedAt = Stopwatch.GetTimestamp();
-        DispatchSwarmBotMovementPlan(plan, sessionSnapshot);
+        DispatchSwarmBotMovementPlan(plan);
         double broadcastElapsedMilliseconds =
             plan.DispatchPreparationElapsedMilliseconds +
             Stopwatch.GetElapsedTime(dispatchStartedAt).TotalMilliseconds;
@@ -111,9 +109,8 @@ internal class BotMovementService(
         IReadOnlyList<GameClientSession> sessionSnapshot)
     {
         var observers = ImmutableArray.CreateBuilder<SwarmBotObserverSnapshot>();
-        for (int ordinal = 0; ordinal < sessionSnapshot.Count; ordinal++)
+        foreach (var session in sessionSnapshot)
         {
-            GameClientSession session = sessionSnapshot[ordinal];
             if (session.PlayerId is not > 0 ||
                 session.CurrentMapId != Config.SWARM_MATCH_MAP ||
                 session.MatchingId != matchingId)
@@ -123,7 +120,7 @@ internal class BotMovementService(
                 ? null
                 : SwarmVectorSnapshot.Capture(session.LastValidatedPosition);
             observers.Add(new SwarmBotObserverSnapshot(
-                ordinal,
+                session,
                 session.PlayerId.Value,
                 session.CurrentArea,
                 session.IsEliminated,
@@ -134,21 +131,22 @@ internal class BotMovementService(
     }
 
     private void DispatchSwarmBotMovementPlan(
-        SwarmBotMovementPlan plan,
-        IReadOnlyList<GameClientSession> sessionSnapshot)
+        SwarmBotMovementPlan plan)
     {
         foreach (SwarmBotMovementDispatch movement in plan.Movements)
         {
             if (movement.IsAreaTransition)
             {
                 using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(movement.BotPlayerId);
-                SendToCapturedRecipients(leavePacket, movement.LeaveRecipientOrdinals, sessionSnapshot);
+                foreach (var session in movement.LeaveRecipients)
+                    session.TrySend(leavePacket);
 
                 if (movement.EnteringBot != null)
                 {
                     using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(
                         movement.EnteringBot.ToGameObjectInfo());
-                    SendToCapturedRecipients(enterPacket, movement.DestinationRecipientOrdinals, sessionSnapshot);
+                    foreach (var session in movement.DestinationRecipients)
+                        session.TrySend(enterPacket);
                 }
             }
 
@@ -161,11 +159,11 @@ internal class BotMovementService(
                        movement.ServerTimestamp,
                        movement.OrbOrbitPhaseDegrees))
             {
-                SendToCapturedRecipients(movePacket, movement.DestinationRecipientOrdinals, sessionSnapshot);
+                foreach (var session in movement.DestinationRecipients)
+                    session.TrySend(movePacket);
             }
 
-            if (movement.Encounter is { } encounter &&
-                TryGetCapturedValue(sessionSnapshot, encounter.TargetSessionOrdinal, out GameClientSession target))
+            if (movement.Encounter is { } encounter)
             {
                 using var encounterPacket = PacketMaker.G_TO_C_ENCOUNTER_REVEAL(
                     encounter.BotPlayerId,
@@ -173,7 +171,7 @@ internal class BotMovementService(
                     encounter.EventType,
                     encounter.CooldownSeconds,
                     encounter.RevealDelayMs);
-                target.TrySend(encounterPacket);
+                encounter.TargetSession.TrySend(encounterPacket);
                 logger.LogInformation(
                     "Bot corridor encounter event: Matching={MatchingId}, Bot={Bot}, Target={Target}, " +
                     "Area={Area}, EventType={EventType}",
@@ -191,7 +189,8 @@ internal class BotMovementService(
                 removal.GroundItemUid,
                 removal.BotPlayerId,
                 removal.AutoUsed);
-            SendToCapturedRecipients(packet, removal.RecipientOrdinals, sessionSnapshot);
+            foreach (var session in removal.Recipients)
+                session.TrySend(packet);
         }
 
 
@@ -215,7 +214,7 @@ internal class BotMovementService(
             eventLogs,
             movement,
             observers);
-        DispatchSwarmBotMovementPlan(plan, sessionSnapshot);
+        DispatchSwarmBotMovementPlan(plan);
     }
 
     private static double CalculatePercentile(IReadOnlyList<double> sortedValues, double percentile)

@@ -5,7 +5,6 @@ using game_server.matches.field;
 using game_server.matches.results;
 using game_server.matches;
 using game_server.sessions;
-using game_server.network;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common.data;
 

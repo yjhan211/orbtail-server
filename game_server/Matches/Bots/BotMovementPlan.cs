@@ -1,3 +1,4 @@
+using game_server.sessions;
 using System.Collections.Immutable;
 using network.common;
 using network.common.data.models;
@@ -17,7 +18,7 @@ internal readonly record struct SwarmCellSnapshot(int X, int Y)
 }
 
 internal readonly record struct SwarmBotObserverSnapshot(
-    int SessionOrdinal,
+    GameClientSession Session,
     long PlayerId,
     AreaType Area,
     bool IsEliminated,
@@ -94,13 +95,13 @@ internal sealed record SwarmBotMovementDispatch(
     float Rotation,
     long ServerTimestamp,
     float OrbOrbitPhaseDegrees,
-    ImmutableArray<int> LeaveRecipientOrdinals,
-    ImmutableArray<int> DestinationRecipientOrdinals,
+    ImmutableArray<GameClientSession> LeaveRecipients,
+    ImmutableArray<GameClientSession> DestinationRecipients,
     SwarmBotPlayerInfoSnapshot? EnteringBot,
     SwarmBotEncounterDispatch? Encounter);
 
 internal sealed record SwarmBotEncounterDispatch(
-    int TargetSessionOrdinal,
+    GameClientSession TargetSession,
     long TargetPlayerId,
     long BotPlayerId,
     AreaType Area,
@@ -112,4 +113,4 @@ internal sealed record SwarmBotGroundItemRemovalDispatch(
     long GroundItemUid,
     long BotPlayerId,
     bool AutoUsed,
-    ImmutableArray<int> RecipientOrdinals);
+    ImmutableArray<GameClientSession> Recipients);
