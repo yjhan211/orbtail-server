@@ -31,7 +31,7 @@ public sealed class GameMatchEntryRosterTests
                 matchingId, TimeSpan.FromMinutes(2));
             var runtime = store.GetOrCreate(matchingId);
             await service.PrepareMatchAsync(matchingId, runtime);
-            return runtime.Roster.GetPlayerProfiles().Where(player => player.PlayerId < 0).Select(player => player.PlayerId).ToList();
+            return runtime.GetPlayerProfiles().Where(player => player.PlayerId < 0).Select(player => player.PlayerId).ToList();
         }
 
         var ids = await Prepare(981030);
@@ -98,11 +98,11 @@ public sealed class GameMatchEntryRosterTests
             return;
         }
         await service.PrepareMatchAsync(runtime.MatchingId, runtime);
-        Assert.Equal(2, runtime.Roster.GetPlayerProfiles().Count);
-        var human = Assert.Single(runtime.Roster.GetPlayerProfiles(), player => player.PlayerId == 101);
+        Assert.Equal(2, runtime.GetPlayerProfiles().Count);
+        var human = Assert.Single(runtime.GetPlayerProfiles(), player => player.PlayerId == 101);
         Assert.Equal("Human", human.Name);
         Assert.Equal(new[] { 123 }, human.WearItemIdList);
-        var bot = Assert.Single(runtime.Roster.GetPlayerProfiles(), player => player.PlayerId < 0);
+        var bot = Assert.Single(runtime.GetPlayerProfiles(), player => player.PlayerId < 0);
         var expectedBot = runtime.Bots.CreatePlayerInfo(runtime.MatchingId, bot.PlayerId)!;
         Assert.Equal(expectedBot.Name, bot.Name);
         Assert.Equal(expectedBot.WearItemIdList, bot.WearItemIdList);

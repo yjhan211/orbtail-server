@@ -11,7 +11,7 @@ public sealed class MatchRosterTests
     public void Elimination_OnlyChangesTheEliminatedPlayer_WhenLegacyChainEffectsAreDisabled()
     {
         const long matchingId = 194001;
-        var manager = MatchTestServices.Roster(matchingId, NullLogger.Instance);
+        var manager = MatchTestServices.Runtime(matchingId, NullLogger.Instance);
 
         manager.RegisterParticipant(CreateLink(1, 2));
         manager.RegisterParticipant(CreateLink(2, 3));
@@ -29,7 +29,7 @@ public sealed class MatchRosterTests
     public void Elimination_PreservesAttackerAndAreaInGameResult()
     {
         const long matchingId = 194002;
-        var manager = MatchTestServices.Roster(matchingId, NullLogger.Instance);
+        var manager = MatchTestServices.Runtime(matchingId, NullLogger.Instance);
 
         manager.RegisterParticipant(CreateLink(1, 2));
         manager.RegisterParticipant(CreateLink(2, 1));
@@ -47,7 +47,7 @@ public sealed class MatchRosterTests
     public void Elimination_FixesRankTierAndEnvironmentalCauseAtEliminationTime()
     {
         const long matchingId = 194003;
-        var manager = MatchTestServices.Roster(matchingId, NullLogger.Instance);
+        var manager = MatchTestServices.Runtime(matchingId, NullLogger.Instance);
 
         manager.RegisterParticipant(CreateLink(1, 2));
         manager.RegisterParticipant(CreateLink(2, 3));
@@ -68,7 +68,7 @@ public sealed class MatchRosterTests
     public void Elimination_AppliesOnlyOnceAndPreservesTheFirstResult()
     {
         const long matchingId = 194004;
-        var manager = MatchTestServices.Roster(matchingId, NullLogger.Instance);
+        var manager = MatchTestServices.Runtime(matchingId, NullLogger.Instance);
 
         manager.RegisterParticipant(CreateLink(1, 2));
         manager.RegisterParticipant(CreateLink(2, 3));
@@ -98,7 +98,7 @@ public sealed class MatchRosterTests
     public void Elimination_SameTickCollision_DecrementsAliveCountOnce()
     {
         const long matchingId = 227001;
-        var manager = MatchTestServices.Roster(matchingId, NullLogger.Instance);
+        var manager = MatchTestServices.Runtime(matchingId, NullLogger.Instance);
 
         manager.RegisterParticipant(CreateLink(1, 2));
         manager.RegisterParticipant(CreateLink(2, 3));
@@ -129,13 +129,15 @@ public sealed class MatchRosterTests
     }
 
     [Fact]
-    public void Release_ClearsStateAndRejectsFurtherRegistration()
+    public void EndMatch_ClearsParticipantsAndRejectsFurtherRegistration()
     {
-        var roster = new MatchRoster(1, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        var roster = MatchTestServices.Runtime(1, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         roster.RegisterParticipant(new MatchParticipant { Profile = new network.common.data.models.PlayerInfo { PlayerId = 10, Name = "player", WearItemIdList = [1] } });
 
-        roster.Release();
-        roster.Release();
+        using (roster.Enter())
+            roster.TryMarkEnded();
+        using (roster.Enter())
+            roster.TryMarkEnded();
 
         Assert.DoesNotContain(roster.BuildGameResult(), row => row.playerId == 10);
         Assert.Null(roster.GetParticipant(10)?.Profile);
@@ -148,7 +150,7 @@ public sealed class MatchRosterTests
     [Fact]
     public void Participant_OwnsTheProfileUsedByPacketsAndResults()
     {
-        var roster = new MatchRoster(1, NullLogger.Instance);
+        var roster = MatchTestServices.Runtime(1, NullLogger.Instance);
         var profile = new network.common.data.models.PlayerInfo
         {
             PlayerId = 10, Name = "player", WearItemIdList = [123]
@@ -166,9 +168,32 @@ public sealed class MatchRosterTests
         Assert.Equal(PlayerMatchStatus.ELIMINATED, participant.Status);
         Assert.Same(profile, roster.GetParticipant(10)!.Profile);
         Assert.Equal(123, Assert.Single(profile.WearItemIdList));
-        roster.Release();
+        using (roster.Enter())
+            roster.TryMarkEnded();
         Assert.Empty(roster.GetPlayerProfiles());
     }
+    [Fact]
+    public void EndMarked_PreservesResultsUntilOutermostMatchScopeExits()
+    {
+        var match = MatchTestServices.Runtime(194010, NullLogger.Instance);
+        var participant = CreateLink(10, 0);
+        match.RegisterParticipant(participant);
+        match.TryEliminatePlayer(10, EliminationReason.PRESSURE_FIELD);
+
+        using (match.Enter())
+        {
+            Assert.True(match.TryMarkEnded());
+            using (match.Enter())
+                Assert.Same(participant, match.GetParticipant(10));
+            Assert.Equal(EliminationReason.PRESSURE_FIELD, Assert.Single(match.BuildGameResult()).reason);
+            Assert.Single(match.GetPlayerProfiles());
+        }
+
+        Assert.Null(match.GetParticipant(10));
+        Assert.Empty(match.BuildGameResult());
+        Assert.Empty(match.GetPlayerProfiles());
+    }
+
     private static MatchParticipant CreateLink(long playerId, long _) => new()
     {
         Profile = new network.common.data.models.PlayerInfo { PlayerId = playerId }

@@ -35,7 +35,7 @@ internal sealed class PlayerEliminationService(
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
 
         int finalOrbTier = _matchRuntimes.GetOrThrow(matchingId).Inventory.GetHighestOrbTier(eliminatedPlayerId);
-        bool eliminated = _matchRuntimes.GetOrThrow(matchingId).Roster.TryEliminatePlayer(eliminatedPlayerId, reason,
+        bool eliminated = _matchRuntimes.GetOrThrow(matchingId).TryEliminatePlayer(eliminatedPlayerId, reason,
             resolvedAttackerPlayerId, eliminatedArea, forcedRank,
             finalOrbTier);
         if (!eliminated)
@@ -94,7 +94,7 @@ internal sealed class PlayerEliminationService(
         }
 
         // 3. 게임 종료 판정
-        var (isGameOver, winnerId) = _matchRuntimes.GetOrThrow(matchingId).Roster.CheckGameOver();
+        var (isGameOver, winnerId) = _matchRuntimes.GetOrThrow(matchingId).CheckGameOver();
         if (!deferGameOver && isGameOver)
         {
             Logger.LogInformation("게임 종료! 최후의 1인: {WinnerId}", winnerId);

@@ -171,7 +171,7 @@ internal class MatchEnvironmentService(
             rank--;
         }
 
-        (bool isGameOver, long? winnerId) = match.Roster.CheckGameOver();
+        (bool isGameOver, long? winnerId) = match.CheckGameOver();
         bool hasActiveSession = match.Sessions.Values.ToList().Any(session => !session.IsGameEnded);
         if (isGameOver && winnerId.HasValue && hasActiveSession)
         {

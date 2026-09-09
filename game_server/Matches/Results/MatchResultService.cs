@@ -171,7 +171,7 @@ internal sealed class MatchResultService(
         var runtime = matchRuntimes.GetOrThrow(matchingId);
         var endedAtUtc = DateTime.UtcNow;
         var startedAtUtc = runtime.StartsAtUtc ?? endedAtUtc;
-        var resultRows = runtime.Roster.BuildGameResult();
+        var resultRows = runtime.BuildGameResult();
 
         var killCountsByPlayerId = new Dictionary<long, int>();
         foreach (var row in resultRows)
@@ -190,7 +190,7 @@ internal sealed class MatchResultService(
             long playerId = row.playerId;
             var session = allSessions.FirstOrDefault(session => session.PlayerId == playerId);
             var bot = runtime.Bots.GetBot(matchingId, playerId);
-            var playerProfile = runtime.Roster.GetParticipant(playerId)?.Profile;
+            var playerProfile = runtime.GetParticipant(playerId)?.Profile;
             var stats = gameEventLogManager.GetResultStats(matchingId, playerId);
 
             string? name = playerProfile?.Name;

@@ -29,7 +29,7 @@ internal sealed class BotEliminationService(
             var eliminatedBot = match.Bots.GetBot(matchingId, botId);
             var eliminatedArea = eliminatedBot?.CurrentArea ?? AreaType.None;
             int finalOrbTier = match.Inventory.GetHighestOrbTier(botId);
-            bool eliminated = match.Roster.TryEliminatePlayer(botId, reason,
+            bool eliminated = match.TryEliminatePlayer(botId, reason,
                 attackerPlayerId, eliminatedArea, forcedRank,
                 finalOrbTier);
             if (!eliminated)
@@ -70,7 +70,7 @@ internal sealed class BotEliminationService(
                 eliminatedBot.PlayerMatchStatus = PlayerMatchStatus.SPECTATING;
             }
             // 3) 게임 종료 판정 — 봇 탈락으로 최후 1인 결정 가능
-            var (isGameOver, winnerId) = match.Roster.CheckGameOver();
+            var (isGameOver, winnerId) = match.CheckGameOver();
             if (!deferGameOver && isGameOver && matchingSessions.Count > 0)
             {
                 logger.LogInformation("게임 종료(봇 탈락 후): MatchingId={MatchingId}, Winner={WinnerId}",

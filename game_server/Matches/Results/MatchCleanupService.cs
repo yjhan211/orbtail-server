@@ -49,7 +49,7 @@ internal sealed class MatchCleanupService(
             var endedAtUtc = DateTime.UtcNow;
             var startedAtUtc = runtime.Closures.GetMatchingState()?.GameStartTime ?? endedAtUtc;
             var finalPlayerStats = new List<MatchFinalPlayerStats>();
-            foreach (var row in runtime.Roster.BuildGameResult())
+            foreach (var row in runtime.BuildGameResult())
             {
                 var stats = eventLogs.GetResultStats(matchingId, row.playerId);
                 var survivalEndUtc = row.eliminatedAt ?? endedAtUtc;

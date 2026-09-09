@@ -50,7 +50,7 @@ public sealed class GameMatchEntryServiceTests
         Assert.Equal(humanStones, runtime.SummonStones.GetSnapshot(1001).StoneCount);
         Assert.Equal(humanStones, runtime.SummonStones.GetSnapshot(1002).StoneCount);
         Assert.Empty(runtime.Inventory.GetPlayerInventory(1001).GetOrderedOrbs());
-        long botId = Assert.Single(runtime.Roster.GetPlayerProfiles(), player => player.PlayerId < 0).PlayerId;
+        long botId = Assert.Single(runtime.GetPlayerProfiles(), player => player.PlayerId < 0).PlayerId;
         Assert.Empty(runtime.Inventory.GetPlayerInventory(botId).GetOrderedOrbs());
         Assert.Equal(humanStones, runtime.SummonStones.GetSnapshot(botId).StoneCount);
 
@@ -58,7 +58,7 @@ public sealed class GameMatchEntryServiceTests
         {
             Assert.True(runtime.SummonStones.TrySpendStones(1001, 1, out _));
             Assert.Throws<InvalidOperationException>(() =>
-                runtime.InitializeMatch(runtime.Mode, runtime.SpawnCells, runtime.Roster.GetPlayerProfiles()));
+                runtime.InitializeMatch(runtime.Mode, runtime.SpawnCells, runtime.GetPlayerProfiles()));
         }
         await service.PrepareMatchAsync(runtime.MatchingId, runtime);
         Assert.Equal(humanStones, runtime.SummonStones.GetSnapshot(botId).StoneCount);
@@ -72,8 +72,8 @@ public sealed class GameMatchEntryServiceTests
     {
         var (service, redis, store, runtime) = await Prepare(981014);
         await service.PrepareMatchAsync(runtime.MatchingId, runtime);
-        long botId = Assert.Single(runtime.Roster.GetPlayerProfiles(), player => player.PlayerId < 0).PlayerId;
-        var bot = Assert.Single(runtime.Roster.GetPlayerProfiles(), profile => profile.PlayerId == botId);
+        long botId = Assert.Single(runtime.GetPlayerProfiles(), player => player.PlayerId < 0).PlayerId;
+        var bot = Assert.Single(runtime.GetPlayerProfiles(), profile => profile.PlayerId == botId);
         Assert.False(string.IsNullOrWhiteSpace(bot.Name));
         Assert.NotEmpty(bot.WearItemIdList);
         Assert.Equal(runtime.Bots.CreatePlayerInfo(runtime.MatchingId, botId)!.WearItemIdList, bot.WearItemIdList);
@@ -82,7 +82,7 @@ public sealed class GameMatchEntryServiceTests
             MessagePackSerializer.Serialize(new G_TO_C_MATCH_ROSTER
             {
                 MatchingId = runtime.MatchingId,
-                PlayerRoster = runtime.Roster.GetPlayerProfiles().ToList()
+                PlayerRoster = runtime.GetPlayerProfiles().ToList()
             }));
         var restoredBot = Assert.Single(restored.PlayerRoster, profile => profile.PlayerId == botId);
         Assert.Equal(bot.Name, restoredBot.Name);
@@ -131,17 +131,17 @@ public sealed class GameMatchEntryServiceTests
         await profile.Save(redis);
 
         await service.PrepareMatchAsync(runtime.MatchingId, runtime);
-        var initialRoster = runtime.Roster.GetPlayerProfiles();
+        var initialRoster = runtime.GetPlayerProfiles();
         profile.Name = "NextMatch";
         profile.WearItemIdList = [303];
         await profile.Save(redis);
         await service.PrepareMatchAsync(runtime.MatchingId, runtime);
 
-        Assert.Equal(initialRoster, runtime.Roster.GetPlayerProfiles());
-        var human = Assert.Single(runtime.Roster.GetPlayerProfiles(), entry => entry.PlayerId == 1001);
+        Assert.Equal(initialRoster, runtime.GetPlayerProfiles());
+        var human = Assert.Single(runtime.GetPlayerProfiles(), entry => entry.PlayerId == 1001);
         Assert.Equal("AtEntry", human.Name);
         Assert.Equal(new[] { 202 }, human.WearItemIdList);
-        Assert.Equal(new[] { 202 }, runtime.Roster.GetParticipant(1001)!.Profile.WearItemIdList);
+        Assert.Equal(new[] { 202 }, runtime.GetParticipant(1001)!.Profile.WearItemIdList);
         Assert.Equal(new[] { 303 }, (await PlayerInfo.Load(redis, 1001))!.WearItemIdList);
     }
 
@@ -202,12 +202,12 @@ public sealed class GameMatchEntryServiceTests
 
         await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(runtime.IsSetupComplete);
-        Assert.Single(runtime.Roster.GetPlayerProfiles(), player => player.PlayerId < 0);
+        Assert.Single(runtime.GetPlayerProfiles(), player => player.PlayerId < 0);
         Assert.Single(runtime.Bots.GetBots(runtime.MatchingId));
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var events = logs.GetRecent(runtime.MatchingId);
         Assert.Single(events, entry => entry.Type == GameEventType.MatchStarted);
-        Assert.Equal(runtime.Roster.GetPlayerProfiles().Count, events.Count(entry => entry.Type == GameEventType.SpawnAssignment));
+        Assert.Equal(runtime.GetPlayerProfiles().Count, events.Count(entry => entry.Type == GameEventType.SpawnAssignment));
         var spawn = Assert.Single(events, entry => entry.Type == GameEventType.SpawnAssignment && entry.IsBot);
         var bot = Assert.Single(runtime.Bots.GetBots(runtime.MatchingId));
         Assert.True(spawn.IsBot);

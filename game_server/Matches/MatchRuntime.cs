@@ -4,8 +4,6 @@ using game_server.items;
 using game_server.monsters;
 using game_server.field;
 using System.Collections.Concurrent;
-using game_server.matches;
-using game_server.matches.results;
 using game_server.logging;
 using game_server.orbs;
 using game_server.sessions;
@@ -16,7 +14,7 @@ using network.common;
 namespace game_server.matches;
 
 /// <summary>
-///     게임 한 판의 참가 세션, 봇, 전투, 아이템, 문 등 상태와 처리 객체를 소유한다.
+///     게임 한 판의 참가자 프로필·탈락 기록, 참가 세션, 봇, 전투, 아이템, 문 등 상태와 처리 객체를 소유한다.
 ///     같은 매치의 패킷 처리와 틱은 매치 잠금 안에서 실행하고, 서로 다른 매치는 독립적으로 처리한다.
 ///
 ///     Enter()로 잠금에 진입하며, 입장 초기화처럼 await가 필요한 작업은 EntryInitializationLock을 사용한다.
@@ -32,6 +30,10 @@ internal sealed class MatchRuntime
     public bool IsSetupComplete => Volatile.Read(ref _isSetupComplete);
     public MatchMode Mode { get; private set; }
     public IReadOnlyDictionary<long, Cell> SpawnCells { get; private set; } = new Dictionary<long, Cell>();
+
+    // 사람·봇 참가자는 연결이 끊겨도 매치 정리까지 보관한다. MatchLock으로 보호한다.
+    private readonly Dictionary<long, MatchParticipant> _participants = new();
+    private int _aliveCount;
 
     // 참가자
     // 접속한 사람 세션만 보관한다. 등록·교체·조건부 제거는 GameSessionRegistry가 조율한다.
@@ -65,7 +67,6 @@ internal sealed class MatchRuntime
         AutoAttack = new AutoAttackController(matchingId);
         Inventory = new InGameInventoryManager(matchingId, logger);
         GroundItems = new GroundItemManager(matchingId);
-        Roster = new MatchRoster(matchingId, logger);
         SummonStones = new SummonStoneManager(matchingId);
         Closures = new AreaClosureManager(matchingId, logger);
         Monsters = new SwarmMonsterDirector(matchingId, Closures, Inventory);
@@ -74,7 +75,6 @@ internal sealed class MatchRuntime
 
     // 매치 식별과 수명·잠금
     public long MatchingId { get; }
-    public MatchRoster Roster { get; }
     public BotPlayerManager Bots { get; }
     public BotTacticalState BotTactics { get; } = new();
     internal SwarmBotTickMetrics BotTickMetrics { get; } = new();
@@ -132,13 +132,130 @@ internal sealed class MatchRuntime
         SpawnCells = spawnCells;
         foreach (var player in playerRoster)
         {
-            Roster.RegisterParticipant(new MatchParticipant { Profile = player });
+            RegisterParticipant(new MatchParticipant { Profile = player });
             OrbUpgradeService.GrantStartingResources(this, player.PlayerId);
         }
         if (playerRoster.Count > 0 && playerRoster.All(player => player.PlayerId < 0))
             _startsAtUtc = DateTime.UtcNow;
         Volatile.Write(ref _isSetupComplete, true);
     }
+
+    // 참가자 등록·조회·탈락 처리는 모두 MatchLock으로 보호한다.
+    public void RegisterParticipant(MatchParticipant participant)
+    {
+        lock (MatchLock)
+        {
+            if (_cleanupStarted)
+            {
+                throw new InvalidOperationException($"Match is not available: {MatchingId}");
+            }
+
+            if (!_participants.TryAdd(participant.PlayerId, participant))
+            {
+                _logger.LogDebug("Match participant already registered: MatchingId={MatchingId}, PlayerId={PlayerId}", MatchingId, participant.PlayerId);
+                return;
+            }
+
+            _aliveCount = _participants.Count;
+            _logger.LogInformation("Match participant registered: MatchingId={MatchingId}, PlayerId={PlayerId}, Count={Count}", MatchingId, participant.PlayerId, _aliveCount);
+        }
+    }
+
+    public MatchParticipant? GetParticipant(long playerId)
+    {
+        lock (MatchLock)
+        {
+            if (_cleanupStarted || !_participants.TryGetValue(playerId, out var entry))
+            {
+                return null;
+            }
+
+            return entry;
+        }
+    }
+
+    public List<PlayerInfo> GetPlayerProfiles()
+    {
+        lock (MatchLock)
+        {
+            return _participants.Values.Select(participant => participant.Profile).ToList();
+        }
+    }
+
+    public bool TryEliminatePlayer(long playerId, EliminationReason reason,
+        long attackerPlayerId = 0, AreaType eliminatedArea = AreaType.None, int forcedRank = 0, int finalOrbTier = 0)
+    {
+        lock (MatchLock)
+        {
+            if (_cleanupStarted)
+            {
+                return false;
+            }
+            if (!_participants.TryGetValue(playerId, out var participant)) return false;
+            if (participant.Status == PlayerMatchStatus.ELIMINATED) return false;
+
+            participant.Status = PlayerMatchStatus.ELIMINATED;
+            participant.EliminationReason = reason;
+            participant.EliminatedAt = DateTime.UtcNow;
+            participant.AttackerPlayerId = attackerPlayerId;
+            participant.EliminatedArea = eliminatedArea;
+            participant.FinalOrbTier = finalOrbTier;
+            participant.EliminationRank = forcedRank > 0 ? forcedRank : _aliveCount;
+            _aliveCount--;
+
+            _logger.LogInformation("플레이어 탈락: MatchingId={MatchingId}, PlayerId={PlayerId}, 사유={Reason}, 생존={Alive}", MatchingId, playerId, reason, _aliveCount);
+            return true;
+        }
+    }
+
+    public (bool isGameOver, long? winnerId) CheckGameOver()
+    {
+        lock (MatchLock)
+        {
+            if (_cleanupStarted)
+                return (false, null);
+
+            if (_participants.Count == 0)
+                return (false, null);
+
+            var activePlayers = _participants.Values
+                .Where(l => l.Status != PlayerMatchStatus.ELIMINATED && l.Status != PlayerMatchStatus.SPECTATING)
+                .ToList();
+
+            if (activePlayers.Count <= 1)
+            {
+                long? winnerId = activePlayers.FirstOrDefault()?.PlayerId;
+                return (true, winnerId);
+            }
+
+            return (false, null);
+        }
+    }
+
+    public List<(long playerId,
+        EliminationReason reason, PlayerMatchStatus finalStatus, DateTime? eliminatedAt,
+        long attackerPlayerId, AreaType eliminatedArea, int eliminationRank, int finalOrbTier)> BuildGameResult()
+    {
+        lock (MatchLock)
+        {
+            if (_cleanupStarted)
+                return new();
+
+            var result = new List<(long, EliminationReason, PlayerMatchStatus, DateTime?, long,
+                AreaType, int, int)>();
+
+            foreach (var participant in _participants.Values)
+            {
+                result.Add((participant.PlayerId,
+                    participant.EliminationReason, participant.Status, participant.EliminatedAt, participant.AttackerPlayerId,
+                    participant.EliminatedArea,
+                    participant.EliminationRank, participant.FinalOrbTier));
+            }
+
+            return result;
+        }
+    }
+
 
     public DateTime? EntryDeadlineUtc { get { lock (MatchLock) return _entryDeadlineUtc; } }
     public DateTime? StartsAtUtc { get { lock (MatchLock) return _startsAtUtc; } }
@@ -147,7 +264,7 @@ internal sealed class MatchRuntime
     {
         lock (MatchLock)
         {
-            if (IsEnded || !IsSetupComplete || playerId <= 0 || Roster.GetParticipant(playerId) == null)
+            if (IsEnded || !IsSetupComplete || playerId <= 0 || GetParticipant(playerId) == null)
             {
                 return;
             }
@@ -159,12 +276,12 @@ internal sealed class MatchRuntime
     {
         lock (MatchLock)
         {
-            if (IsEnded || !_entryDeadlineUtc.HasValue || playerId <= 0 || Roster.GetParticipant(playerId) == null)
+            if (IsEnded || !_entryDeadlineUtc.HasValue || playerId <= 0 || GetParticipant(playerId) == null)
             {
                 return;
             }
             _readyPlayerIds.Add(playerId);
-            if (Roster.GetPlayerProfiles().Any(player => player.PlayerId > 0 && !_readyPlayerIds.Contains(player.PlayerId)))
+            if (GetPlayerProfiles().Any(player => player.PlayerId > 0 && !_readyPlayerIds.Contains(player.PlayerId)))
             {
                 return;
             }
@@ -239,7 +356,8 @@ internal sealed class MatchRuntime
                 GroundItemPickupCandidates.Clear();
                 SummonStones.Release();
                 Encounters.Release();
-                Roster.Release();
+                _participants.Clear();
+                _aliveCount = 0;
                 Closures.Release();
                 Bots.Release();
                 Monsters.Release();

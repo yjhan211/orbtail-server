@@ -258,7 +258,7 @@ public partial class GameClientSession : SessionBase
                 }
                 if (!runtime.IsSetupComplete)
                     throw new InvalidOperationException("Match setup is not complete.");
-                var playerProfiles = runtime.Roster.GetPlayerProfiles();
+                var playerProfiles = runtime.GetPlayerProfiles();
                 foreach (var participant in playerProfiles)
                 {
                     if (participant.PlayerId > 0)

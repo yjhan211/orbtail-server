@@ -15,15 +15,15 @@ public sealed class MatchSetupTests
         Assert.False(runtime.IsSetupComplete);
         Assert.Throws<InvalidOperationException>(() => runtime.InitializeMatch(default, cells, roster));
         Assert.False(runtime.IsSetupComplete);
-        Assert.Empty(runtime.Roster.GetPlayerProfiles());
+        Assert.Empty(runtime.GetPlayerProfiles());
 
         using var scope = runtime.Enter();
         runtime.InitializeMatch(default, cells, roster);
         Assert.True(runtime.IsSetupComplete);
-        Assert.Equal(roster, runtime.Roster.GetPlayerProfiles());
+        Assert.Equal(roster, runtime.GetPlayerProfiles());
         Assert.Same(cells, runtime.SpawnCells);
         Assert.Throws<InvalidOperationException>(() => runtime.InitializeMatch(default, cells, []));
-        Assert.Equal(roster, runtime.Roster.GetPlayerProfiles());
+        Assert.Equal(roster, runtime.GetPlayerProfiles());
     }
 
     [Fact]
@@ -34,7 +34,7 @@ public sealed class MatchSetupTests
         runtime.TryMarkEnded();
         Assert.Throws<InvalidOperationException>(() => runtime.InitializeMatch(default, new Dictionary<long, Cell>(), []));
         Assert.False(runtime.IsSetupComplete);
-        Assert.Empty(runtime.Roster.GetPlayerProfiles());
+        Assert.Empty(runtime.GetPlayerProfiles());
     }
 
     [Fact]
@@ -44,9 +44,9 @@ public sealed class MatchSetupTests
         using var scope = runtime.Enter();
         Assert.Throws<ArgumentNullException>(() => runtime.InitializeMatch(default, new Dictionary<long, Cell>(), null!));
         Assert.False(runtime.IsSetupComplete);
-        Assert.Empty(runtime.Roster.GetPlayerProfiles());
+        Assert.Empty(runtime.GetPlayerProfiles());
         runtime.InitializeMatch(default, new Dictionary<long, Cell>(), [new PlayerInfo { PlayerId = 1 }]);
         Assert.True(runtime.IsSetupComplete);
-        Assert.Equal(1, Assert.Single(runtime.Roster.GetPlayerProfiles()).PlayerId);
+        Assert.Equal(1, Assert.Single(runtime.GetPlayerProfiles()).PlayerId);
     }
 }
