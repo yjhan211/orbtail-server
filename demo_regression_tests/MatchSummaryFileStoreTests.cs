@@ -1,6 +1,6 @@
 using game_server.logging;
 using game_server.matches.results;
-using game_server.matches;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace demo_regression_tests;
 
@@ -10,40 +10,22 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
         Path.GetTempPath(), $"manitto-match-summary-tests-{Guid.NewGuid():N}");
 
     [Fact]
-    public void Save_CanBeReadByANewStoreInstance()
+    public void Save_WritesReadableSummaryFile()
     {
-        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var store = new MatchSummaryFileStore(_directory, 5);
-        var events = new List<GameEventEntry>
-        {
-            new() { Seq = 1, TimestampUnixMs = now, Type = "MATCH_STARTED", MatchSeed = 7 },
-            new()
-            {
-                Seq = 2,
-                TimestampUnixMs = now + 1_000,
-                Type = "SUMMON_STONE_AWARDED",
-                PlayerId = -101,
-                IsBot = true,
-                SummonStoneDelta = 3
-            },
-            new()
-            {
-                Seq = 3,
-                TimestampUnixMs = now + 2_000,
-                Type = "MATCH_ENDED",
-                WinnerPlayerId = 10,
-                EndReason = "last_survivor",
-                FinalPlayerStats =
-                [
-                    new MatchFinalPlayerStats(10, 1, 120, 2, 400, 20),
-                    new MatchFinalPlayerStats(-101, 2, 110, 1, 250, 0)
-                ]
-            }
-        };
-
-        store.Save(206001, "last_survivor", 10, events);
-        var restartedStore = new MatchSummaryFileStore(_directory, 5);
-        var summary = restartedStore.Read(206001);
+        var logs = TestGameEventLogs.Create();
+        logs.BeginMatch(206001, 7);
+        logs.LogSystem(206001, "test event");
+        logs.LogMatchEnded(206001, 10, "last_survivor", "none",
+        [
+            new MatchFinalPlayerStats(10, 1, 120, 2, 400, 20),
+            new MatchFinalPlayerStats(-101, 2, 110, 1, 250, 0)
+        ]);
+        var document = MatchSummaryFileStore.Prepare(logs, NullLogger.Instance,
+            206001, "last_survivor", 10, out var capturedEvents);
+        Assert.NotNull(document);
+        store.Save(document, capturedEvents, NullLogger.Instance);
+        var summary = ReadSummary(206001);
 
         Assert.NotNull(summary);
         Assert.Equal("last_survivor", summary!.EndReason);
@@ -60,35 +42,43 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
     public void Save_IsIdempotentForTheSameMatchingId()
     {
         var store = new MatchSummaryFileStore(_directory, 5);
-        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var logs = TestGameEventLogs.Create();
+        logs.BeginMatch(206002, 7);
+        var first = MatchSummaryFileStore.Prepare(logs, NullLogger.Instance,
+            206002, "last_survivor", 1, out var firstEvents);
+        Assert.NotNull(first);
+        store.Save(first, firstEvents, NullLogger.Instance);
 
-        var first = store.Save(206002, "last_survivor", 1,
-            [new GameEventEntry { Seq = 1, TimestampUnixMs = now, Type = "MATCH_ENDED" }]);
-        var duplicate = store.Save(206002, "last_human_left", 0,
-            [new GameEventEntry { Seq = 2, TimestampUnixMs = now + 1_000, Type = "MATCH_ABANDONED" }]);
-
-        Assert.Equal(first.EndReason, duplicate.EndReason);
-        Assert.Equal("last_survivor", store.Read(206002)!.EndReason);
+        logs.LogSystem(206002, "must not overwrite the first save");
+        var duplicate = MatchSummaryFileStore.Prepare(logs, NullLogger.Instance,
+            206002, "last_human_left", 0, out var duplicateEvents);
+        Assert.NotNull(duplicate);
+        store.Save(duplicate, duplicateEvents, NullLogger.Instance);
+        Assert.Single(store.ReadRawEvents(206002));
+        Assert.Equal("last_survivor", ReadSummary(206002)!.EndReason);
     }
 
     [Fact]
     public void Save_PrunesOldSummariesToTheConfiguredLimit()
     {
         var store = new MatchSummaryFileStore(_directory, 2);
-        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var logs = TestGameEventLogs.Create();
 
         for (long matchingId = 1; matchingId <= 3; matchingId++)
         {
-            store.Save(matchingId, "test", 0,
-                [new GameEventEntry { Seq = matchingId, TimestampUnixMs = now + matchingId, Type = "MATCH_ENDED" }]);
+            logs.BeginMatch(matchingId, 7);
+            var document = MatchSummaryFileStore.Prepare(logs, NullLogger.Instance,
+                matchingId, "test", 0, out var capturedEvents);
+            Assert.NotNull(document);
+            store.Save(document, capturedEvents, NullLogger.Instance);
             Thread.Sleep(20);
         }
 
         var recent = Directory.GetFiles(_directory, "match-*.json");
         Assert.Equal(2, recent.Length);
-        Assert.Null(store.Read(1));
+        Assert.Null(ReadSummary(1));
         Assert.False(File.Exists(Path.Combine(_directory, "match-1.events.jsonl")));
-        Assert.NotNull(store.Read(3));
+        Assert.NotNull(ReadSummary(3));
     }
 
     [Fact]
@@ -104,18 +94,23 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
         var complete = log.GetForPersistence(matchingId);
 
         Assert.Equal(5_000, recent.Count);
-        Assert.DoesNotContain(recent, entry => entry.Type == "MATCH_STARTED");
+        Assert.DoesNotContain(recent, entry => entry.Type == GameEventType.MatchStarted);
         Assert.Equal(5_101, complete.Count);
-        Assert.Equal("MATCH_STARTED", complete[0].Type);
+        Assert.Equal(GameEventType.MatchStarted, complete[0].Type);
 
         var store = new MatchSummaryFileStore(_directory, 5);
-        var summary = store.Save(matchingId, "test", 0, complete);
+        var document = MatchSummaryFileStore.Prepare(log, NullLogger.Instance,
+            matchingId, "test", 0, out var capturedEvents);
+        Assert.NotNull(document);
+        store.Save(document, capturedEvents, NullLogger.Instance);
+        var summary = ReadSummary(matchingId);
+        Assert.NotNull(summary);
         var persisted = store.ReadRawEvents(matchingId, 6_000);
 
         Assert.Equal(5_101, summary.RawEventCount);
         Assert.Equal(500, summary.Events.Count);
         Assert.Equal(5_101, persisted.Count);
-        Assert.Contains(persisted, entry => entry.Type == "MATCH_STARTED");
+        Assert.Contains(persisted, entry => entry.Type == GameEventType.MatchStarted);
     }
 
     [Fact]
@@ -133,7 +128,7 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
             new Dictionary<long, int> { [11] = 30, [22] = 18 });
 
         var killed = Assert.Single(log.GetRecent(210003));
-        Assert.Equal("AFTERIMAGE_KILLED", killed.Type);
+        Assert.Equal(GameEventType.AfterimageKilled, killed.Type);
         Assert.Equal(11, killed.FirstAttackerPlayerId);
         Assert.Equal(22, killed.LastAttackerPlayerId);
         Assert.Equal([11L, 22L], killed.MonsterDamageContributions!.Select(entry => entry.PlayerId));
@@ -149,6 +144,46 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
         Assert.False(events.TryBeginFinalization(206003));
     }
 
+    [Theory]
+    [InlineData(GameEventType.MatchStarted, "MATCH_STARTED")]
+    [InlineData(GameEventType.MatchEnded, "MATCH_ENDED")]
+    [InlineData(GameEventType.SurvivorFirstT2, "SURVIVOR_FIRST_T2")]
+    [InlineData(GameEventType.GroundItemPickedUp, "GROUND_ITEM_PICKED_UP")]
+    public void EventType_PreservesExistingJsonStrings(GameEventType type, string storedName)
+    {
+        var entry = new GameEventEntry { Type = type };
+        string json = System.Text.Json.JsonSerializer.Serialize(entry);
+        using var document = System.Text.Json.JsonDocument.Parse(json);
+        Assert.Equal(storedName, document.RootElement.GetProperty("Type").GetString());
+        var restored = System.Text.Json.JsonSerializer.Deserialize<GameEventEntry>(
+            "{\"Type\":\"" + storedName + "\"}");
+        Assert.NotNull(restored);
+        Assert.Equal(type, restored.Type);
+    }
+
+    [Fact]
+    public void EveryEventType_RoundTripsAsAString()
+    {
+        foreach (var type in Enum.GetValues<GameEventType>())
+        {
+            string json = System.Text.Json.JsonSerializer.Serialize(type);
+            Assert.StartsWith("\"", json);
+            Assert.Equal(type, System.Text.Json.JsonSerializer.Deserialize<GameEventType>(json));
+        }
+        Assert.Throws<System.Text.Json.JsonException>(() =>
+            System.Text.Json.JsonSerializer.Deserialize<GameEventType>("123"));
+    }
+    private MatchSummaryDocument? ReadSummary(long matchingId)
+    {
+        string path = Path.Combine(_directory, $"match-{matchingId}.json");
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+        return System.Text.Json.JsonSerializer.Deserialize<MatchSummaryDocument>(
+            File.ReadAllText(path),
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+    }
     public void Dispose()
     {
         if (Directory.Exists(_directory)) Directory.Delete(_directory, true);

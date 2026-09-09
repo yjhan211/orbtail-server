@@ -43,12 +43,12 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             {
                 if (protocol != Protocol.G_TO_C_ORB_UPDATE) return;
                 Assert.Contains(fixture.EventLog.GetRecent(FirstMatchingId),
-                    entry => entry.Type == "SURVIVOR_ORB_BOARD_STATE" && entry.Outcome == "summon");
+                    entry => entry.Type == GameEventType.SurvivorOrbBoardState && entry.Outcome == "summon");
             };
             await SendAsync(session, Protocol.C_TO_G_SUMMON_ORB, new C_TO_G_SUMMON_ORB());
             var events = fixture.EventLog.GetRecent(FirstMatchingId);
-            Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_BOARD_STATE" && entry.Outcome == "summon");
-            Assert.Single(events, entry => entry.Type == "ORB_SUMMON_SUCCEEDED");
+            Assert.Single(events, entry => entry.Type == GameEventType.SurvivorOrbBoardState && entry.Outcome == "summon");
+            Assert.Single(events, entry => entry.Type == GameEventType.OrbSummonSucceeded);
             Assert.Contains(Protocol.G_TO_C_ORB_UPDATE, connection.AttemptedProtocols);
             Assert.DoesNotContain(Protocol.G_TO_C_ORB_UPDATE, connection.DeliveredProtocols);
         }

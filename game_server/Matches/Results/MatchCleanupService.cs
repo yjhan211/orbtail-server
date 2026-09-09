@@ -67,10 +67,10 @@ internal sealed class MatchCleanupService(
             }
 
             eventLogs.LogMatchAbandoned(matchingId, endReason.ToString(), finalPlayerStats);
-            var summaryRequest = MatchSummaryPersistence.Capture(eventLogs, logger, matchingId, endReason.ToString(), winnerPlayerId);
+            var summaryRequest = MatchSummaryFileStore.Prepare(eventLogs, logger, matchingId, endReason.ToString(), winnerPlayerId, out var capturedEvents);
             if (summaryRequest != null)
             {
-                runtime.AfterRelease.Add(() => MatchSummaryPersistence.Persist(summaryRequest, summaryFileStore, logger));
+                runtime.AfterRelease.Add(() => summaryFileStore.Save(summaryRequest, capturedEvents, logger));
             }
         }
 

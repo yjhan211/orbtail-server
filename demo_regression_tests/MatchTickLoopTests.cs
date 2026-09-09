@@ -228,7 +228,7 @@ public sealed class MatchTickLoopTests
                 service.ProcessTick(first, (_, _) => throw new InvalidOperationException("No bots."));
             Assert.Equal(0, first.BotTickMetrics.SampleCount);
             var entry = Assert.Single(logs.GetRecent(first.MatchingId),
-                e => e.Type == "SURVIVOR_BOT_MOVEMENT_TICK_PERFORMANCE");
+                e => e.Type == GameEventType.SurvivorBotMovementTickPerformance);
             Assert.Equal(SwarmBotTickMetrics.WindowSize, entry.BotMovementTickSampleCount);
             Assert.Empty(logs.GetRecent(second.MatchingId));
             first.TryMarkEnded();

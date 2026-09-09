@@ -56,7 +56,8 @@ internal sealed class MatchResultService(
         });
 
         var completionNotifications = new List<Action>();
-        MatchSummaryPersistenceRequest? summaryRequest = null;
+        MatchSummaryDocument? summaryRequest = null;
+        IReadOnlyList<GameEventEntry> capturedEvents = [];
         if (gameEventLogManager.TryBeginFinalization(matchingId))
         {
             try
@@ -82,7 +83,7 @@ internal sealed class MatchResultService(
 
             try
             {
-                summaryRequest = MatchSummaryPersistence.Capture(gameEventLogManager, logger, matchingId, endReason.ToString(), winnerId);
+                summaryRequest = MatchSummaryFileStore.Prepare(gameEventLogManager, logger, matchingId, endReason.ToString(), winnerId, out capturedEvents);
             }
             catch (Exception ex)
             {
@@ -146,7 +147,7 @@ internal sealed class MatchResultService(
 
         if (capturedSummary != null)
         {
-            runtime.AfterRelease.Add(() => MatchSummaryPersistence.Persist(capturedSummary, matchSummaryFileStore, logger));
+            runtime.AfterRelease.Add(() => matchSummaryFileStore.Save(capturedSummary, capturedEvents, logger));
         }
     }
 

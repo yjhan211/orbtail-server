@@ -88,12 +88,12 @@ public class GameEventLogManager
         if (healthDelta != 0) parts.Add($"체력{(healthDelta >= 0 ? "+" : "")}{healthDelta}");
         parts.Add($"(체력 {health})");
         if (!string.IsNullOrEmpty(reason)) parts.Add($"<{reason}>");
-        Append(matchingId, "RESOURCE", playerId, isBot, string.Join(" ", parts));
+        Append(matchingId, GameEventType.Resource, playerId, isBot, string.Join(" ", parts));
     }
 
     public void LogMission(long matchingId, long playerId, string description, bool isBot)
     {
-        Append(matchingId, "MISSION", playerId, isBot, description);
+        Append(matchingId, GameEventType.Mission, playerId, isBot, description);
     }
 
     public void LogElimination(
@@ -112,7 +112,7 @@ public class GameEventLogManager
             : attackerPlayerId != 0
                 ? "pvp"
                 : "mental";
-        AppendAt(matchingId, "ELIMINATE", playerId, isBot, reason, occurredAt, entry =>
+        AppendAt(matchingId, GameEventType.Eliminate, playerId, isBot, reason, occurredAt, entry =>
         {
             entry.ActorPlayerId = attackerPlayerId;
             entry.TargetPlayerId = playerId;
@@ -155,7 +155,7 @@ public class GameEventLogManager
 
         AppendAt(
             matchingId,
-            $"SURVIVOR_FIRST_T{tier}",
+            tier == 2 ? GameEventType.SurvivorFirstT2 : GameEventType.SurvivorFirstT3,
             playerId,
             isBot,
             $"First T{tier}: {FormatPlayer(playerId)} equipped or crafted Item{itemId}.",
@@ -239,7 +239,7 @@ public class GameEventLogManager
 
         AppendAt(
             matchingId,
-            "SURVIVOR_HIT",
+            GameEventType.SurvivorHit,
             attackerPlayerId,
             isBot,
             $"{FormatPlayer(attackerPlayerId)} hit {FormatPlayer(targetPlayerId)} for {damage}; hit={hitCount}, elapsedMs={elapsedMilliseconds}, gapMs={previousHitGapMilliseconds?.ToString() ?? "first"}.",
@@ -266,7 +266,7 @@ public class GameEventLogManager
         {
             AppendAt(
                 matchingId,
-                "SURVIVOR_FIRST_ELIMINATION",
+                GameEventType.SurvivorFirstElimination,
                 targetPlayerId,
                 BotPlayerManager.IsBotPlayerId(targetPlayerId),
                 $"First elimination: {FormatPlayer(targetPlayerId)} was eliminated by {FormatPlayer(attackerPlayerId)}.",
@@ -286,7 +286,7 @@ public class GameEventLogManager
 
         AppendAt(
             matchingId,
-            "SURVIVOR_COMBAT_ELIMINATION",
+            GameEventType.SurvivorCombatElimination,
             attackerPlayerId,
             isBot,
             $"{FormatPlayer(attackerPlayerId)} eliminated {FormatPlayer(targetPlayerId)} with T{weaponTier}; killCount={killCount}, elapsedMs={elapsedMilliseconds}.",
@@ -325,7 +325,7 @@ public class GameEventLogManager
     {
         Append(
             matchingId,
-            "ORB_SUFFIX_CUT",
+            GameEventType.OrbSuffixCut,
             cutterPlayerId,
             BotPlayerManager.IsBotPlayerId(cutterPlayerId),
             $"{FormatPlayer(cutterPlayerId)} cut {FormatPlayer(ownerPlayerId)} tail at ordinal {tailOrdinal}; " +
@@ -367,7 +367,7 @@ public class GameEventLogManager
     {
         Append(
             matchingId,
-            "CUT_ATTEMPT",
+            GameEventType.CutAttempt,
             cutterPlayerId,
             BotPlayerManager.IsBotPlayerId(cutterPlayerId),
             $"{FormatPlayer(cutterPlayerId)} entered {FormatPlayer(ownerPlayerId)} trail at ordinal {tailOrdinal}; " +
@@ -405,7 +405,7 @@ public class GameEventLogManager
     {
         Append(
             matchingId,
-            "CUT_RETALIATION_WINDOW",
+            GameEventType.CutRetaliationWindow,
             victimPlayerId,
             BotPlayerManager.IsBotPlayerId(victimPlayerId),
             $"{FormatPlayer(victimPlayerId)} guarded from {FormatPlayer(cutterPlayerId)}; " +
@@ -442,7 +442,7 @@ public class GameEventLogManager
     {
         Append(
             matchingId,
-            "ORB_GROWTH_CARDS_OFFERED",
+            GameEventType.OrbGrowthCardsOffered,
             playerId,
             isBot,
             $"{FormatPlayer(playerId)} offered growth cards; cost={finalCost} (base {baseCost} + surcharge {scoreSurcharge}), orbs={orbCount}.",
@@ -474,7 +474,7 @@ public class GameEventLogManager
     {
         Append(
             matchingId,
-            "ORB_GROWTH_CARD_SELECTED",
+            GameEventType.OrbGrowthCardSelected,
             playerId,
             isBot,
             $"{FormatPlayer(playerId)} picked {cardRole} grade {cardGrade}; cost={finalCost} (base {baseCost} + surcharge {scoreSurcharge}), n={successCountBefore}, orbs={orbCountBefore}.",
@@ -505,7 +505,7 @@ public class GameEventLogManager
     {
         AppendAt(
             matchingId,
-            "AFTERIMAGE_HIT",
+            GameEventType.AfterimageHit,
             targetPlayerId,
             isBot,
             $"Afterimage {monsterId} hit {FormatPlayer(targetPlayerId)} for {damage}; health={healthBefore}->{healthAfter}.",
@@ -540,7 +540,7 @@ public class GameEventLogManager
             .Select(pair => new MonsterDamageContribution(pair.Key, pair.Value))
             .ToList();
 
-        Append(matchingId, "AFTERIMAGE_KILLED", lastAttackerPlayerId,
+        Append(matchingId, GameEventType.AfterimageKilled, lastAttackerPlayerId,
             BotPlayerManager.IsBotPlayerId(lastAttackerPlayerId),
             $"Afterimage {monsterId} killed: core={isCore}, reinforcement={isReinforcement}, first={firstAttackerPlayerId}, last={lastAttackerPlayerId}, contributors={contributions.Count}.",
             entry =>
@@ -567,7 +567,7 @@ public class GameEventLogManager
         if (matchingId <= 0 || sampleCount <= 0)
             return;
 
-        Append(matchingId, "SURVIVOR_BOT_MOVEMENT_TICK_PERFORMANCE", 0, false,
+        Append(matchingId, GameEventType.SurvivorBotMovementTickPerformance, 0, false,
             $"Bot movement tick: p50={p50Milliseconds:F1}ms, p95={p95Milliseconds:F1}ms, p99={p99Milliseconds:F1}ms, " +
             $"sections p95 snapshot={snapshotP95Milliseconds:F1}ms, planning={planningP95Milliseconds:F1}ms, " +
             $"walking={walkingP95Milliseconds:F1}ms, broadcast={broadcastP95Milliseconds:F1}ms.",
@@ -586,12 +586,12 @@ public class GameEventLogManager
 
     public void LogClosure(long matchingId, string area)
     {
-        Append(matchingId, "CLOSURE", 0, false, $"구역 폐쇄: {area}");
+        Append(matchingId, GameEventType.Closure, 0, false, $"구역 폐쇄: {area}");
     }
 
     public void LogSystem(long matchingId, string description)
     {
-        Append(matchingId, "SYSTEM", 0, false, description);
+        Append(matchingId, GameEventType.System, 0, false, description);
     }
 
     public void BeginMatch(long matchingId, int seed)
@@ -608,7 +608,7 @@ public class GameEventLogManager
 
         Interlocked.Exchange(ref GetLog(matchingId).Finalized, 0);
 
-        Append(matchingId, "MATCH_STARTED", 0, false, $"Match started: seed={seed}.", entry =>
+        Append(matchingId, GameEventType.MatchStarted, 0, false, $"Match started: seed={seed}.", entry =>
         {
             entry.MatchSeed = seed;
             entry.OccurredAtUnixMs = entry.TimestampUnixMs;
@@ -624,7 +624,7 @@ public class GameEventLogManager
             if (!state.SpawnLoggedPlayerIds.Add(playerId)) return;
         }
 
-        Append(matchingId, "SPAWN_ASSIGNMENT", playerId, isBot,
+        Append(matchingId, GameEventType.SpawnAssignment, playerId, isBot,
             $"Spawn: seed={seed}, anchor={anchorIndex}, cell=({cellX},{cellY}), area={area}.", entry =>
             {
                 entry.MatchSeed = seed;
@@ -648,7 +648,7 @@ public class GameEventLogManager
                 warning.AdditionalExploreCount++;
         }
 
-        AppendAt(matchingId, "EXPLORE_STARTED", playerId, isBot,
+        AppendAt(matchingId, GameEventType.ExploreStarted, playerId, isBot,
             $"Explore started: interact={interactId}, area={area}.", now, entry =>
             {
                 entry.ActivityId = interactId;
@@ -658,13 +658,13 @@ public class GameEventLogManager
     }
 
     public void LogExploreCancelled(long matchingId, long playerId, int interactId, string area, string reason,
-        bool isBot) => LogExploreFinished(matchingId, playerId, interactId, area, "EXPLORE_CANCELLED", reason,
+        bool isBot) => LogExploreFinished(matchingId, playerId, interactId, area, GameEventType.ExploreCancelled, reason,
         [], isBot);
 
     public void LogGroundItemSpawned(long matchingId, long discovererPlayerId, long groundItemUid, int itemId,
         string area, long priorityExpiresAtUnixMs, bool isBot)
     {
-        Append(matchingId, "GROUND_ITEM_SPAWNED", discovererPlayerId, isBot,
+        Append(matchingId, GameEventType.GroundItemSpawned, discovererPlayerId, isBot,
             $"Ground item spawned: uid={groundItemUid}, item={itemId}, priorityUntil={priorityExpiresAtUnixMs}.", entry =>
             {
                 entry.Area = area;
@@ -679,7 +679,7 @@ public class GameEventLogManager
         long groundItemUid, int itemId, string area, bool autoUsed, bool isBot)
     {
         TrackEliminationDropPickup(matchingId, groundItemUid, pickerPlayerId);
-        Append(matchingId, "GROUND_ITEM_PICKED_UP", pickerPlayerId, isBot,
+        Append(matchingId, GameEventType.GroundItemPickedUp, pickerPlayerId, isBot,
             $"Ground item picked up: uid={groundItemUid}, item={itemId}, discoverer={discovererPlayerId}, autoUsed={autoUsed}.", entry =>
             {
                 entry.Area = area;
@@ -704,7 +704,7 @@ public class GameEventLogManager
                     new ClosureWarningResponse(playerId, warningArea, now);
         }
 
-        AppendAt(matchingId, "CLOSURE_WARNING_SNAPSHOT", playerId, isBot,
+        AppendAt(matchingId, GameEventType.ClosureWarningSnapshot, playerId, isBot,
             $"Closure warning: areas={string.Join(',', warningAreas)}, current={currentArea}, health={health}, slots={inventorySlotsUsed}/{inventorySlotCapacity}.",
             now, entry =>
             {
@@ -721,7 +721,7 @@ public class GameEventLogManager
         bool isBot)
     {
         if (recoveryAmount <= 0) return;
-        Append(matchingId, "RECOVERY_USED", playerId, isBot,
+        Append(matchingId, GameEventType.RecoveryUsed, playerId, isBot,
             $"Recovery used: item={itemId}, amount={recoveryAmount}, source={source}.", entry =>
             {
                 entry.ItemId = itemId;
@@ -735,7 +735,7 @@ public class GameEventLogManager
     {
         if (requestedRecovery < 0 || effectiveRecovery < 0)
             return;
-        Append(matchingId, "PELLET_PICKUP_OUTCOME", playerId, isBot,
+        Append(matchingId, GameEventType.PelletPickupOutcome, playerId, isBot,
             $"Pellet outcome: item={itemId}, requested={requestedRecovery}, effective={effectiveRecovery}, outcome={outcome}.", entry =>
             {
                 entry.ItemId = itemId;
@@ -752,7 +752,7 @@ public class GameEventLogManager
         var now = DateTimeOffset.UtcNow;
         var droppedItems = spawnedItems.Select(EliminationDroppedItem.FromGroundItem).ToList();
         float scatterRadius = droppedItems.Count == 0 ? 0f : droppedItems.Max(item => item.DistanceFromOrigin);
-        AppendAt(matchingId, "ELIMINATION_DROP", playerId, isBot,
+        AppendAt(matchingId, GameEventType.EliminationDrop, playerId, isBot,
             $"Elimination drop: items={itemIds.Count}, recovery={totalRecovery}.", now, entry =>
             {
                 entry.Area = area;
@@ -794,7 +794,7 @@ public class GameEventLogManager
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count)).ToList();
         bool resonance = OrbData.TryGetActivePair(itemIds, out OrbColor color, out int supportTier);
         var transition = TrackOrbTelemetry(matchingId, playerId, itemIds, equippedItemId, resonance, color);
-        Append(matchingId, "SURVIVOR_ORB_BOARD_STATE", playerId, isBot,
+        Append(matchingId, GameEventType.SurvivorOrbBoardState, playerId, isBot,
             $"Orb board: reason={reason}, equipped={equippedItemId}, resonance={(resonance ? color : OrbColor.None)}.", entry =>
             {
                 entry.Area = area;
@@ -816,7 +816,7 @@ public class GameEventLogManager
 
 
         if (transition.FirstOrbPickup)
-            Append(matchingId, "SURVIVOR_ORB_FIRST_PICKUP", playerId, isBot,
+            Append(matchingId, GameEventType.SurvivorOrbFirstPickup, playerId, isBot,
                 $"First orb pickup: slots={transition.BoardItemCount}/{Config.LEGACY_INVENTORY_SLOT_COUNT}.", entry =>
                 {
                     entry.Area = area;
@@ -828,7 +828,7 @@ public class GameEventLogManager
                 });
 
         if (transition.BoardReachedCapacity)
-            Append(matchingId, "SURVIVOR_ORB_BOARD_FULL", playerId, isBot,
+            Append(matchingId, GameEventType.SurvivorOrbBoardFull, playerId, isBot,
                 $"Orb board reached capacity: slots={transition.BoardItemCount}/{Config.LEGACY_INVENTORY_SLOT_COUNT}.", entry =>
                 {
                     entry.Area = area;
@@ -842,7 +842,7 @@ public class GameEventLogManager
         if (transition.PreviousResonanceActive != resonance ||
             transition.PreviousResonanceColor != (resonance ? color : OrbColor.None))
         {
-            string type = resonance ? "SURVIVOR_ORB_RESONANCE_APPLIED" : "SURVIVOR_ORB_RESONANCE_REMOVED";
+            GameEventType type = resonance ? GameEventType.SurvivorOrbResonanceApplied : GameEventType.SurvivorOrbResonanceRemoved;
             var eventColor = resonance ? color : transition.PreviousResonanceColor;
             Append(matchingId, type, playerId, isBot,
                 $"Orb resonance {(resonance ? "applied" : "removed")}: color={eventColor}, reason={reason}.", entry =>
@@ -875,7 +875,7 @@ public class GameEventLogManager
                 : null;
         }
 
-        AppendAt(matchingId, "SUMMON_STONE_AWARDED", playerId, isBot,
+        AppendAt(matchingId, GameEventType.SummonStoneAwarded, playerId, isBot,
             $"Summon stones awarded: monster={monsterId}, amount={amount}, balance={balance}, core={isCore}.",
             now, entry =>
             {
@@ -905,7 +905,7 @@ public class GameEventLogManager
                 : null;
         }
 
-        string type = success ? "ORB_SUMMON_SUCCEEDED" : "ORB_SUMMON_BLOCKED";
+        GameEventType type = success ? GameEventType.OrbSummonSucceeded : GameEventType.OrbSummonBlocked;
         AppendAt(matchingId, type, playerId, isBot,
             $"Orb summon: success={success}, error={errorCode}, item={summonedItemId}, balance={stoneBalance}, nextCost={nextCost}, count={successfulSummonCount}.",
             now, entry =>
@@ -935,7 +935,7 @@ public class GameEventLogManager
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
             .ToList();
         int boardItemCount = CountBoardOrbs(boardItemIds);
-        Append(matchingId, "SURVIVOR_ORB_PICKUP_BLOCKED_FULL", playerId, isBot,
+        Append(matchingId, GameEventType.SurvivorOrbPickupBlockedFull, playerId, isBot,
             $"Orb pickup blocked: item={itemId}, slots={boardItemCount}/{Config.LEGACY_INVENTORY_SLOT_COUNT}.", entry =>
             {
                 entry.Area = area;
@@ -962,7 +962,7 @@ public class GameEventLogManager
                 .Distinct()
                 .ToList();
             var primary = volley[0];
-            Append(matchingId, "SURVIVOR_ORB_ATTACK_TARGETS", primary.AttackerPlayerId,
+            Append(matchingId, GameEventType.SurvivorOrbAttackTargets, primary.AttackerPlayerId,
                 BotPlayerManager.IsBotPlayerId(primary.AttackerPlayerId),
                 $"Orb volley: color={color}, candidates={primary.CandidateTargetCount}, targets={volley.Count}.", entry =>
                 {
@@ -1063,7 +1063,7 @@ public class GameEventLogManager
                     secondsByColor[telemetry.ActiveColor] = colorSeconds + currentElapsed;
                 }
                 double rate = player.SurvivalTimeSeconds <= 0 ? 0d : active / player.SurvivalTimeSeconds;
-                Append(matchingId, "SURVIVOR_ORB_SUMMARY", player.PlayerId, BotPlayerManager.IsBotPlayerId(player.PlayerId),
+                Append(matchingId, GameEventType.SurvivorOrbSummary, player.PlayerId, BotPlayerManager.IsBotPlayerId(player.PlayerId),
                     $"Orb summary: active={active:F1}s, rate={rate:P0}, colorChanges={telemetry.EquipChanges}.", entry =>
                     { entry.DurationSeconds = active; entry.ScoreDelta = (float)rate; entry.ContributionDelta = telemetry.EquipChanges; });
 
@@ -1071,7 +1071,7 @@ public class GameEventLogManager
                 {
                     secondsByColor.TryGetValue(color, out double colorActive);
                     double colorRate = player.SurvivalTimeSeconds <= 0 ? 0d : colorActive / player.SurvivalTimeSeconds;
-                    Append(matchingId, "SURVIVOR_ORB_COLOR_SUMMARY", player.PlayerId,
+                    Append(matchingId, GameEventType.SurvivorOrbColorSummary, player.PlayerId,
                         BotPlayerManager.IsBotPlayerId(player.PlayerId),
                         $"Orb color summary: color={color}, active={colorActive:F1}s, rate={colorRate:P0}.", entry =>
                         {
@@ -1106,7 +1106,7 @@ public class GameEventLogManager
             state.OvertimeStage = stage;
         }
 
-        Append(matchingId, "OVERTIME_STAGE_CHANGED", 0, false,
+        Append(matchingId, GameEventType.OvertimeStageChanged, 0, false,
             $"Overtime stage {stage}: damage={damagePerSecond}/s.", entry =>
             {
                 entry.OvertimeStage = stage;
@@ -1117,7 +1117,7 @@ public class GameEventLogManager
     public void LogMatchEnded(long matchingId, long winnerPlayerId, string endReason, string tieBreakCriterion,
         IReadOnlyCollection<MatchFinalPlayerStats> players)
     {
-        Append(matchingId, "MATCH_ENDED", winnerPlayerId, BotPlayerManager.IsBotPlayerId(winnerPlayerId),
+        Append(matchingId, GameEventType.MatchEnded, winnerPlayerId, BotPlayerManager.IsBotPlayerId(winnerPlayerId),
             $"Match ended: winner={winnerPlayerId}, reason={endReason}, tieBreak={tieBreakCriterion}.", entry =>
             {
                 entry.WinnerPlayerId = winnerPlayerId;
@@ -1132,7 +1132,7 @@ public class GameEventLogManager
     public void LogMatchAbandoned(long matchingId, string endReason,
         IReadOnlyCollection<MatchFinalPlayerStats>? players = null)
     {
-        Append(matchingId, "MATCH_ABANDONED", 0, false,
+        Append(matchingId, GameEventType.MatchAbandoned, 0, false,
             $"Match abandoned: reason={endReason}.", entry =>
             {
                 entry.EndReason = endReason;
@@ -1168,7 +1168,7 @@ public class GameEventLogManager
 
     public void Clear(long matchingId) => _getMatchState(matchingId)?.Release();
 
-    private void LogExploreFinished(long matchingId, long playerId, int interactId, string area, string type,
+    private void LogExploreFinished(long matchingId, long playerId, int interactId, string area, GameEventType type,
         string outcome, IReadOnlyCollection<int> generatedItemIds, bool isBot)
     {
         var now = DateTimeOffset.UtcNow;
@@ -1197,7 +1197,7 @@ public class GameEventLogManager
         DateTimeOffset now)
     {
         if (!TryGetTelemetry(matchingId, out var state)) return;
-        var derived = new List<(string Type, ClosureWarningResponse Warning)>();
+        var derived = new List<(GameEventType Type, ClosureWarningResponse Warning)>();
         lock (state.SyncRoot)
         {
             foreach (var warning in state.ClosureWarnings.Values.Where(w => w.PlayerId == playerId))
@@ -1206,13 +1206,13 @@ public class GameEventLogManager
                     !string.Equals(toArea, warning.Area, StringComparison.Ordinal) && !warning.ExitedAt.HasValue)
                 {
                     warning.ExitedAt = now;
-                    derived.Add(("CLOSURE_WARNING_EXIT", warning));
+                    derived.Add((GameEventType.ClosureWarningExit, warning));
                 }
                 else if (string.Equals(toArea, warning.Area, StringComparison.Ordinal) &&
                          warning.ExitedAt.HasValue && !warning.ReenteredAt.HasValue)
                 {
                     warning.ReenteredAt = now;
-                    derived.Add(("CLOSURE_WARNING_REENTRY", warning));
+                    derived.Add((GameEventType.ClosureWarningReentry, warning));
                 }
             }
         }
@@ -1229,13 +1229,13 @@ public class GameEventLogManager
                 });
     }
 
-    private GameEventEntry Append(long matchingId, string type, long playerId, bool isBot, string description,
+    private GameEventEntry Append(long matchingId, GameEventType type, long playerId, bool isBot, string description,
         Action<GameEventEntry>? configure = null)
     {
         return AppendAt(matchingId, type, playerId, isBot, description, DateTimeOffset.UtcNow, configure);
     }
 
-    private GameEventEntry AppendAt(long matchingId, string type, long playerId, bool isBot, string description,
+    private GameEventEntry AppendAt(long matchingId, GameEventType type, long playerId, bool isBot, string description,
         DateTimeOffset timestamp, Action<GameEventEntry>? configure = null)
     {
         var entry = CreateEntry(type, playerId, isBot, description, timestamp, configure);
@@ -1244,7 +1244,7 @@ public class GameEventLogManager
         return entry;
     }
 
-    private GameEventEntry CreateEntry(string type, long playerId, bool isBot, string description,
+    private GameEventEntry CreateEntry(GameEventType type, long playerId, bool isBot, string description,
         DateTimeOffset timestamp, Action<GameEventEntry>? configure = null)
     {
         var entry = new GameEventEntry
@@ -1291,7 +1291,7 @@ public class GameEventLogManager
 
         AppendAt(
             matchingId,
-            "SURVIVOR_FIRST_ELIMINATION",
+            GameEventType.SurvivorFirstElimination,
             playerId,
             isBot,
             $"First elimination: {FormatPlayer(playerId)}, reason={reason}.",
@@ -1533,12 +1533,12 @@ public class GameEventLogManager
             string toArea,
             bool isBot,
             DateTimeOffset timestamp,
-            Func<string, long, bool, string, DateTimeOffset, Action<GameEventEntry>?, GameEventEntry> createEntry)
+            Func<GameEventType, long, bool, string, DateTimeOffset, Action<GameEventEntry>?, GameEventEntry> createEntry)
         {
             lock (_lock)
             {
                 var rawMove = createEntry(
-                    "MOVE",
+                    GameEventType.Move,
                     playerId,
                     isBot,
                     $"{fromArea} -> {toArea}",
@@ -1563,7 +1563,7 @@ public class GameEventLogManager
                 var alreadyPresentIds = alreadyPresent.Select(pair => pair.Key).ToList();
 
                 var areaEnter = createEntry(
-                    "AREA_ENTER",
+                    GameEventType.AreaEnter,
                     playerId,
                     isBot,
                     BuildAreaEnterDescription(playerId, fromArea, toArea, alreadyPresentIds),
@@ -1638,9 +1638,29 @@ public class GameEventLogManager
 
 public class GameEventEntry
 {
+    /// <summary>이벤트 본체와 변경 가능한 목록을 복사한다. 목록 안의 불변 record는 공유한다.</summary>
+    internal GameEventEntry CopyForPersistence()
+    {
+        var copy = (GameEventEntry)MemberwiseClone();
+        copy.AlreadyPresentPlayerIds = AlreadyPresentPlayerIds?.ToList();
+        copy.MonsterDamageContributions = MonsterDamageContributions?.ToList();
+        copy.GeneratedItemIds = GeneratedItemIds?.ToList();
+        copy.BoardItemIds = BoardItemIds?.ToList();
+        copy.PreviousBoardItemIds = PreviousBoardItemIds?.ToList();
+        copy.AttackTargetPlayerIds = AttackTargetPlayerIds?.ToList();
+        copy.WarningAreas = WarningAreas?.ToList();
+        copy.OpenAreas = OpenAreas?.ToList();
+        copy.EliminationDroppedItems = EliminationDroppedItems?.ToList();
+        copy.DropPickupOrder = DropPickupOrder?.ToList();
+        copy.UncollectedDroppedItemUids = UncollectedDroppedItemUids?.ToList();
+        copy.FinalPlayerStats = FinalPlayerStats?.ToList();
+        copy.LinkedLogIds = LinkedLogIds?.ToList();
+        return copy;
+    }
+
     public long Seq { get; set; }
     public long TimestampUnixMs { get; set; }
-    public string Type { get; set; } = "";
+    public GameEventType Type { get; set; }
     public long PlayerId { get; set; }
     public long ActorPlayerId { get; set; }
     public bool IsBot { get; set; }

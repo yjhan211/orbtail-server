@@ -1,5 +1,6 @@
 using game_server.logging;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace game_server.matches.results;
 
@@ -15,112 +16,144 @@ public sealed class MatchSummaryFileStore(
     public const int DefaultMaxSummaries = 50;
     private const int SummaryEventPreviewLimit = 500;
     private readonly int _maxSummaries = Math.Max(1, maxSummaries);
-    private readonly object _syncRoot = new();
+    private readonly object _fileLock = new();
     private readonly JsonSerializerOptions _compactJsonOptions = new(JsonSerializerDefaults.Web);
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
     };
-    public string DirectoryPath { get; } = string.IsNullOrWhiteSpace(directory)
-        ? Path.Combine(AppContext.BaseDirectory, "match-summaries")
-        : Path.GetFullPath(directory);
+    private string DirectoryPath { get; } = string.IsNullOrWhiteSpace(directory) ? Path.Combine(AppContext.BaseDirectory, "match-summaries") : Path.GetFullPath(directory);
+    private string GetSummaryFilePath(long matchingId) => Path.Combine(DirectoryPath, $"match-{matchingId}.json");
+    private string GetEventsFilePath(long matchingId) => Path.Combine(DirectoryPath, $"match-{matchingId}.events.jsonl");
 
-    public MatchSummaryDocument Save(long matchingId, string endReason, long winnerPlayerId, IReadOnlyCollection<GameEventEntry> events)
+    internal static MatchSummaryDocument? Prepare(
+        GameEventLogManager gameEventLogManager,
+        ILogger logger,
+        long matchingId,
+        string endReason,
+        long winnerId,
+        out IReadOnlyList<GameEventEntry> capturedEvents)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
-
-        lock (_syncRoot)
+        capturedEvents = [];
+        try
         {
-            Directory.CreateDirectory(DirectoryPath);
-            string path = GetPath(matchingId);
-            if (File.Exists(path))
+            var events = gameEventLogManager.GetForPersistence(matchingId)
+                .OrderBy(entry => entry.Seq)
+                .Select(entry => entry.CopyForPersistence())
+                .ToList();
+            capturedEvents = events;
+
+            var startedEvent = events.FirstOrDefault(entry => entry.Type == GameEventType.MatchStarted) ?? events.FirstOrDefault();
+            var endedEvent = events.LastOrDefault(entry => entry.Type is GameEventType.MatchEnded or GameEventType.MatchAbandoned);
+            var endedAtUtc = endedEvent != null ? DateTimeOffset.FromUnixTimeMilliseconds(endedEvent.TimestampUnixMs) : DateTimeOffset.UtcNow;
+            var startedAtUtc = startedEvent != null ? DateTimeOffset.FromUnixTimeMilliseconds(startedEvent.TimestampUnixMs) : endedAtUtc;
+            var finalStats = events.LastOrDefault(entry => entry.FinalPlayerStats is { Count: > 0 })?.FinalPlayerStats ?? [];
+
+            return new MatchSummaryDocument(
+                matchingId, startedAtUtc, endedAtUtc,
+                string.IsNullOrWhiteSpace(endReason) ? endedEvent?.EndReason ?? "unknown" : endReason,
+                winnerId != 0 ? winnerId : endedEvent?.WinnerPlayerId ?? 0,
+                finalStats.ToList(), events.TakeLast(SummaryEventPreviewLimit).ToList());
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to prepare match summary: MatchingId={MatchingId}", matchingId);
+            return null;
+        }
+    }
+
+    internal void Save(MatchSummaryDocument document, IReadOnlyList<GameEventEntry> events, ILogger logger)
+    {
+        try
+        {
+            long matchingId = document.MatchingId;
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
+
+            lock (_fileLock)
             {
-                return ReadFile(path)!;
+                Directory.CreateDirectory(DirectoryPath);
+                string path = GetSummaryFilePath(matchingId);
+                if (File.Exists(path))
+                {
+                    document = ReadFile(path) ?? throw new InvalidDataException($"Invalid match summary: {path}");
+                }
+                else
+                {
+                    var orderedEvents = events.OrderBy(entry => entry.Seq).ToList();
+                    string eventsPath = GetEventsFilePath(matchingId);
+                    string temporaryEventsPath = eventsPath + ".tmp";
+                    using (var writer = new StreamWriter(temporaryEventsPath, false, new System.Text.UTF8Encoding(false)))
+                    {
+                        foreach (var entry in orderedEvents)
+                        {
+                            writer.WriteLine(JsonSerializer.Serialize(entry, _compactJsonOptions));
+                        }
+                    }
+                    File.Move(temporaryEventsPath, eventsPath, true);
+                    document = document with
+                    {
+                        RawEventCount = orderedEvents.Count,
+                        RawEventsFile = Path.GetFileName(eventsPath)
+                    };
+                    string temporaryPath = path + ".tmp";
+                    File.WriteAllText(temporaryPath, JsonSerializer.Serialize(document, _jsonOptions));
+                    File.Move(temporaryPath, path, true);
+                    PruneOldFiles();
+                }
             }
 
-            var orderedEvents = events.OrderBy(entry => entry.Seq).ToList();
-            string rawEventsFile = Path.GetFileName(GetRawEventsPath(matchingId));
-            WriteRawEvents(matchingId, orderedEvents);
-            var document = BuildDocument(matchingId, endReason, winnerPlayerId, orderedEvents) with
-            {
-                RawEventCount = orderedEvents.Count,
-                RawEventsFile = rawEventsFile
-            };
-            string temporaryPath = path + ".tmp";
-            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(document, _jsonOptions));
-            File.Move(temporaryPath, path, true);
-            PruneOldFiles();
-            return document;
+            logger.LogInformation(
+                "Match summary persisted: MatchingId={MatchingId}, EndReason={EndReason}, Events={EventCount}, Directory={Directory}",
+                matchingId,
+                document.EndReason,
+                document.RawEventCount,
+                DirectoryPath);
         }
-    }
-
-    public MatchSummaryDocument? Read(long matchingId)
-    {
-        lock (_syncRoot)
+        catch (Exception ex)
         {
-            string path = GetPath(matchingId);
-            return File.Exists(path) ? ReadFile(path) : null;
+            logger.LogError(ex, "Failed to persist match summary: MatchingId={MatchingId}", document.MatchingId);
         }
     }
-
     public IReadOnlyList<GameEventEntry> ReadRawEvents(long matchingId, int limit = 5_000, long? sinceSeq = null)
     {
-        lock (_syncRoot)
+        lock (_fileLock)
         {
-            string path = GetRawEventsPath(matchingId);
+            string path = GetEventsFilePath(matchingId);
             if (!File.Exists(path))
             {
                 return [];
             }
 
-            var events = File.ReadLines(path).Select(ReadRawEvent).Where(entry => entry != null).Select(entry => entry!);
-            if (sinceSeq.HasValue)
+            var events = new List<GameEventEntry>();
+            foreach (string line in File.ReadLines(path))
             {
-                events = events.Where(entry => entry.Seq > sinceSeq.Value);
+                GameEventEntry? entry;
+                try
+                {
+                    entry = JsonSerializer.Deserialize<GameEventEntry>(line, _compactJsonOptions);
+                }
+                catch (JsonException)
+                {
+                    continue;
+                }
+
+                if (entry == null || (sinceSeq.HasValue && entry.Seq <= sinceSeq.Value))
+                {
+                    continue;
+                }
+                events.Add(entry);
             }
 
-            return events.Reverse().Take(Math.Max(1, limit)).ToList();
+            events.Reverse();
+            int maxCount = Math.Max(1, limit);
+            if (events.Count > maxCount)
+            {
+                events.RemoveRange(maxCount, events.Count - maxCount);
+            }
+            return events;
         }
     }
 
-    private static MatchSummaryDocument BuildDocument(long matchingId, string endReason, long winnerPlayerId, IReadOnlyCollection<GameEventEntry> sourceEvents)
-    {
-        var events = sourceEvents.OrderBy(entry => entry.Seq).ToList();
-        var startedEvent = events.FirstOrDefault(entry => entry.Type == "MATCH_STARTED") ?? events.FirstOrDefault();
-        var endedEvent = events.LastOrDefault(entry => entry.Type is "MATCH_ENDED" or "MATCH_ABANDONED");
-        var endedAtUtc = endedEvent != null ? DateTimeOffset.FromUnixTimeMilliseconds(endedEvent.TimestampUnixMs) : DateTimeOffset.UtcNow;
-        var startedAtUtc = startedEvent != null ? DateTimeOffset.FromUnixTimeMilliseconds(startedEvent.TimestampUnixMs) : endedAtUtc;
-        var finalStats = events.LastOrDefault(entry => entry.FinalPlayerStats is { Count: > 0 })?.FinalPlayerStats ?? [];
-        return new MatchSummaryDocument(
-            matchingId, startedAtUtc, endedAtUtc,
-            string.IsNullOrWhiteSpace(endReason) ? endedEvent?.EndReason ?? "unknown" : endReason,
-            winnerPlayerId != 0 ? winnerPlayerId : endedEvent?.WinnerPlayerId ?? 0,
-            finalStats.ToList(), events.TakeLast(SummaryEventPreviewLimit).ToList());
-    }
-
-    private void WriteRawEvents(long matchingId, IReadOnlyCollection<GameEventEntry> events)
-    {
-        string path = GetRawEventsPath(matchingId);
-        string temporaryPath = path + ".tmp";
-        using (var writer = new StreamWriter(temporaryPath, false, new System.Text.UTF8Encoding(false)))
-        {
-            foreach (var entry in events)
-                writer.WriteLine(JsonSerializer.Serialize(entry, _compactJsonOptions));
-        }
-        File.Move(temporaryPath, path, true);
-    }
-
-    private GameEventEntry? ReadRawEvent(string line)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<GameEventEntry>(line, _compactJsonOptions);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
     private MatchSummaryDocument? ReadFile(string path)
     {
         try
@@ -146,16 +179,12 @@ public sealed class MatchSummaryFileStore(
             file.Delete();
             if (document != null)
             {
-                string rawEventsPath = GetRawEventsPath(document.MatchingId);
+                string rawEventsPath = GetEventsFilePath(document.MatchingId);
                 if (File.Exists(rawEventsPath))
                     File.Delete(rawEventsPath);
             }
         }
     }
-
-    private string GetPath(long matchingId) => Path.Combine(DirectoryPath, $"match-{matchingId}.json");
-    private string GetRawEventsPath(long matchingId) => Path.Combine(DirectoryPath, $"match-{matchingId}.events.jsonl");
-
 }
 
 public sealed record MatchSummaryDocument(

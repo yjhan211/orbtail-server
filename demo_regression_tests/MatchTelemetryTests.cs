@@ -41,12 +41,12 @@ public sealed class MatchTelemetryTests
         Assert.Empty(log.GetRecent(matchingId));
         Assert.Empty(log.GetForPersistence(matchingId));
         Assert.Contains(events, entry =>
-            entry.Type == "MATCH_STARTED" && entry.MatchSeed == seed);
+            entry.Type == GameEventType.MatchStarted && entry.MatchSeed == seed);
         Assert.Contains(events, entry =>
-            entry.Type == "SPAWN_ASSIGNMENT" && entry.SpawnAnchorIndex == 1);
+            entry.Type == GameEventType.SpawnAssignment && entry.SpawnAnchorIndex == 1);
         Assert.Contains(events, entry =>
-            entry.Type == "RECOVERY_USED" && entry.RecoveryAmount == 15);
-        var ended = Assert.Single(events, entry => entry.Type == "MATCH_ENDED");
+            entry.Type == GameEventType.RecoveryUsed && entry.RecoveryAmount == 15);
+        var ended = Assert.Single(events, entry => entry.Type == GameEventType.MatchEnded);
         Assert.Equal(101, ended.WinnerPlayerId);
         Assert.Equal("last_survivor", ended.EndReason);
         Assert.Equal(45, Assert.Single(ended.FinalPlayerStats!).TotalDamageDealt);
@@ -73,15 +73,15 @@ public sealed class MatchTelemetryTests
         log.LogMove(matchingId, 202, "Corridor1F", "Library", isBot: false);
 
         var events = log.GetRecent(matchingId, 5_000);
-        var snapshot = Assert.Single(events, entry => entry.Type == "CLOSURE_WARNING_SNAPSHOT");
+        var snapshot = Assert.Single(events, entry => entry.Type == GameEventType.ClosureWarningSnapshot);
         Assert.Equal(40, snapshot.Health);
         Assert.Equal(5, snapshot.InventorySlotsUsed);
 
-        var exit = Assert.Single(events, entry => entry.Type == "CLOSURE_WARNING_EXIT");
+        var exit = Assert.Single(events, entry => entry.Type == GameEventType.ClosureWarningExit);
         Assert.Equal(1, exit.AdditionalExploreCount);
         Assert.NotNull(exit.ExitedAtUnixMs);
 
-        var reentry = Assert.Single(events, entry => entry.Type == "CLOSURE_WARNING_REENTRY");
+        var reentry = Assert.Single(events, entry => entry.Type == GameEventType.ClosureWarningReentry);
         Assert.Equal(1, reentry.AdditionalExploreCount);
         Assert.NotNull(reentry.ReenteredAtUnixMs);
     }
@@ -101,13 +101,13 @@ public sealed class MatchTelemetryTests
             [new MatchFinalPlayerStats(301, 1, 330, 1, 20, 0)]);
 
         var events = log.GetRecent(matchingId, 5_000);
-        Assert.Contains(events, entry => entry.Type == "SURVIVOR_FIRST_T2");
-        Assert.Contains(events, entry => entry.Type == "SURVIVOR_FIRST_T3");
-        Assert.Contains(events, entry => entry.Type == "SURVIVOR_FIRST_ELIMINATION");
+        Assert.Contains(events, entry => entry.Type == GameEventType.SurvivorFirstT2);
+        Assert.Contains(events, entry => entry.Type == GameEventType.SurvivorFirstT3);
+        Assert.Contains(events, entry => entry.Type == GameEventType.SurvivorFirstElimination);
         Assert.Contains(events, entry =>
-            entry.Type == "OVERTIME_STAGE_CHANGED" && entry.OvertimeStage == 2);
+            entry.Type == GameEventType.OvertimeStageChanged && entry.OvertimeStage == 2);
         Assert.Contains(events, entry =>
-            entry.Type == "MATCH_ENDED" &&
+            entry.Type == GameEventType.MatchEnded &&
             entry.TieBreakCriterion == "survival>kills>damage>recovery");
     }
 
@@ -131,7 +131,7 @@ public sealed class MatchTelemetryTests
             occurredAt: now);
 
         var hit = Assert.Single(log.GetRecent(matchingId));
-        Assert.Equal("AFTERIMAGE_HIT", hit.Type);
+        Assert.Equal(GameEventType.AfterimageHit, hit.Type);
         Assert.Equal(202108, hit.MonsterId);
         Assert.Equal("emotion_afterimage", hit.DamageSourceType);
         Assert.Equal(401, hit.TargetPlayerId);
@@ -150,7 +150,7 @@ public sealed class MatchTelemetryTests
 
         log.LogInitialInventory(198400, 400, [item], item.ItemId, "Library");
 
-        var entry = Assert.Single(log.GetRecent(198400, 100), entry => entry.Type == "SURVIVOR_ORB_BOARD_STATE");
+        var entry = Assert.Single(log.GetRecent(198400, 100), entry => entry.Type == GameEventType.SurvivorOrbBoardState);
         Assert.Equal("connection_sync", entry.Outcome);
         Assert.Equal("Library", entry.Area);
         Assert.Equal(107000010, entry.WeaponItemId);
@@ -185,24 +185,23 @@ public sealed class MatchTelemetryTests
             [new MatchFinalPlayerStats(playerId, 1, 30, 0, 0, 0)]);
 
         var events = log.GetRecent(matchingId, 500);
-        var transition = Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_BOARD_STATE" && entry.Outcome == "inventory_changed");
+        var transition = Assert.Single(events, entry => entry.Type == GameEventType.SurvivorOrbBoardState && entry.Outcome == "inventory_changed");
         Assert.Equal([107000010, 107000010], transition.PreviousBoardItemIds);
         Assert.Equal("Blue", transition.EquippedColor);
         Assert.Equal("Red", transition.PreviousEquippedColor);
         Assert.False(transition.ResonanceActive ?? true);
-        Assert.DoesNotContain(events, entry => entry.Type.StartsWith("SURVIVOR_ORB_MERGE"));
-        Assert.Contains(events, entry => entry.Type == "SURVIVOR_ORB_RESONANCE_APPLIED" && entry.ResonanceProfile == "sun_single_target");
-        Assert.Contains(events, entry => entry.Type == "SURVIVOR_ORB_RESONANCE_REMOVED" && entry.Outcome == "inventory_changed");
-        var greenVolley = Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_ATTACK_TARGETS");
+        Assert.Contains(events, entry => entry.Type == GameEventType.SurvivorOrbResonanceApplied && entry.ResonanceProfile == "sun_single_target");
+        Assert.Contains(events, entry => entry.Type == GameEventType.SurvivorOrbResonanceRemoved && entry.Outcome == "inventory_changed");
+        var greenVolley = Assert.Single(events, entry => entry.Type == GameEventType.SurvivorOrbAttackTargets);
         Assert.Equal(3, greenVolley.CandidateTargetCount);
         Assert.Equal([402L], greenVolley.AttackTargetPlayerIds);
         Assert.Equal("wind_multi_target", greenVolley.ResonanceProfile);
-        Assert.Contains(events, entry => entry.Type == "SURVIVOR_ORB_COLOR_SUMMARY" &&
+        Assert.Contains(events, entry => entry.Type == GameEventType.SurvivorOrbColorSummary &&
             entry.ResonanceColor == "Red" && entry.DurationSeconds > 0d);
-        Assert.Equal(1, Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_SUMMARY").ContributionDelta);
-        Assert.Contains(events, entry => entry.Type == "PELLET_PICKUP_OUTCOME" && entry.Outcome == "effective" && entry.RecoveryAmount == 15);
-        Assert.Contains(events, entry => entry.Type == "PELLET_PICKUP_OUTCOME" && entry.Outcome == "wasted" && entry.WastedRecoveryAmount == 15);
-        Assert.Contains(events, entry => entry.Type == "PELLET_PICKUP_OUTCOME" && entry.Outcome == "denied_reserved");
+        Assert.Equal(1, Assert.Single(events, entry => entry.Type == GameEventType.SurvivorOrbSummary).ContributionDelta);
+        Assert.Contains(events, entry => entry.Type == GameEventType.PelletPickupOutcome && entry.Outcome == "effective" && entry.RecoveryAmount == 15);
+        Assert.Contains(events, entry => entry.Type == GameEventType.PelletPickupOutcome && entry.Outcome == "wasted" && entry.WastedRecoveryAmount == 15);
+        Assert.Contains(events, entry => entry.Type == GameEventType.PelletPickupOutcome && entry.Outcome == "denied_reserved");
     }
 
     [Fact]
@@ -234,13 +233,13 @@ public sealed class MatchTelemetryTests
         log.LogOrbPickupBlockedFull(matchingId, playerId, 107000030, "Gym", fullBoard, false);
 
         var events = log.GetRecent(matchingId, 100);
-        var first = Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_FIRST_PICKUP");
+        var first = Assert.Single(events, entry => entry.Type == GameEventType.SurvivorOrbFirstPickup);
         Assert.Equal(1, first.InventorySlotsUsed);
         Assert.Equal(6, first.InventorySlotCapacity);
-        var full = Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_BOARD_FULL");
+        var full = Assert.Single(events, entry => entry.Type == GameEventType.SurvivorOrbBoardFull);
         Assert.Equal(6, full.InventorySlotsUsed);
         Assert.NotNull(full.ElapsedMilliseconds);
-        var blocked = Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_PICKUP_BLOCKED_FULL");
+        var blocked = Assert.Single(events, entry => entry.Type == GameEventType.SurvivorOrbPickupBlockedFull);
         Assert.Equal(107000030, blocked.ItemId);
         Assert.Equal(6, blocked.InventorySlotsUsed);
     }

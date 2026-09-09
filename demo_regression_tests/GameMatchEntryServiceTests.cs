@@ -206,9 +206,9 @@ public sealed class GameMatchEntryServiceTests
         Assert.Single(runtime.Bots.GetBots(runtime.MatchingId));
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var events = logs.GetRecent(runtime.MatchingId);
-        Assert.Single(events, entry => entry.Type == "MATCH_STARTED");
-        Assert.Equal(runtime.PlayerRoster.Count, events.Count(entry => entry.Type == "SPAWN_ASSIGNMENT"));
-        var spawn = Assert.Single(events, entry => entry.Type == "SPAWN_ASSIGNMENT" && entry.IsBot);
+        Assert.Single(events, entry => entry.Type == GameEventType.MatchStarted);
+        Assert.Equal(runtime.PlayerRoster.Count, events.Count(entry => entry.Type == GameEventType.SpawnAssignment));
+        var spawn = Assert.Single(events, entry => entry.Type == GameEventType.SpawnAssignment && entry.IsBot);
         var bot = Assert.Single(runtime.Bots.GetBots(runtime.MatchingId));
         Assert.True(spawn.IsBot);
         Assert.Equal(bot.PlayerId, spawn.PlayerId);
@@ -227,8 +227,8 @@ public sealed class GameMatchEntryServiceTests
             MessagePackSerializer.Serialize(new MatchManifest { HumanPlayerIds = [1001], BotCount = 0, Mode = MatchMode.Normal }));
         await service.PrepareMatchAsync(runtime.MatchingId, runtime);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        Assert.Single(logs.GetRecent(runtime.MatchingId), entry => entry.Type == "MATCH_STARTED");
-        var spawn = Assert.Single(logs.GetRecent(runtime.MatchingId), entry => entry.Type == "SPAWN_ASSIGNMENT");
+        Assert.Single(logs.GetRecent(runtime.MatchingId), entry => entry.Type == GameEventType.MatchStarted);
+        var spawn = Assert.Single(logs.GetRecent(runtime.MatchingId), entry => entry.Type == GameEventType.SpawnAssignment);
         Assert.False(spawn.IsBot);
         Assert.Equal(1001L, spawn.PlayerId);
         Assert.Equal(runtime.SpawnCells[1001].X, spawn.CellX);
