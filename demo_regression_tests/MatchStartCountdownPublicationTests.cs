@@ -1,7 +1,6 @@
 using game_server.matches.entry;
-using game_server.matches.lifecycle;
-
 using game_server.matches;
+
 using System.Collections.Concurrent;
 using System.Reflection;
 using game_server;
@@ -261,16 +260,16 @@ public sealed class MatchStartCountdownPublicationTests
         long playerId,
         long matchingId)
     {
-        return server.GetMatchingLifecycle().PreparePublication(subject, playerId, matchingId);
+        return server.GetMatchingLifecycle().PrepareNotification(subject, playerId, matchingId);
     }
 
     private static ConcurrentDictionary<long, ConcurrentDictionary<long, string>>
         GetTerminalSubjects(GameServer server)
     {
         return Assert.IsType<ConcurrentDictionary<long, ConcurrentDictionary<long, string>>>(
-            typeof(MatchingLifecycleService)
+            typeof(MatchSessionCleanupService)
                 .GetField(
-                    "_matchingLifecycleTerminalSubjects",
+                    "_playerNotifications",
                     BindingFlags.Instance | BindingFlags.NonPublic)!
                 .GetValue(server.GetMatchingLifecycle()));
     }

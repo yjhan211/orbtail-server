@@ -6,9 +6,8 @@ using game_server.players;
 using game_server.combat;
 using game_server.matches.entry;
 using game_server.field;
-using game_server.matches.lifecycle;
-using game_server.matches.results;
 using game_server.matches;
+using game_server.matches.results;
 using System.Reflection;
 using game_server;
 using game_server.sessions;
@@ -40,8 +39,8 @@ internal static class GameServerTestAccess
     internal static MatchEntryFailureHandler GetEntryFailureHandler(this GameServer server) =>
         Read<MatchEntryFailureHandler>(server);
 
-    internal static MatchingLifecycleService GetMatchingLifecycle(this GameServer server) =>
-        Read<MatchingLifecycleService>(server);
+    internal static MatchSessionCleanupService GetMatchingLifecycle(this GameServer server) =>
+        Read<MatchSessionCleanupService>(server);
 
     private static T Read<T>(object instance) where T : class =>
         Assert.IsType<T>(instance.GetType()
@@ -53,11 +52,11 @@ internal static class GameServerTestAccess
     {
         var logger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
         var sessions = new game_server.sessions.GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<game_server.sessions.GameSessionRegistry>.Instance);
-        var lifecycle = new MatchingLifecycleService(new InMemoryRedisOperations(),
+        var lifecycle = new MatchSessionCleanupService(new InMemoryRedisOperations(),
             new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
         runtimes ??= new MatchRuntimeStore(logger.For<MatchRuntime>(),
 
-            matchingLifecycle: lifecycle, damageLogger: logger.For<MatchCombatDamageService>());
+            matchSessionCleanup: lifecycle, damageLogger: logger.For<MatchCombatDamageService>());
         var logs = runtimes.EventLogs;
         var summaries = new MatchSummaryFileStore();
         var entryFailure = new MatchEntryFailureHandler(runtimes, sessions, lifecycle, logger);
@@ -99,7 +98,7 @@ internal static class GameServerTestAccess
             configuration: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
             logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServer>.Instance,
             sessionLogger: Microsoft.Extensions.Logging.Abstractions.NullLogger<game_server.sessions.GameClientSession>.Instance,
-            matchingLifecycle: lifecycle,
+            matchSessionCleanup: lifecycle,
             redisOperations: null!, networkService: null!,
             readinessState: new network.hosting.ServerReadinessState(),
             gameServerRegistry: new RecordingGameServerRegistry(),

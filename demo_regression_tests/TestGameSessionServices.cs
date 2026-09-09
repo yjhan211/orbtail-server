@@ -5,9 +5,8 @@ using game_server.logging;
 using game_server.players;
 using game_server.combat;
 using game_server.matches.entry;
-using game_server.matches.lifecycle;
-using game_server.matches.results;
 using game_server.matches;
+using game_server.matches.results;
 using network.common.data.models;
 using game_server.sessions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -85,7 +84,7 @@ internal static class TestGameSessionServices
                 return Task.CompletedTask;
             };
         }
-        var lifecycle = new MatchingLifecycleService(redis,
+        var lifecycle = new MatchSessionCleanupService(redis,
             new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
         return new MatchRuntimeStore(logger.For<MatchRuntime>(), lifecycle, logger.For<MatchCombatDamageService>());
     }
@@ -136,7 +135,7 @@ internal static class TestGameSessionServices
 }
 
 internal sealed class FakeGameSessionLifecycle(Func<long, long, Action?>? prepareCompletion = null)
-    : IGameSessionLifecycle
+    : IMatchSessionCleanup
 {
     public void PublishPlayerLeft(long playerId, long matchingId) { }
     public Action? PrepareGameCompletion(long playerId, long matchingId) =>

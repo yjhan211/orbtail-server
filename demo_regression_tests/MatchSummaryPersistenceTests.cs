@@ -1,5 +1,5 @@
 using game_server.logging;
-using game_server.matches.lifecycle;
+using game_server.matches;
 using game_server.matches.results;
 using game_server.matches;
 using System.Collections.Concurrent;
@@ -274,7 +274,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     {
         var nats = new RecordingNatsClient();
         var service = CreateLifecycleService(nats, new RecordingLogger<GameServer>());
-        IGameSessionLifecycle lifecycle = service;
+        IMatchSessionCleanup lifecycle = service;
         const long playerId = 101;
         const long matchingId = 42003;
 
@@ -309,10 +309,10 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     public async Task LifecycleCompletion_PrepareDefersOneShotCorePublish()
     {
         var nats = new RecordingNatsClient();
-        MatchingLifecycleService server = CreateLifecycleService(nats, new RecordingLogger<GameServer>());
+        MatchSessionCleanupService server = CreateLifecycleService(nats, new RecordingLogger<GameServer>());
         const long matchingId = 42_003;
 
-        Action dispatch = Assert.IsType<Action>(server.PreparePublication(
+        Action dispatch = Assert.IsType<Action>(server.PrepareNotification(
             MatchingLifecycleSubjects.PlayerCompleted,
             101L,
             matchingId));
@@ -338,7 +338,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             PublishException = new InvalidOperationException("core failure")
         };
         var logger = new RecordingLogger<GameServer>();
-        MatchingLifecycleService server = CreateLifecycleService(nats, logger);
+        MatchSessionCleanupService server = CreateLifecycleService(nats, logger);
 
         server.Publish(
             MatchingLifecycleSubjects.PlayerLeft,
@@ -377,7 +377,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             PublishException = new InvalidOperationException("core failure")
         };
         var logger = new RecordingLogger<GameServer>();
-        MatchingLifecycleService server = CreateLifecycleService(nats, logger, redis);
+        MatchSessionCleanupService server = CreateLifecycleService(nats, logger, redis);
 
         server.Publish(
             MatchingLifecycleSubjects.PlayerCompleted,
@@ -403,7 +403,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             MatchingRedisKeys.PostEntryReservationLifetime);
         var nats = new RecordingNatsClient();
         var logger = new RecordingLogger<GameServer>();
-        MatchingLifecycleService server = CreateLifecycleService(nats, logger, redis);
+        MatchSessionCleanupService server = CreateLifecycleService(nats, logger, redis);
 
         server.Publish(
             MatchingLifecycleSubjects.PlayerLeft,
@@ -429,7 +429,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         };
         var nats = new RecordingNatsClient();
         var logger = new RecordingLogger<GameServer>();
-        MatchingLifecycleService server = CreateLifecycleService(nats, logger, redis);
+        MatchSessionCleanupService server = CreateLifecycleService(nats, logger, redis);
 
         server.Publish(
             MatchingLifecycleSubjects.PlayerReleased,
@@ -446,7 +446,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     public async Task Lifecycle_ImmediateWrapperPublishesOnce()
     {
         var nats = new RecordingNatsClient();
-        MatchingLifecycleService server = CreateLifecycleService(
+        MatchSessionCleanupService server = CreateLifecycleService(
             nats,
             new RecordingLogger<GameServer>());
 
@@ -465,17 +465,17 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     {
         // left+completed처럼 서로 다른 종료 원인이 충돌하지 않도록 플레이어당 terminal 하나만 선점한다.
         var nats = new RecordingNatsClient();
-        MatchingLifecycleService server = CreateLifecycleService(
+        MatchSessionCleanupService server = CreateLifecycleService(
             nats,
             new RecordingLogger<GameServer>());
         const long matchingId = 42_006;
 
-        Action? completed = server.PreparePublication(
+        Action? completed = server.PrepareNotification(
             MatchingLifecycleSubjects.PlayerCompleted,
             104L,
             matchingId);
         Assert.NotNull(completed);
-        Assert.Null(server.PreparePublication(
+        Assert.Null(server.PrepareNotification(
             MatchingLifecycleSubjects.PlayerLeft,
             104L,
             matchingId));
@@ -504,10 +504,10 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     {
         var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var redis = new InMemoryRedisOperations { BeforeKeyDeleteAsync = _ => release.Task };
-        var service = new MatchingLifecycleService(redis, new RecordingNatsClient(), new RecordingLogger<GameServer>());
+        var service = new MatchSessionCleanupService(redis, new RecordingNatsClient(), new RecordingLogger<GameServer>());
         await redis.StringSetAsync(network.common.MatchingRedisKeys.Key(12345), "pending");
         await redis.HashSetAsync("matching_bots", 12345, new byte[] { 1 });
-        service.StartRedisCleanup(12345);
+        service.StartMatchDataCleanup(12345);
         Task drain = service.DrainAsync();
         try
         {
@@ -539,36 +539,36 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     public void Lifecycle_SourceContract_ClaimsTerminalBeforeOneShotCorePublish()
     {
         string root = FindRepositoryRoot();
-        string serverSource = ReadNormalizedSource(root, "game_server", "Program.cs") + ReadNormalizedSource(root, "game_server", "GameServer.cs") + ReadNormalizedSource(root, "game_server", "Matches", "Lifecycle", "MatchingLifecycleService.cs");
+        string serverSource = ReadNormalizedSource(root, "game_server", "Program.cs") + ReadNormalizedSource(root, "game_server", "GameServer.cs") + ReadNormalizedSource(root, "game_server", "Matches", "MatchSessionCleanupService.cs");
         string immediateWrapper = ReadMethodSlice(
             serverSource,
             "internal void Publish(",
-            "internal Action? PreparePublication(");
+            "internal Action? PrepareNotification(");
         string preparation = ReadMethodSlice(
             serverSource,
-            "internal Action? PreparePublication(",
-            "private bool TryRegisterMatchingLifecycleTerminal(");
+            "internal Action? PrepareNotification(",
+            "private async Task ReleaseReservationAndPublishAsync(");
         string corePublish = ReadMethodSlice(
             serverSource,
-            "private void PublishMatchingLifecycleCore(",
+            "private async Task ReleaseReservationAndPublishAsync(",
             "internal async Task CloseAsync(");
 
         int immediatePreparation = Find(
             immediateWrapper,
-            "Action? dispatch = PreparePublication(subject, playerId, matchingId);");
+            "var dispatch = PrepareNotification(subject, playerId, matchingId);");
         int immediateDispatch = Find(immediateWrapper, "dispatch?.Invoke();");
         Assert.True(immediatePreparation < immediateDispatch);
         Assert.DoesNotContain("PublishMatchingLifecycleCore(", immediateWrapper, StringComparison.Ordinal);
 
         int terminalClaim = Find(
             preparation,
-            "if (!TryRegisterMatchingLifecycleTerminal(subject, playerId, matchingId))");
+            "if (!playerSubjects.TryAdd(playerId, subject))");
         int claimRejected = Find(preparation, "return null;");
         int deferredFactory = Find(preparation, "return () =>");
         int exactlyOnceGuard = Find(preparation, "Interlocked.Exchange(ref dispatchStarted, 1)");
         int trackedPublication = Find(
             preparation,
-            "StartMatchingLifecyclePublication(subject, playerId, matchingId);");
+            "_ = ReleaseReservationAndPublishAsync(");
         Assert.True(terminalClaim < claimRejected);
         Assert.True(claimRejected < deferredFactory);
         Assert.True(deferredFactory < exactlyOnceGuard);
@@ -577,7 +577,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         int serialization = Find(corePublish, "MessagePackSerializer.Serialize(new G_TO_U_MATCHING_LIFECYCLE");
         Assert.Contains("PlayerId = playerId", corePublish);
         Assert.Contains("MatchingId = matchingId", corePublish);
-        int corePublishInvocation = Find(corePublish, "_matchingLifecycleNatsClient?.Publish(subject, payload);");
+        int corePublishInvocation = Find(corePublish, "_natsClient?.Publish(subject, payload);");
         int failureLog = Find(corePublish, "Matching lifecycle publish failed:");
         Assert.True(serialization < corePublishInvocation);
         Assert.True(corePublishInvocation < failureLog);
@@ -594,8 +594,8 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             "private async Task StopCoreAsync(",
             "private void InitializeServices(");
         int timerDisposal = Find(shutdown, "await tickService.StopAsync();");
-        int redisCleanupDrain = Find(shutdown, "matchingLifecycle.DrainAsync()");
-        int natsClose = Find(shutdown, "matchingLifecycle.CloseAsync();");
+        int redisCleanupDrain = Find(shutdown, "matchSessionCleanup.DrainAsync()");
+        int natsClose = Find(shutdown, "matchSessionCleanup.CloseAsync();");
         Assert.True(timerDisposal < redisCleanupDrain);
         Assert.True(redisCleanupDrain < natsClose);
     }
@@ -604,16 +604,16 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     public void RedisCleanup_SourceContract_StartsAfterUnlockAndTracksBeforeDispatch()
     {
         string root = FindRepositoryRoot();
-        string lifecycle = ReadNormalizedSource(root, "game_server", "Matches", "Lifecycle", "MatchingLifecycleService.cs");
-        string start = ReadMethodSlice(lifecycle, "internal void StartRedisCleanup(", "private async Task RunTrackedMatchingRedisCleanupAsync(");
-        Assert.True(Find(start, "_pendingMatchingRedisCleanupTasks.TryAdd") < Find(start, "_ = RunTrackedMatchingRedisCleanupAsync("));
-        string worker = ReadMethodSlice(lifecycle, "private async Task RunTrackedMatchingRedisCleanupAsync(", "private void CompleteMatchingRedisCleanup(");
-        Assert.True(Find(worker, "finally") < Find(worker, "CompleteMatchingRedisCleanup(operationId, completion);"));
+        string lifecycle = ReadNormalizedSource(root, "game_server", "Matches", "MatchSessionCleanupService.cs");
+        string start = ReadMethodSlice(lifecycle, "internal void StartMatchDataCleanup(", "private async Task DeleteMatchDataAsync(");
+        Assert.True(Find(start, "_pendingTasks.TryAdd") < Find(start, "_ = DeleteMatchDataAsync("));
+        string worker = ReadMethodSlice(lifecycle, "private async Task DeleteMatchDataAsync(", "private void CompleteCleanupTask(");
+        Assert.True(Find(worker, "finally") < Find(worker, "CompleteCleanupTask(operationId, completion);"));
         string runtime = ReadNormalizedSource(root, "game_server", "Matches", "MatchRuntime.cs");
         string exit = runtime.Substring(runtime.IndexOf("internal void Exit()", StringComparison.Ordinal));
         Assert.True(Find(exit, "_runtimeStore.RemoveCompleted(this);") < Find(exit, "Monitor.Exit(MatchLock);"));
         Assert.True(Find(exit, "Monitor.Exit(MatchLock);") < Find(exit, "foreach (var action in afterRelease)"));
-        Assert.True(Find(exit, "foreach (var action in afterRelease)") < Find(exit, "_matchingLifecycle.StartRedisCleanup(MatchingId);"));
+        Assert.True(Find(exit, "foreach (var action in afterRelease)") < Find(exit, "_matchSessionCleanup.StartMatchDataCleanup(MatchingId);"));
         Assert.Contains("if (IsEnded && !_cleanupStarted)", exit);
         Assert.Contains("startRedisCleanup = true;", exit);
     }
@@ -661,16 +661,16 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         return File.ReadAllText(Path.Combine(fullPathParts)).Replace("\r\n", "\n");
     }
 
-    private MatchingLifecycleService CreateLifecycleService(
+    private MatchSessionCleanupService CreateLifecycleService(
         INatsClient nats,
         ILogger<GameServer> logger,
         IRedisOperations? redisOperations = null)
     {
-        var service = new MatchingLifecycleService(redisOperations ?? new InMemoryRedisOperations(), nats, logger);
+        var service = new MatchSessionCleanupService(redisOperations ?? new InMemoryRedisOperations(), nats, logger);
         return service;
     }
 
-    private static Task WaitForPendingMatchingRedisCleanupsAsync(MatchingLifecycleService service) =>
+    private static Task WaitForPendingMatchingRedisCleanupsAsync(MatchSessionCleanupService service) =>
         service.DrainAsync();
 
     private sealed class RecordingNatsClient : INatsClient

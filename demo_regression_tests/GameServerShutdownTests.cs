@@ -31,7 +31,7 @@ public sealed class GameServerShutdownTests
             else nats.Completion.TrySetResult();
         }
 
-        // NATS 정리 오류는 MatchingLifecycleService가 기록하고 종료를 계속한다.
+        // NATS 정리 오류는 MatchSessionCleanupService가 기록하고 종료를 계속한다.
         await first.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Same(first, server.StopAsync(CancellationToken.None));
         Assert.Equal(1, nats.CloseCount);

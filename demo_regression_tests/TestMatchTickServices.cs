@@ -23,7 +23,7 @@ internal static class TestMatchTickServices
         Action<long, GameClientSession[]> field,
         TimeProvider? clock = null) =>
         new(runtime, store, logger, pickup,
-            new MatchEntryFailureHandler(store, new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance), new game_server.matches.lifecycle.MatchingLifecycleService(new InMemoryRedisOperations(), new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger), logger), new Combat(combat), new Environment(environment),
+            new MatchEntryFailureHandler(store, new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance), new game_server.matches.MatchSessionCleanupService(new InMemoryRedisOperations(), new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger), logger), new Combat(combat), new Environment(environment),
             new Movement(movement),
             new BotDecisionService(store, null!, null!, null!, NullLogger<BotDecisionService>.Instance),
             new Field(field), clock);

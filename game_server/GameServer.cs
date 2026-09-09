@@ -3,9 +3,8 @@ using game_server.orbs;
 using game_server.players;
 using game_server.combat;
 using game_server.matches.entry;
-using game_server.matches.lifecycle;
-using game_server.matches.results;
 using game_server.matches;
+using game_server.matches.results;
 using System.Net;
 using game_server.sessions;
 using Microsoft.Extensions.Configuration;
@@ -36,7 +35,7 @@ internal sealed class GameServer(
     ILogger<GameClientSession> sessionLogger,
     IConfiguration configuration,
     IRedisOperations redisOperations,
-    MatchingLifecycleService matchingLifecycle,
+    MatchSessionCleanupService matchSessionCleanup,
     ServerReadinessState readinessState,
     IGameServerRegistry gameServerRegistry,
     GameServerNodeOptions nodeOptions,
@@ -144,14 +143,14 @@ internal sealed class GameServer(
 
         try
         {
-            await matchingLifecycle.DrainAsync();
+            await matchSessionCleanup.DrainAsync();
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Game server matching Redis cleanup failed.");
         }
 
-        await matchingLifecycle.CloseAsync();
+        await matchSessionCleanup.CloseAsync();
 
         logger.LogInformation("Game server stopped.");
     }
@@ -208,7 +207,7 @@ internal sealed class GameServer(
                 eventLogs,
                 matchEliminations,
                 growth,
-                matchingLifecycle,
+                matchSessionCleanup,
                 () => Volatile.Read(ref _stopping) != 0,
                 entryFailureHandler,
                 matchEntry: matchEntry, movementValidation: movementValidation, orbInventory: orbInventory);

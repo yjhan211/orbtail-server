@@ -3,10 +3,9 @@ using game_server.logging;
 using game_server.orbs;
 using game_server.combat;
 using game_server.matches.entry;
-using game_server.matches.lifecycle;
+using game_server.matches;
 using game_server.matches.results;
 using game_server.players;
-using game_server.matches;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -38,7 +37,7 @@ public partial class GameClientSession : SessionBase
 
     private readonly Func<Packet, bool> _trySendConnectSuccessResponse;
     private readonly Func<long, GameClientSession, GameClientSession?> _registerSessionCallback;
-    private readonly IGameSessionLifecycle _matchingLifecycle;
+    private readonly IMatchSessionCleanup _matchSessionCleanup;
     private readonly IMatchEntryFailureHandler _entryFailureHandler;
     private readonly Func<bool> _isServerStopping;
     private readonly GameEventLogManager _gameEventLogManager;
@@ -68,7 +67,7 @@ public partial class GameClientSession : SessionBase
         GameEventLogManager gameEventLogManager,
         MatchEliminationService matchEliminations,
         IPlayerGrowthHandler growth,
-        IGameSessionLifecycle matchingLifecycle,
+        IMatchSessionCleanup matchSessionCleanup,
         Func<bool> isServerStopping,
         IMatchEntryFailureHandler entryFailureHandler,
         GameMatchEntryService matchEntry,
@@ -89,7 +88,7 @@ public partial class GameClientSession : SessionBase
         _playerMovement = new PlayerMovementService(this, movementValidation, gameEventLogManager, logger);
         _orbInventory = orbInventory;
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Connection.TrySend;
-        _matchingLifecycle = matchingLifecycle;
+        _matchSessionCleanup = matchSessionCleanup;
         _isServerStopping = isServerStopping;
         _entryFailureHandler = entryFailureHandler;
 
@@ -606,7 +605,7 @@ public partial class GameClientSession : SessionBase
 
         try
         {
-            _matchingLifecycle.ReleaseMatchingReservation(PlayerId.Value, MatchingId);
+            _matchSessionCleanup.ReleaseMatchingReservation(PlayerId.Value, MatchingId);
         }
         catch
         {
@@ -653,7 +652,7 @@ public partial class GameClientSession : SessionBase
 
         try
         {
-            _matchingLifecycle.PublishPlayerLeft(PlayerId.Value, MatchingId);
+            _matchSessionCleanup.PublishPlayerLeft(PlayerId.Value, MatchingId);
         }
         catch
         {
@@ -760,7 +759,7 @@ public partial class GameClientSession : SessionBase
 
         try
         {
-            return _matchingLifecycle.PrepareGameCompletion(PlayerId.Value, MatchingId);
+            return _matchSessionCleanup.PrepareGameCompletion(PlayerId.Value, MatchingId);
         }
         catch
         {

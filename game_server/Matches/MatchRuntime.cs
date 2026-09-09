@@ -4,7 +4,7 @@ using game_server.items;
 using game_server.monsters;
 using game_server.field;
 using System.Collections.Concurrent;
-using game_server.matches.lifecycle;
+using game_server.matches;
 using game_server.matches.results;
 using game_server.logging;
 using game_server.orbs;
@@ -39,7 +39,7 @@ internal sealed class MatchRuntime
     public ConcurrentDictionary<long, GameClientSession> Sessions { get; } = new();
 
     private readonly MatchRuntimeStore _runtimeStore;
-    private readonly MatchingLifecycleService _matchingLifecycle;
+    private readonly MatchSessionCleanupService _matchSessionCleanup;
     private readonly ILogger<MatchRuntime> _logger;
 
     private readonly HashSet<long> _readyPlayerIds = [];
@@ -54,12 +54,12 @@ internal sealed class MatchRuntime
 
     internal readonly List<Action> AfterRelease = new();
 
-    internal MatchRuntime(MatchRuntimeStore runtimeStore, long matchingId, ILogger<MatchRuntime> logger, MatchingLifecycleService matchingLifecycle,
+    internal MatchRuntime(MatchRuntimeStore runtimeStore, long matchingId, ILogger<MatchRuntime> logger, MatchSessionCleanupService matchSessionCleanup,
         GameEventLogManager eventLogs, ILogger<MatchCombatDamageService> damageLogger)
     {
         _runtimeStore = runtimeStore;
         _logger = logger;
-        _matchingLifecycle = matchingLifecycle;
+        _matchSessionCleanup = matchSessionCleanup;
         MatchingId = matchingId;
         SunOrbAttacks = new SunOrbAttackState(matchingId);
         Bots = new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks);
@@ -281,7 +281,7 @@ internal sealed class MatchRuntime
 
         try
         {
-            _matchingLifecycle.StartRedisCleanup(MatchingId);
+            _matchSessionCleanup.StartMatchDataCleanup(MatchingId);
         }
         catch (Exception ex)
         {

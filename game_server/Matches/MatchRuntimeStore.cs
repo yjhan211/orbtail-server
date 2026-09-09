@@ -1,4 +1,3 @@
-using game_server.matches.lifecycle;
 using game_server.combat;
 using game_server.logging;
 using Microsoft.Extensions.Logging;
@@ -13,7 +12,7 @@ namespace game_server.matches;
 /// </summary>
 internal sealed class MatchRuntimeStore
 {
-    private readonly MatchingLifecycleService _matchingLifecycle;
+    private readonly MatchSessionCleanupService _matchSessionCleanup;
     private readonly ILogger<MatchRuntime> _runtimeLogger;
     private readonly ILogger<MatchCombatDamageService> _damageLogger;
     private readonly ConcurrentDictionary<long, MatchRuntime> _runtimes = new();
@@ -21,11 +20,11 @@ internal sealed class MatchRuntimeStore
     internal event Action<MatchRuntime>? MatchCreated;
     internal GameEventLogManager EventLogs { get; }
 
-    internal MatchRuntimeStore(ILogger<MatchRuntime> runtimeLogger, MatchingLifecycleService matchingLifecycle,
+    internal MatchRuntimeStore(ILogger<MatchRuntime> runtimeLogger, MatchSessionCleanupService matchSessionCleanup,
         ILogger<MatchCombatDamageService> damageLogger)
     {
         _runtimeLogger = runtimeLogger;
-        _matchingLifecycle = matchingLifecycle ?? throw new ArgumentNullException(nameof(matchingLifecycle));
+        _matchSessionCleanup = matchSessionCleanup ?? throw new ArgumentNullException(nameof(matchSessionCleanup));
         _damageLogger = damageLogger;
         EventLogs = new GameEventLogManager(id => GetOrNull(id)?.EventLog);
     }
@@ -40,7 +39,7 @@ internal sealed class MatchRuntimeStore
             return existing;
         }
 
-        var newRuntime = new MatchRuntime(this, matchingId, _runtimeLogger, _matchingLifecycle, EventLogs, _damageLogger);
+        var newRuntime = new MatchRuntime(this, matchingId, _runtimeLogger, _matchSessionCleanup, EventLogs, _damageLogger);
         lock (newRuntime.MatchLock)
         {
             var runtime = _runtimes.GetOrAdd(matchingId, newRuntime);

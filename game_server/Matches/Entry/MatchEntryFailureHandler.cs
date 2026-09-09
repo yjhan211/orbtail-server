@@ -1,4 +1,4 @@
-using game_server.matches.lifecycle;
+using game_server.matches;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -14,7 +14,7 @@ namespace game_server.matches.entry;
 internal sealed class MatchEntryFailureHandler(
     MatchRuntimeStore matchRuntimes,
     GameSessionRegistry sessions,
-    MatchingLifecycleService lifecycle,
+    MatchSessionCleanupService lifecycle,
     ILogger logger) : IMatchEntryFailureHandler
 {
     public void Handle(GameClientSession session)
@@ -147,7 +147,7 @@ internal sealed class MatchEntryFailureHandler(
         {
             try
             {
-                var publication = lifecycle.PreparePublication(MatchingLifecycleSubjects.PlayerEntryFailed, playerId, matchingId);
+                var publication = lifecycle.PrepareNotification(MatchingLifecycleSubjects.PlayerEntryFailed, playerId, matchingId);
                 if (publication != null)
                 {
                     failureNotifications.Add(publication);
