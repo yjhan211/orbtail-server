@@ -43,14 +43,14 @@ public sealed class MatchOwnedStateTests
 
         inventory.AddItem(11, 107000010);
         stones.AddStones(11, 9);
-        roster.RegisterEntry(new RosterEntry { PlayerId = 11 });
+        roster.RegisterParticipant(new MatchParticipant { PlayerId = 11 });
 
         Assert.Same(inventory.GetPlayerInventory(11),
             store.GetOrThrow(first.MatchingId).Inventory.GetPlayerInventory(11));
         Assert.Empty(second.Inventory.GetAllItems(11));
         Assert.Equal(9, store.GetOrThrow(first.MatchingId).SummonStones.GetSnapshot(11).StoneCount);
         Assert.Equal(0, second.SummonStones.GetSnapshot(11).StoneCount);
-        Assert.Null(second.Roster.GetEntry(11));
+        Assert.DoesNotContain(second.Roster.BuildGameResult(), row => row.playerId == 11);
         Assert.Equal((false, (long?)null), second.Roster.CheckGameOver());
     }
 
@@ -72,7 +72,7 @@ public sealed class MatchOwnedStateTests
         sibling.SummonStones.AddStones(11, 7);
         inventory.AddItem(11, 107000010);
         ground.SpawnItems(area, 0, 0, [107000010]);
-        roster.RegisterEntry(new RosterEntry { PlayerId = 11 });
+        roster.RegisterParticipant(new MatchParticipant { PlayerId = 11 });
         closures.InitializeMatching();
 
         using (MatchRuntimeStore.Enter(runtime))
@@ -80,7 +80,7 @@ public sealed class MatchOwnedStateTests
 
         Assert.Null(store.GetOrNull(runtime.MatchingId));
         Assert.Empty(ground.GetSnapshot(area));
-        Assert.Null(roster.GetEntry(11));
+        Assert.DoesNotContain(roster.BuildGameResult(), row => row.playerId == 11);
         Assert.Null(closures.GetMatchingState());
         Assert.Equal(0, stones.GetSnapshot(11).StoneCount);
         Assert.False(encounters.ResolveCorridorEncounter(11, new(0, 0, 0),
@@ -130,7 +130,7 @@ public sealed class MatchOwnedStateTests
     public void ServerAndSession_DoNotRetainMatchComponentFieldsOrConstructorArguments()
     {
         Type[] components = [typeof(InGameInventoryManager), typeof(GroundItemManager),
-            typeof(SummonStoneManager), typeof(RosterManager), typeof(AreaClosureManager),
+            typeof(SummonStoneManager), typeof(MatchRoster), typeof(AreaClosureManager),
             typeof(EncounterRevealManager)];
         foreach (Type owner in new[] { typeof(game_server.GameServer), typeof(game_server.sessions.GameClientSession) })
         {
@@ -157,8 +157,8 @@ public sealed class MatchOwnedStateTests
         {
             runtime.Bots.RegisterBots(runtime.MatchingId, Config.SWARM_MATCH_MAP,
                 [botId], new Dictionary<long, Cell> { [botId] = new(0, 0) });
-            runtime.Roster.RegisterEntry(new RosterEntry { PlayerId = botId });
-            runtime.Roster.RegisterEntry(new RosterEntry { PlayerId = 11 });
+            runtime.Roster.RegisterParticipant(new MatchParticipant { PlayerId = botId });
+            runtime.Roster.RegisterParticipant(new MatchParticipant { PlayerId = 11 });
             runtime.Inventory.AddItem(botId, 107000010);
         }
         var bot = match.Bots.GetBot(match.MatchingId, botId)!;
@@ -170,21 +170,21 @@ public sealed class MatchOwnedStateTests
         using (MatchRuntimeStore.Enter(match))
         {
             service.Process(match, botId, EliminationReason.HEALTH_ZERO, attackerPlayerId: 11);
-            var entry = match.Roster.GetEntry(botId)!;
-            Assert.Equal(PlayerMatchStatus.ELIMINATED, entry.Status);
+            var entry = match.Roster.BuildGameResult().Single(row => row.playerId == botId);
+            Assert.Equal(PlayerMatchStatus.ELIMINATED, entry.finalStatus);
             Assert.True(bot.IsEliminated);
             Assert.Empty(match.Inventory.GetPlayerInventory(botId).GetAllItems());
             int drops = match.GroundItems.GetSnapshot(bot.CurrentArea).Count;
-            var eliminatedAt = entry.EliminatedAt;
+            var eliminatedAt = entry.eliminatedAt;
 
             service.Process(match, botId, EliminationReason.HEALTH_ZERO, attackerPlayerId: 99);
             Assert.Equal(drops, match.GroundItems.GetSnapshot(bot.CurrentArea).Count);
-            Assert.Equal(eliminatedAt, entry.EliminatedAt);
-            Assert.Equal(11, entry.AttackerPlayerId);
+            Assert.Equal(eliminatedAt, match.Roster.BuildGameResult().Single(row => row.playerId == botId).eliminatedAt);
+            Assert.Equal(11, match.Roster.BuildGameResult().Single(row => row.playerId == botId).attackerPlayerId);
         }
         Assert.False(sibling.Bots.GetBot(sibling.MatchingId, botId)!.IsEliminated);
         Assert.NotEmpty(sibling.Inventory.GetPlayerInventory(botId).GetAllItems());
-        Assert.NotEqual(PlayerMatchStatus.ELIMINATED, sibling.Roster.GetEntry(botId)!.Status);
+        Assert.NotEqual(PlayerMatchStatus.ELIMINATED, sibling.Roster.BuildGameResult().Single(row => row.playerId == botId).finalStatus);
     }
     [Fact]
     public void InteractableSnapshots_AreIndependentCopiesOfSharedDefinitions()

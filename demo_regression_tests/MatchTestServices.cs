@@ -17,7 +17,7 @@ internal static class MatchTestServices
     public static GroundItemManager GroundItems(long matchingId = 1, TimeProvider? timeProvider = null) => new(matchingId, timeProvider);
     public static SummonStoneManager SummonStones(long matchingId = 1) => new(matchingId);
     public static EncounterRevealManager Encounters() => new();
-    public static RosterManager Roster(long matchingId, ILogger logger) => new(matchingId, logger);
+    public static MatchRoster Roster(long matchingId, ILogger logger) => new(matchingId, logger);
     public static AreaClosureManager Closures(long matchingId, ILogger logger, Func<DateTime>? utcNow = null) =>
         new(matchingId, logger, utcNow);
 }

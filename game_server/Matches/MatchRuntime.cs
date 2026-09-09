@@ -66,7 +66,7 @@ internal sealed class MatchRuntime
         AutoAttack = new AutoAttackController(matchingId);
         Inventory = new InGameInventoryManager(matchingId, logger);
         GroundItems = new GroundItemManager(matchingId);
-        Roster = new RosterManager(matchingId, logger);
+        Roster = new MatchRoster(matchingId, logger);
         SummonStones = new SummonStoneManager(matchingId);
         Closures = new AreaClosureManager(matchingId, logger);
         Monsters = new SwarmMonsterDirector(matchingId, Closures, Inventory);
@@ -75,7 +75,7 @@ internal sealed class MatchRuntime
 
     // 매치 식별과 수명·잠금
     public long MatchingId { get; }
-    public RosterManager Roster { get; }
+    public MatchRoster Roster { get; }
     public BotPlayerManager Bots { get; }
     public BotTacticalState BotTactics { get; } = new();
     internal SwarmBotTickMetrics BotTickMetrics { get; } = new();

@@ -5,7 +5,7 @@ using network.common;
 
 namespace demo_regression_tests;
 
-public sealed class RosterManagerTests
+public sealed class MatchRosterTests
 {
     [Fact]
     public void Elimination_OnlyChangesTheEliminatedPlayer_WhenLegacyChainEffectsAreDisabled()
@@ -13,16 +13,16 @@ public sealed class RosterManagerTests
         const long matchingId = 194001;
         var manager = MatchTestServices.Roster(matchingId, NullLogger.Instance);
 
-        manager.RegisterEntry(CreateLink(1, 2));
-        manager.RegisterEntry(CreateLink(2, 3));
-        manager.RegisterEntry(CreateLink(3, 1));
+        manager.RegisterParticipant(CreateLink(1, 2));
+        manager.RegisterParticipant(CreateLink(2, 3));
+        manager.RegisterParticipant(CreateLink(3, 1));
 
-        var affected = manager.TryEliminatePlayer(2, EliminationReason.HEALTH_ZERO).AffectedPlayers;
+        bool eliminated = manager.TryEliminatePlayer(2, EliminationReason.HEALTH_ZERO);
 
-        Assert.Equal(new[] { 2L }, affected.Keys);
-        Assert.Equal(PlayerMatchStatus.ELIMINATED, affected[2]);
-        Assert.Equal(PlayerMatchStatus.ACTIVE, manager.GetEntry(1)!.Status);
-        Assert.Equal(PlayerMatchStatus.ACTIVE, manager.GetEntry(3)!.Status);
+        Assert.True(eliminated);
+        Assert.Equal(PlayerMatchStatus.ELIMINATED, manager.BuildGameResult().Single(row => row.playerId == 2).finalStatus);
+        Assert.Equal(PlayerMatchStatus.ACTIVE, manager.BuildGameResult().Single(row => row.playerId == 1).finalStatus);
+        Assert.Equal(PlayerMatchStatus.ACTIVE, manager.BuildGameResult().Single(row => row.playerId == 3).finalStatus);
     }
 
     [Fact]
@@ -31,8 +31,8 @@ public sealed class RosterManagerTests
         const long matchingId = 194002;
         var manager = MatchTestServices.Roster(matchingId, NullLogger.Instance);
 
-        manager.RegisterEntry(CreateLink(1, 2));
-        manager.RegisterEntry(CreateLink(2, 1));
+        manager.RegisterParticipant(CreateLink(1, 2));
+        manager.RegisterParticipant(CreateLink(2, 1));
 
         manager.TryEliminatePlayer(2, EliminationReason.HEALTH_ZERO,
             attackerPlayerId: 1, eliminatedArea: AreaType.S2Library1, isAreaClosureElimination: true);
@@ -49,9 +49,9 @@ public sealed class RosterManagerTests
         const long matchingId = 194003;
         var manager = MatchTestServices.Roster(matchingId, NullLogger.Instance);
 
-        manager.RegisterEntry(CreateLink(1, 2));
-        manager.RegisterEntry(CreateLink(2, 3));
-        manager.RegisterEntry(CreateLink(3, 1));
+        manager.RegisterParticipant(CreateLink(1, 2));
+        manager.RegisterParticipant(CreateLink(2, 3));
+        manager.RegisterParticipant(CreateLink(3, 1));
 
         manager.TryEliminatePlayer(
             2,
@@ -72,9 +72,9 @@ public sealed class RosterManagerTests
         const long matchingId = 194004;
         var manager = MatchTestServices.Roster(matchingId, NullLogger.Instance);
 
-        manager.RegisterEntry(CreateLink(1, 2));
-        manager.RegisterEntry(CreateLink(2, 3));
-        manager.RegisterEntry(CreateLink(3, 1));
+        manager.RegisterParticipant(CreateLink(1, 2));
+        manager.RegisterParticipant(CreateLink(2, 3));
+        manager.RegisterParticipant(CreateLink(3, 1));
 
         var first = manager.TryEliminatePlayer(
             2, EliminationReason.HEALTH_ZERO,
@@ -83,9 +83,8 @@ public sealed class RosterManagerTests
             2, EliminationReason.DETECTED,
             attackerPlayerId: 3, forcedRank: 2, finalOrbTier: 3);
 
-        Assert.True(first.Applied);
-        Assert.False(duplicate.Applied);
-        Assert.Empty(duplicate.AffectedPlayers);
+        Assert.True(first);
+        Assert.False(duplicate);
 
         var result = Assert.Single(manager.BuildGameResult(), row => row.playerId == 2);
         Assert.Equal(EliminationReason.HEALTH_ZERO, result.reason);
@@ -103,9 +102,9 @@ public sealed class RosterManagerTests
         const long matchingId = 227001;
         var manager = MatchTestServices.Roster(matchingId, NullLogger.Instance);
 
-        manager.RegisterEntry(CreateLink(1, 2));
-        manager.RegisterEntry(CreateLink(2, 3));
-        manager.RegisterEntry(CreateLink(3, 1));
+        manager.RegisterParticipant(CreateLink(1, 2));
+        manager.RegisterParticipant(CreateLink(2, 3));
+        manager.RegisterParticipant(CreateLink(3, 1));
 
         // 본체 HP 0 — 첫 확정.
         var byBodyHp = manager.TryEliminatePlayer(
@@ -116,12 +115,12 @@ public sealed class RosterManagerTests
         var byClosure = manager.TryEliminatePlayer(
             2, EliminationReason.HEALTH_ZERO, isAreaClosureElimination: true);
 
-        Assert.True(byBodyHp.Applied);
-        Assert.False(byOvertime.Applied);
-        Assert.False(byClosure.Applied);
+        Assert.True(byBodyHp);
+        Assert.False(byOvertime);
+        Assert.False(byClosure);
 
         // 생존 수가 한 번만 줄었다면 다음 탈락자의 등수는 2다 — 세 번 줄었으면 0으로 밀린다.
-        Assert.True(manager.TryEliminatePlayer(3, EliminationReason.HEALTH_ZERO).Applied);
+        Assert.True(manager.TryEliminatePlayer(3, EliminationReason.HEALTH_ZERO));
 
         var results = manager.BuildGameResult();
         var second = Assert.Single(results, row => row.playerId == 2);
@@ -131,7 +130,24 @@ public sealed class RosterManagerTests
         Assert.Equal(2, Assert.Single(results, row => row.playerId == 3).eliminationRank);
     }
 
-    private static RosterEntry CreateLink(long playerId, long _) => new()
+    [Fact]
+    public void Release_ClearsStateAndRejectsFurtherRegistration()
+    {
+        var roster = new MatchRoster(1, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        roster.RegisterParticipant(new MatchParticipant { PlayerId = 10, Name = "player", WearItemIdList = [1] });
+
+        roster.Release();
+        roster.Release();
+
+        Assert.DoesNotContain(roster.BuildGameResult(), row => row.playerId == 10);
+        Assert.Null(roster.GetPlayerProfile(10));
+        Assert.Empty(roster.BuildGameResult());
+        Assert.Equal((false, (long?)null), roster.CheckGameOver());
+        Assert.False(roster.TryEliminatePlayer(10, EliminationReason.HEALTH_ZERO));
+        Assert.Throws<InvalidOperationException>(() =>
+            roster.RegisterParticipant(new MatchParticipant { PlayerId = 20 }));
+    }
+    private static MatchParticipant CreateLink(long playerId, long _) => new()
     {
         PlayerId = playerId
     };

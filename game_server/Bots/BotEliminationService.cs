@@ -30,10 +30,10 @@ internal sealed class BotEliminationService(
             var eliminatedBot = match.Bots.GetBot(matchingId, botId);
             var eliminatedArea = eliminatedBot?.CurrentArea ?? AreaType.None;
             int finalOrbTier = match.Inventory.GetHighestOrbTier(botId);
-            var transition = match.Roster.TryEliminatePlayer(botId, reason,
+            bool eliminated = match.Roster.TryEliminatePlayer(botId, reason,
                 attackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank,
                 finalOrbTier);
-            if (!transition.Applied)
+            if (!eliminated)
             {
                 logger.LogDebug(
                     "Duplicate bot elimination ignored: MatchingId={MatchingId}, BotId={BotId}, Reason={Reason}",
@@ -41,7 +41,6 @@ internal sealed class BotEliminationService(
                 return;
             }
 
-            var affected = transition.AffectedPlayers;
             match.GroundItems.ReleaseClaimReservationsForPlayer(botId);
             eventLogs.LogElimination(
                 matchingId,
@@ -67,24 +66,12 @@ internal sealed class BotEliminationService(
                 foreach (var s in matchingSessions) s.TrySend(eliminatedPacket);
             }
 
-            // 2) 영향받는 봇/세션 상태 동기화
-            foreach (var (affectedId, newStatus) in affected)
+            // 탈락한 봇만 관전 상태로 전환한다.
+            if (eliminatedBot != null)
             {
-                // 봇 영향
-                var bot = match.Bots.GetBot(matchingId, affectedId);
-                if (bot == null) continue;
-                if (newStatus == PlayerMatchStatus.ELIMINATED)
-                {
-                    bot.IsEliminated = true;
-                    bot.PlayerMatchStatus = PlayerMatchStatus.SPECTATING;
-                }
-                else
-                {
-                    bot.PlayerMatchStatus = newStatus;
-                }
+                eliminatedBot.IsEliminated = true;
+                eliminatedBot.PlayerMatchStatus = PlayerMatchStatus.SPECTATING;
             }
-
-
             // 3) 게임 종료 판정 — 봇 탈락으로 최후 1인 결정 가능
             var (isGameOver, winnerId) = match.Roster.CheckGameOver();
             if (!deferGameOver && isGameOver && matchingSessions.Count > 0)

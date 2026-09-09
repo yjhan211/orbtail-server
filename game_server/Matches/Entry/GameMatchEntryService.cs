@@ -141,8 +141,12 @@ internal sealed class GameMatchEntryService(
                 }
                 foreach (var participant in roster)
                 {
-                    runtime.Roster.RegisterEntry(new RosterEntry { PlayerId = participant.PlayerId });
-                    runtime.Roster.UpdatePlayerProfile(participant.PlayerId, participant.Name, participant.WearItemIdList);
+                    runtime.Roster.RegisterParticipant(new MatchParticipant
+                    {
+                        PlayerId = participant.PlayerId,
+                        Name = participant.Name,
+                        WearItemIdList = participant.WearItemIdList.ToList()
+                    });
                 }
                 runtime.Doors.Initialize();
                 runtime.InitializeMatch(mode, spawnCells, roster);

@@ -353,7 +353,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         {
             Assert.True(totalEntries >= humanSessions.Count);
             var entries = humanSessions
-                .Select(session => new RosterEntry
+                .Select(session => new MatchParticipant
                 {
                     PlayerId = session.PlayerId!.Value,
                     Status = session.PlayerMatchStatus
@@ -361,7 +361,7 @@ public sealed class GameClientSessionTerminalPublicationTests
                 .ToList();
             for (int index = entries.Count; index < totalEntries; index++)
             {
-                entries.Add(new RosterEntry
+                entries.Add(new MatchParticipant
                 {
                     PlayerId = 80_000 + index,
                     Status = PlayerMatchStatus.ACTIVE
@@ -371,15 +371,13 @@ public sealed class GameClientSessionTerminalPublicationTests
             Store.GetOrCreate(matchingId);
             for (int index = 0; index < entries.Count; index++)
             {
-                RosterEntry entry = entries[index];
-                Store.GetOrThrow(matchingId).Roster.RegisterEntry(entry);
+                MatchParticipant entry = entries[index];
                 string name = useLongProfiles
                     ? $"Player{entry.PlayerId}_{new string('x', 300)}"
                     : $"Player{entry.PlayerId}";
-                Store.GetOrThrow(matchingId).Roster.UpdatePlayerProfile(
-                    entry.PlayerId,
-                    name,
-                    [1001, 1002, 1003, 1004]);
+                entry.Name = name;
+                entry.WearItemIdList = [1001, 1002, 1003, 1004];
+                Store.GetOrThrow(matchingId).Roster.RegisterParticipant(entry);
             }
         }
 

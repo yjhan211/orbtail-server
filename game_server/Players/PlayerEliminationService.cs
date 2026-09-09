@@ -36,10 +36,10 @@ internal sealed class PlayerEliminationService(
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
 
         int finalOrbTier = _matchRuntimes.GetOrThrow(matchingId).Inventory.GetHighestOrbTier(eliminatedPlayerId);
-        var transition = _matchRuntimes.GetOrThrow(matchingId).Roster.TryEliminatePlayer(eliminatedPlayerId, reason,
+        bool eliminated = _matchRuntimes.GetOrThrow(matchingId).Roster.TryEliminatePlayer(eliminatedPlayerId, reason,
             resolvedAttackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank,
             finalOrbTier);
-        if (!transition.Applied)
+        if (!eliminated)
         {
             Logger.LogDebug(
                 "Duplicate elimination ignored: matchingId={MatchingId}, PlayerId={PlayerId}, Reason={Reason}",
@@ -56,7 +56,6 @@ internal sealed class PlayerEliminationService(
             eliminatedBot.IsEliminated = true;
         }
 
-        var affected = transition.AffectedPlayers;
         _matchRuntimes.GetOrThrow(matchingId).GroundItems.ReleaseClaimReservationsForPlayer(eliminatedPlayerId);
         _gameEventLogManager.LogElimination(
             matchingId,
@@ -87,33 +86,6 @@ internal sealed class PlayerEliminationService(
             };
             eliminatedPacket.SetBody(MessagePackSerializer.Serialize(eliminatedMsg));
             session.TrySend(eliminatedPacket);
-        }
-
-        // 세션 PlayerMatchStatus 동기화 (탈락자 → SPECTATING으로 관전 전환)
-        // #26: 봇 상태도 함께 동기화 (BotPlayerManager)
-        foreach (var (playerId, newStatus) in affected)
-        {
-            var s = allSessions.FirstOrDefault(s => s.PlayerId == playerId);
-            if (s != null)
-            {
-                s.ApplyMatchStatus(newStatus);
-                continue;
-            }
-
-            // 봇 상태 동기화
-            var bot = _matchRuntimes.GetOrThrow(matchingId).Bots.GetBot(matchingId, playerId);
-            if (bot != null)
-            {
-                if (newStatus == PlayerMatchStatus.ELIMINATED)
-                {
-                    bot.IsEliminated = true;
-                    bot.PlayerMatchStatus = PlayerMatchStatus.SPECTATING;
-                }
-                else
-                {
-                    bot.PlayerMatchStatus = newStatus;
-                }
-            }
         }
 
         // Elimination removes the actor from the live world immediately. The eliminated session

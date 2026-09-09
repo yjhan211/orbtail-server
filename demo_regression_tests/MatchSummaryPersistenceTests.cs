@@ -35,7 +35,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         const long matchingId = 42091;
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(matchingId);
-        runtime.Roster.RegisterEntry(new RosterEntry { PlayerId = 11 });
+        runtime.Roster.RegisterParticipant(new MatchParticipant { PlayerId = 11 });
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         logs.BeginMatch(matchingId, seed: 17);
         var summaries = new MatchSummaryFileStore(_directory);
