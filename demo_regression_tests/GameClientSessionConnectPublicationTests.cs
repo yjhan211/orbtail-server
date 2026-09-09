@@ -1,8 +1,10 @@
+using game_server;
+using game_server.matches.orbs;
+using game_server.players;
 using game_server.matches.entry;
 using game_server.matches.results;
 using game_server.matches;
 using System.Reflection;
-using game_server.services;
 using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -116,7 +118,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Contains("internal Action? MarkGameEndedAndPrepareLifecyclePublication()", main);
         Assert.Contains("private void SyncPlayersOnEntry()", main);
         Assert.Contains("private Task HandleSocialAction(", File.ReadAllText(Path.Combine(directory, "GameClientSession.Social.cs")));
-        Assert.Contains("private void AdvanceOrbOrbit(", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Services", "PlayerMovementService.cs")));
+        Assert.Contains("private void AdvanceOrbOrbit(", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Players", "PlayerMovementService.cs")));
         Assert.False(File.Exists(Path.Combine(directory, "GameClientSession.MatchEnd.cs")));
         Assert.False(File.Exists(Path.Combine(directory, "GameClientSession.Snapshots.cs")));
     }

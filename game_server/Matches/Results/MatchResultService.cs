@@ -1,5 +1,7 @@
+using game_server;
+using game_server.matches.bots;
+using game_server.matches.logging;
 using game_server.matches.entry;
-using game_server.services;
 using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging;

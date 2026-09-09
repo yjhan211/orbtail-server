@@ -1,4 +1,4 @@
-using game_server.services;
+using game_server.matches.logging;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 

@@ -1,6 +1,7 @@
+using game_server.matches.bots;
+using game_server.matches.items;
 using game_server.players;
 using game_server.sessions;
-using game_server.services;
 using network.common;
 namespace demo_regression_tests;
 

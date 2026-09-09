@@ -1,10 +1,10 @@
+using game_server.matches.orbs;
 using game_server.matches.combat;
 using game_server.matches;
 using System.Collections.Immutable;
 using System.Reflection;
 using System.Text.Json;
 using game_server;
-using game_server.services;
 using game_server.sessions;
 using network.common.data;
 using network.common.data.helpers;
@@ -156,7 +156,7 @@ public class ProximityAutoCombatDataTests
     public void RecoveryOrbRecordsHumanRecoveryOnlyThroughSessionStats()
     {
         string source = ReadNormalizedSource(
-            FindRepositoryRoot(), "game_server", "Services", "OrbRecoveryService.cs");
+            FindRepositoryRoot(), "game_server", "Matches", "Orbs", "OrbRecoveryService.cs");
 
         Assert.Contains(
             "if (session == null)\n" +
@@ -186,7 +186,7 @@ public class ProximityAutoCombatDataTests
     public void OrbVisualPublication_UsesOneCommitAndSendStepPerCandidate()
     {
         string source = ReadNormalizedSource(
-            FindRepositoryRoot(), "game_server", "Services", "OrbVisualStatePublisher.cs");
+            FindRepositoryRoot(), "game_server", "Matches", "Orbs", "OrbVisualStatePublisher.cs");
         string append = ReadMethodSlice(
             source,
             "private void DispatchOrbVisualStatePublications(",
@@ -215,7 +215,7 @@ public class ProximityAutoCombatDataTests
     {
         string root = FindRepositoryRoot();
         string proximity = ReadNormalizedSource(
-            root, "game_server", "Services", "OrbVisualStatePublisher.cs");
+            root, "game_server", "Matches", "Orbs", "OrbVisualStatePublisher.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
         int prepareStart = proximity.IndexOf(
             "private ImmutableArray<SwarmOrbVisualPublication> PrepareOrbVisualStatePublications(",

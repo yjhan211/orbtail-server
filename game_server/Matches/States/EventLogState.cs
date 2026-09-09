@@ -1,4 +1,4 @@
-using game_server.services;
+using game_server.matches.logging;
 
 namespace game_server.matches.states;
 

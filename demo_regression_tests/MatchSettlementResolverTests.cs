@@ -1,6 +1,5 @@
 using game_server.matches.results;
 using game_server.matches;
-using game_server.services;
 
 namespace demo_regression_tests;
 

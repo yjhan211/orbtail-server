@@ -1,4 +1,4 @@
-using game_server.services;
+using game_server.players;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data;
@@ -79,7 +79,7 @@ public sealed class MovementValidationServiceTests
     [Fact]
     public void SessionCommitsCellOnlyAfterDoorRejectionPath()
     {
-        string source = File.ReadAllText(Path.Combine(FindRoot(), "game_server", "Services", "PlayerMovementService.cs"));
+        string source = File.ReadAllText(Path.Combine(FindRoot(), "game_server", "Players", "PlayerMovementService.cs"));
         int check = source.IndexOf("validationService.GetBlockedTransitionCell(", StringComparison.Ordinal);
         int reject = source.IndexOf("PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(newArea, blockedCell);", check, StringComparison.Ordinal);
         int stop = source.IndexOf("return null;", reject, StringComparison.Ordinal);

@@ -1,8 +1,8 @@
+using game_server.matches.bots;
 using game_server.matches.combat;
 using game_server.matches;
 using System.Collections.Immutable;
 using game_server;
-using game_server.services;
 using game_server.sessions;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -116,8 +116,8 @@ public sealed class SwarmBotMovementPlanTests
     {
         string root = FindRepositoryRoot();
         string coordinator = ReadNormalizedSource(
-            root, "game_server", "Services", "Bots", "BotPlayerManager.MovementPlan.cs");
-        string server = ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotMovementService.cs");
+            root, "game_server", "Matches", "Bots", "BotPlayerManager.MovementPlan.cs");
+        string server = ReadNormalizedSource(root, "game_server", "Matches", "Bots", "BotMovementService.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs");
         string tick = ReadMethodSlice(
             combat,
@@ -181,13 +181,13 @@ public sealed class SwarmBotMovementPlanTests
         string root = FindRepositoryRoot();
         string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
         string coordinator = ReadNormalizedSource(
-            root, "game_server", "Services", "Bots", "BotPlayerManager.MovementPlan.cs");
+            root, "game_server", "Matches", "Bots", "BotPlayerManager.MovementPlan.cs");
         string adminSetup = ReadMethodSlice(
             combat,
             "public object SetupSwarmCutDummy(long matchingId)",
             "private object SetupSwarmCutDummyCore(");
         string external = ReadMethodSlice(
-            ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotMovementService.cs"),
+            ReadNormalizedSource(root, "game_server", "Matches", "Bots", "BotMovementService.cs"),
             "public void DispatchExternalMovement(",
             "private static double CalculatePercentile(");
         string externalPrepare = ReadMethodSlice(

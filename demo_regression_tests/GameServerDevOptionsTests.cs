@@ -1,4 +1,4 @@
-using game_server.services;
+using game_server;
 using Microsoft.Extensions.Configuration;
 
 namespace demo_regression_tests;

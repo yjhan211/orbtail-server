@@ -1,3 +1,8 @@
+using game_server;
+using game_server.matches.bots;
+using game_server.matches.items;
+using game_server.matches.logging;
+using game_server.matches.orbs;
 using game_server.matches.combat;
 using game_server.matches.entry;
 using game_server.matches.field;
@@ -7,7 +12,6 @@ using game_server.matches;
 using System.Collections.Concurrent;
 using System.Reflection;
 using game_server.network;
-using game_server.services;
 using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -804,11 +808,11 @@ public sealed class GameClientSessionPublicationTests
         string doors = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Doors.cs");
         string connection = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
-        string bots = ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotDecisionService.cs");
+        string bots = ReadNormalizedSource(root, "game_server", "Matches", "Bots", "BotDecisionService.cs");
         string botPickup = ReadNormalizedSource(
             root,
             "game_server",
-            "Services",
+            "Matches",
             "Bots",
             "BotPlayerManager.ProximityAutoCombat.cs");
 
@@ -818,7 +822,7 @@ public sealed class GameClientSessionPublicationTests
             ReadNormalizedSource(root, "network", "Core", "SessionBase.cs"));
         Assert.DoesNotContain("RunWithMatchLock", session);
         Assert.DoesNotContain(Enum.GetNames<Protocol>(), name => name.Contains("RNG_COLLECT") || name.Contains("INTERACT_COOLDOWN"));
-        var autoPickup = ReadNormalizedSource(root, "game_server", "Services", "GroundItemAutoPickupService.cs");
+        var autoPickup = ReadNormalizedSource(root, "game_server", "Matches", "Items", "GroundItemAutoPickupService.cs");
         Assert.Contains("Monitor.IsEntered(match.MatchLock)", autoPickup);
         Assert.Contains("match.IsEnded", autoPickup);
         Assert.DoesNotContain("RunWithMatchLock", orbSummon);

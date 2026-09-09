@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.services;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace demo_regression_tests;

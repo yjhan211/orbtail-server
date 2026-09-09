@@ -1,6 +1,6 @@
+using game_server.matches.bots;
 using game_server.matches.states;
 using game_server.matches;
-using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;

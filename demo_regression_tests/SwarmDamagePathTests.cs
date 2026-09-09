@@ -1,3 +1,4 @@
+using game_server.matches.bots;
 using game_server.matches.combat;
 using game_server.matches.results;
 using game_server.players;
@@ -84,7 +85,7 @@ public class SwarmDamagePathTests
         // 게이트가 실제로 물려 있어야 한다: 문 목록 필터와 몬스터 소비품 드롭. 상자 시작·봇 개봉 코드는 제거됐다.
         foreach (var (file, marker) in new[]
                  {
-                     (Path.Combine("game_server", "Services", "PlayerMovementService.cs"),
+                     (Path.Combine("game_server", "Players", "PlayerMovementService.cs"),
                          "public void SendInteractableList"),
                      (Path.Combine("game_server", "Matches", "Combat", "MatchCombatDamageService.cs"),
                          "private void SpawnSwarmSummonStone")
@@ -113,7 +114,7 @@ public class SwarmDamagePathTests
         string source = File.ReadAllText(
             Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "Combat", "MatchCombatService.cs"));
         string botSource = File.ReadAllText(
-            Path.Combine(FindRepositoryRoot(), "game_server", "Services", "Bots", "BotDecisionService.cs"));
+            Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "Bots", "BotDecisionService.cs"));
 
         // ① 절단 자제: 봇 전용, 래치 앞에서 걸린다.
         Assert.Contains("SwarmBotCutMinHealthRatio = 0.5f", botSource);
@@ -158,7 +159,7 @@ public class SwarmDamagePathTests
 
         // 중단 경로는 이동 하나뿐이다.
         string movement = File.ReadAllText(
-            Path.Combine(root, "game_server", "Services", "PlayerMovementService.cs"));
+            Path.Combine(root, "game_server", "Players", "PlayerMovementService.cs"));
         Assert.Contains("player.Condition.TryStopSleep()", movement);
 
         string combat = File.ReadAllText(
@@ -171,7 +172,7 @@ public class SwarmDamagePathTests
         Assert.Contains("ProcessSwarmSleepRecovery(aliveSessions, nowUtc)", combat);
         // 봇 파셜(#312)도 같은 계약을 진다.
         Assert.DoesNotContain("BreakSwarmSleep", File.ReadAllText(
-            Path.Combine(root, "game_server", "Services", "Bots", "BotDecisionService.cs")));
+            Path.Combine(root, "game_server", "Matches", "Bots", "BotDecisionService.cs")));
     }
 
     /// <summary>

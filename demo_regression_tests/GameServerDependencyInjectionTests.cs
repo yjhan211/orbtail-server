@@ -1,3 +1,6 @@
+using game_server.matches.bots;
+using game_server.matches.logging;
+using game_server.players;
 using game_server.matches.combat;
 using game_server.matches.entry;
 using game_server.matches.results;
@@ -40,7 +43,7 @@ public sealed class GameServerDependencyInjectionTests
                 [
                     typeof(MatchCountdownService), typeof(MatchCombatService),
                     typeof(game_server.matches.field.MatchEnvironmentService),
-                    typeof(game_server.services.BotMovementService), typeof(game_server.services.BotDecisionService),
+                    typeof(game_server.matches.bots.BotMovementService), typeof(game_server.matches.bots.BotDecisionService),
                     typeof(game_server.matches.field.MatchZoneService)
                 ];
                 foreach (var type in dependencyTypes)
@@ -67,7 +70,7 @@ public sealed class GameServerDependencyInjectionTests
     {
         using var provider = CreateProvider();
         // 로그를 먼저 요청해도 저장소와 순환 없이 조립되어야 한다.
-        provider.GetRequiredService<game_server.services.GameEventLogManager>();
+        provider.GetRequiredService<game_server.matches.logging.GameEventLogManager>();
         var registry = provider.GetRequiredService<GameSessionRegistry>();
         var server = provider.GetRequiredService<GameServer>();
         var injectedRegistry = typeof(GameServer)
@@ -81,10 +84,10 @@ public sealed class GameServerDependencyInjectionTests
         Type[] serviceTypes =
         [
             typeof(game_server.matches.MatchRuntimeStore),
-            typeof(game_server.services.GameEventLogManager),
+            typeof(game_server.matches.logging.GameEventLogManager),
             typeof(game_server.matches.results.MatchEliminationService),
             typeof(game_server.matches.entry.GameMatchEntryService),
-            typeof(game_server.services.MovementValidationService),
+            typeof(game_server.players.MovementValidationService),
             typeof(game_server.matches.entry.MatchEntryFailureHandler),
             typeof(game_server.matches.MatchTickService)
         ];

@@ -1,7 +1,8 @@
+using game_server.matches.bots;
+using game_server.matches.items;
 using game_server.matches.combat;
 using game_server.matches.field;
 using game_server.matches.entry;
-using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
 

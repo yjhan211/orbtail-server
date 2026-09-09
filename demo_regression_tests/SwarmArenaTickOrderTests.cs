@@ -1,3 +1,6 @@
+using game_server.matches.bots;
+using game_server.matches.monsters;
+using game_server.matches.orbs;
 using game_server.matches.combat;
 using game_server.matches.entry;
 using game_server.matches.field;
@@ -41,7 +44,7 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string proximity = ReadNormalizedSource(
-            root, "game_server", "Services", "OrbVisualStatePublisher.cs");
+            root, "game_server", "Matches", "Orbs", "OrbVisualStatePublisher.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string settlement = ReadNormalizedSource(
             root, "game_server", "Matches", "Field", "MatchEnvironmentService.cs");
@@ -187,7 +190,7 @@ public sealed class SwarmArenaTickOrderTests
             root, "game_server", "Matches", "Results", "MatchEliminationService.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string proximity = ReadNormalizedSource(
-            root, "game_server", "Services", "OrbVisualStatePublisher.cs");
+            root, "game_server", "Matches", "Orbs", "OrbVisualStatePublisher.cs");
 
         string healthNotification = ReadBracedBlockAfterMarker(
             ReadNormalizedSource(root, "game_server", "Players", "PlayerHealthChangeService.cs"),
@@ -224,7 +227,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.False(ContainsCodeToken(orbPublicationSteps, "catch"));
 
         string botElimination = ReadMethodSlice(
-            ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotEliminationService.cs"),
+            ReadNormalizedSource(root, "game_server", "Matches", "Bots", "BotEliminationService.cs"),
             "public void Process(",
             "private void DropBotInventoryAtCurrentPosition(");
         AssertInOrder(
@@ -373,9 +376,9 @@ public sealed class SwarmArenaTickOrderTests
     public void WindBladeAndOrbBoardState_AreOwnedByMatchRuntime()
     {
         string root = FindRepositoryRoot();
-        string windBlade = ReadNormalizedSource(root, "game_server", "Services", "WindOrbAttackService.cs");
-        string crossfire = ReadNormalizedSource(root, "game_server", "Services", "SunOrbAttackService.cs");
-        string orbBoard = ReadNormalizedSource(root, "game_server", "Services", "OrbUpgradeService.cs");
+        string windBlade = ReadNormalizedSource(root, "game_server", "Matches", "Orbs", "WindOrbAttackService.cs");
+        string crossfire = ReadNormalizedSource(root, "game_server", "Matches", "Orbs", "SunOrbAttackService.cs");
+        string orbBoard = ReadNormalizedSource(root, "game_server", "Matches", "Orbs", "OrbUpgradeService.cs");
 
         Assert.DoesNotContain("_swarmWindBladeNextTickAtUtc", windBlade);
         Assert.DoesNotContain("_swarmWindBladeEngagedAtUtc", windBlade);
@@ -390,7 +393,7 @@ public sealed class SwarmArenaTickOrderTests
     public void SunOrbAttackState_IsMatchOwnedAndDodgeLookupDoesNotCreateRuntime()
     {
         string root = FindRepositoryRoot();
-        string crossfire = ReadNormalizedSource(root, "game_server", "Services", "SunOrbAttackService.cs");
+        string crossfire = ReadNormalizedSource(root, "game_server", "Matches", "Orbs", "SunOrbAttackService.cs");
         string botDodge = ReadNormalizedSource(root, "game_server", "Matches", "MatchRuntime.cs");
         string runtimeStates = ReadNormalizedSource(root, "game_server", "Matches", "States", "MatchProgressState.cs");
 
@@ -404,7 +407,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.Contains("public SunOrbAttackState SunOrbAttacks { get; }", botDodge);
 
         Assert.Contains("new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks)", botDodge);
-        string botMovement = ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotPlayerManager.Movement.cs");
+        string botMovement = ReadNormalizedSource(root, "game_server", "Matches", "Bots", "BotPlayerManager.Movement.cs");
         Assert.Contains("_sunOrbAttacks.DodgeSnapshot, matchingId, bot.PlayerId, bot.Position, bot.CurrentArea, now", botMovement);
         Assert.DoesNotContain("matchRuntimes.GetOrThrow(matchingId).Swarm", botDodge);
         Assert.False(File.Exists(Path.Combine(root, "game_server", "GameServer.SwarmBotDodge.cs")));
@@ -419,7 +422,7 @@ public sealed class SwarmArenaTickOrderTests
         string runtimeStates = ReadNormalizedSource(
             root, "game_server", "Matches", "States", "MatchProgressState.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
-        string crossfire = ReadNormalizedSource(root, "game_server", "Services", "SunOrbAttackService.cs");
+        string crossfire = ReadNormalizedSource(root, "game_server", "Matches", "Orbs", "SunOrbAttackService.cs");
 
         // 매치 하나에 모니터 하나 — 블로킹 진입과 펄스용 TryEnter가 같은 잠금 객체를 쓴다.
         Assert.DoesNotContain("_globalExecutionLock", store);
