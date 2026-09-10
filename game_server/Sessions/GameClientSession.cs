@@ -22,7 +22,7 @@ namespace game_server.sessions;
 ///     수신 패킷을 처리하거나 담당 서비스에 전달하고, 결과를 클라이언트에 전송한다.
 ///     연결 종료 시에는 입장 실패·퇴장·서버 종료 상황에 맞게 정리를 요청한다.
 ///
-///     플레이어 개인 상태는 세션이, 참가 세션 목록과 매치 전체 상태는 MatchRuntime이 관리한다.
+///     플레이어 상태는 MatchRuntime의 참가자를 참조하고, 세션은 요청 처리와 전송을 담당한다.
 ///     기능별 요청 처리와 상태 전송 코드는 GameClientSession.* partial 파일에 나누어 둔다.
 /// </summary>
 public partial class GameClientSession : SessionBase
@@ -41,9 +41,10 @@ public partial class GameClientSession : SessionBase
     private readonly Func<bool> _isServerStopping;
     private readonly GameEventLogManager _gameEventLogManager;
     internal PlayerHealthChangeService HealthChanges { get; }
-    private readonly PlayerCondition _condition = new();
+    // 입장 준비 후 MatchRuntime의 참가자를 참조한다.
+    internal MatchPlayer _player = null!;
     private readonly IPlayerGrowthHandler _growth;
-    private readonly PlayerMovementService _playerMovement;
+    internal readonly PlayerMovementService _playerMovement;
     private readonly OrbInventoryService _orbInventory;
 
     private int _entryCompleted;
@@ -53,7 +54,6 @@ public partial class GameClientSession : SessionBase
     private int _matchingLifecycleTerminalReported;
     private int _matchingReservationReleaseReported;
 
-    private readonly PlayerInteractionState _interactions = new();
     internal static Action<long, long>? SwarmHeartPickupCallback { get; set; }
 
     internal GameClientSession(
@@ -96,24 +96,15 @@ public partial class GameClientSession : SessionBase
     }
 
     public new long? PlayerId { get; private set; }
-    public MapId CurrentMapId { get; private set; }
     public long MatchingId { get; private set; }
-    public AreaType CurrentArea => _playerMovement.CurrentArea;
-    public Vector3f? LastValidatedPosition => _playerMovement.LastValidatedPosition;
 
-    public PlayerMatchStatus PlayerMatchStatus { get; private set; } = PlayerMatchStatus.ACTIVE;
     private bool _isGameEnded;
     private bool _disconnectedByServer;
 
     internal bool IsGameEnded => Volatile.Read(ref _isGameEnded);
-    internal int CurrentHealth => Health;
     internal bool IsConnectionReleased => Connection.IsReleased;
     internal bool IsAcceptingMessages => Connection.IsAcceptingMessages;
-    internal PlayerCondition Condition => _condition;
-    internal PlayerMovementService Movement => _playerMovement;
-    public bool IsEliminated => PlayerMatchStatus is PlayerMatchStatus.ELIMINATED or PlayerMatchStatus.SPECTATING;
 
-    private int Health => _condition.Health;
 
     private void InitializeProtocolHandlers()
     {
@@ -155,7 +146,7 @@ public partial class GameClientSession : SessionBase
     {
         errorCode = ErrorCode.SUCCESS;
 
-        if (IsEliminated)
+        if (_player == null || _player.IsEliminated)
         {
             errorCode = ErrorCode.PLAYER_DEAD;
             return true;
@@ -213,7 +204,6 @@ public partial class GameClientSession : SessionBase
             long matchingId = entryContext.MatchingId;
             long playerId = entryContext.PlayerId;
             PlayerId = playerId;
-            CurrentMapId = Config.SWARM_MATCH_MAP;
             MatchingId = matchingId;
 
             EnsureConnectionActive();
@@ -221,6 +211,8 @@ public partial class GameClientSession : SessionBase
 
             var runtime = _matchEntry.GetOrCreateMatch(matchingId);
             Volatile.Write(ref _match, runtime);
+            await _matchEntry.PrepareMatchAsync(matchingId, runtime);
+            EnsureConnectionActive();
             GameClientSession? previousSession = null;
             using (runtime.Enter())
             {
@@ -231,6 +223,9 @@ public partial class GameClientSession : SessionBase
                     SendConnectFailure(ErrorCode.GAME_ALREADY_ENDED);
                     return;
                 }
+
+                _player = runtime.GetParticipant(playerId)
+                    ?? throw new InvalidOperationException("Match participant was not initialized.");
 
                 if (!Connection.TryRunIfActive(() => previousSession = _registerSessionCallback(playerId, this)))
                 {
@@ -245,8 +240,6 @@ public partial class GameClientSession : SessionBase
                 previousSession.ForceDisconnect();
             }
 
-            await _matchEntry.PrepareMatchAsync(matchingId, runtime);
-            EnsureConnectionActive();
             Cell matchingSpawnCell;
             var humanPlayerIds = new List<long>();
 
@@ -284,14 +277,14 @@ public partial class GameClientSession : SessionBase
 
                 Logger.LogInformation(
                     "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
-                    PlayerId, CurrentArea, LastValidatedPosition?.X, LastValidatedPosition?.Y, _playerMovement.LastValidatedCell?.X,
-                    _playerMovement.LastValidatedCell?.Y);
+                    PlayerId, _player.CurrentArea, _player.LastValidatedPosition?.X, _player.LastValidatedPosition?.Y, _player.LastValidatedCell?.X,
+                    _player.LastValidatedCell?.Y);
 
 
 
-                _playerMovement.SendInteractableList(CurrentArea);
+                _playerMovement.SendInteractableList(_player.CurrentArea);
 
-                GroundItemNotificationService.SendSnapshot(this, CurrentArea);
+                GroundItemNotificationService.SendSnapshot(this, _player.CurrentArea);
                 SendOrbList();
                 SendOrbUpgradeInfo(_growth.GetOrbUpgradeInfo(matchingId, PlayerId.Value));
                 SendSummonStoneState();
@@ -353,7 +346,7 @@ public partial class GameClientSession : SessionBase
 
     private void SyncPlayersOnEntry()
     {
-        if (!PlayerId.HasValue || IsEliminated)
+        if (!PlayerId.HasValue || _player.IsEliminated)
         {
             return;
         }
@@ -366,7 +359,7 @@ public partial class GameClientSession : SessionBase
 
         using (match.Enter())
         {
-            if (match.IsEnded || !PlayerId.HasValue || IsEliminated)
+            if (match.IsEnded || !PlayerId.HasValue || _player.IsEliminated)
             {
                 return;
             }
@@ -378,7 +371,7 @@ public partial class GameClientSession : SessionBase
                 {
                     continue;
                 }
-                if (session.IsEliminated || session.CurrentArea != CurrentArea)
+                if (session._player.IsEliminated || session._player.CurrentArea != _player.CurrentArea)
                 {
                     continue;
                 }
@@ -387,11 +380,11 @@ public partial class GameClientSession : SessionBase
 
             if (sessions.Count > 0)
             {
-                using var others = PacketMaker.G_TO_C_OBJECT_INFO(sessions.Select(s => s.Movement.CaptureGameObjectInfo(s.Condition.State)).ToList());
+                using var others = PacketMaker.G_TO_C_OBJECT_INFO(sessions.Select(s => s._playerMovement.CaptureGameObjectInfo(s._player.State)).ToList());
                 TrySend(others);
             }
 
-            using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([_playerMovement.CaptureGameObjectInfo(_condition.State)]))
+            using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([_playerMovement.CaptureGameObjectInfo(_player.State)]))
             {
                 foreach (var session in sessions)
                 {
@@ -399,7 +392,7 @@ public partial class GameClientSession : SessionBase
                 }
             }
 
-            var bots = match.Bots.GetBots(MatchingId).Where(bot => !bot.IsEliminated && bot.CurrentArea == CurrentArea).ToList();
+            var bots = match.Bots.GetBots(MatchingId).Where(bot => !bot.IsEliminated && bot.CurrentArea == _player.CurrentArea).ToList();
             var objects = bots.Select(bot => match.Bots.SynthesizeGameObjectInfo(MatchingId, bot.PlayerId)).OfType<GameObjectInfo>().ToList();
             if (objects.Count <= 0)
             {
@@ -436,7 +429,7 @@ public partial class GameClientSession : SessionBase
     {
         var inventory = Match.Inventory.GetPlayerInventory(PlayerId!.Value);
         _gameEventLogManager.LogOrbBoardTransition(MatchingId, PlayerId.Value, inventory.GetAllItems(),
-            inventory.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
+            inventory.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0, _player.CurrentArea.ToString(), "connection_sync", isBot: false);
     }
 
     private void SendConnectFailure(ErrorCode errorCode)
@@ -681,13 +674,15 @@ public partial class GameClientSession : SessionBase
         var match = Volatile.Read(ref _match);
         if (match == null)
         {
-            _condition.ClearPeriodicBuffs();
+            _player?.ClearPeriodicBuffs();
         }
         else
         {
             using (match.Enter())
             {
-                _condition.ClearPeriodicBuffs();
+                // 교체된 이전 연결은 같은 참가자를 쓰는 새 연결의 상태를 지우지 않는다.
+                if (PlayerId.HasValue && match.Sessions.TryGetValue(PlayerId.Value, out var current) && ReferenceEquals(current, this))
+                    _player?.ClearPeriodicBuffs();
             }
         }
         if (!PlayerId.HasValue)
@@ -708,7 +703,7 @@ public partial class GameClientSession : SessionBase
 
         Logger.LogInformation("Game client session removed: PlayerId={SessionPlayerId}", PlayerId.Value);
 
-        if (MatchingId > 0 && CurrentArea != AreaType.None)
+        if (_player != null && MatchingId > 0 && _player.CurrentArea != AreaType.None)
         {
             using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(PlayerId.Value);
             var sameAreaSessions = new List<GameClientSession>();
@@ -718,7 +713,7 @@ public partial class GameClientSession : SessionBase
                 {
                     continue;
                 }
-                if (other.CurrentArea != CurrentArea)
+                if (other._player.CurrentArea != _player.CurrentArea)
                 {
                     continue;
                 }
@@ -734,7 +729,7 @@ public partial class GameClientSession : SessionBase
                 "Broadcasted disconnected player leave: PlayerId={PlayerId}, MatchingId={MatchingId}, Area={Area}, Receivers={ReceiverCount}",
                 PlayerId.Value,
                 MatchingId,
-                CurrentArea,
+                _player.CurrentArea,
                 sameAreaSessions.Count);
         }
 
@@ -744,12 +739,7 @@ public partial class GameClientSession : SessionBase
         }
     }
 
-    internal void ApplyMatchStatus(PlayerMatchStatus status)
-    {
-        PlayerMatchStatus = status == PlayerMatchStatus.ELIMINATED
-            ? PlayerMatchStatus.SPECTATING
-            : status;
-    }
+
 
     internal Action? MarkGameEndedAndPrepareLifecyclePublication()
     {
@@ -783,7 +773,7 @@ public partial class GameClientSession : SessionBase
         }
         else if (PlayerId.HasValue && MatchingId > 0 && !IsGameEnded)
         {
-            if (IsEliminated)
+            if (_player == null || _player.IsEliminated)
             {
                 ReleaseMatchingReservationOnce();
             }

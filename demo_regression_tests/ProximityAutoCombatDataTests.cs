@@ -240,7 +240,7 @@ public class ProximityAutoCombatDataTests
             "GameClientSession[] recipientSnapshot = matchingSessions.ToArray();",
             "foreach (var observer in recipientSnapshot)",
             "foreach (var visualActor in visualActors)",
-            "if (observer.CurrentArea != actor.Area)",
+            "if (observer._player.CurrentArea != actor.Area)",
             "publications.Add(SwarmOrbVisualPublication.Remove(",
             "visualStates.TryGetValue(key, out var previousState)",
             "publications.Add(SwarmOrbVisualPublication.Publish(",

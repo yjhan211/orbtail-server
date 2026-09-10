@@ -65,7 +65,7 @@ public partial class GameClientSession
             }
 
             long playerId = PlayerId!.Value;
-            var attempt = _orbInventory.Summon(match, playerId, CurrentArea);
+            var attempt = _orbInventory.Summon(match, playerId, _player.CurrentArea);
 
             if (attempt is { Success: true, AddedItem: not null })
             {
@@ -106,7 +106,7 @@ public partial class GameClientSession
 
     private Task HandleUpgradeOrb(C_TO_G_UPGRADE_ORB request)
     {
-        if (!PlayerId.HasValue || MatchingId <= 0 || IsEliminated)
+        if (!PlayerId.HasValue || MatchingId <= 0 || _player.IsEliminated)
         {
             return Task.CompletedTask;
         }

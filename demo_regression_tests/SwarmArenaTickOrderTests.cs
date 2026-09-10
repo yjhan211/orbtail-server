@@ -97,7 +97,7 @@ public sealed class SwarmArenaTickOrderTests
             "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
             "matchEliminations.EliminatePlayer(",
             "botEliminations.Process(",
-            "Roster.CheckGameOver()",
+            "CheckGameOver()",
             "matchResults.FinalizeMatch(matchingId, winnerId.Value, MatchEndReason.PressureFieldSettlement, resolution.DecisiveCriterion);");
         Assert.DoesNotContain("Enter(", matchingSettlement);
         Assert.DoesNotContain("ProcessProximityAutoCombatForMatching(", matchingSettlement);
@@ -205,7 +205,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             applyProximityHit,
             "eventLogs.LogHit(",
-            "victimSession.Condition.ApplyDamage(damage);",
+            "victimSession._player.ApplyDamage(damage);",
             "victimSession.HealthChanges.Handle(change, attackerPlayerId: sourcePlayerId);",
             "PacketMaker.G_TO_C_COMBAT_HIT(",
             "victimSession.TrySend(packet);");
@@ -230,7 +230,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             botElimination,
             "try",
-            "Roster.TryEliminatePlayer(",
+            "TryEliminatePlayer(",
             "DropBotInventoryAtCurrentPosition(",
             "foreach (var s in matchingSessions) s.TrySend(eliminatedPacket);",
             "catch (Exception ex)");
@@ -242,10 +242,10 @@ public sealed class SwarmArenaTickOrderTests
             "private void DropBotInventoryAtCurrentPosition(");
         AssertInOrder(
             humanElimination,
-            "Roster.TryEliminatePlayer(",
+            "TryEliminatePlayer(",
             "groundItemDrop.DropAll(eliminatedSession);",
             "session.TrySend(eliminatedPacket);",
-            "Roster.CheckGameOver(",
+            "CheckGameOver(",
             "FinalizeMatch(");
         Assert.False(ContainsCodeToken(humanElimination, "catch"));
     }

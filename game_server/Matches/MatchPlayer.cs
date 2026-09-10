@@ -1,14 +1,10 @@
 using network.common;
-using network.common.data;
+using network.common.data.models;
 
-namespace game_server.players;
+namespace game_server.matches;
 
-/// <summary>
-///     사람 플레이어 하나의 체력·행동·주기 버프 상태와 변경 규칙.
-///     피해·회복은 적용 결과를 반환한다. 요청한 변화량과 실제 변화량은 구분한다.
-///     세션이 소유하며 매치 잠금 안에서 갱신한다. 매치 틱이 실행을 구동하며 패킷·로그·탈락 처리는 호출자가 맡는다.
-/// </summary>
-internal sealed class PlayerCondition
+/// <summary>매치 참가자 한 명의 프로필·게임 상태·탈락 결과. MatchRuntime이 보관하며 매치 잠금 안에서 변경한다.</summary>
+public class MatchPlayer
 {
     private const double SwarmSleepWarmupSeconds = 1d;
     private const double SwarmSleepCombatLockSeconds = 3d;
@@ -18,6 +14,32 @@ internal sealed class PlayerCondition
     private DateTime? _nextPeriodicBuffTickAtUtc;
 
     private PlayerState _state = PlayerState.IDLE;
+
+    private readonly HashSet<int> _pending = [];
+    private int? _pendingDoor;
+    private int _openedDoors;
+    private long _doorStartedAt;
+    internal long LastMoveProcessedTimestamp;
+    internal long LastMoveResponseTimestamp;
+
+    public long PlayerId => Profile.PlayerId;
+    public required PlayerInfo Profile { get; init; }
+    public MapId MapId { get; init; } = Config.SWARM_MATCH_MAP;
+    public bool IsEliminated => Status is PlayerMatchStatus.ELIMINATED or PlayerMatchStatus.SPECTATING;
+    public PlayerMatchStatus Status { get; set; } = PlayerMatchStatus.ACTIVE;
+    public EliminationReason EliminationReason { get; set; } = EliminationReason.NONE;
+    public DateTime? EliminatedAt { get; set; }
+    public long AttackerPlayerId { get; set; }
+    public AreaType EliminatedArea { get; set; } = AreaType.None;
+    public int EliminationRank { get; set; }
+    public int FinalOrbTier { get; set; }
+
+    public Vector3f? LastValidatedPosition { get; internal set; }
+    public Cell? LastValidatedCell { get; internal set; }
+    public Vector3f LastValidatedVelocity { get; internal set; } = new();
+    public float LastValidatedRotation { get; internal set; }
+    public AreaType CurrentArea { get; internal set; } = AreaType.None;
+    public float OrbOrbitPhaseDegrees { get; internal set; }
 
     public int Health { get; set; } = Config.MAX_HEALTH;
 
@@ -170,8 +192,6 @@ internal sealed class PlayerCondition
         }
     }
 
-
-
     private sealed class PeriodicBuffEntry(BuffSubType type, int value, int interval, int duration)
     {
         public readonly BuffSubType Type = type;
@@ -180,5 +200,56 @@ internal sealed class PlayerCondition
         public readonly int Duration = duration;
         public int Remaining = duration;
         public int Elapsed;
+    }
+
+    public int PendingInteractionCount => _pending.Count;
+    public void BeginInteraction(int interactId) => _pending.Add(interactId);
+    public bool TryFinishInteraction(int interactId) => _pending.Remove(interactId);
+    public int[] GetPendingInteractionIds() => _pending.ToArray();
+    public void ClearPendingInteractions()
+    {
+        _pending.Clear();
+        _pendingDoor = null;
+    }
+
+    public void BeginDoor(int interactId, long startedAt)
+    {
+        if (_pendingDoor is { } previous)
+            _pending.Remove(previous);
+        BeginInteraction(interactId);
+        _pendingDoor = interactId;
+        _doorStartedAt = startedAt;
+    }
+
+    public bool TryFinishDoor(int interactId, long now, TimeSpan duration, out ErrorCode error)
+    {
+        error = ErrorCode.INVALID_GAME_STATE;
+        if (_pendingDoor != interactId || !_pending.Contains(interactId))
+            return false;
+        if (now - _doorStartedAt < duration.TotalMilliseconds)
+        {
+            error = ErrorCode.DOOR_OPEN_TOO_EARLY;
+            return false;
+        }
+
+        _pendingDoor = null;
+        _pending.Remove(interactId);
+        error = ErrorCode.SUCCESS;
+        return true;
+    }
+
+    public void CompleteDoor()
+    {
+        _pendingDoor = null;
+        _openedDoors++;
+    }
+
+    public int? InterruptDoor()
+    {
+        // 첫 문은 시작 구역 탈출을 보장하기 위해 피격으로 중단하지 않는다.
+        if (_pendingDoor is not { } id || _openedDoors == 0) return null;
+        _pendingDoor = null;
+        _pending.Remove(id);
+        return id;
     }
 }

@@ -42,15 +42,15 @@ public partial class GameClientSession
             var error = ErrorCode.INVALID_GAME_STATE;
             if (!match.IsEnded && !IsGameplayActionBlocked(out _) && GameInteractableData.Get(msg.InteractId) is { DoorId: > 0 } info)
             {
-                error = info.ZoneId != (int)CurrentArea
+                error = info.ZoneId != (int)_player.CurrentArea
                     ? ErrorCode.AREA_MISMATCH
-                    : MatchInteractionService.CheckDoorGauge(match, CurrentArea, info.DoorId);
+                    : MatchInteractionService.CheckDoorGauge(match, _player.CurrentArea, info.DoorId);
             }
 
             if (error == ErrorCode.SUCCESS)
             {
-                _interactions.BeginDoor(msg.InteractId, Environment.TickCount64);
-                _gameEventLogManager.LogExploreStart(MatchingId, PlayerId.Value, msg.InteractId, CurrentArea.ToString(), isBot: false);
+                _player.BeginDoor(msg.InteractId, Environment.TickCount64);
+                _gameEventLogManager.LogExploreStart(MatchingId, PlayerId.Value, msg.InteractId, _player.CurrentArea.ToString(), isBot: false);
             }
 
             using var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_OPEN_ACK, PlayerId.Value);
@@ -91,20 +91,20 @@ public partial class GameClientSession
             if (!match.IsEnded && !IsGameplayActionBlocked(out _) && GameInteractableData.Get(msg.InteractId) is { DoorId: > 0 } info)
             {
                 doorId = info.DoorId;
-                error = info.ZoneId != (int)CurrentArea
+                error = info.ZoneId != (int)_player.CurrentArea
                     ? ErrorCode.AREA_MISMATCH
-                    : MatchInteractionService.CheckDoorGauge(match, CurrentArea, doorId);
+                    : MatchInteractionService.CheckDoorGauge(match, _player.CurrentArea, doorId);
             }
 
             bool completed = false;
             if (error != ErrorCode.SUCCESS)
             {
-                _interactions.TryFinish(msg.InteractId);
+                _player.TryFinishInteraction(msg.InteractId);
             }
-            else if (_interactions.TryFinishDoor(msg.InteractId, Environment.TickCount64,
+            else if (_player.TryFinishDoor(msg.InteractId, Environment.TickCount64,
                          TimeSpan.FromSeconds(Config.GetSwarmDoorGaugeSeconds(doorId)), out error))
             {
-                MatchInteractionService.FinishDoor(match, _interactions, doorId);
+                MatchInteractionService.FinishDoor(match, _player, doorId);
                 completed = true;
                 using var updatePacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, PlayerId.Value);
                 foreach (var session in match.Sessions.Values.ToList())
@@ -124,7 +124,7 @@ public partial class GameClientSession
 
             if (completed)
             {
-                _condition.State = PlayerState.IDLE;
+                _player.State = PlayerState.IDLE;
                 SendPlayerState();
             }
         }
@@ -133,11 +133,11 @@ public partial class GameClientSession
 
     internal void BreakDoorUnlockGauge()
     {
-        if (_interactions.InterruptDoor() is not { } interactId)
+        if (_player.InterruptDoor() is not { } interactId)
         {
             return;
         }
-        _gameEventLogManager.LogExploreCancelled(MatchingId, PlayerId ?? 0, interactId, CurrentArea.ToString(), "door_unlock_hit", isBot: false);
+        _gameEventLogManager.LogExploreCancelled(MatchingId, PlayerId ?? 0, interactId, _player.CurrentArea.ToString(), "door_unlock_hit", isBot: false);
         if (!PlayerId.HasValue)
         {
             return;
@@ -182,7 +182,7 @@ public partial class GameClientSession
     {
         foreach (int interactId in canceledIds)
         {
-            _gameEventLogManager.LogExploreCancelled(MatchingId, PlayerId.GetValueOrDefault(), interactId, CurrentArea.ToString(), reason, isBot: false);
+            _gameEventLogManager.LogExploreCancelled(MatchingId, PlayerId.GetValueOrDefault(), interactId, _player.CurrentArea.ToString(), reason, isBot: false);
             using var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_OPEN_ACK, PlayerId.GetValueOrDefault());
             packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_DOOR_OPEN_ACK
             {

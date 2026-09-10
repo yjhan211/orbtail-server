@@ -120,12 +120,12 @@ internal class MatchCombatService(
 
         DateTime nowUtc = DateTime.UtcNow;
 
-        var aliveSessions = sessions.Where(session => !session.IsEliminated).ToList();
+        var aliveSessions = sessions.Where(session => !session._player.IsEliminated).ToList();
         var aliveBots = bots.Where(bot => !bot.IsEliminated).ToList();
         var participants = aliveSessions
-            .Where(session => session.LastValidatedPosition != null)
+            .Where(session => session._player.LastValidatedPosition != null)
             .Select(session => new SwarmParticipantSpatial(
-                session.PlayerId!.Value, session.CurrentArea, session.LastValidatedPosition!))
+                session.PlayerId!.Value, session._player.CurrentArea, session._player.LastValidatedPosition!))
             .Concat(aliveBots.Select(bot =>
                 new SwarmParticipantSpatial(bot.PlayerId, bot.CurrentArea, bot.Position)))
             .ToList();
@@ -489,24 +489,24 @@ internal class MatchCombatService(
         foreach (var session in sessions)
         {
             if (IsMatchTerminal(matchingId)) return;
-            if (session.IsEliminated || session.IsGameEnded || !session.IsAcceptingMessages)
+            if (session._player.IsEliminated || session.IsGameEnded || !session.IsAcceptingMessages)
             {
-                session.Condition.ClearPeriodicBuffs();
+                session._player.ClearPeriodicBuffs();
                 continue;
             }
 
             try
             {
-                session.Condition.UpdatePeriodicBuffs(nowUtc, Config.MAX_HEALTH, health =>
+                session._player.UpdatePeriodicBuffs(nowUtc, Config.MAX_HEALTH, health =>
                 {
-                    session.HealthChanges.Handle(session.Condition.ChangeHealth(health, Config.MAX_HEALTH));
-                    if (session.IsEliminated || session.IsGameEnded || IsMatchTerminal(matchingId))
-                        session.Condition.ClearPeriodicBuffs();
+                    session.HealthChanges.Handle(session._player.ChangeHealth(health, Config.MAX_HEALTH));
+                    if (session._player.IsEliminated || session.IsGameEnded || IsMatchTerminal(matchingId))
+                        session._player.ClearPeriodicBuffs();
                 });
             }
             catch (Exception ex)
             {
-                session.Condition.ClearPeriodicBuffs();
+                session._player.ClearPeriodicBuffs();
                 logger.LogWarning(ex, "Periodic buff processing failed: MatchingId={MatchingId}, PlayerId={PlayerId}",
                     matchingId, session.PlayerId);
             }
@@ -518,15 +518,15 @@ internal class MatchCombatService(
     {
         foreach (var session in aliveSessions)
         {
-            int recovered = session.Condition.GetSleepRecovery(nowUtc, session.IsEliminated, Config.MAX_HEALTH);
+            int recovered = session._player.GetSleepRecovery(nowUtc, session._player.IsEliminated, Config.MAX_HEALTH);
             if (recovered <= 0) continue;
-            session.HealthChanges.Handle(session.Condition.Recover(recovered));
+            session.HealthChanges.Handle(session._player.Recover(recovered));
             if (!session.PlayerId.HasValue) continue;
 
             using var packet = PacketMaker.G_TO_C_HEALTH_RECOVERY(new()
             {
                 PlayerId = session.PlayerId.Value,
-                AreaType = session.CurrentArea,
+                AreaType = session._player.CurrentArea,
                 Amount = recovered,
                 Source = HealthRecoveryKind.Sleep
             });
@@ -933,7 +933,7 @@ internal class MatchCombatService(
         var cutterBot = cutterSession == null
             ? aliveBots.FirstOrDefault(candidate => candidate.PlayerId == cutterId)
             : null;
-        int cutterHealthBefore = cutterSession?.CurrentHealth ?? cutterBot?.Health ?? 0;
+        int cutterHealthBefore = cutterSession?._player.Health ?? cutterBot?.Health ?? 0;
         if (cutterHealthBefore - SwarmSingleCutHealthCost <= 0)
         {
             eventLogs.LogSystem(
@@ -956,7 +956,7 @@ internal class MatchCombatService(
 
         // #229 6단계: 절단은 내가 몸으로 지르는 가해다 — 교전 잠금을 찍어 절단하고 바로 눕는
         // 도주 회복을 막는다. 수면 해제는 안 건다 — 절단하러 움직인 순간 이동이 이미 깨웠다.
-        cutterSession?.Condition.MarkSwarmCombat(nowUtc);
+        cutterSession?._player.MarkSwarmCombat(nowUtc);
 
         // 절단 진입 계측 (#227 3·6단계): 공격자·피해자·후보 ordinal·그 자리를 덮던 적 오브
         // 사거리 수(국소 화망). 내구 1·즉시 파괴, 손실 = 후보 순번부터 꼬리 끝까지.
@@ -1000,8 +1000,8 @@ internal class MatchCombatService(
         {
             matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplyProximityAutoCombatHit(cutterSession,
                 cutterId, cutterArea, destroyedItem.ItemId, SwarmSingleCutHealthCost);
-            cutterSession.Condition.BlockHealingUntil(healLockUntil);
-            cutterHealthAfter = cutterSession.CurrentHealth;
+            cutterSession._player.BlockHealingUntil(healLockUntil);
+            cutterHealthAfter = cutterSession._player.Health;
         }
         else if (cutterBot != null)
         {
@@ -1088,7 +1088,7 @@ internal class MatchCombatService(
         }));
         foreach (var session in sessions)
         {
-            if (session.PlayerId.HasValue && session.CurrentArea == area)
+            if (session.PlayerId.HasValue && session._player.CurrentArea == area)
                 session.TrySend(packet);
         }
     }
@@ -1403,7 +1403,7 @@ internal class MatchCombatService(
             }));
             foreach (var vfxSession in allSessions)
             {
-                if (!vfxSession.IsEliminated && vfxSession.CurrentArea == damage.Area)
+                if (!vfxSession._player.IsEliminated && vfxSession._player.CurrentArea == damage.Area)
                     vfxSession.TrySend(vfxPacket);
             }
         }
@@ -1414,7 +1414,7 @@ internal class MatchCombatService(
         {
             // 피격은 수면을 깨지 않는다 — 자면서 맞는 건 본인의 선택이다.
             // 3초 진입 잠금만 찍어 맞자마자 새로 눕는 것은 계속 막는다.
-            session.Condition.MarkSwarmCombat(DateTime.UtcNow);
+            session._player.MarkSwarmCombat(DateTime.UtcNow);
             // #229: 문 게이지도 같이 끊는다 — 문 앞을 비우지 못하면 방을 못 연다.
             session.BreakDoorUnlockGauge();
             // 오염 경로 — 체력 감소·피격 피드백·일반 탈락 흐름까지 담당한다.
@@ -1475,7 +1475,7 @@ internal class MatchCombatService(
             .Where(session => session.PlayerId.HasValue)
             .Select(session => (
                 PlayerId: session.PlayerId!.Value,
-                Health: session.CurrentHealth))
+                Health: session._player.Health))
             .Concat(aliveBots.Select(bot => (bot.PlayerId, bot.Health)))
             .Select(candidate =>
             {
@@ -1536,7 +1536,7 @@ internal class MatchCombatService(
         var entries = sessions
             .Where(session => session.PlayerId.HasValue)
             .Select(session => (PlayerId: session.PlayerId!.Value,
-                Eliminated: session.IsEliminated))
+                Eliminated: session._player.IsEliminated))
             .Concat(bots.Select(bot => (bot.PlayerId, Eliminated: bot.IsEliminated)))
             .Select(entry =>
             {
@@ -1595,12 +1595,12 @@ internal class MatchCombatService(
         foreach (var session in aliveSessions)
         {
             if (session.PlayerId.HasValue &&
-                session.LastValidatedPosition != null &&
+                session._player.LastValidatedPosition != null &&
                 CombatActorFactory.TryCreateSpatialActor(
                     session.PlayerId.Value,
-                    session.CurrentMapId,
-                    session.CurrentArea,
-                    session.LastValidatedPosition,
+                    session._player.MapId,
+                    session._player.CurrentArea,
+                    session._player.LastValidatedPosition,
                     out var spatial))
             {
                 AddSwarmParticipantCombatActors(actors, matchingId, spatial, nowUtc);

@@ -6,7 +6,12 @@ namespace demo_regression_tests;
 
 public sealed class PlayerMovementTimingTests
 {
-    private static PlayerMovementService Create() => new(null!, null!, null!, NullLogger.Instance);
+    private static PlayerMovementService Create()
+    {
+        var session = TestGameSessionServices.CreateRecipientSession();
+        TestGameSessionServices.BindMatch(session, 1);
+        return session._playerMovement;
+    }
 
     [Fact]
     public void MoveDelta_UsesPreviousProcessingTimeAndClampsLongGaps()

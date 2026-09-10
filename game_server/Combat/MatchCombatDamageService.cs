@@ -77,7 +77,7 @@ internal sealed class MatchCombatDamageService(
             AreaType = area,
             WeaponItemId = weaponItemId,
             Damage = damage,
-            AttackerHealth = attackerSession.CurrentHealth,
+            AttackerHealth = attackerSession._player.Health,
             TargetHealth = targetHealth,
             IsDot = isPeriodicDamage
         });
@@ -86,7 +86,7 @@ internal sealed class MatchCombatDamageService(
 
     public void SendMonsterHitNotification(GameClientSession? attackerSession, int monsterId, AreaType area, int weaponItemId, int damage, bool critical = false, bool showDamageOnly = false)
     {
-        if (attackerSession == null || !attackerSession.PlayerId.HasValue || attackerSession.IsEliminated || monsterId < 0 || weaponItemId <= 0 || damage <= 0) return;
+        if (attackerSession == null || !attackerSession.PlayerId.HasValue || attackerSession._player.IsEliminated || monsterId < 0 || weaponItemId <= 0 || damage <= 0) return;
         using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
         {
             AttackerId = attackerSession.PlayerId.Value,
@@ -95,7 +95,7 @@ internal sealed class MatchCombatDamageService(
             AreaType = area,
             WeaponItemId = weaponItemId,
             Damage = damage,
-            AttackerHealth = attackerSession.CurrentHealth,
+            AttackerHealth = attackerSession._player.Health,
             IsCritical = critical,
             ShowDamageOnly = showDamageOnly
         });
@@ -107,15 +107,15 @@ internal sealed class MatchCombatDamageService(
         GameClientSession victimSession, long sourcePlayerId, AreaType area, int weaponItemId,
         int damage, bool isPeriodicDamage = false, int sourceHealth = -1)
     {
-        if (!victimSession.PlayerId.HasValue || victimSession.IsEliminated || damage <= 0)
+        if (!victimSession.PlayerId.HasValue || victimSession._player.IsEliminated || damage <= 0)
         {
             return;
         }
         eventLogs.LogHit(victimSession.MatchingId, sourcePlayerId, victimSession.PlayerId.Value, weaponItemId, damage,
-            victimSession.CurrentHealth > 0 && victimSession.CurrentHealth - damage <= 0,
+            victimSession._player.Health > 0 && victimSession._player.Health - damage <= 0,
             BotPlayerManager.IsBotPlayerId(sourcePlayerId), DateTimeOffset.UtcNow);
 
-        var change = victimSession.Condition.ApplyDamage(damage);
+        var change = victimSession._player.ApplyDamage(damage);
         victimSession.HealthChanges.Handle(change, attackerPlayerId: sourcePlayerId);
         using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
         {
@@ -124,8 +124,8 @@ internal sealed class MatchCombatDamageService(
             AreaType = area,
             WeaponItemId = weaponItemId,
             Damage = damage,
-            AttackerHealth = sourcePlayerId == victimSession.PlayerId.Value ? victimSession.CurrentHealth : sourceHealth,
-            TargetHealth = victimSession.CurrentHealth,
+            AttackerHealth = sourcePlayerId == victimSession.PlayerId.Value ? victimSession._player.Health : sourceHealth,
+            TargetHealth = victimSession._player.Health,
             IsDot = isPeriodicDamage
         });
         victimSession.TrySend(packet);
@@ -136,26 +136,26 @@ internal sealed class MatchCombatDamageService(
     public void ApplySwarmAfterimageMonsterHit(
         GameClientSession victimSession, int monsterId, int damage)
     {
-        if (!victimSession.PlayerId.HasValue || victimSession.IsEliminated || monsterId <= 0 || damage <= 0) return;
-        int healthBefore = victimSession.CurrentHealth;
+        if (!victimSession.PlayerId.HasValue || victimSession._player.IsEliminated || monsterId <= 0 || damage <= 0) return;
+        int healthBefore = victimSession._player.Health;
         int healthAfter = Math.Max(0, healthBefore - damage);
         bool isLethal = healthBefore > 0 && healthAfter <= 0;
         eventLogs.LogSwarmAfterimageHit(
-            victimSession.MatchingId, monsterId, victimSession.PlayerId.Value, victimSession.CurrentArea.ToString(), damage,
+            victimSession.MatchingId, monsterId, victimSession.PlayerId.Value, victimSession._player.CurrentArea.ToString(), damage,
             healthBefore, healthAfter, isLethal, isBot: false, DateTimeOffset.UtcNow);
         logger.LogInformation(
             "Emotion afterimage attack: MatchingId={MatchingId}, MonsterId={MonsterId}, Target={Target}, TargetKind=Human, Damage={Damage}, HealthBefore={HealthBefore}, HealthAfter={HealthAfter}, Killed={Killed}",
             victimSession.MatchingId, monsterId, victimSession.PlayerId.Value, damage, healthBefore, healthAfter, isLethal);
-        var change = victimSession.Condition.ApplyDamage(damage);
+        var change = victimSession._player.ApplyDamage(damage);
         victimSession.HealthChanges.Handle(change);
         using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
         {
             AttackerId = monsterId,
             AttackerKind = CombatEntityKind.Monster,
             TargetId = victimSession.PlayerId.Value,
-            AreaType = victimSession.CurrentArea,
+            AreaType = victimSession._player.CurrentArea,
             Damage = damage,
-            TargetHealth = victimSession.CurrentHealth
+            TargetHealth = victimSession._player.Health
         });
         victimSession.TrySend(packet);
     }
@@ -230,7 +230,7 @@ internal sealed class MatchCombatDamageService(
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
             (int)defeatedWave.AreaType,
             spawned.ToList());
-        foreach (var session in sessions.Where(session => session.CurrentArea == defeatedWave.AreaType))
+        foreach (var session in sessions.Where(session => session._player.CurrentArea == defeatedWave.AreaType))
             session.TrySend(packet);
     }
 
@@ -322,13 +322,13 @@ internal sealed class MatchCombatDamageService(
 
         var victimSession = aliveSessions.FirstOrDefault(session => session.PlayerId == victimId);
         var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
-        int ownerHealth = ownerSession?.CurrentHealth ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == ownerId)?.Health ?? -1;
+        int ownerHealth = ownerSession?._player.Health ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == ownerId)?.Health ?? -1;
         if (victimSession != null)
         {
-            healthBefore = victimSession.CurrentHealth;
+            healthBefore = victimSession._player.Health;
             // 사격 피격 경로 재사용 — 체력 감소·피격 숫자·탈락 흐름이 그대로 따라온다.
             ApplyProximityAutoCombatHit(victimSession, ownerId, area, weaponItemId, shock, isPeriodicDamage, ownerHealth);
-            healthAfter = victimSession.CurrentHealth;
+            healthAfter = victimSession._player.Health;
         }
         else
         {
@@ -413,7 +413,7 @@ internal sealed class MatchCombatDamageService(
 
         int healthDamage = ConsumeSwarmPvpDamage(attack.TargetPlayerId, attack.Damage);
         var attackerSession = allSessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId);
-        int attackerHealth = attackerSession?.CurrentHealth ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == attack.AttackerPlayerId)?.Health ?? -1;
+        int attackerHealth = attackerSession?._player.Health ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == attack.AttackerPlayerId)?.Health ?? -1;
         int targetHealth;
         var targetSession = aliveSessions.FirstOrDefault(session =>
             session.PlayerId == attack.TargetPlayerId);
@@ -424,7 +424,7 @@ internal sealed class MatchCombatDamageService(
                 ApplyProximityAutoCombatHit(targetSession,
                     attack.AttackerPlayerId, attack.Area, attack.WeaponItemId, healthDamage, sourceHealth: attackerHealth);
             }
-            targetHealth = targetSession.CurrentHealth;
+            targetHealth = targetSession._player.Health;
         }
         else
         {
@@ -479,7 +479,7 @@ internal sealed class MatchCombatDamageService(
         }));
         foreach (var session in allSessions)
         {
-            if (!session.PlayerId.HasValue || session.CurrentArea != area)
+            if (!session.PlayerId.HasValue || session._player.CurrentArea != area)
                 continue;
             if (session.PlayerId.Value == victimId || session.PlayerId.Value == cutterId)
                 session.TrySend(packet);
@@ -495,7 +495,7 @@ internal sealed class MatchCombatDamageService(
             // 탈락자도 받는다 (#219): 관전 중에도 봇 전투 연출이 계속 보여야 한다.
             if (!observer.PlayerId.HasValue ||
                 observer.PlayerId.Value == attack.AttackerPlayerId ||
-                observer.CurrentArea != attack.Area)
+                observer._player.CurrentArea != attack.Area)
             {
                 continue;
             }

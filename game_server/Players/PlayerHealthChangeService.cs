@@ -10,7 +10,7 @@ namespace game_server.players;
 
 /// <summary>
 /// 한 플레이어의 체력 변경 결과를 전송·기록하고 필요하면 탈락시킨다.
-/// 체력 계산은 PlayerCondition이 담당하며 모든 호출은 같은 매치 잠금 안에서 수행한다.
+/// 체력 계산은 MatchPlayer가 담당하며 모든 호출은 같은 매치 잠금 안에서 수행한다.
 /// </summary>
 internal sealed class PlayerHealthChangeService(
     GameClientSession session,
@@ -20,7 +20,7 @@ internal sealed class PlayerHealthChangeService(
 {
 
 
-    public void Handle(PlayerCondition.HealthChange change, long attackerPlayerId = 0,
+    public void Handle(MatchPlayer.HealthChange change, long attackerPlayerId = 0,
         bool deferElimination = false)
     {
         // 값이 변경되지 않았으면 패킷 전송 안함
@@ -44,7 +44,7 @@ internal sealed class PlayerHealthChangeService(
         }
 
         if (change.IsDepleted && !deferElimination &&
-            session.PlayerId.HasValue && !session.IsGameEnded && !session.IsEliminated && session.CurrentHealth <= 0)
+            session.PlayerId.HasValue && !session.IsGameEnded && !session._player.IsEliminated && session._player.Health <= 0)
         {
             eliminations.EliminatePlayer(session.MatchingId, session.PlayerId.Value, EliminationReason.HEALTH_ZERO,
                 attackerPlayerId: attackerPlayerId);

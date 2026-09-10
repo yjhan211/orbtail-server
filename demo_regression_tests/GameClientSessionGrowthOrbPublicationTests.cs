@@ -211,20 +211,20 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var runtime = fixture.Store.GetOrThrow(FirstMatchingId);
         using (runtime.Enter())
         {
-            session.Condition.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 2, 1, 10);
-            Assert.True(session.Condition.TryStartSleep(DateTime.UtcNow));
-            Assert.Equal(PlayerState.SLEEP, session.Movement.CaptureGameObjectInfo(session.Condition.State).State);
+            session._player.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 2, 1, 10);
+            Assert.True(session._player.TryStartSleep(DateTime.UtcNow));
+            Assert.Equal(PlayerState.SLEEP, session._playerMovement.CaptureGameObjectInfo(session._player.State).State);
 
-            Assert.True(session.Condition.TryStopSleep());
+            Assert.True(session._player.TryStopSleep());
             session.SendPlayerState();
 
-            Assert.Equal(PlayerState.IDLE, session.Condition.State);
-            Assert.False(session.Condition.IsSleeping);
-            Assert.True(session.Condition.HasPeriodicBuffs);
-            Assert.Equal(PlayerState.IDLE, session.Movement.CaptureGameObjectInfo(session.Condition.State).State);
+            Assert.Equal(PlayerState.IDLE, session._player.State);
+            Assert.False(session._player.IsSleeping);
+            Assert.True(session._player.HasPeriodicBuffs);
+            Assert.Equal(PlayerState.IDLE, session._playerMovement.CaptureGameObjectInfo(session._player.State).State);
 
-            session.Condition.State = PlayerState.EXPLORE_1;
-            Assert.Equal(PlayerState.EXPLORE_1, session.Movement.CaptureGameObjectInfo(session.Condition.State).State);
+            session._player.State = PlayerState.EXPLORE_1;
+            Assert.Equal(PlayerState.EXPLORE_1, session._playerMovement.CaptureGameObjectInfo(session._player.State).State);
         }
     }
 
@@ -241,8 +241,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         using var matchLock = runtime.Enter();
         Assert.True(runtime.Inventory.TryAddItemWithCapacity(
             FirstPlayerId, 107000010, Config.SWARM_ORB_CAPACITY, out _));
-        var condition = (PlayerCondition)typeof(GameClientSession)
-            .GetField("_condition", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session)!;
+        var condition = session._player;
         var buildActors = typeof(MatchCombatService).GetMethod(
             "BuildSwarmArenaCombatActors", BindingFlags.Instance | BindingFlags.NonPublic)!;
         var now = DateTime.UtcNow;
@@ -817,7 +816,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
 
         public void SetPlayerMatchStatus(GameClientSession session, PlayerMatchStatus status) =>
-            SetProperty(session, nameof(GameClientSession.PlayerMatchStatus), status);
+            session._player.Status = status;
 
         public void Dispose()
         {
@@ -830,7 +829,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
             SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
             TestGameSessionServices.BindMatch(session, matchingId);
-            SetProperty(session, nameof(GameClientSession.CurrentMapId), Config.SWARM_MATCH_MAP);
             TestGameSessionServices.SetMovementProperty(session, "CurrentArea", Config.SWARM_MATCH_GROUND_AREA);
             TestGameSessionServices.SetMovementProperty(session, "LastValidatedPosition", new Vector3f(0f, 0f, 0f));
         }

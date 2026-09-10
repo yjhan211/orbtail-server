@@ -31,7 +31,7 @@ internal sealed class PlayerEliminationService(
         var allSessions = _matchRuntimes.GetOrThrow(matchingId).Sessions.Values.ToList();
         var eliminatedSession = allSessions.FirstOrDefault(session => session.PlayerId == eliminatedPlayerId);
         var eliminatedBot = _matchRuntimes.GetOrThrow(matchingId).Bots.GetBot(matchingId, eliminatedPlayerId);
-        AreaType eliminatedArea = eliminatedSession?.CurrentArea ?? eliminatedBot?.CurrentArea ?? AreaType.None;
+        AreaType eliminatedArea = eliminatedSession?._player.CurrentArea ?? eliminatedBot?.CurrentArea ?? AreaType.None;
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
 
         int finalOrbTier = _matchRuntimes.GetOrThrow(matchingId).Inventory.GetHighestOrbTier(eliminatedPlayerId);
@@ -46,9 +46,6 @@ internal sealed class PlayerEliminationService(
             return;
         }
 
-        // Keep the live session state authoritative as soon as elimination is accepted.
-        if (eliminatedSession != null)
-            eliminatedSession.ApplyMatchStatus(PlayerMatchStatus.ELIMINATED);
         if (eliminatedBot != null)
         {
             eliminatedBot.PlayerMatchStatus = PlayerMatchStatus.SPECTATING;
@@ -113,7 +110,7 @@ internal sealed class PlayerEliminationService(
             return;
 
         var targets = _matchRuntimes.GetOrThrow(matchingId).Sessions.Values.ToList()
-            .Where(session => !session.IsEliminated && session.CurrentArea == outcome.Bot.CurrentArea);
+            .Where(session => !session._player.IsEliminated && session._player.CurrentArea == outcome.Bot.CurrentArea);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
             (int)outcome.Bot.CurrentArea, outcome.Drop.SpawnedItems.ToList());
         foreach (var session in targets)

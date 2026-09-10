@@ -52,7 +52,7 @@ internal static class MonsterSnapshotPublisher
 
             foreach (var session in sessions)
             {
-                if (!preMatch && session.CurrentArea != areaSnapshot.Area)
+                if (!preMatch && session._player.CurrentArea != areaSnapshot.Area)
                     continue;
                 session.TrySend(packet);
             }

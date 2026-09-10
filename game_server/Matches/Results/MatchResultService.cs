@@ -198,7 +198,7 @@ internal sealed class MatchResultService(
             {
                 name = $"Player{Math.Abs(playerId)}";
             }
-            int health = session?.CurrentHealth ?? bot?.Health ?? 0;
+            int health = session?._player.Health ?? bot?.Health ?? 0;
             var wearItemIds = new List<int>();
             if (playerProfile?.WearItemIdList is { Count: > 0 })
             {

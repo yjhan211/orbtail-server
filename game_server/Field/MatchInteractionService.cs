@@ -8,7 +8,7 @@ namespace game_server.field;
 
 /// <summary>
 ///     매치 잠금 안에서 문 열기 조건과 진행 중인 상호작용 취소를 처리한다.
-///     연결의 START/FINISH 권리는 PlayerInteractionState가, 패킷 전송은 세션이 맡는다.
+///     참가자의 START/FINISH 상태는 MatchPlayer가, 패킷 전송은 세션이 맡는다.
 /// </summary>
 internal static class MatchInteractionService
 {
@@ -16,11 +16,11 @@ internal static class MatchInteractionService
     ///     진행 중인 문 상호작용을 정리하고 취소한 ID를 반환한다.
     ///     호출자는 매치 잠금을 유지한 채 반환된 ID로 로그와 취소 알림을 보낸다.
     /// </summary>
-    public static int[] CancelPendingInteractions(MatchRuntime runtime, PlayerInteractionState state)
+    public static int[] CancelPendingInteractions(MatchRuntime runtime, MatchPlayer state)
     {
         RequireLock(runtime);
-        int[] canceledIds = state.Snapshot();
-        state.Clear();
+        int[] canceledIds = state.GetPendingInteractionIds();
+        state.ClearPendingInteractions();
         return canceledIds;
     }
 
@@ -34,7 +34,7 @@ internal static class MatchInteractionService
         return ErrorCode.SUCCESS;
     }
 
-    public static bool FinishDoor(MatchRuntime runtime, PlayerInteractionState state, int doorId)
+    public static bool FinishDoor(MatchRuntime runtime, MatchPlayer state, int doorId)
     {
         RequireLock(runtime);
         state.CompleteDoor();

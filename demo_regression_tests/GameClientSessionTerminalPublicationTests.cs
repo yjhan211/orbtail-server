@@ -353,14 +353,14 @@ public sealed class GameClientSessionTerminalPublicationTests
         {
             Assert.True(totalEntries >= humanSessions.Count);
             var entries = humanSessions
-                .Select(session => new MatchParticipant {
+                .Select(session => new MatchPlayer {
                     Profile = new network.common.data.models.PlayerInfo { PlayerId = session.PlayerId!.Value },
-                    Status = session.PlayerMatchStatus
+                    Status = session._player.Status
                 })
                 .ToList();
             for (int index = entries.Count; index < totalEntries; index++)
             {
-                entries.Add(new MatchParticipant {
+                entries.Add(new MatchPlayer {
                     Profile = new network.common.data.models.PlayerInfo { PlayerId = 80_000 + index },
                     Status = PlayerMatchStatus.ACTIVE
                 });
@@ -369,7 +369,7 @@ public sealed class GameClientSessionTerminalPublicationTests
             Store.GetOrCreate(matchingId);
             for (int index = 0; index < entries.Count; index++)
             {
-                MatchParticipant entry = entries[index];
+                MatchPlayer entry = entries[index];
                 string name = useLongProfiles
                     ? $"Player{entry.PlayerId}_{new string('x', 300)}"
                     : $"Player{entry.PlayerId}";
@@ -418,9 +418,8 @@ public sealed class GameClientSessionTerminalPublicationTests
             SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
             SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
             TestGameSessionServices.BindMatch(session, matchingId);
-            SetProperty(session, nameof(GameClientSession.CurrentMapId), Config.SWARM_MATCH_MAP);
             TestGameSessionServices.SetMovementProperty(session, "CurrentArea", Config.SWARM_MATCH_GROUND_AREA);
-            SetProperty(session, nameof(GameClientSession.PlayerMatchStatus), status);
+            session._player.Status = status;
         }
 
         private static void SetProperty(GameClientSession session, string name, object value) =>

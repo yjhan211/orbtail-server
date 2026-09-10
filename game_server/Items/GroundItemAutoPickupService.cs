@@ -22,11 +22,11 @@ internal sealed class GroundItemAutoPickupService(
         RequireMatchLock(match);
         if (match.IsEnded || !session.PlayerId.HasValue) return;
         var candidates = GetCandidates(match, session);
-        if (nextArea != session.CurrentArea)
-            candidates.Record(match.GroundItems, session.PlayerId.Value, session.CurrentArea,
-                from, to, session.CurrentMapId);
+        if (nextArea != session._player.CurrentArea)
+            candidates.Record(match.GroundItems, session.PlayerId.Value, session._player.CurrentArea,
+                from, to, session._player.MapId);
         candidates.Record(match.GroundItems, session.PlayerId.Value, nextArea,
-            from, to, nextArea != session.CurrentArea ? session.CurrentMapId : null);
+            from, to, nextArea != session._player.CurrentArea ? session._player.MapId : null);
     }
 
     public void Process(MatchRuntime match, IReadOnlyCollection<GameClientSession> sessions)
@@ -55,20 +55,20 @@ internal sealed class GroundItemAutoPickupService(
         var match = session.Match;
         RequireMatchLock(match);
         if (match.IsEnded || !session.PlayerId.HasValue || session.MatchingId <= 0 ||
-            session.IsEliminated || session.IsGameEnded || session.IsConnectionReleased || session.LastValidatedPosition == null)
+            session._player.IsEliminated || session.IsGameEnded || session.IsConnectionReleased || session._player.LastValidatedPosition == null)
         {
             match.GroundItemPickupCandidates.Remove(session);
             return;
         }
         var candidates = GetCandidates(match, session);
-        candidates.Record(match.GroundItems, session.PlayerId.Value, session.CurrentArea,
-            session.LastValidatedPosition, session.LastValidatedPosition);
+        candidates.Record(match.GroundItems, session.PlayerId.Value, session._player.CurrentArea,
+            session._player.LastValidatedPosition, session._player.LastValidatedPosition);
         match.GroundItemPickupCandidates.Remove(session);
         foreach (var candidate in candidates.Take())
         {
             if (match.IsEnded) break;
             var pickup = GroundItemPickupService.TryPickup(match, session.PlayerId.Value, candidate.Area,
-                candidate.Position, session.CurrentHealth, candidate.GroundItemUid);
+                candidate.Position, session._player.Health, candidate.GroundItemUid);
             if (pickup.Status != GroundItemClaimStatus.Success || pickup.ClaimedItem == null) continue;
             PublishGroundItemPickup(session, pickup);
         }
@@ -107,16 +107,16 @@ internal sealed class GroundItemAutoPickupService(
                 monsterId: 0,
                 amount: 1,
                 summonState.StoneCount,
-                session.CurrentArea.ToString(),
+                session._player.CurrentArea.ToString(),
                 isCore: false,
                 isBot: false);
         }
         else if (pickup.AutoUsed)
         {
-            int effectiveHealthRecovery = Math.Min(pickup.HealthRecovery, Math.Max(0, Config.MAX_HEALTH - session.CurrentHealth));
+            int effectiveHealthRecovery = Math.Min(pickup.HealthRecovery, Math.Max(0, Config.MAX_HEALTH - session._player.Health));
             int requestedRecovery = pickup.HealthRecovery;
             int effectiveRecovery = effectiveHealthRecovery;
-            session.HealthChanges.Handle(session.Condition.Recover(pickup.HealthRecovery));
+            session.HealthChanges.Handle(session._player.Recover(pickup.HealthRecovery));
             // 하트는 앞줄 오브 HP도 만충으로 (#222 M4) — 원작 하트의 스쿼드 회복.
             if (claimedItem.ItemId == Config.HEART_GROUND_ITEM_ID)
                 GameClientSession.SwarmHeartPickupCallback?.Invoke(session.MatchingId, session.PlayerId.Value);
@@ -140,7 +140,7 @@ internal sealed class GroundItemAutoPickupService(
             var targetSessions = new List<GameClientSession>();
             foreach (var other in session.Match.Sessions.Values.ToList())
             {
-                if (!other.IsEliminated && other.CurrentArea == (AreaType)claimedItem.AreaType)
+                if (!other._player.IsEliminated && other._player.CurrentArea == (AreaType)claimedItem.AreaType)
                     targetSessions.Add(other);
             }
             foreach (var other in targetSessions)
@@ -152,7 +152,7 @@ internal sealed class GroundItemAutoPickupService(
             pickup.DiscovererPlayerId,
             claimedItem.GroundItemUid,
             claimedItem.ItemId,
-            session.CurrentArea.ToString(),
+            session._player.CurrentArea.ToString(),
             pickup.AutoUsed,
             isBot: false);
         if (!pickup.SummonStonePickup && !pickup.BootsPickup)
@@ -160,7 +160,7 @@ internal sealed class GroundItemAutoPickupService(
             var boardAfterPickup = session.Match.Inventory.GetPlayerInventory(session.PlayerId.Value);
             eventLogs.LogOrbBoardTransition(
                 session.MatchingId, session.PlayerId.Value, boardAfterPickup.GetAllItems(),
-                boardAfterPickup.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0, session.CurrentArea.ToString(), "pickup", isBot: false);
+                boardAfterPickup.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0, session._player.CurrentArea.ToString(), "pickup", isBot: false);
         }
         using var result = PacketMaker.G_TO_C_GROUND_ITEM_PICKUP_RESULT(
             claimedItem.GroundItemUid, claimedItem.ItemId, true, pickup.AutoUsed, ErrorCode.SUCCESS);

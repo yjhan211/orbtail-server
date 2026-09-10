@@ -42,7 +42,7 @@ public partial class GameClientSession
             }
 
             bool isExploreState = msg.State == PlayerState.EXPLORE_1;
-            if (!isExploreState && msg.State != PlayerState.IDLE && _interactions.Count > 0)
+            if (!isExploreState && msg.State != PlayerState.IDLE && _player.PendingInteractionCount > 0)
             {
                 Logger.LogWarning("Ignored state change while door opening is pending: PlayerId={PlayerId}, State={State}", PlayerId, msg.State);
                 return Task.CompletedTask;
@@ -50,9 +50,9 @@ public partial class GameClientSession
 
             if (msg.State == PlayerState.SLEEP)
             {
-                int[] canceledIds = MatchInteractionService.CancelPendingInteractions(match, _interactions);
+                int[] canceledIds = MatchInteractionService.CancelPendingInteractions(match, _player);
                 SendInteractionCanceled(canceledIds, "PlayerState:SLEEP");
-                if (!_condition.IsSleeping && _condition.TryStartSleep(DateTime.UtcNow))
+                if (!_player.IsSleeping && _player.TryStartSleep(DateTime.UtcNow))
                 {
                     SendPlayerState();
                 }
@@ -61,18 +61,18 @@ public partial class GameClientSession
 
             if (!isExploreState)
             {
-                int[] canceledIds = MatchInteractionService.CancelPendingInteractions(match, _interactions);
+                int[] canceledIds = MatchInteractionService.CancelPendingInteractions(match, _player);
                 SendInteractionCanceled(canceledIds, $"PlayerState:{msg.State}");
             }
 
-            _condition.State = isExploreState ? PlayerState.EXPLORE_1 : PlayerState.IDLE;
+            _player.State = isExploreState ? PlayerState.EXPLORE_1 : PlayerState.IDLE;
             SendPlayerState(includeSelf: false);
         }
 
         return Task.CompletedTask;
     }
 
-    internal void SendHealth(PlayerCondition.HealthChange change)
+    internal void SendHealth(MatchPlayer.HealthChange change)
     {
         using var packet = PacketMaker.G_TO_C_PLAYER_STATS_UPDATE(change.After, change.RequestedDelta);
         TrySend(packet);
@@ -87,17 +87,17 @@ public partial class GameClientSession
         var targetSessions = new List<GameClientSession>();
         foreach (var session in Match.Sessions.Values.ToList())
         {
-            if (session.IsEliminated || session.CurrentArea != CurrentArea)
+            if (session._player.IsEliminated || session._player.CurrentArea != _player.CurrentArea)
                 continue;
             if (!includeSelf && session.PlayerId == PlayerId)
                 continue;
             targetSessions.Add(session);
         }
-        using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, Condition.State);
+        using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, _player.State);
         foreach (var targetSession in targetSessions)
         {
             targetSession.TrySend(packet);
         }
-        Logger.LogInformation("Player state sent: PlayerId={PlayerId}, State={State}, Recipients={Count}", PlayerId, Condition.State, targetSessions.Count);
+        Logger.LogInformation("Player state sent: PlayerId={PlayerId}, State={State}, Recipients={Count}", PlayerId, _player.State, targetSessions.Count);
     }
 }

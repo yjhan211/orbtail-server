@@ -153,7 +153,7 @@ internal sealed class OrbUpgradeService(
         GameClientSession session, long matchingId, int action, long targetUid, long secondUid)
     {
         _ = secondUid;
-        if (!session.PlayerId.HasValue || session.IsEliminated)
+        if (!session.PlayerId.HasValue || session._player.IsEliminated)
             return (false, 0, -1);
         long playerId = session.PlayerId.Value;
 

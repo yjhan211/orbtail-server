@@ -48,7 +48,7 @@ public sealed class GameClientSessionConnectPublicationTests
                 initialPackets.Add((protocol, Monitor.IsEntered(runtime.MatchLock)));
             if (protocol == Protocol.G_TO_C_ORB_LIST)
             {
-                spawnInitialized = session.LastValidatedPosition != null;
+                spawnInitialized = session._player.LastValidatedPosition != null;
                 if (failInitialSend)
                     throw new IOException("Initial state send failed.");
             }
@@ -103,7 +103,7 @@ public sealed class GameClientSessionConnectPublicationTests
         }
         await request.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Null(fixture.Store.GetOrNull(74010));
-        Assert.Null(session.LastValidatedPosition);
+        Assert.Null(session._player.LastValidatedPosition);
     }
 
     [Fact]
@@ -171,16 +171,16 @@ public sealed class GameClientSessionConnectPublicationTests
         {
             movement.InitializeSpawn(spawn);
             spawn.X = 999;
-            Assert.Equal(10, movement.LastValidatedCell!.X);
-            Assert.Equal(0f, movement.LastValidatedVelocity.Magnitude());
-            Assert.Equal(0f, movement.LastValidatedRotation);
-            Assert.Same(movement.LastValidatedPosition, first.LastValidatedPosition);
-            Assert.Equal(movement.CurrentArea, first.CurrentArea);
-            Assert.Null(other.LastValidatedPosition);
-            Assert.Null(other.LastValidatedCell);
+            Assert.Equal(10, first._player.LastValidatedCell!.X);
+            Assert.Equal(0f, first._player.LastValidatedVelocity.Magnitude());
+            Assert.Equal(0f, first._player.LastValidatedRotation);
+            Assert.Same(first._player.LastValidatedPosition, first._player.LastValidatedPosition);
+            Assert.Equal(first._player.CurrentArea, first._player.CurrentArea);
+            Assert.Null(second._player.LastValidatedPosition);
+            Assert.Null(second._player.LastValidatedCell);
         }
-        Assert.Null(typeof(GameClientSession).GetProperty(nameof(GameClientSession.LastValidatedPosition))!.SetMethod);
-        Assert.Null(typeof(GameClientSession).GetProperty(nameof(GameClientSession.CurrentArea))!.SetMethod);
+        Assert.Null(typeof(GameClientSession).GetProperty("LastValidatedPosition"));
+        Assert.Null(typeof(GameClientSession).GetProperty("CurrentArea"));
     }
 
     [Fact]
@@ -195,7 +195,7 @@ public sealed class GameClientSessionConnectPublicationTests
         using (session.Match.Enter())
         {
             TestGameSessionServices.GetMovement(session).ApplyValidatedMovement(movement, 45f);
-            var snapshot = session.Movement.CaptureGameObjectInfo(session.Condition.State);
+            var snapshot = session._playerMovement.CaptureGameObjectInfo(session._player.State);
             Assert.Equal(10.25f, snapshot.Position.X);
             Assert.Equal(20.75f, snapshot.Position.Y);
             Assert.Equal(2f, snapshot.Velocity.X);
@@ -217,7 +217,7 @@ public sealed class GameClientSessionConnectPublicationTests
         TestGameSessionServices.SetMovementProperty(session, "LastValidatedPosition", position);
         TestGameSessionServices.SetMovementProperty(session, "LastValidatedVelocity", velocity);
         TestGameSessionServices.SetMovementProperty(session, "LastValidatedCell", cell);
-        var snapshot = session.Movement.CaptureGameObjectInfo(session.Condition.State);
+        var snapshot = session._playerMovement.CaptureGameObjectInfo(session._player.State);
         position.X = 999;
         velocity.X = 999;
         cell.X = 999;
@@ -611,7 +611,6 @@ public sealed class GameClientSessionConnectPublicationTests
     private static void SetIdentity(GameClientSession session, long matchingId, long playerId)
     {
         SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
-        SetProperty(session, nameof(GameClientSession.CurrentMapId), Config.SWARM_MATCH_MAP);
         SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
         TestGameSessionServices.BindMatch(session, matchingId);
     }

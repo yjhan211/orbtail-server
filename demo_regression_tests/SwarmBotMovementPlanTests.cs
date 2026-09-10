@@ -147,7 +147,7 @@ public sealed class SwarmBotMovementPlanTests
             "DispatchSwarmBotMovementPlan(plan)",
             "BotTickMetrics.Record(",
             "PublishBotMovementMetrics(batch)");
-        Assert.Contains("session.CurrentMapId == Config.SWARM_MATCH_MAP", process);
+        Assert.Contains("session._player.MapId == Config.SWARM_MATCH_MAP", process);
         Assert.DoesNotContain(".TrySend(", process);
         AssertInOrder(
             dispatch,

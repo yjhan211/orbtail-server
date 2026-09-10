@@ -43,7 +43,7 @@ public sealed class MatchOwnedStateTests
 
         inventory.AddItem(11, 107000010);
         stones.AddStones(11, 9);
-        roster.RegisterParticipant(new MatchParticipant { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11  }});
+        roster.RegisterParticipant(new MatchPlayer { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11  }});
 
         Assert.Same(inventory.GetPlayerInventory(11),
             store.GetOrThrow(first.MatchingId).Inventory.GetPlayerInventory(11));
@@ -72,7 +72,7 @@ public sealed class MatchOwnedStateTests
         sibling.SummonStones.AddStones(11, 7);
         inventory.AddItem(11, 107000010);
         ground.SpawnItems(area, 0, 0, [107000010]);
-        roster.RegisterParticipant(new MatchParticipant { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11  }});
+        roster.RegisterParticipant(new MatchPlayer { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11  }});
         closures.InitializeMatching();
 
         using (MatchRuntimeStore.Enter(runtime))
@@ -157,8 +157,8 @@ public sealed class MatchOwnedStateTests
         {
             runtime.Bots.RegisterBots(runtime.MatchingId, Config.SWARM_MATCH_MAP,
                 [botId], new Dictionary<long, Cell> { [botId] = new(0, 0) });
-            runtime.RegisterParticipant(new MatchParticipant { Profile = new network.common.data.models.PlayerInfo { PlayerId = botId  }});
-            runtime.RegisterParticipant(new MatchParticipant { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11  }});
+            runtime.RegisterParticipant(new MatchPlayer { Profile = new network.common.data.models.PlayerInfo { PlayerId = botId  }});
+            runtime.RegisterParticipant(new MatchPlayer { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11  }});
             runtime.Inventory.AddItem(botId, 107000010);
         }
         var bot = match.Bots.GetBot(match.MatchingId, botId)!;

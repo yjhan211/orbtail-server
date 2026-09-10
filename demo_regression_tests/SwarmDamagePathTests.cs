@@ -148,7 +148,7 @@ public class SwarmDamagePathTests
     {
         string root = FindRepositoryRoot();
         string condition = File.ReadAllText(
-            Path.Combine(root, "game_server", "Players", "PlayerCondition.cs"));
+            Path.Combine(root, "game_server", "Matches", "MatchPlayer.cs"));
 
         // 수치 계약: 1초 준비 · 1초 틱당 최대 HP 5% · 가해·피해 뒤 3초 진입 잠금.
         Assert.Contains("SwarmSleepWarmupSeconds = 1d", condition);
@@ -160,7 +160,7 @@ public class SwarmDamagePathTests
         // 중단 경로는 이동 하나뿐이다.
         string movement = File.ReadAllText(
             Path.Combine(root, "game_server", "Players", "PlayerMovementService.cs"));
-        Assert.Contains("player.Condition.TryStopSleep()", movement);
+        Assert.Contains("player._player.TryStopSleep()", movement);
 
         string combat = File.ReadAllText(
             Path.Combine(root, "game_server", "Combat", "MatchCombatService.cs"));

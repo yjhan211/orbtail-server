@@ -13,23 +13,23 @@ internal sealed class GroundItemDropService(GameEventLogManager eventLogs)
 {
     public void DropAll(GameClientSession session)
     {
-        if (!session.PlayerId.HasValue || session.LastValidatedPosition == null || session.CurrentArea == AreaType.None) return;
+        if (!session.PlayerId.HasValue || session._player.LastValidatedPosition == null || session._player.CurrentArea == AreaType.None) return;
 
-        var position = session.LastValidatedPosition;
+        var position = session._player.LastValidatedPosition;
         var drop = EliminationInventoryDropper.DropAll(
             session.Match.Inventory,
             session.Match.GroundItems,
             session.MatchingId,
             session.PlayerId.Value,
-            session.CurrentArea,
+            session._player.CurrentArea,
             position.X,
             position.Y,
-            session.CurrentMapId);
+            session._player.MapId);
         if (drop.RemovedItems.Count == 0) return;
 
         var emptyBoard = session.Match.Inventory.GetPlayerInventory(session.PlayerId.Value);
         eventLogs.LogOrbBoardTransition(
-            session.MatchingId, session.PlayerId.Value, emptyBoard.GetAllItems(), 0, session.CurrentArea.ToString(), "elimination_drop",
+            session.MatchingId, session.PlayerId.Value, emptyBoard.GetAllItems(), 0, session._player.CurrentArea.ToString(), "elimination_drop",
             isBot: false);
         foreach (var item in drop.RemovedItems)
             session.SendOrbUpdate(new InGameItemInfo
@@ -45,11 +45,11 @@ internal sealed class GroundItemDropService(GameEventLogManager eventLogs)
         eventLogs.LogEliminationDrop(
             session.MatchingId,
             session.PlayerId.Value,
-            session.CurrentArea.ToString(),
+            session._player.CurrentArea.ToString(),
             drop.DroppedItemIds,
             drop.SpawnedItems,
             GameEventLogManager.CalculateDropRecoveryTotal(drop.DroppedItemIds),
             isBot: false);
-        GroundItemNotificationService.BroadcastSpawned(session.Match, session.CurrentArea, drop.SpawnedItems);
+        GroundItemNotificationService.BroadcastSpawned(session.Match, session._player.CurrentArea, drop.SpawnedItems);
     }
 }

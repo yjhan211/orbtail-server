@@ -31,7 +31,7 @@ internal class BotMovementService(
         GameClientSession[] sessionSnapshot = runtime.Sessions.Values.ToList()
             .Where(session =>
                 session.PlayerId is > 0 &&
-                session.CurrentMapId == Config.SWARM_MATCH_MAP &&
+                session._player.MapId == Config.SWARM_MATCH_MAP &&
                 session.MatchingId == matchingId)
             .ToArray();
         ImmutableArray<SwarmBotObserverSnapshot> observers =
@@ -112,18 +112,18 @@ internal class BotMovementService(
         foreach (var session in sessionSnapshot)
         {
             if (session.PlayerId is not > 0 ||
-                session.CurrentMapId != Config.SWARM_MATCH_MAP ||
+                session._player.MapId != Config.SWARM_MATCH_MAP ||
                 session.MatchingId != matchingId)
                 continue;
 
-            SwarmVectorSnapshot? position = session.LastValidatedPosition == null
+            SwarmVectorSnapshot? position = session._player.LastValidatedPosition == null
                 ? null
-                : SwarmVectorSnapshot.Capture(session.LastValidatedPosition);
+                : SwarmVectorSnapshot.Capture(session._player.LastValidatedPosition);
             observers.Add(new SwarmBotObserverSnapshot(
                 session,
                 session.PlayerId.Value,
-                session.CurrentArea,
-                session.IsEliminated,
+                session._player.CurrentArea,
+                session._player.IsEliminated,
                 position));
         }
 
@@ -204,7 +204,7 @@ internal class BotMovementService(
         GameClientSession[] sessionSnapshot = runtime.Sessions.Values.ToList()
             .Where(session =>
                 session.PlayerId is > 0 &&
-                session.CurrentMapId == Config.SWARM_MATCH_MAP &&
+                session._player.MapId == Config.SWARM_MATCH_MAP &&
                 session.MatchingId == matchingId)
             .ToArray();
         ImmutableArray<SwarmBotObserverSnapshot> observers =

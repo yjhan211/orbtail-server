@@ -38,7 +38,7 @@ internal class MatchEnvironmentService(
         var humans = activeSessions
             .Where(session =>
                 session.MatchingId == matchingId &&
-                !session.IsEliminated &&
+                !session._player.IsEliminated &&
                 !session.IsGameEnded)
             .ToList();
         var bots = match.Bots.GetBots(matchingId)
@@ -70,10 +70,10 @@ internal class MatchEnvironmentService(
 
         foreach (var session in humans)
         {
-            int fieldDamage = MatchPressureFieldPolicy.GetDamagePerTick(match, session.LastValidatedPosition, DateTime.UtcNow);
+            int fieldDamage = MatchPressureFieldPolicy.GetDamagePerTick(match, session._player.LastValidatedPosition, DateTime.UtcNow);
             targets.Add(new EnvironmentalTarget(
                 session.PlayerId!.Value,
-                session.CurrentHealth,
+                session._player.Health,
                 fieldDamage,
                 session,
                 null));
@@ -99,7 +99,7 @@ internal class MatchEnvironmentService(
             if (target.Session != null)
             {
                 target.Session.HealthChanges.Handle(
-                    target.Session.Condition.ApplyDamage(totalDelta),
+                    target.Session._player.ApplyDamage(totalDelta),
                     deferElimination: true);
             }
             else if (target.Bot != null)

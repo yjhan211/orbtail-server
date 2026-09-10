@@ -755,10 +755,10 @@ internal sealed class BotDecisionService(
 
         foreach (var session in matchRuntimes.GetOrThrow(matchingId).Sessions.Values.ToList())
         {
-            if (!session.PlayerId.HasValue || session.IsEliminated ||
-                session.LastValidatedPosition == null)
+            if (!session.PlayerId.HasValue || session._player.IsEliminated ||
+                session._player.LastValidatedPosition == null)
                 continue;
-            Consider(session.PlayerId.Value, session.LastValidatedPosition, session.CurrentArea);
+            Consider(session.PlayerId.Value, session._player.LastValidatedPosition, session._player.CurrentArea);
         }
 
         if (includeMonstersAsStronger)
@@ -868,9 +868,9 @@ internal sealed class BotDecisionService(
 
         foreach (var session in matchRuntimes.GetOrThrow(matchingId).Sessions.Values.ToList())
         {
-            if (session.PlayerId != playerId || session.IsEliminated ||
-                session.LastValidatedPosition == null) continue;
-            position = session.LastValidatedPosition;
+            if (session.PlayerId != playerId || session._player.IsEliminated ||
+                session._player.LastValidatedPosition == null) continue;
+            position = session._player.LastValidatedPosition;
             return true;
         }
 

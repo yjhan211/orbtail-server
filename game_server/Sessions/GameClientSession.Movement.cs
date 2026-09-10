@@ -58,7 +58,7 @@ public partial class GameClientSession
                 var validatedVelocity = validation.Velocity;
                 bool requiresClientCorrection = validation.RequiresCorrection;
 
-                using var packet = PacketMaker.G_TO_C_MOVE(PlayerId.Value, validatedPosition, validatedVelocity, msg.Rotation, currentCell, serverTimestamp, _playerMovement.OrbOrbitPhaseDegrees);
+                using var packet = PacketMaker.G_TO_C_MOVE(PlayerId.Value, validatedPosition, validatedVelocity, msg.Rotation, currentCell, serverTimestamp, _player.OrbOrbitPhaseDegrees);
                 _playerMovement.Broadcast(packet);
 
                 if (requiresClientCorrection || _playerMovement.ShouldSendMoveResponse(timestamp))
