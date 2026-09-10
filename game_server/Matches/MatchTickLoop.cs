@@ -1,7 +1,7 @@
 using game_server.combat;
 using game_server.field;
-using game_server.items;
 using game_server.matches.entry;
+using game_server.players;
 using game_server.players.bots;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -25,7 +25,7 @@ internal sealed class MatchTickLoop(
     MatchRuntime runtime,
     MatchRuntimeStore matchRuntimes,
     ILogger logger,
-    GroundItemAutoPickupService groundItemAutoPickup,
+    PlayerPickupService playerPickups,
     MatchEntryFailureHandler entryFailureHandler,
     MatchCombatService combat,
     MatchEnvironmentService environment,
@@ -99,7 +99,7 @@ internal sealed class MatchTickLoop(
         bool isGameplayActive = runtime.IsGameplayActive(utcNow);
         if (isGameplayActive)
         {
-            groundItemAutoPickup.Process(runtime, runtime.GetAlivePlayers());
+            playerPickups.PickUp(runtime, runtime.GetAlivePlayers());
             if (runtime.IsEnded)
             {
                 return;

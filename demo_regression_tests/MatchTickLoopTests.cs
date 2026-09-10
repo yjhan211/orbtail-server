@@ -1,7 +1,7 @@
-using game_server.items;
 using game_server.logging;
 using game_server.matches;
 using game_server.matches.entry;
+using game_server.players;
 using game_server.players.bots;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -38,7 +38,7 @@ public sealed class MatchTickLoopTests
             if (stage == failingStage) throw failure;
         }
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
-            new GroundItemAutoPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<GroundItemAutoPickupService>.Instance),
+            new PlayerPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
             (_, _) => Process("combat"),
             (_, _) => Process("environment"), _ => Process("movement"), (_, _) => { });
         fixture.Loops.Add(loop);
@@ -66,7 +66,7 @@ public sealed class MatchTickLoopTests
         }
         // 실제 시간을 기다리지 않고 다음 환경 정산이 실행되도록 준비한다.
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
-            new GroundItemAutoPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<GroundItemAutoPickupService>.Instance),
+            new PlayerPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
             (_, _) => Record("combat"),
             (_, _) => Record("environment"),
             runtime =>
@@ -94,7 +94,7 @@ public sealed class MatchTickLoopTests
         var combatIds = new List<long>();
         int movements = 0;
         var loop = TestMatchTickServices.CreateLoop(first.Match, first.Store, NullLogger.Instance,
-            new GroundItemAutoPickupService(first.Store.EventLogs, TestGameSessionServices.CreateHealthService(first.Store, first.Store.EventLogs), NullLogger<GroundItemAutoPickupService>.Instance),
+            new PlayerPickupService(first.Store.EventLogs, TestGameSessionServices.CreateHealthService(first.Store, first.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
             (id, _) =>
             {
                 combatIds.Add(id);
@@ -108,7 +108,7 @@ public sealed class MatchTickLoopTests
         Assert.Throws<InvalidOperationException>(loop.ProcessTick);
         Assert.False(Monitor.IsEntered(first.Match.MatchLock));
         var secondLoop = TestMatchTickServices.CreateLoop(second, first.Store, NullLogger.Instance,
-            new GroundItemAutoPickupService(first.Store.EventLogs, TestGameSessionServices.CreateHealthService(first.Store, first.Store.EventLogs), NullLogger<GroundItemAutoPickupService>.Instance),
+            new PlayerPickupService(first.Store.EventLogs, TestGameSessionServices.CreateHealthService(first.Store, first.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
             (id, _) => combatIds.Add(id), (_, _) => { }, _ => { }, (_, _) => { });
         secondLoop.ProcessTick();
         secondLoop.Stop();
@@ -124,7 +124,7 @@ public sealed class MatchTickLoopTests
         int movements = 0;
         int combats = 0;
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
-            new GroundItemAutoPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<GroundItemAutoPickupService>.Instance),
+            new PlayerPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
             (_, _) =>
             {
                 combats++;
@@ -153,7 +153,7 @@ public sealed class MatchTickLoopTests
         using var attempted = new ManualResetEventSlim();
         int calls = 0;
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
-            new GroundItemAutoPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<GroundItemAutoPickupService>.Instance),
+            new PlayerPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
             (_, _) => Interlocked.Increment(ref calls), (_, _) => { }, _ => { }, (_, _) => { });
         Task holder = Task.Run(() =>
         {
@@ -200,7 +200,7 @@ public sealed class MatchTickLoopTests
         fixture.Store.GetOrThrow(fixture.Match.MatchingId).PrepareEntry(11);
         var steps = new List<string>();
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
-            new GroundItemAutoPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<GroundItemAutoPickupService>.Instance),
+            new PlayerPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
             (_, _) => steps.Add("combat"),
             (_, _) => steps.Add("environment"), _ => steps.Add("movement"), (_, _) => { });
 
@@ -242,7 +242,7 @@ public sealed class MatchTickLoopTests
         using var fixture = new Fixture(945110);
         int laterStages = 0;
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
-            new GroundItemAutoPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<GroundItemAutoPickupService>.Instance),
+            new PlayerPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
             (_, _) => fixture.Match.TryMarkEnded(),
             (_, _) => laterStages++,
             _ => laterStages++,

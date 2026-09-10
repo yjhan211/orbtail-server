@@ -134,18 +134,18 @@ public sealed class GameClientSessionPublicationTests
         player.CurrentArea = session.Player.CurrentArea;
         match.RegisterParticipant(player);
         match.Bots.GetBots(match.MatchingId).Add(bot);
-        var pickup = new GroundItemAutoPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<GroundItemAutoPickupService>.Instance);
+        var pickup = new PlayerPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<PlayerPickupService>.Instance);
         using (match.Enter())
         {
             player.DetachSession(session);
-            pickup.Process(match, player);
+            pickup.PickUp(match, player);
             Assert.NotNull(match.GroundItems.GetItem(item.GroundItemUid));
             TestGroundItemLanding.Complete(match.GroundItems, ageSeconds: 3);
             player.State = PlayerState.SLEEP;
-            pickup.Process(match, player);
+            pickup.PickUp(match, player);
             Assert.NotNull(match.GroundItems.GetItem(item.GroundItemUid));
             player.State = PlayerState.IDLE;
-            pickup.Process(match, player);
+            pickup.PickUp(match, player);
         }
         Assert.Null(match.GroundItems.GetItem(item.GroundItemUid));
         if (itemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
@@ -995,7 +995,7 @@ public sealed class GameClientSessionPublicationTests
         string connection = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Combat", "MatchCombatService.cs");
         string bots = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotDecisionService.cs");
-        string botPickup = ReadNormalizedSource(root, "game_server", "Items", "GroundItemAutoPickupService.cs");
+        string botPickup = ReadNormalizedSource(root, "game_server", "Players", "PlayerPickupService.cs");
 
         Assert.DoesNotContain("AsyncLocal", session);
         Assert.DoesNotContain("IsMessageLifecycleActive", session);
@@ -1003,7 +1003,7 @@ public sealed class GameClientSessionPublicationTests
             ReadNormalizedSource(root, "network", "Core", "SessionBase.cs"));
         Assert.DoesNotContain("RunWithMatchLock", session);
         Assert.DoesNotContain(Enum.GetNames<Protocol>(), name => name.Contains("RNG_COLLECT") || name.Contains("INTERACT_COOLDOWN"));
-        var autoPickup = ReadNormalizedSource(root, "game_server", "Items", "GroundItemAutoPickupService.cs");
+        var autoPickup = ReadNormalizedSource(root, "game_server", "Players", "PlayerPickupService.cs");
         Assert.Contains("Monitor.IsEntered(match.MatchLock)", autoPickup);
         Assert.Contains("match.IsEnded", autoPickup);
         Assert.DoesNotContain("RunWithMatchLock", orbSummon);
@@ -1251,7 +1251,7 @@ public sealed class GameClientSessionPublicationTests
     }
 
     [Fact]
-    public void AutomaticPickupCandidatesAreMatchOwnedAndClearedOnTerminal()
+    public void ReachableItemsArePlayerOwnedAndClearedOnTerminal()
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
@@ -1259,13 +1259,13 @@ public sealed class GameClientSessionPublicationTests
         var match = session.Match;
         using (match.Enter())
         {
-            GroundItemAutoPickupService.RecordMovement(session.Match, session.Player,
+            PlayerPickupService.AddReachableItemsForMovement(session.Match, session.Player,
                 session.Player.Position!, session.Player.Position!, session.Player.CurrentArea);
-            Assert.Single(match.GroundItemPickupCandidates);
+            Assert.Single(session.Player.ReachableItems);
         }
 
         fixture.MarkTerminal(session.MatchingId);
-        Assert.Empty(match.GroundItemPickupCandidates);
+        Assert.Empty(session.Player.ReachableItems);
     }
 
     [Fact]
@@ -1279,40 +1279,40 @@ public sealed class GameClientSessionPublicationTests
         using (match.Enter())
         {
             player.DetachSession(session);
-            new GroundItemAutoPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<GroundItemAutoPickupService>.Instance)
-                .Process(match, player);
+            new PlayerPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<PlayerPickupService>.Instance)
+                .PickUp(match, player);
         }
         Assert.Equal(1, match.SummonStones.GetSnapshot(player.PlayerId).StoneCount);
         Assert.Null(match.GroundItems.GetItem(item.GroundItemUid));
-        Assert.Empty(match.GroundItemPickupCandidates);
+        Assert.Empty(player.ReachableItems);
     }
 
     [Fact]
-    public void ReplacementSessionDoesNotInheritPreviousSessionPickupCandidates()
+    public void ReplacementSessionDoesNotInheritPreviousSessionReachableItems()
     {
         using var fixture = new SessionFixture();
         var previous = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
         var item = fixture.SpawnAtSession(previous, Config.SUMMON_STONE_GROUND_ITEM_ID);
         var match = previous.Match;
         using (match.Enter())
-            GroundItemAutoPickupService.RecordMovement(previous.Match, previous.Player,
+            PlayerPickupService.AddReachableItemsForMovement(previous.Match, previous.Player,
                 previous.Player.Position!, previous.Player.Position!, previous.Player.CurrentArea);
 
         var registry = new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance);
         registry.Register(101, previous);
         using (match.Enter())
-            GroundItemAutoPickupService.RecordMovement(match, previous.Player,
+            PlayerPickupService.AddReachableItemsForMovement(match, previous.Player,
                 previous.Player.Position!, previous.Player.Position!, previous.Player.CurrentArea);
         var current = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
         registry.Register(101, current);
         TestGameSessionServices.SetMovementProperty(current, "Position", new Vector3f(item.PositionX + 20, item.PositionY, 0));
         using (match.Enter())
-            new GroundItemAutoPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<GroundItemAutoPickupService>.Instance)
-                .Process(match, new[] { current.Player });
+            new PlayerPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<PlayerPickupService>.Instance)
+                .PickUp(match, new[] { current.Player });
 
         Assert.Equal(0, current.Match.SummonStones.GetSnapshot(current.PlayerId!.Value).StoneCount);
         Assert.NotNull(match.GroundItems.GetItem(item.GroundItemUid));
-        Assert.Empty(match.GroundItemPickupCandidates);
+        Assert.Empty(current.Player.ReachableItems);
     }
 
     [Fact]
@@ -1375,7 +1375,7 @@ public sealed class GameClientSessionPublicationTests
     private static MatchTickLoop CreatePickupTickLoop(SessionFixture fixture, MatchRuntime runtime)
     {
         var loop = TestMatchTickServices.CreateLoop(runtime, fixture.Store, NullLogger.Instance,
-            new GroundItemAutoPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<GroundItemAutoPickupService>.Instance),
+            new PlayerPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<PlayerPickupService>.Instance),
             static (_, _) => { },
             static (_, _) => { }, static _ => { }, static (_, _) => { });
         fixture.TickLoops.Add(loop);
@@ -1385,7 +1385,7 @@ public sealed class GameClientSessionPublicationTests
     private static Task RunPickupTickAsync(GameClientSession session, MatchRuntimeStore store, GameEventLogManager eventLogs)
     {
         using (session.Match.Enter())
-            new GroundItemAutoPickupService(eventLogs, TestGameSessionServices.CreateHealthService(store, eventLogs), NullLogger<GroundItemAutoPickupService>.Instance).Process(session.Match, session.Player);
+            new PlayerPickupService(eventLogs, TestGameSessionServices.CreateHealthService(store, eventLogs), NullLogger<PlayerPickupService>.Instance).PickUp(session.Match, session.Player);
         return Task.CompletedTask;
     }
 

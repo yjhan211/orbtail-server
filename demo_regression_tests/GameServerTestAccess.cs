@@ -75,8 +75,8 @@ internal static class GameServerTestAccess
         var environment = new MatchEnvironmentService(logs, health,
             cleanup, matchEliminations, results,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchEnvironmentService>.Instance);
-        var groundPickup = new GroundItemAutoPickupService(logs, health,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<GroundItemAutoPickupService>.Instance);
+        var groundPickup = new PlayerPickupService(logs, health,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<PlayerPickupService>.Instance);
         Func<MatchRuntime, TimeProvider, MatchTickLoop> createLoop = (runtime, clock) =>
         {
             var field = new MatchZoneService(runtimes, logs, orbTrails,

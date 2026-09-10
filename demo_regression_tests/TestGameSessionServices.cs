@@ -59,7 +59,7 @@ internal static class TestGameSessionServices
     {
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         return (runtime, clock) => TestMatchTickServices.CreateLoop(runtime, store, NullLogger<MatchTickLoop>.Instance,
-            new GroundItemAutoPickupService(logs, CreateHealthService(store, logs), NullLogger<GroundItemAutoPickupService>.Instance),
+            new PlayerPickupService(logs, CreateHealthService(store, logs), NullLogger<PlayerPickupService>.Instance),
             (matchingId, _) => processTick(store.GetOrThrow(matchingId)),
             (_, _) => { }, _ => { }, (_, _) => { }, clock);
     }

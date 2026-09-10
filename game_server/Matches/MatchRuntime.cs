@@ -86,7 +86,6 @@ internal sealed class MatchRuntime
     // 아이템과 재화
     public InGameInventoryManager Inventory { get; }
     public GroundItemManager GroundItems { get; }
-    internal Dictionary<Player, GroundItemPickupCandidates> GroundItemPickupCandidates { get; } = new();
     public SummonStoneManager SummonStones { get; }
 
     // 맵과 진행 상태
@@ -382,12 +381,14 @@ internal sealed class MatchRuntime
                 _cleanupStarted = true;
                 TickLoop?.Stop();
                 foreach (var player in _participants.Values)
+                {
                     player.Session = null;
+                    player.ReachableItems.Clear();
+                }
                 Doors.Clear();
                 EventLog.Release();
                 Inventory.Release();
                 GroundItems.Release();
-                GroundItemPickupCandidates.Clear();
                 SummonStones.Release();
                 Encounters.Release();
                 _participants.Clear();

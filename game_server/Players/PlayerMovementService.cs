@@ -1,4 +1,3 @@
-using game_server.items;
 using game_server.logging;
 using game_server.matches;
 using Microsoft.Extensions.Logging;
@@ -151,7 +150,7 @@ internal sealed class PlayerMovementService(
         bool sleepStopped = player.TryStopSleep();
         player.AdvanceOrbOrbit(validatedPosition);
         var pickupArea = newArea == AreaType.None ? oldArea : newArea;
-        GroundItemAutoPickupService.RecordMovement(match, player, player.Position ?? validatedPosition, validatedPosition, pickupArea);
+        PlayerPickupService.AddReachableItemsForMovement(match, player, player.Position ?? validatedPosition, validatedPosition, pickupArea);
         player.ApplyValidatedMovement(validation, msg.Rotation);
         match.GroundItems.ReleaseSourcePickupBlocks(player.PlayerId, pickupArea, validatedPosition.X, validatedPosition.Y);
 

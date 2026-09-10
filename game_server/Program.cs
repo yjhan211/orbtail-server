@@ -138,7 +138,7 @@ internal static class Program
         services.AddSingleton<MatchEnvironmentService>();
         services.AddSingleton<PlayerOrbGrowthService>();
         services.AddSingleton<OrbRecoveryService>();
-        services.AddSingleton<GroundItemAutoPickupService>();
+        services.AddSingleton<PlayerPickupService>();
         services.AddSingleton<OrbVisualStatePublisher>();
         services.AddSingleton<PlayerOrbTrailService>();
         services.AddSingleton<WindOrbAttackService>();
@@ -155,7 +155,7 @@ internal static class Program
             var botDecisions = sp.GetRequiredService<BotDecisionService>();
             var runtimes = sp.GetRequiredService<MatchRuntimeStore>();
             var loopLogger = sp.GetRequiredService<ILogger<MatchTickLoop>>();
-            var pickup = sp.GetRequiredService<GroundItemAutoPickupService>();
+            var pickup = sp.GetRequiredService<PlayerPickupService>();
             return (runtime, clock) =>
             {
                 var entryFailureHandler = sp.GetRequiredService<MatchEntryFailureHandler>();

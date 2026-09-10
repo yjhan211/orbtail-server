@@ -1,9 +1,9 @@
 using game_server;
 using game_server.combat;
 using game_server.field;
-using game_server.items;
 using game_server.matches;
 using game_server.matches.entry;
+using game_server.players;
 using game_server.players.bots;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
@@ -16,7 +16,7 @@ internal static class TestMatchTickServices
 {
     public static MatchTickLoop CreateLoop(
         MatchRuntime runtime, MatchRuntimeStore store, ILogger logger,
-        GroundItemAutoPickupService pickup,
+        PlayerPickupService pickup,
         Action<long, List<GameClientSession>> combat,
         Action<MatchRuntime, List<GameClientSession>> environment,
         Action<MatchRuntime> movement,
@@ -42,7 +42,7 @@ internal static class TestMatchTickServices
             _runtime = runtime;
 
             _loop = CreateLoop(runtime, store, NullLogger.Instance,
-                new GroundItemAutoPickupService(store.EventLogs, TestGameSessionServices.CreateHealthService(store, store.EventLogs), NullLogger<GroundItemAutoPickupService>.Instance),
+                new PlayerPickupService(store.EventLogs, TestGameSessionServices.CreateHealthService(store, store.EventLogs), NullLogger<PlayerPickupService>.Instance),
                 (_, _) => { },
                 (match, _) =>
                 {

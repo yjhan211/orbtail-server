@@ -1,4 +1,5 @@
 using game_server.items;
+using game_server.players;
 using network.common;
 using network.common.data.models;
 
@@ -27,22 +28,22 @@ public sealed class GroundItemLandingTests
         var clock = new Clock();
         var items = new GroundItemManager(984402, clock);
         var item = Assert.Single(items.SpawnItems(Config.SWARM_MATCH_GROUND_AREA, 0, 0, [Config.KEY_GROUND_ITEM_ID]));
-        var candidates = new GroundItemPickupCandidates();
+        var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
         var at = new Vector3f(item.PositionX, item.PositionY, 0);
         float dx = item.PositionX - item.SpawnOriginX;
         float dy = item.PositionY - item.SpawnOriginY;
         var duration = TimeSpan.FromSeconds(Config.GetGroundItemLandingSeconds(MathF.Sqrt(dx * dx + dy * dy)));
         clock.Advance(duration - TimeSpan.FromTicks(1));
-        candidates.Record(items, 1, Config.SWARM_MATCH_GROUND_AREA, at, at);
-        Assert.Empty(candidates.Take());
+        PlayerPickupService.AddReachableItemsInArea(player, items, Config.SWARM_MATCH_GROUND_AREA, at, at);
+        Assert.Empty(PlayerPickupService.TakeReachableItems(player));
         Assert.Equal(GroundItemClaimStatus.Landing, items.TryClaim(item.GroundItemUid, 1,
             Config.SWARM_MATCH_GROUND_AREA, at.X, at.Y, _ => throw new Exception("Must not apply before landing"), out _));
 
         clock.Advance(TimeSpan.FromTicks(1));
         Assert.False(items.IsLanding(item.GroundItemUid));
-        Assert.Empty(candidates.Take()); // 공중에서 지나친 기록이 착지 뒤 살아나지 않는다.
-        candidates.Record(items, 1, Config.SWARM_MATCH_GROUND_AREA, at, at);
-        Assert.Single(candidates.Take());
+        Assert.Empty(PlayerPickupService.TakeReachableItems(player)); // 공중에서 지나친 기록이 착지 뒤 살아나지 않는다.
+        PlayerPickupService.AddReachableItemsInArea(player, items, Config.SWARM_MATCH_GROUND_AREA, at, at);
+        Assert.Single(PlayerPickupService.TakeReachableItems(player));
         Assert.Equal(GroundItemClaimStatus.Success, items.TryClaim(item.GroundItemUid, 1,
             Config.SWARM_MATCH_GROUND_AREA, at.X, at.Y, _ => true, out _));
     }

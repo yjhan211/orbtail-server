@@ -224,7 +224,7 @@ public sealed class SwarmBotMovementPlanTests
             "G_TO_C_MOVE",
             "G_TO_C_ENCOUNTER_REVEAL");
         Assert.DoesNotContain("G_TO_C_GROUND_ITEM_REMOVED", dispatch);
-        Assert.Contains("groundItemAutoPickup.Process(runtime, runtime.GetAlivePlayers())", tick);
+        Assert.Contains("playerPickups.PickUp(runtime, runtime.GetAlivePlayers())", tick);
         Assert.DoesNotContain("plan.AutoEquips", dispatch);
     }
 

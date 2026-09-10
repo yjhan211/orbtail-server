@@ -60,6 +60,8 @@ public class Player
     public Vector3f Velocity { get; internal set; } = new();
     public float Rotation { get; internal set; }
     public AreaType CurrentArea { get; internal set; } = AreaType.None;
+    /// <summary>승인된 이동 구간에서 획득 반경에 닿은 바닥 아이템(uid 키). 다음 자동 줍기 틱이 집는다.</summary>
+    internal Dictionary<long, ReachableItem> ReachableItems { get; } = new();
     public float OrbOrbitPhaseDegrees => _orbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(PlayerId);
 
     public int Health { get; set; } = Config.MAX_HEALTH;
@@ -342,6 +344,9 @@ public class Player
         _pending.Remove(id);
         return id;
     }
+
+    /// <summary>이동 구간에서 획득 반경에 닿은 바닥 아이템. 다음 자동 줍기 틱이 집는다.</summary>
+    internal sealed record ReachableItem(long GroundItemUid, AreaType Area, Vector3f Position);
 
     public readonly record struct HealthChange(int Before, int After, int RequestedDelta)
     {
