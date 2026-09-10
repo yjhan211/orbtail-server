@@ -634,6 +634,7 @@ internal class MatchCombatService(
     /// <summary>클라 PlayerTool.UpdateOrbTrail과 같은 규칙 — 정지하면 경로가 얼어 열이 남는다.</summary>
     private void UpdateSwarmOrbTrails(long matchingId, List<SwarmParticipantSpatial> participants)
     {
+        var runtime = matchRuntimes.GetOrThrow(matchingId);
         foreach (var participant in participants)
         {
             var key = (matchingId, participant.PlayerId);
@@ -662,7 +663,8 @@ internal class MatchCombatService(
                 points.Insert(0, new Vector3f(center.X, center.Y, 0f));
 
             // 실제 오브 수 기준 트림 — 상한(99) 기준이면 참가자당 수천 포인트가 쌓인다.
-            int trailOrbCount = Math.Max(orbTrails.CountSwarmSquadOrbs(matchingId, participant.PlayerId) + 2, 4);
+            var player = runtime.GetParticipant(participant.PlayerId)!;
+            int trailOrbCount = Math.Max(orbTrails.CountOrbs(runtime, player) + 2, 4);
             float neededLength = Config.SWARM_ORB_TRAIL_FIRST_OFFSET +
                                  trailOrbCount * Config.SWARM_ORB_TRAIL_SPACING + 1f;
             float accumulated = 0f;
@@ -693,6 +695,7 @@ internal class MatchCombatService(
         List<SwarmParticipantSpatial> participants,
         List<GameClientSession> allSessions)
     {
+        var runtime = matchRuntimes.GetOrThrow(matchingId);
         // 소유자별 열 좌표·개체 uid는 틱당 1회만 계산한다.
         // 몹(잔상) 절단은 P0에서 비활성 (단계 A 확정) — 절단은 플레이어의 동사다.
         // 머리 보호 제거 (단계 A 마감): 첫 오브·본체-첫 오브 링크도 절단 대상 — 1오브 열도 잘린다.
@@ -714,8 +717,9 @@ internal class MatchCombatService(
             var chainTiers = orbs.Select(item => GetSquadOrbTier(item.ItemId)).ToList();
             for (int ordinal = 0; ordinal < orbs.Count; ordinal++)
             {
-                points.Add(orbTrails.GetSwarmOrbTrailPosition(
-                    matchingId, owner.PlayerId, ordinal, owner.Position, chainTiers));
+                var player = runtime.GetParticipant(owner.PlayerId)!;
+                points.Add(orbTrails.GetOrbPosition(
+                    runtime, player, ordinal, owner.Position, chainTiers));
                 uids.Add(orbs[ordinal].ItemUid);
                 itemIds.Add(orbs[ordinal].ItemId);
             }
@@ -950,13 +954,13 @@ internal class MatchCombatService(
 
         // 접미 절단 (스네이크 문법, "오브 절단면 다 깨지게" 결정): 밟힌 오브(몸체) 또는
         // 링크 뒤쪽 첫 오브부터 꼬리 끝까지 전부 사라진다. 절단 지점이 머리에 가까울수록 손실이 크다.
-        var destroyedItems = orbTrails.DestroySwarmOrbsFromOrdinal(matchingId, bestOwnerId, bestTailOrdinal);
+        var owner = match.GetParticipant(bestOwnerId)!;
+        var destroyedItems = orbTrails.DestroyOrbsFromOrdinal(match, owner, bestTailOrdinal);
         if (destroyedItems.Count == 0)
             return;
         var destroyedItem = destroyedItems[0];
         // 반격 보호 개시 (#227 7단계): 방금 자른 그 사람은 1.2초 동안 이 피해자를 다시 못 자른다.
         OpenSwarmRetaliationWindow(matchingId, creditPlayerId, bestOwnerId, bestArea, nowUtc, allSessions);
-        var owner = match.GetParticipant(bestOwnerId)!;
         var ownerChain = chains[bestOwnerId];
         foreach (var lost in destroyedItems)
         {
@@ -999,7 +1003,7 @@ internal class MatchCombatService(
         // 전략이 먹혔는지 로그만으로 판정할 수 있다. 전은 파괴 직전 체인, 후는 재조회다.
         int attackOrbsBefore = CountSwarmAttackOrbs(ownerChain.ItemIds);
         int orbsBefore = ownerChain.ItemIds.Count;
-        int orbsAfter = orbTrails.CountSwarmSquadOrbs(matchingId, bestOwnerId);
+        int orbsAfter = orbTrails.CountOrbs(match, owner);
         int attackOrbsAfter = CountSwarmAttackOrbs(GetSwarmOrbItemIdsInOrder(matchingId, bestOwnerId));
         int rankAfter = GetSwarmPlayerRank(matchingId, bestOwnerId);
 
@@ -1123,9 +1127,10 @@ internal class MatchCombatService(
                 // 사거리 게이트 (유저 결정, 태양·바람과 동일): 소용돌이 반경 안에
                 // 표적(몹 또는 소유자 아닌 플레이어)이 있어야 깐다. 없으면 시계를 소모하지 않고
                 // 대기 — 표적이 들어오는 순간 바로 발동한다.
-                tiers ??= orbTrails.GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
-                var orbPosition = orbTrails.GetSwarmOrbTrailPosition(
-                    matchingId, owner.PlayerId, ordinal, owner.Position!, tiers);
+                var runtime = matchRuntimes.GetOrThrow(matchingId);
+                tiers ??= orbTrails.GetOrbTiersInOrder(runtime, owner);
+                var orbPosition = orbTrails.GetOrbPosition(
+                    runtime, owner, ordinal, owner.Position!, tiers);
                 vortexTargets ??= matchRuntimes.GetOrThrow(matchingId).Monsters.GetCombatTargets(matchingId);
                 bool hasTarget = false;
                 foreach (var target in vortexTargets)
@@ -1574,7 +1579,9 @@ internal class MatchCombatService(
         // #229: 태양·바람은 티어별 원시 피해·주기·탄속이 같은 유도탄이다. 차이는 보드
         // 패시브뿐이며, 태양 보너스는 모든 PvE 공격에 적용된다. 파도는 별도 물폭탄 시스템.
         float sunAttackMultiplier = OrbData.GetSunPveAttackMultiplier(inventoryItems);
-        var actorTiers = orbTrails.GetSwarmOrbTiersInOrder(matchingId, spatial.PlayerId);
+        var runtime = matchRuntimes.GetOrThrow(matchingId);
+        var player = runtime.GetParticipant(spatial.PlayerId)!;
+        var actorTiers = orbTrails.GetOrbTiersInOrder(runtime, player);
         int orbCount = actors.Count - before;
         long nowUnixMs = (long)(nowUtc - DateTime.UnixEpoch).TotalMilliseconds;
         for (int index = before; index < actors.Count; index++)
@@ -1582,8 +1589,8 @@ internal class MatchCombatService(
             var actor = actors[index];
             // 오브열 (#226 α+): 공격 원점·피격 위치 = 각 오브의 열 좌표 — 표시가 곧 판정.
             // 오브마다 제 자리에서 가장 가까운 몹을 고르고, 예고선은 그 오브에서 나간다.
-            var trailPosition = orbTrails.GetSwarmOrbTrailPosition(
-                matchingId, spatial.PlayerId, index - before, spatial.Position, actorTiers);
+            var trailPosition = orbTrails.GetOrbPosition(
+                runtime, player, index - before, spatial.Position, actorTiers);
             actor = actor with
             {
                 Position = trailPosition,

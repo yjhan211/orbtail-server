@@ -40,7 +40,7 @@ public class SwarmDamagePathTests
         string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
 
         // 한 교차 = 밟은 순번부터 꼬리 끝까지. 낙수 흩기는 절단 경로에 없어야 한다.
-        Assert.Contains("DestroySwarmOrbsFromOrdinal(matchingId, bestOwnerId, bestTailOrdinal)", cutBody);
+        Assert.Contains("DestroyOrbsFromOrdinal(match, owner, bestTailOrdinal)", cutBody);
         Assert.DoesNotContain("DestroySwarmOrbAtOrdinal", source);
         Assert.DoesNotContain("ScatterSwarmOrbBreakStones", cutBody);
         // 공격자 비용: 선결 검사 → 치명상 → 회복 차단이 같은 사건 안에 있다.

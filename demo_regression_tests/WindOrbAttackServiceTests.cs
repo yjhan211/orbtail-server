@@ -20,7 +20,7 @@ public sealed class WindOrbAttackServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947501);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var trails = new PlayerOrbTrailService(store);
+        var trails = new PlayerOrbTrailService();
         var service = new WindOrbAttackService(store, TestGameSessionServices.CreateHealthService(store, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), trails, logs);
         var now = DateTime.UtcNow;
         var owner = new BotPlayerState { PlayerId = 11 };
@@ -30,7 +30,7 @@ public sealed class WindOrbAttackServiceTests
         using (MatchRuntimeStore.Enter(match))
         {
             match.Inventory.GetPlayerInventory(11).AddItem(107000020, forceSeparateStack: true);
-            var origin = trails.GetSwarmOrbTrailPosition(match.MatchingId, 11, 0, new Vector3f(0, 0, 0));
+            var origin = trails.GetOrbPosition(match, owner.Player, 0, new Vector3f(0, 0, 0));
             owner.Player.Position = new Vector3f(0, 0, 0);
             victim.Player.Position = origin;
             service.Process(match.MatchingId, now, [owner.Player, victim.Player], []);
@@ -61,15 +61,16 @@ public sealed class WindOrbAttackServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947502);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var trails = new PlayerOrbTrailService(store);
+        var trails = new PlayerOrbTrailService();
         var service = new WindOrbAttackService(store, TestGameSessionServices.CreateHealthService(store, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), trails, logs);
+        var owner = new BotPlayerState { PlayerId = 11 };
+        var victim = new BotPlayerState { PlayerId = 12 };
+        match.RegisterParticipant(owner.Player);
+        match.RegisterParticipant(victim.Player);
         using (MatchRuntimeStore.Enter(match))
         {
             match.Inventory.GetPlayerInventory(11).AddItem(itemId, forceSeparateStack: true);
-            var victim = new BotPlayerState { PlayerId = 12 };
-            match.RegisterParticipant(victim.Player);
-            var origin = trails.GetSwarmOrbTrailPosition(match.MatchingId, 11, 0, new Vector3f(0, 0, 0));
-            var owner = new BotPlayerState { PlayerId = 11 };
+            var origin = trails.GetOrbPosition(match, owner.Player, 0, new Vector3f(0, 0, 0));
             owner.Player.Position = new Vector3f(0, 0, 0);
             victim.Player.Position = origin;
             victim.Player.CurrentArea = otherArea ? (AreaType)1 : AreaType.None;

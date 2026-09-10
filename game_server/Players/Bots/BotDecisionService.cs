@@ -376,7 +376,7 @@ internal sealed class BotDecisionService(
         var closureSnapshot = matchRuntimes.GetOrThrow(matchingId).Closures.GetClientStateSnapshot();
         if (closureSnapshot.WarningAreas.Contains(bot.Player.CurrentArea))
         {
-            int trailOrbCount = orbTrails.CountSwarmSquadOrbs(matchingId, botPlayerId);
+            int trailOrbCount = orbTrails.CountOrbs(matchRuntimes.GetOrThrow(matchingId), bot.Player);
             double evacuateLeadSeconds = SwarmBotClosureEvacuateBaseSeconds +
                                          trailOrbCount * SwarmBotClosureEvacuatePerOrbSeconds;
             if (closureSnapshot.WarningSeconds <= evacuateLeadSeconds)
@@ -742,13 +742,15 @@ internal sealed class BotDecisionService(
     /// </summary>
     private Vector3f ResolveSwarmTrailChasePoint(long matchingId, long targetPlayerId, Vector3f targetPosition)
     {
-        int orbCount = orbTrails.CountSwarmSquadOrbs(matchingId, targetPlayerId);
+        var runtime = matchRuntimes.GetOrThrow(matchingId);
+        var targetPlayer = runtime.GetParticipant(targetPlayerId)!;
+        int orbCount = orbTrails.CountOrbs(runtime, targetPlayer);
         if (orbCount <= 0)
             return targetPosition;
 
         // 중간 순번을 노린다 — 꼬리 끝은 손실이 적고, 머리 바로 뒤는 도달 전에 흔들린다.
         int aimOrdinal = Math.Max(1, orbCount / 2);
-        return orbTrails.GetSwarmOrbTrailPosition(matchingId, targetPlayerId, aimOrdinal, targetPosition)
+        return orbTrails.GetOrbPosition(runtime, targetPlayer, aimOrdinal, targetPosition)
                ?? targetPosition;
     }
 
@@ -925,16 +927,21 @@ internal sealed class BotDecisionService(
 
     private void LogSwarmChaseIssued(long matchingId, long chaserId, long targetId, Vector3f aimPoint)
     {
+        var runtime = matchRuntimes.GetOrThrow(matchingId);
+        var target = runtime.GetParticipant(targetId);
+        if (target == null)
+            return;
+
         var now = DateTime.UtcNow;
         var key = (matchingId, chaserId, targetId);
-        if (matchRuntimes.GetOrThrow(matchingId).BotTactics.ChaseLogThrottle.TryGetValue(key, out var lastAtUtc) &&
+        if (runtime.BotTactics.ChaseLogThrottle.TryGetValue(key, out var lastAtUtc) &&
             (now - lastAtUtc).TotalSeconds < 3d)
             return;
 
-        matchRuntimes.GetOrThrow(matchingId).BotTactics.ChaseLogThrottle[key] = now;
+        runtime.BotTactics.ChaseLogThrottle[key] = now;
         eventLogs.LogSystem(matchingId,
             $"swarm_chase chaser={chaserId} target={targetId} " +
-            $"targetOrbs={orbTrails.CountSwarmSquadOrbs(matchingId, targetId)} " +
+            $"targetOrbs={orbTrails.CountOrbs(runtime, target)} " +
             $"aim=({aimPoint.X:F1},{aimPoint.Y:F1})");
     }
 

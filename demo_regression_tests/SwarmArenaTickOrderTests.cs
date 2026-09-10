@@ -336,7 +336,7 @@ public sealed class SwarmArenaTickOrderTests
 
         AssertInOrder(
             orbPrepare,
-            "DestroySwarmOrbsFromOrdinal(",
+            "DestroyOrbsFromOrdinal(",
             ".OrbDurabilityBonus.Remove(",
             "new SwarmInventoryUpdateOutbound(",
             "new SwarmRingVfxOutbound(",
@@ -382,7 +382,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("_swarmWindBladeVictimImmuneUntilUtc", windBlade);
         Assert.DoesNotContain("_swarmWindWoundsUntilUtc", crossfire);
         Assert.DoesNotContain("_swarmFamilyUpgradeCounts", orbBoard);
-        Assert.Contains("matchRuntimes.GetOrThrow(matchingId).WindOrbAttacks", windBlade);
+        Assert.Contains("runtime.WindOrbAttacks", windBlade);
         Assert.Contains("player.GetOrbUpgradeCount(orbGroupId)", orbBoard);
         Assert.DoesNotContain("MatchRuntimeStore", orbBoard);
     }

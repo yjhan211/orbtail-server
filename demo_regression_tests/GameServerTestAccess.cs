@@ -62,7 +62,7 @@ internal static class GameServerTestAccess
         var entryFailure = new MatchEntryFailureHandler(runtimes, sessions, lifecycle, logger);
         var growth = new PlayerOrbGrowthService( logs,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<PlayerOrbGrowthService>.Instance);
-        var orbTrails = new PlayerOrbTrailService(runtimes);
+        var orbTrails = new PlayerOrbTrailService();
         var cleanup = new MatchCleanupService(runtimes, logs, summaries, logger);
         var matchEliminations = TestGameSessionServices.CreateEliminationService(
             runtimes, logs, summaries, logger);

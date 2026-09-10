@@ -27,14 +27,18 @@ public sealed class PlayerOrbTrailServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(947401);
         var second = store.GetOrCreate(947402);
-        var service = new PlayerOrbTrailService(store);
+        var service = new PlayerOrbTrailService();
+        var firstPlayer = new Player { Profile = new PlayerInfo { PlayerId = 11 } };
+        var secondPlayer = new Player { Profile = new PlayerInfo { PlayerId = 11 } };
+        first.RegisterParticipant(firstPlayer);
+        second.RegisterParticipant(secondPlayer);
         var anchor = new Vector3f(0, 0, 0);
         using (MatchRuntimeStore.Enter(first))
         {
             first.TrailCombat.OrbTrails[(first.MatchingId, 11)] =
                 [new Vector3f(2, 0, 0), new Vector3f(4, 0, 0)];
-            var middle = service.GetSwarmTrailPositionAtDistance(first.MatchingId, 11, 3, anchor);
-            var beyond = service.GetSwarmTrailPositionAtDistance(first.MatchingId, 11, 6, anchor);
+            var middle = service.GetPositionAtDistance(first, firstPlayer, 3, anchor);
+            var beyond = service.GetPositionAtDistance(first, firstPlayer, 6, anchor);
             Assert.Equal(3f, middle.X);
             Assert.Equal(0f, middle.Y);
             Assert.Equal(6f, beyond.X);
@@ -42,7 +46,7 @@ public sealed class PlayerOrbTrailServiceTests
         }
         using (MatchRuntimeStore.Enter(second))
         {
-            var fallback = service.GetSwarmTrailPositionAtDistance(second.MatchingId, 11, 5, anchor);
+            var fallback = service.GetPositionAtDistance(second, secondPlayer, 5, anchor);
             Assert.Equal(0f, fallback.X);
             Assert.Equal(-1f, fallback.Y);
             second.TryMarkEnded();
@@ -55,7 +59,9 @@ public sealed class PlayerOrbTrailServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947403);
-        var service = new PlayerOrbTrailService(store);
+        var service = new PlayerOrbTrailService();
+        var player = new Player { Profile = new PlayerInfo { PlayerId = 11 } };
+        match.RegisterParticipant(player);
         using (MatchRuntimeStore.Enter(match))
         {
             var inventory = match.Inventory.GetPlayerInventory(11);
@@ -63,13 +69,30 @@ public sealed class PlayerOrbTrailServiceTests
             inventory.AddItem(107000020, forceSeparateStack: true);
             inventory.AddItem(107000030, forceSeparateStack: true);
             var original = inventory.GetAllItems().OrderBy(item => item.ItemUid).ToArray();
-            Assert.Empty(service.DestroySwarmOrbsFromOrdinal(match.MatchingId, 11, -1));
-            Assert.Empty(service.DestroySwarmOrbsFromOrdinal(match.MatchingId, 11, 3));
-            var removed = service.DestroySwarmOrbsFromOrdinal(match.MatchingId, 11, 1);
+            Assert.Empty(service.DestroyOrbsFromOrdinal(match, player, -1));
+            Assert.Empty(service.DestroyOrbsFromOrdinal(match, player, 3));
+            var removed = service.DestroyOrbsFromOrdinal(match, player, 1);
             Assert.Equal(original.Skip(1).Select(item => item.ItemUid), removed.Select(item => item.ItemUid));
             Assert.Equal(original[0].ItemUid, Assert.Single(inventory.GetAllItems()).ItemUid);
             match.TryMarkEnded();
         }
+    }
+
+    [Fact]
+    public void OperationsRequireMatchLock()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(947406);
+        var player = new Player { Profile = new PlayerInfo { PlayerId = 11 } };
+        match.RegisterParticipant(player);
+        var service = new PlayerOrbTrailService();
+        var anchor = new Vector3f();
+
+        Assert.Throws<InvalidOperationException>(() => service.CountOrbs(match, player));
+        Assert.Throws<InvalidOperationException>(() => service.GetOrbTiersInOrder(match, player));
+        Assert.Throws<InvalidOperationException>(() => service.GetOrbPosition(match, player, 0, anchor));
+        Assert.Throws<InvalidOperationException>(() => service.GetPositionAtDistance(match, player, 1, anchor));
+        Assert.Throws<InvalidOperationException>(() => service.DestroyOrbsFromOrdinal(match, player, 0));
     }
 
     [Fact]

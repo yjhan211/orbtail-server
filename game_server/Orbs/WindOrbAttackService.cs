@@ -40,8 +40,9 @@ internal sealed class WindOrbAttackService(
         IReadOnlyList<Player> players,
         List<GameClientSession> allSessions)
     {
+        var runtime = matchRuntimes.GetOrThrow(matchingId);
         IReadOnlyList<SwarmArenaCombatTarget>? monsters = null;
-        WindOrbAttackState windOrbAttacks = matchRuntimes.GetOrThrow(matchingId).WindOrbAttacks;
+        WindOrbAttackState windOrbAttacks = runtime.WindOrbAttacks;
 
         foreach (var owner in players)
         {
@@ -63,8 +64,8 @@ internal sealed class WindOrbAttackService(
                         owner.PlayerId, item.ItemUid, nowUtc, Config.SWARM_WIND_BLADE_TICK_SECONDS))
                     continue;
 
-                tiers ??= orbTrails.GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
-                var origin = orbTrails.GetSwarmOrbTrailPosition(matchingId, owner.PlayerId, ordinal, owner.Position!, tiers);
+                tiers ??= orbTrails.GetOrbTiersInOrder(runtime, owner);
+                var origin = orbTrails.GetOrbPosition(runtime, owner, ordinal, owner.Position!, tiers);
                 float radius = Config.SWARM_WIND_BLADE_RADIUS_BY_TIER[Math.Clamp(tier, 1, 3) - 1];
                 monsters ??= matchRuntimes.GetOrThrow(matchingId).Monsters.GetCombatTargets(matchingId);
 

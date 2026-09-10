@@ -320,15 +320,15 @@ internal class MatchZoneService(
             int orbCount = runtime.Inventory.GetPlayerInventory(playerId).GetOrderedOrbs().Sum(item => item.Count);
             if (orbCount == 0)
                 continue;
-            var closureTiers = orbTrails.GetSwarmOrbTiersInOrder(matchingId, playerId);
+            var closureTiers = orbTrails.GetOrbTiersInOrder(runtime, player);
 
             // 꼬리는 경로를 따르므로 폐쇄 구역 잔류분은 항상 접미다 — 끝에서부터 스캔한다.
             int suffixStart = orbCount;
             Vector3f? suffixPosition = null;
             for (int ordinal = orbCount - 1; ordinal >= 0; ordinal--)
             {
-                var position = orbTrails.GetSwarmOrbTrailPosition(
-                    matchingId, playerId, ordinal, ownerPosition, closureTiers);
+                var position = orbTrails.GetOrbPosition(
+                    runtime, player, ordinal, ownerPosition, closureTiers);
                 var cell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, position);
                 if (!closed.Contains(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell)))
                     break;
@@ -339,7 +339,7 @@ internal class MatchZoneService(
             if (suffixStart >= orbCount || suffixPosition == null)
                 continue;
 
-            var destroyed = orbTrails.DestroySwarmOrbsFromOrdinal(matchingId, playerId, suffixStart);
+            var destroyed = orbTrails.DestroyOrbsFromOrdinal(runtime, player, suffixStart);
             foreach (var destroyedItem in destroyed)
             {
                 runtime.TrailCombat.OrbDurabilityBonus.Remove((matchingId, playerId, destroyedItem.ItemUid));
