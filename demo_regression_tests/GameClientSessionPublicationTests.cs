@@ -85,6 +85,24 @@ public sealed class GameClientSessionPublicationTests
             Assert.True(bot.BootsSpeedUntilUtc > DateTime.UtcNow);
     }
 
+    [Theory]
+    [InlineData(101)]
+    [InlineData(-101)]
+    public void HitNotificationsWithoutConnectionDoNotChangePlayerState(long playerId)
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, playerId, (AreaType)50);
+        var player = session.Player;
+        player.Health = 37;
+        player.DetachSession(session);
+        var combat = session.Match.CombatDamage;
+        combat.SendPlayerHitNotification(player, 999, (AreaType)50, 123, 7, 61);
+        combat.SendMonsterHitNotification(player, 42, (AreaType)50, 123, 9);
+        Assert.Equal(37, player.Health);
+        Assert.False(player.IsEliminated);
+        Assert.Null(player.Session);
+    }
+
     [Fact]
     public void MatchSessionsRemovePreservesReplacementAndSnapshot()
     {
@@ -264,7 +282,7 @@ public sealed class GameClientSessionPublicationTests
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
         var combat = session.Match.CombatDamage;
-        combat.SendMonsterHitNotification(session, 42, (AreaType)50, 123, 9, critical: true, showDamageOnly: true);
+        combat.SendMonsterHitNotification(session.Player, 42, (AreaType)50, 123, 9, critical: true, showDamageOnly: true);
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(CombatEntityKind.Monster, hit.TargetKind);
         Assert.Equal(42, hit.TargetId);
@@ -298,10 +316,13 @@ public sealed class GameClientSessionPublicationTests
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
         var combat = session.Match.CombatDamage;
-        combat.SendPlayerHitNotification(session, 999, (AreaType)50, 123, 7, targetHealth: 61);
+        session.Player.Health = 37;
+        combat.SendPlayerHitNotification(session.Player, 999, (AreaType)50, 123, 7, targetHealth: 61);
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(999, hit.TargetId);
         Assert.Equal(61, hit.TargetHealth);
+        Assert.Equal(101, hit.AttackerId);
+        Assert.Equal(37, hit.AttackerHealth);
     }
 
     [Fact]

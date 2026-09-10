@@ -64,42 +64,42 @@ internal sealed class MatchCombatDamageService(
         _pvpDamageCarry[victimId] = total - whole;
         return whole;
     }
-    public void SendPlayerHitNotification(GameClientSession? attackerSession, long targetPlayerId, AreaType area, int weaponItemId, int damage, int targetHealth, bool isPeriodicDamage = false)
+    public void SendPlayerHitNotification(Player? attacker, long targetPlayerId, AreaType area, int weaponItemId, int damage, int targetHealth, bool isPeriodicDamage = false)
     {
-        if (attackerSession == null || !attackerSession.PlayerId.HasValue || targetPlayerId == 0)
+        if (attacker == null || attacker.PlayerId == 0 || targetPlayerId == 0)
         {
             return;
         }
         using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
         {
-            AttackerId = attackerSession.PlayerId.Value,
+            AttackerId = attacker.PlayerId,
             TargetId = targetPlayerId,
             AreaType = area,
             WeaponItemId = weaponItemId,
             Damage = damage,
-            AttackerHealth = attackerSession.Player.Health,
+            AttackerHealth = attacker.Health,
             TargetHealth = targetHealth,
             IsDot = isPeriodicDamage
         });
-        attackerSession.TrySend(packet);
+        attacker.Session?.TrySend(packet);
     }
 
-    public void SendMonsterHitNotification(GameClientSession? attackerSession, int monsterId, AreaType area, int weaponItemId, int damage, bool critical = false, bool showDamageOnly = false)
+    public void SendMonsterHitNotification(Player? attacker, int monsterId, AreaType area, int weaponItemId, int damage, bool critical = false, bool showDamageOnly = false)
     {
-        if (attackerSession == null || !attackerSession.PlayerId.HasValue || attackerSession.Player.IsEliminated || monsterId < 0 || weaponItemId <= 0 || damage <= 0) return;
+        if (attacker == null || attacker.PlayerId == 0 || attacker.IsEliminated || monsterId < 0 || weaponItemId <= 0 || damage <= 0) return;
         using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
         {
-            AttackerId = attackerSession.PlayerId.Value,
+            AttackerId = attacker.PlayerId,
             TargetId = monsterId,
             TargetKind = CombatEntityKind.Monster,
             AreaType = area,
             WeaponItemId = weaponItemId,
             Damage = damage,
-            AttackerHealth = attackerSession.Player.Health,
+            AttackerHealth = attacker.Health,
             IsCritical = critical,
             ShowDamageOnly = showDamageOnly
         });
-        attackerSession.TrySend(packet);
+        attacker.Session?.TrySend(packet);
     }
 
     /// <summary>일반 피격의 로그·체력 변경·결과 전송을 매치 잠금 안에서 처리한다.</summary>
@@ -287,8 +287,8 @@ internal sealed class MatchCombatDamageService(
             return;
 
         eventLogs.RecordMonsterHit(runtime.MatchingId, attackerId, damage, damageResult.Killed);
-        var attackerSession = allSessions.FirstOrDefault(session => session.PlayerId == attackerId);
-        SendMonsterHitNotification(attackerSession,
+        var attacker = runtime.GetParticipant(attackerId);
+        SendMonsterHitNotification(attacker,
             monsterId, area, weaponItemId, damage, critical, showDamageOnly: true);
 
         if (damageResult.Killed && damageResult.MonsterState != null)
@@ -353,13 +353,13 @@ internal sealed class MatchCombatDamageService(
         var victim = players.FirstOrDefault(player => player.PlayerId == victimId);
         if (victim == null || victim.IsEliminated) return;
 
-        var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
-        int ownerHealth = runtime.GetParticipant(ownerId)?.Health ?? -1;
+        var owner = runtime.GetParticipant(ownerId);
+        int ownerHealth = owner?.Health ?? -1;
         int healthBefore = victim.Health;
         ApplyProximityAutoCombatHit(eliminations, victim, ownerId, area, weaponItemId, shock, isPeriodicDamage, ownerHealth);
         int healthAfter = victim.Health;
 
-        SendPlayerHitNotification(ownerSession, victimId, area, weaponItemId, shock, healthAfter, isPeriodicDamage);
+        SendPlayerHitNotification(owner, victimId, area, weaponItemId, shock, healthAfter, isPeriodicDamage);
 
         eventLogs.LogSystem(
             runtime.MatchingId,
@@ -423,8 +423,8 @@ internal sealed class MatchCombatDamageService(
         }
 
         int healthDamage = ConsumeSwarmPvpDamage(attack.TargetPlayerId, attack.Damage);
-        var attackerSession = allSessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId);
-        int attackerHealth = runtime.GetParticipant(attack.AttackerPlayerId)?.Health ?? -1;
+        var attacker = runtime.GetParticipant(attack.AttackerPlayerId);
+        int attackerHealth = attacker?.Health ?? -1;
         var target = players.FirstOrDefault(player => player.PlayerId == attack.TargetPlayerId);
         if (target == null || target.IsEliminated) return 0;
 
@@ -437,7 +437,7 @@ internal sealed class MatchCombatDamageService(
 
         if (healthDamage > 0 && sendAttackerFeedback)
         {
-            SendPlayerHitNotification(attackerSession,
+            SendPlayerHitNotification(attacker,
                 attack.TargetPlayerId, attack.Area, attack.WeaponItemId, healthDamage, targetHealth);
         }
         // 태양 착탄(#226)은 발사 시점에 이미 연출을 쐈다 — 이중 투사체 방지.

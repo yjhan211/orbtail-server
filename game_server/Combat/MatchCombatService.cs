@@ -352,14 +352,13 @@ internal class MatchCombatService(
                 int monsterDamage = runtime.CombatDamage.RollSwarmCriticalDamage(
                     attack.Damage, out bool critical);
                 // 발사 연출은 즉시, 피해는 투사체 비행시간 뒤에 — 체력바와 폭발이 일치한다.
-                var attackerSession = sessions.FirstOrDefault(
-                    session => session.PlayerId == attack.AttackerPlayerId);
+                var attacker = runtime.GetParticipant(attack.AttackerPlayerId);
                 // 자동 공격은 교전 잠금을 찍지 않는다 (#229 6단계 수정): 오브는 사거리 안 잔상을
                 // 쉬지 않고 쏘므로, 이걸 "가해"로 세면 잔상이 한 마리라도 살아 있는 한 영영 눕지
                 // 못한다 — "수면은 잔상이 없는 상태를 요구하지 않는다"는 규칙과 정면으로 충돌하고,
                 // 전멸 뒤 4초 휴지 창도 3초를 잠금에 뺏겨 무의미해진다.
                 // 잠금은 내가 몸으로 지르는 절단과 피격에만 건다.
-                runtime.CombatDamage.SendMonsterHitNotification(attackerSession,
+                runtime.CombatDamage.SendMonsterHitNotification(attacker,
                     monsterId, attack.Area, attack.WeaponItemId, monsterDamage, critical);
 
                 // 관전자에게도 발사 연출 (#219): 공격자 피드백만으로는 봇의 사냥이 완전 무음이었다.
@@ -1208,7 +1207,7 @@ internal class MatchCombatService(
         IReadOnlyList<Player> players,
         List<GameClientSession> allSessions)
     {
-        var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
+        var owner = matchRuntimes.GetOrThrow(matchingId).GetParticipant(ownerId);
         float radiusSquared = radius * radius;
         int hitCount = 0;
         int notifiedCount = 0;
@@ -1236,7 +1235,7 @@ internal class MatchCombatService(
                 continue;
 
             notifiedCount++;
-            matchRuntimes.GetOrThrow(matchingId).CombatDamage.SendMonsterHitNotification(ownerSession,
+            matchRuntimes.GetOrThrow(matchingId).CombatDamage.SendMonsterHitNotification(owner,
                 monsterId, area, sourceItemId, monsterDamage, critical, showDamageOnly: true);
         }
 

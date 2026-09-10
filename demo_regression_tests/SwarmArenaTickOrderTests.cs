@@ -172,7 +172,7 @@ public sealed class SwarmArenaTickOrderTests
             "CollectSwarmCrossfireAnchoredTargets(",
             "AutoAttack.ResolveAttacks(",
             "TryScheduleSwarmCrossfire(",
-            "runtime.CombatDamage.SendMonsterHitNotification(attackerSession,",
+            "runtime.CombatDamage.SendMonsterHitNotification(attacker,",
             "BroadcastSwarmAttackVfxToTargetAndObservers(");
     }
 
