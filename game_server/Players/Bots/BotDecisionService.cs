@@ -115,7 +115,7 @@ internal sealed class BotDecisionService(
             // 봇은 패킷 대신 틱에서 완료를 요청한다. 진행 시간과 완료 검증은 사람과 같다.
             if (player.PendingDoorInteractionId is { } doorId)
             {
-                if (!MatchInteractionService.TryFinishDoor(match, player, doorId, doorId, now, out _)) continue;
+                if (!PlayerInteractionService.TryFinishDoor(match, player, doorId, doorId, now, out _)) continue;
                 using var openPacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, bot.PlayerId);
                 foreach (var session in sessions) session.TrySend(openPacket);
                 logger.LogInformation("Swarm bot unlocked door: MatchingId={MatchingId}, BotId={BotId}, DoorId={DoorId}",
@@ -124,7 +124,7 @@ internal sealed class BotDecisionService(
             }
             if (!TryFindNearestLockedGaugeDoor(matchingId, bot, out int targetDoorId)) continue;
             // 봇은 클라이언트 상호작용 ID가 없어 문 ID를 진행 식별자로 사용한다.
-            MatchInteractionService.StartDoor(match, player, targetDoorId, targetDoorId, now);
+            PlayerInteractionService.StartDoor(match, player, targetDoorId, targetDoorId, now);
         }
     }
 

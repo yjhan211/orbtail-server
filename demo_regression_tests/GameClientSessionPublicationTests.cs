@@ -1021,7 +1021,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("new Timer(", playerState);
         Assert.Contains("ProcessPeriodicBuffs(runtime, players, nowUtc)", combat);
         Assert.Contains("player.UpdatePeriodicBuffs(nowUtc", combat);
-        Assert.Equal(2, CountOccurrences(playerState, "MatchInteractionService.CancelPendingInteractions(match, Player)"));
+        Assert.Equal(2, CountOccurrences(playerState, "PlayerInteractionService.CancelPendingInteractions(match, Player)"));
 
         Assert.DoesNotContain("ProcessUseInGameItem", playerState);
         Assert.DoesNotContain("HandleUseInGameItem", playerState);
