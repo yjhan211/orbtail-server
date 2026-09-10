@@ -355,7 +355,7 @@ public sealed class GameClientSessionTerminalPublicationTests
             var entries = humanSessions
                 .Select(session => new MatchPlayer {
                     Profile = new network.common.data.models.PlayerInfo { PlayerId = session.PlayerId!.Value },
-                    Status = session._player.Status
+                    Status = session.Player.Status
                 })
                 .ToList();
             for (int index = entries.Count; index < totalEntries; index++)
@@ -419,7 +419,7 @@ public sealed class GameClientSessionTerminalPublicationTests
             SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
             TestGameSessionServices.BindMatch(session, matchingId);
             TestGameSessionServices.SetMovementProperty(session, "CurrentArea", Config.SWARM_MATCH_GROUND_AREA);
-            session._player.Status = status;
+            session.Player.Status = status;
         }
 
         private static void SetProperty(GameClientSession session, string name, object value) =>
@@ -458,7 +458,7 @@ public sealed class GameClientSessionTerminalPublicationTests
 
                 eventLog,
                 TestGameSessionServices.CreateEliminationService(matchRuntimes, eventLog, summaries, logger),
-                new FakePlayerGrowthHandler(),
+                TestGameSessionServices.CreateGrowthService(matchRuntimes, eventLog),
                 new FakeGameSessionLifecycle(prepareGameCompletion),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),

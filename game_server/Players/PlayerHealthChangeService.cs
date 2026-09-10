@@ -44,7 +44,7 @@ internal sealed class PlayerHealthChangeService(
         }
 
         if (change.IsDepleted && !deferElimination &&
-            session.PlayerId.HasValue && !session.IsGameEnded && !session._player.IsEliminated && session._player.Health <= 0)
+            session.PlayerId.HasValue && !session.IsGameEnded && !session.Player.IsEliminated && session.Player.Health <= 0)
         {
             eliminations.EliminatePlayer(session.MatchingId, session.PlayerId.Value, EliminationReason.HEALTH_ZERO,
                 attackerPlayerId: attackerPlayerId);

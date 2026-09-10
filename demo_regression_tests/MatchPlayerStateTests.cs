@@ -20,17 +20,17 @@ public sealed class MatchPlayerStateTests
         typeof(GameClientSession).GetProperty(nameof(GameClientSession.PlayerId))!.SetValue(session, 10L);
         TestGameSessionServices.BindMatch(session, match.MatchingId, store);
 
-        Assert.Same(match.GetParticipant(10), session._player);
+        Assert.Same(match.GetParticipant(10), session.Player);
         using (match.Enter())
         {
             participant.Health = 42;
             participant.CurrentArea = AreaType.S2Library1;
             participant.BeginInteraction(123);
-            Assert.Equal(42, session._player.Health);
-            Assert.Equal(AreaType.S2Library1, session._player.CurrentArea);
-            Assert.True(session._player.TryFinishInteraction(123));
+            Assert.Equal(42, session.Player.Health);
+            Assert.Equal(AreaType.S2Library1, session.Player.CurrentArea);
+            Assert.True(session.Player.TryFinishInteraction(123));
             Assert.True(match.TryEliminatePlayer(10, EliminationReason.PRESSURE_FIELD));
-            Assert.True(session._player.IsEliminated);
+            Assert.True(session.Player.IsEliminated);
         }
 
         foreach (string name in new[] { "CurrentHealth", "Health", "CurrentArea", "CurrentMapId", "LastValidatedPosition", "Condition", "Movement", "PlayerMatchStatus", "IsEliminated" })
@@ -56,15 +56,15 @@ public sealed class MatchPlayerStateTests
 
         previous.OnRemoved();
 
-        Assert.Same(previous._player, current._player);
-        Assert.True(current._player.HasPeriodicBuffs);
+        Assert.Same(previous.Player, current.Player);
+        Assert.True(current.Player.HasPeriodicBuffs);
     }
 
     [Fact]
     public void UnauthenticatedSessionRemoval_DoesNotRequireParticipant()
     {
         var session = TestGameSessionServices.CreateRecipientSession();
-        Assert.Null(session._player);
+        Assert.Null(session.Player);
         session.OnRemoved();
     }
 }

@@ -15,18 +15,11 @@ using network.infrastructure.redis;
 
 namespace demo_regression_tests;
 
-internal sealed class FakePlayerGrowthHandler(
-    Func<GameClientSession, long, int, long, long, (bool Success, int ResultItemId, int TargetOrdinal)>? orbDecision = null) : IPlayerGrowthHandler
-{
-
-    public G_TO_C_ORB_UPGRADE_INFO GetOrbUpgradeInfo(long matchingId, long playerId) => new();
-
-    public (bool Success, int ResultItemId, int TargetOrdinal) HandleUpgradeOrb(GameClientSession session, long matchingId, int action, long targetItemUid, long secondItemUid) =>
-        orbDecision?.Invoke(session, matchingId, action, targetItemUid, secondItemUid) ?? (false, 0, -1);
-}
-
 internal static class TestGameSessionServices
 {
+    public static MatchGrowthService CreateGrowthService(MatchRuntimeStore store, GameEventLogManager logs) =>
+        new(store, logs, new OrbUpgradeService(store, logs, NullLogger<OrbUpgradeService>.Instance),
+            NullLogger<MatchGrowthService>.Instance);
     internal static void StartGameplay(this MatchRuntime runtime)
     {
         typeof(MatchRuntime).GetField("_startsAtUtc", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
@@ -52,7 +45,7 @@ internal static class TestGameSessionServices
             new network.core.TcpConnection(), NullLogger.Instance, new InMemoryRedisOperations(),
             static _ => false, CreateMatchCleanupService(), static (_, _) => null,
             logs, CreateEliminationService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance),
-            new FakePlayerGrowthHandler(), new FakeGameSessionLifecycle(), static () => false,
+            CreateGrowthService(store, logs), new FakeGameSessionLifecycle(), static () => false,
             new FakeMatchEntryFailureHandler(),
             matchEntry: CreateEntryService(null, store, NullLogger.Instance),
             movementValidation: new MovementValidationService(NullLogger<MovementValidationService>.Instance),
@@ -89,11 +82,11 @@ internal static class TestGameSessionServices
         return new MatchRuntimeStore(logger.For<MatchRuntime>(), lifecycle, logger.For<MatchCombatDamageService>());
     }
     public static PlayerMovementService GetMovement(GameClientSession session) =>
-        (PlayerMovementService)typeof(GameClientSession).GetField("_playerMovement",
+        (PlayerMovementService)typeof(GameClientSession).GetField("PlayerMovement",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(session)!;
 
     public static void SetMovementProperty(GameClientSession session, string name, object? value) =>
-        typeof(MatchPlayer).GetProperty(name)!.SetValue(session._player, value);
+        typeof(MatchPlayer).GetProperty(name)!.SetValue(session.Player, value);
 
     // 입장 프로토콜을 생략하는 단위 테스트에서도 실제 입장과 같은 런타임을 세션에 연결한다.
     public static void BindMatch(GameClientSession session, long matchingId, MatchRuntimeStore? store = null)
@@ -102,7 +95,7 @@ internal static class TestGameSessionServices
         var entry = (GameMatchEntryService?)typeof(GameClientSession).GetField("_matchEntry", flags)!.GetValue(session);
         typeof(GameClientSession).GetField("_match", flags)!.SetValue(session,
             matchingId > 0 ? (store?.GetOrCreate(matchingId) ?? entry!.GetOrCreateMatch(matchingId)) : null);
-        session._player = (matchingId > 0 ? session.Match.GetParticipant(session.PlayerId ?? 0) : null)
+        session.Player = (matchingId > 0 ? session.Match.GetParticipant(session.PlayerId ?? 0) : null)
             ?? new MatchPlayer { Profile = new network.common.data.models.PlayerInfo { PlayerId = session.PlayerId ?? 0 } };
     }
 

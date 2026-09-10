@@ -32,7 +32,7 @@ internal static class GroundItemNotificationService
         var sessions = new List<GameClientSession>();
         foreach (var session in match.Sessions.Values.ToList())
         {
-            if (!session._player.IsEliminated && session._player.CurrentArea == area)
+            if (!session.Player.IsEliminated && session.Player.CurrentArea == area)
                 sessions.Add(session);
         }
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, spawned.ToList());

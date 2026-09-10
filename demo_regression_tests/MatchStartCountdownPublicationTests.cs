@@ -365,7 +365,7 @@ public sealed class MatchStartCountdownPublicationTests
                 static (_, _) => null,
                 null!,
                 null!,
-                new FakePlayerGrowthHandler(),
+                TestGameSessionServices.CreateGrowthService(TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance), TestGameEventLogs.Create()),
                 new FakeGameSessionLifecycle(),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),

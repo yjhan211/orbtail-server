@@ -98,7 +98,7 @@ internal sealed class BotEliminationService(
 
         var (bot, drop) = outcome;
         BroadcastGroundItemSpawn(bot.CurrentArea, drop.SpawnedItems,
-            matchingSessions.Where(session => session._player.CurrentArea == bot.CurrentArea));
+            matchingSessions.Where(session => session.Player.CurrentArea == bot.CurrentArea));
 
         logger.LogInformation(
             "Bot elimination inventory scattered: MatchingId={MatchingId}, BotId={BotId}, Area={Area}, ItemCount={ItemCount}",

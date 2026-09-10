@@ -43,7 +43,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
         foreach (var session in matchingSessions)
         {
             if (session.PlayerId == playerId)
-                return session._player.Health;
+                return session.Player.Health;
         }
 
         foreach (var bot in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
@@ -144,7 +144,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
             {
                 var actor = visualActor.Actor;
                 var key = (observer.PlayerId.Value, actor.PlayerId);
-                if (observer._player.CurrentArea != actor.Area)
+                if (observer.Player.CurrentArea != actor.Area)
                 {
                     publications.Add(SwarmOrbVisualPublication.Remove(
                         matchingId, observer.PlayerId.Value, actor.PlayerId));

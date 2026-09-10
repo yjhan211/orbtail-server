@@ -82,12 +82,12 @@ public sealed class GameClientSessionPublicationTests
         int expectedHealth = Config.MAX_HEALTH - missingHealth + Math.Min(10, missingHealth);
         using (session.Match.Enter())
         {
-            var change = session._player.Recover(10);
-            Assert.Equal(expectedHealth, session._player.Health);
+            var change = session.Player.Recover(10);
+            Assert.Equal(expectedHealth, session.Player.Health);
             Assert.Equal(Math.Min(10, missingHealth), change.Recovered);
             session.HealthChanges.Handle(change);
         }
-        Assert.Equal(expectedHealth, session._player.Health);
+        Assert.Equal(expectedHealth, session.Player.Health);
         var packet = fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_PLAYER_STATS_UPDATE>(Protocol.G_TO_C_PLAYER_STATS_UPDATE);
         Assert.Equal(expectedHealth, packet.Health);
@@ -154,7 +154,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(101, hit.AttackerId);
         Assert.Equal(102, hit.TargetId);
         Assert.Equal(73, hit.AttackerHealth);
-        Assert.Equal(session._player.Health, hit.TargetHealth);
+        Assert.Equal(session.Player.Health, hit.TargetHealth);
         Assert.Equal(5, hit.Damage);
         Assert.Equal(123, hit.WeaponItemId);
         Assert.True(hit.IsDot);
@@ -180,7 +180,7 @@ public sealed class GameClientSessionPublicationTests
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
-        int healthBefore = session._player.Health;
+        int healthBefore = session.Player.Health;
         using (session.Match.Enter())
         {
             var combat = session.Match.CombatDamage;
@@ -251,7 +251,7 @@ public sealed class GameClientSessionPublicationTests
         var now = DateTime.UtcNow;
         using (session.Match.Enter())
         {
-            Assert.True(session._player.TryStartSleep(now));
+            Assert.True(session.Player.TryStartSleep(now));
             MatchCombatService.ProcessSwarmSleepRecovery([session], now);
             MatchCombatService.ProcessSwarmSleepRecovery([session], now.AddSeconds(1));
         }
@@ -260,7 +260,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(101, packet.PlayerId);
         Assert.Equal(HealthRecoveryKind.Sleep, packet.Source);
         Assert.Equal(1, packet.Amount);
-        Assert.Equal(Config.MAX_HEALTH, session._player.Health);
+        Assert.Equal(Config.MAX_HEALTH, session.Player.Health);
     }
 
     [Fact]
@@ -295,7 +295,7 @@ public sealed class GameClientSessionPublicationTests
         var self = fixture.CreateSession(70001, 101, (AreaType)50);
         var peer = fixture.CreateSession(70001, 102, (AreaType)50);
         var eliminated = fixture.CreateSession(70001, 103, (AreaType)50);
-        eliminated._player.Status = PlayerMatchStatus.ELIMINATED;
+        eliminated.Player.Status = PlayerMatchStatus.ELIMINATED;
         var otherArea = fixture.CreateSession(70001, 104, (AreaType)51);
         var otherMatch = fixture.CreateSession(70002, 105, (AreaType)50);
 
@@ -466,7 +466,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.False(session.Match.Doors.IsDoorOpen(201));
 
         // 실제로 잠들지 않고 서버가 기록한 시작 시각만 앞당긴다.
-        var interactions = session._player;
+        var interactions = session.Player;
         interactions.BeginDoor(702000101, Environment.TickCount64 - 3000);
 
         fixture.ConnectionFor(session).ClearPackets();
@@ -535,7 +535,7 @@ public sealed class GameClientSessionPublicationTests
                 Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT
             ],
             fixture.ConnectionFor(session).DeliveredProtocols);
-        Assert.True(session._player.Health > 20);
+        Assert.True(session.Player.Health > 20);
     }
 
     [Theory]
@@ -757,7 +757,7 @@ public sealed class GameClientSessionPublicationTests
             [Protocol.G_TO_C_PLAYER_STATS_UPDATE],
             fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.Null(fixture.Store.GetOrThrow(70001).GroundItems.GetItem(item.GroundItemUid));
-        Assert.True(session._player.Health > 20);
+        Assert.True(session.Player.Health > 20);
     }
 
     [Fact]
@@ -836,8 +836,8 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("_periodicBuffTimer", session);
         Assert.DoesNotContain("new Timer(", playerState);
         Assert.Contains("ProcessPeriodicBuffs(matchingId, aliveSessions, nowUtc)", combat);
-        Assert.Contains("session._player.UpdatePeriodicBuffs(nowUtc", combat);
-        Assert.Equal(2, CountOccurrences(playerState, "MatchInteractionService.CancelPendingInteractions(match, _player)"));
+        Assert.Contains("session.Player.UpdatePeriodicBuffs(nowUtc", combat);
+        Assert.Equal(2, CountOccurrences(playerState, "MatchInteractionService.CancelPendingInteractions(match, Player)"));
 
         Assert.DoesNotContain("ProcessUseInGameItem", playerState);
         Assert.DoesNotContain("HandleUseInGameItem", playerState);
@@ -903,7 +903,7 @@ public sealed class GameClientSessionPublicationTests
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
-        var interactions = session._player;
+        var interactions = session.Player;
         using (session.Match.Enter())
         {
             interactions.CompleteDoor(); // 첫 문 피격 면제 이후의 문을 검사한다.
@@ -937,7 +937,7 @@ public sealed class GameClientSessionPublicationTests
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
         fixture.Store.GetOrThrow(70001).StartGameplay();
-        var interactions = session._player;
+        var interactions = session.Player;
         using (session.Match.Enter())
             interactions.BeginDoor(702000101, 0);
 
@@ -1037,7 +1037,7 @@ public sealed class GameClientSessionPublicationTests
         var first = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
         var second = fixture.CreateSession(70001, 102, Config.SWARM_MATCH_GROUND_AREA);
         var item = fixture.SpawnAtSession(first, Config.SUMMON_STONE_GROUND_ITEM_ID);
-        TestGameSessionServices.SetMovementProperty(second, "LastValidatedPosition", first._player.LastValidatedPosition);
+        TestGameSessionServices.SetMovementProperty(second, "LastValidatedPosition", first.Player.LastValidatedPosition);
         fixture.Store.GetOrThrow(first.MatchingId).StartGameplay();
 
         CreatePickupTickLoop(fixture, first.Match).ProcessTick();
@@ -1074,7 +1074,7 @@ public sealed class GameClientSessionPublicationTests
         using (match.Enter())
         {
             GroundItemAutoPickupService.RecordMovement(session,
-                session._player.LastValidatedPosition!, session._player.LastValidatedPosition!, session._player.CurrentArea);
+                session.Player.LastValidatedPosition!, session.Player.LastValidatedPosition!, session.Player.CurrentArea);
             Assert.Single(match.GroundItemPickupCandidates);
         }
 
@@ -1091,7 +1091,7 @@ public sealed class GameClientSessionPublicationTests
         var match = previous.Match;
         using (match.Enter())
             GroundItemAutoPickupService.RecordMovement(previous,
-                previous._player.LastValidatedPosition!, previous._player.LastValidatedPosition!, previous._player.CurrentArea);
+                previous.Player.LastValidatedPosition!, previous.Player.LastValidatedPosition!, previous.Player.CurrentArea);
 
         var current = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
         TestGameSessionServices.SetMovementProperty(current, "LastValidatedPosition", new Vector3f(item.PositionX + 20, item.PositionY, 0));
@@ -1114,13 +1114,13 @@ public sealed class GameClientSessionPublicationTests
         using (match.Enter())
         {
             Assert.True(match.Inventory.TryAddItemWithCapacity(101, 107000010, Config.GetOrbCapacity(), out _));
-            eliminated._player.Status = PlayerMatchStatus.ELIMINATED;
+            eliminated.Player.Status = PlayerMatchStatus.ELIMINATED;
             var drops = new GroundItemDropService(fixture.EventLog);
             drops.DropAll(eliminated);
             drops.DropAll(eliminated);
 
             Assert.Empty(match.Inventory.GetAllItems(101));
-            Assert.Single(match.GroundItems.GetSnapshot(eliminated._player.CurrentArea));
+            Assert.Single(match.GroundItems.GetSnapshot(eliminated.Player.CurrentArea));
         }
         Assert.Equal([Protocol.G_TO_C_ORB_UPDATE], fixture.ConnectionFor(eliminated).DeliveredProtocols);
         Assert.Equal([Protocol.G_TO_C_GROUND_ITEM_SPAWN], fixture.ConnectionFor(observer).DeliveredProtocols);
@@ -1134,7 +1134,7 @@ public sealed class GameClientSessionPublicationTests
         var other = fixture.CreateSession(70001, 102, Config.SWARM_MATCH_GROUND_AREA);
         var item = fixture.SpawnAtSession(owner, Config.SUMMON_STONE_GROUND_ITEM_ID);
         using (owner.Match.Enter())
-            GroundItemNotificationService.SendSnapshot(owner, owner._player.CurrentArea);
+            GroundItemNotificationService.SendSnapshot(owner, owner.Player.CurrentArea);
         var snapshot = fixture.ConnectionFor(owner).DeserializeSingle<G_TO_C_GROUND_ITEM_SNAPSHOT>(
             Protocol.G_TO_C_GROUND_ITEM_SNAPSHOT);
         Assert.Equal(item.GroundItemUid, Assert.Single(snapshot.Items).GroundItemUid);
@@ -1148,13 +1148,13 @@ public sealed class GameClientSessionPublicationTests
         var owner = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
         var otherArea = fixture.CreateSession(70001, 102, (AreaType)999);
         var eliminated = fixture.CreateSession(70001, 103, Config.SWARM_MATCH_GROUND_AREA);
-        eliminated._player.Status = PlayerMatchStatus.ELIMINATED;
+        eliminated.Player.Status = PlayerMatchStatus.ELIMINATED;
         var item = fixture.SpawnAtSession(owner, Config.SUMMON_STONE_GROUND_ITEM_ID);
         using (owner.Match.Enter())
         {
-            GroundItemNotificationService.BroadcastSpawned(owner.Match, owner._player.CurrentArea, []);
+            GroundItemNotificationService.BroadcastSpawned(owner.Match, owner.Player.CurrentArea, []);
             Assert.Empty(fixture.ConnectionFor(owner).DeliveredProtocols);
-            GroundItemNotificationService.BroadcastSpawned(owner.Match, owner._player.CurrentArea, [item]);
+            GroundItemNotificationService.BroadcastSpawned(owner.Match, owner.Player.CurrentArea, [item]);
         }
         Assert.Equal([Protocol.G_TO_C_GROUND_ITEM_SPAWN], fixture.ConnectionFor(owner).DeliveredProtocols);
         Assert.Empty(fixture.ConnectionFor(otherArea).DeliveredProtocols);
@@ -1239,7 +1239,7 @@ public sealed class GameClientSessionPublicationTests
         public GroundItemInfo SpawnAtSession(RecordingSession session, int itemId)
         {
             GroundItemInfo item = Store.GetOrThrow(session.MatchingId).GroundItems.SpawnItems(
-                session._player.CurrentArea,
+                session.Player.CurrentArea,
                 0f,
                 0f,
                 [itemId],
@@ -1251,7 +1251,7 @@ public sealed class GameClientSessionPublicationTests
 
         public void SetHealth(RecordingSession session, int health)
         {
-            var condition = session._player;
+            var condition = session.Player;
             condition.Health = health;
         }
 
@@ -1263,7 +1263,7 @@ public sealed class GameClientSessionPublicationTests
 
         public void SeedPendingFinish(RecordingSession session, int interactId)
         {
-            var pending = session._player;
+            var pending = session.Player;
             pending.BeginInteraction(interactId);
         }
 
@@ -1329,7 +1329,7 @@ public sealed class GameClientSessionPublicationTests
 
                 eventLog,
                 TestGameSessionServices.CreateEliminationService(matchRuntimes, eventLog, summaries, NullLogger.Instance),
-                new FakePlayerGrowthHandler(),
+                TestGameSessionServices.CreateGrowthService(matchRuntimes, eventLog),
                 new FakeGameSessionLifecycle(),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),

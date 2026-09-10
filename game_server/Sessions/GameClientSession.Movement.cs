@@ -45,9 +45,9 @@ public partial class GameClientSession
                 }
 
                 long timestamp = Stopwatch.GetTimestamp();
-                float deltaTime = _playerMovement.CalculateMoveDeltaTime(timestamp);
+                float deltaTime = PlayerMovement.CalculateMoveDeltaTime(timestamp);
 
-                var result = _playerMovement.Apply(msg, deltaTime);
+                var result = PlayerMovement.Apply(msg, deltaTime);
                 if (result == null)
                 {
                     return Task.CompletedTask;
@@ -58,13 +58,13 @@ public partial class GameClientSession
                 var validatedVelocity = validation.Velocity;
                 bool requiresClientCorrection = validation.RequiresCorrection;
 
-                using var packet = PacketMaker.G_TO_C_MOVE(PlayerId.Value, validatedPosition, validatedVelocity, msg.Rotation, currentCell, serverTimestamp, _player.OrbOrbitPhaseDegrees);
-                _playerMovement.Broadcast(packet);
+                using var packet = PacketMaker.G_TO_C_MOVE(PlayerId.Value, validatedPosition, validatedVelocity, msg.Rotation, currentCell, serverTimestamp, Player.OrbOrbitPhaseDegrees);
+                PlayerMovement.Broadcast(packet);
 
-                if (requiresClientCorrection || _playerMovement.ShouldSendMoveResponse(timestamp))
+                if (requiresClientCorrection || PlayerMovement.ShouldSendMoveResponse(timestamp))
                 {
                     TrySend(packet);
-                    _playerMovement.RecordMoveResponse(timestamp);
+                    PlayerMovement.RecordMoveResponse(timestamp);
                 }
             }
             catch (Exception ex)

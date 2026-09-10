@@ -32,7 +32,7 @@ public partial class GameClientSession
             var sameAreaSessions = new List<GameClientSession>();
             foreach (var session in match.Sessions.Values.ToList())
             {
-                if (!session._player.IsEliminated && session._player.CurrentArea == _player.CurrentArea)
+                if (!session.Player.IsEliminated && session.Player.CurrentArea == Player.CurrentArea)
                     sameAreaSessions.Add(session);
             }
             var broadcast = new G_TO_C_SOCIAL_ACTION

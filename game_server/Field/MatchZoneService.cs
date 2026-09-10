@@ -306,9 +306,9 @@ internal class MatchZoneService(
         var owners = new List<(long PlayerId, Vector3f Position, GameClientSession? Session)>();
         foreach (var session in sessions)
         {
-            if (session.PlayerId.HasValue && !session._player.IsEliminated &&
-                session._player.LastValidatedPosition != null)
-                owners.Add((session.PlayerId.Value, session._player.LastValidatedPosition, session));
+            if (session.PlayerId.HasValue && !session.Player.IsEliminated &&
+                session.Player.LastValidatedPosition != null)
+                owners.Add((session.PlayerId.Value, session.Player.LastValidatedPosition, session));
         }
 
         foreach (var bot in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
@@ -366,7 +366,7 @@ internal class MatchZoneService(
             var ringRecipients = ImmutableArray.CreateBuilder<GameClientSession>();
             foreach (var session in sessions)
             {
-                if (session.PlayerId.HasValue && session._player.CurrentArea == closedArea)
+                if (session.PlayerId.HasValue && session.Player.CurrentArea == closedArea)
                     ringRecipients.Add(session);
             }
             outbound.Add(new SwarmRingVfxOutbound(

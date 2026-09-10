@@ -242,7 +242,7 @@ internal sealed class SunOrbAttackService(
         // 같은 구역 전원 — 소유자도 받는다. 자기 모양이 어디 생겼는지 봐야 다음 자리를 고른다.
         foreach (var session in allSessions)
         {
-            if (session.PlayerId.HasValue && !session._player.IsEliminated && session._player.CurrentArea == attack.Area)
+            if (session.PlayerId.HasValue && !session.Player.IsEliminated && session.Player.CurrentArea == attack.Area)
                 session.TrySend(packet);
         }
     }
@@ -383,7 +383,7 @@ internal sealed class SunOrbAttackService(
         }));
         foreach (var session in allSessions)
         {
-            if (session.PlayerId.HasValue && !session._player.IsEliminated && session._player.CurrentArea == shape.Area)
+            if (session.PlayerId.HasValue && !session.Player.IsEliminated && session.Player.CurrentArea == shape.Area)
                 session.TrySend(packet);
         }
     }

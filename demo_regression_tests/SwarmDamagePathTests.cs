@@ -160,7 +160,7 @@ public class SwarmDamagePathTests
         // 중단 경로는 이동 하나뿐이다.
         string movement = File.ReadAllText(
             Path.Combine(root, "game_server", "Players", "PlayerMovementService.cs"));
-        Assert.Contains("player._player.TryStopSleep()", movement);
+        Assert.Contains("player.Player.TryStopSleep()", movement);
 
         string combat = File.ReadAllText(
             Path.Combine(root, "game_server", "Combat", "MatchCombatService.cs"));

@@ -19,7 +19,7 @@ internal sealed class MatchGrowthService(
     MatchRuntimeStore matchRuntimes,
     GameEventLogManager eventLogs,
     OrbUpgradeService orbUpgrades,
-    ILogger<MatchGrowthService> logger) : IPlayerGrowthHandler
+    ILogger<MatchGrowthService> logger)
 {
     public G_TO_C_ORB_UPGRADE_INFO GetOrbUpgradeInfo(long matchingId, long playerId) =>
         orbUpgrades.GetOrbUpgradeInfo(matchingId, playerId);
@@ -159,7 +159,7 @@ internal sealed class MatchGrowthService(
         int top = 0;
         foreach (var session in matchRuntimes.GetOrThrow(matchingId).Sessions.Values.ToList())
         {
-            if (session.PlayerId.HasValue && !session._player.IsEliminated)
+            if (session.PlayerId.HasValue && !session.Player.IsEliminated)
                 top = Math.Max(top, matchRuntimes.GetOrThrow(matchingId).Inventory.GetOrbScore(session.PlayerId.Value).OrbCount);
         }
 
@@ -183,7 +183,7 @@ internal sealed class MatchGrowthService(
 
         foreach (var session in aliveSessions)
         {
-            if (session.PlayerId.HasValue && session._player.CurrentArea == bot.CurrentArea &&
+            if (session.PlayerId.HasValue && session.Player.CurrentArea == bot.CurrentArea &&
                 matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(session.PlayerId.Value).GetOrbPower() *
                 BotPreyPowerAdvantage <= myPower)
                 return true;

@@ -76,13 +76,13 @@ internal sealed class OrbRecoveryService(
 
             int effectiveRecovery = 0;
             var session = matchingSessions.FirstOrDefault(candidate =>
-                candidate.PlayerId == playerId && !candidate._player.IsEliminated);
+                candidate.PlayerId == playerId && !candidate.Player.IsEliminated);
             if (session != null)
             {
-                int previousHealth = session._player.Health;
+                int previousHealth = session.Player.Health;
                 if (previousHealth < Config.MAX_HEALTH)
                 {
-                    var change = session._player.Recover(requestedRecovery);
+                    var change = session.Player.Recover(requestedRecovery);
                     session.HealthChanges.Handle(change);
                     effectiveRecovery = change.Recovered;
                 }
@@ -102,13 +102,13 @@ internal sealed class OrbRecoveryService(
             if (effectiveRecovery <= 0)
                 continue;
 
-            if (session != null && session.PlayerId.HasValue && !session._player.IsEliminated &&
+            if (session != null && session.PlayerId.HasValue && !session.Player.IsEliminated &&
                 representative.WeaponItemId > 0)
             {
                 using var packet = PacketMaker.G_TO_C_HEALTH_RECOVERY(new()
                 {
                     PlayerId = playerId,
-                    AreaType = session._player.CurrentArea,
+                    AreaType = session.Player.CurrentArea,
                     Amount = effectiveRecovery,
                     Source = HealthRecoveryKind.Orb,
                     OrbItemId = representative.WeaponItemId

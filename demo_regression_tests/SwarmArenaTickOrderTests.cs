@@ -205,7 +205,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             applyProximityHit,
             "eventLogs.LogHit(",
-            "victimSession._player.ApplyDamage(damage);",
+            "victimSession.Player.ApplyDamage(damage);",
             "victimSession.HealthChanges.Handle(change, attackerPlayerId: sourcePlayerId);",
             "PacketMaker.G_TO_C_COMBAT_HIT(",
             "victimSession.TrySend(packet);");

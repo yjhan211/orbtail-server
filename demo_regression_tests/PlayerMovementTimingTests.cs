@@ -10,7 +10,7 @@ public sealed class PlayerMovementTimingTests
     {
         var session = TestGameSessionServices.CreateRecipientSession();
         TestGameSessionServices.BindMatch(session, 1);
-        return session._playerMovement;
+        return session.PlayerMovement;
     }
 
     [Fact]

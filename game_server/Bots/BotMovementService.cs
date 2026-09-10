@@ -31,7 +31,7 @@ internal class BotMovementService(
         GameClientSession[] sessionSnapshot = runtime.Sessions.Values.ToList()
             .Where(session =>
                 session.PlayerId is > 0 &&
-                session._player.MapId == Config.SWARM_MATCH_MAP &&
+                session.Player.MapId == Config.SWARM_MATCH_MAP &&
                 session.MatchingId == matchingId)
             .ToArray();
         ImmutableArray<SwarmBotObserverSnapshot> observers =
@@ -112,18 +112,18 @@ internal class BotMovementService(
         foreach (var session in sessionSnapshot)
         {
             if (session.PlayerId is not > 0 ||
-                session._player.MapId != Config.SWARM_MATCH_MAP ||
+                session.Player.MapId != Config.SWARM_MATCH_MAP ||
                 session.MatchingId != matchingId)
                 continue;
 
-            SwarmVectorSnapshot? position = session._player.LastValidatedPosition == null
+            SwarmVectorSnapshot? position = session.Player.LastValidatedPosition == null
                 ? null
-                : SwarmVectorSnapshot.Capture(session._player.LastValidatedPosition);
+                : SwarmVectorSnapshot.Capture(session.Player.LastValidatedPosition);
             observers.Add(new SwarmBotObserverSnapshot(
                 session,
                 session.PlayerId.Value,
-                session._player.CurrentArea,
-                session._player.IsEliminated,
+                session.Player.CurrentArea,
+                session.Player.IsEliminated,
                 position));
         }
 
@@ -204,7 +204,7 @@ internal class BotMovementService(
         GameClientSession[] sessionSnapshot = runtime.Sessions.Values.ToList()
             .Where(session =>
                 session.PlayerId is > 0 &&
-                session._player.MapId == Config.SWARM_MATCH_MAP &&
+                session.Player.MapId == Config.SWARM_MATCH_MAP &&
                 session.MatchingId == matchingId)
             .ToArray();
         ImmutableArray<SwarmBotObserverSnapshot> observers =
