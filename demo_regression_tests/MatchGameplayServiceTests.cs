@@ -11,6 +11,43 @@ namespace demo_regression_tests;
 public sealed class MatchGameplayServiceTests
 {
     [Theory]
+    [InlineData(101)]
+    [InlineData(-101)]
+    public void PeriodicBuffsHealAndEliminateParticipantsWithoutConnections(long playerId)
+    {
+        using var provider = GameServerDependencyInjectionTests.CreateProvider();
+        var service = provider.GetRequiredService<MatchCombatService>();
+        var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947800);
+        var player = new game_server.players.Player
+        {
+            Profile = new PlayerInfo { PlayerId = playerId }, Health = 10
+        };
+        var survivor = new game_server.players.Player { Profile = new PlayerInfo { PlayerId = 202 } };
+        var now = DateTime.UtcNow;
+        using (match.Enter())
+        {
+            match.RegisterParticipant(player);
+            match.RegisterParticipant(survivor);
+            Assert.Empty(match.GetSessions());
+            player.AddPeriodicBuff(network.common.BuffSubType.HEALTH_ADD, 3, 1, 1, now);
+            service.ProcessPeriodicBuffs(match, [player, survivor], now.AddMilliseconds(999));
+            Assert.Equal(10, player.Health);
+            service.ProcessPeriodicBuffs(match, [player, survivor], now.AddSeconds(1));
+            Assert.Equal(13, player.Health);
+            Assert.Equal(3,
+                provider.GetRequiredService<game_server.logging.GameEventLogManager>()
+                    .GetResultStats(match.MatchingId, playerId).TotalRecovery);
+
+            player.AddPeriodicBuff(network.common.BuffSubType.HEALTH_DOWN, 20, 1, 10, now.AddSeconds(1));
+            service.ProcessPeriodicBuffs(match, [player, survivor], now.AddSeconds(2));
+            Assert.Equal(0, player.Health);
+            Assert.True(player.IsEliminated);
+            Assert.Equal(0, TestGameSessionServices.GetPeriodicBuffCount(player));
+            Assert.True(match.IsEnded);
+        }
+    }
+
+    [Theory]
     [InlineData(12)]
     [InlineData(-12)]
     public void BotSleepChecksParticipantsWithoutSessionsAndIgnoresEliminatedPlayers(long enemyId)

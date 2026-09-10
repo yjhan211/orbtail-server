@@ -41,6 +41,7 @@ internal class MatchCombatService(
     ILogger<MatchCombatService> logger)
 {
     // 매치 루프마다 생성되는 서비스의 상태. 해당 매치 잠금 안에서만 접근한다.
+    private readonly PlayerHealthChangeService _healthChanges = new(eventLogs, playerEliminations, logger);
     private string? OrbRankingsSignature;
     private bool _timeoutResultProcessed;
     private DateTime? _fallbackStartedAtUtc;
@@ -203,7 +204,7 @@ internal class MatchCombatService(
         aliveSessions.RemoveAll(session => session.Player.IsEliminated);
         aliveBots.RemoveAll(bot => bot.Player.IsEliminated);
         botDecisions.UpdateSleep(matchRuntimes.GetOrThrow(matchingId), aliveBots, nowUtc);
-        ProcessPeriodicBuffs(matchingId, aliveSessions, nowUtc);
+        ProcessPeriodicBuffs(matchRuntimes.GetOrThrow(matchingId), players, nowUtc);
         if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
             return;
         players.RemoveAll(player => player.IsEliminated);
@@ -476,34 +477,35 @@ internal class MatchCombatService(
 
 
     /// <summary>매치 잠금 안에서 플레이어별 버프 실행 시각을 확인하고 체력 변경을 적용한다.</summary>
-    private void ProcessPeriodicBuffs(long matchingId, List<GameClientSession> sessions, DateTime nowUtc)
+    internal void ProcessPeriodicBuffs(MatchRuntime match, IReadOnlyList<Player> players, DateTime nowUtc)
     {
-        foreach (var session in sessions)
+        foreach (var player in players)
         {
-            if (IsMatchTerminal(matchingId)) return;
-            if (session.Player.IsEliminated || session.IsGameEnded || !session.IsAcceptingMessages)
+            if (match.IsEnded) return;
+            if (player.IsEliminated)
             {
-                session.Player.ClearPeriodicBuffs();
+                player.ClearPeriodicBuffs();
                 continue;
             }
 
             try
             {
-                session.Player.UpdatePeriodicBuffs(nowUtc, Config.MAX_HEALTH, health =>
+                player.UpdatePeriodicBuffs(nowUtc, Config.MAX_HEALTH, health =>
                 {
-                    session.HealthChanges.Handle(session.Match, session.Player, session.Player.ChangeHealth(health, Config.MAX_HEALTH));
-                    if (session.Player.IsEliminated || session.IsGameEnded || IsMatchTerminal(matchingId))
-                        session.Player.ClearPeriodicBuffs();
+                    _healthChanges.Handle(match, player, player.ChangeHealth(health, Config.MAX_HEALTH));
+                    if (player.IsEliminated || match.IsEnded)
+                        player.ClearPeriodicBuffs();
                 });
             }
             catch (Exception ex)
             {
-                session.Player.ClearPeriodicBuffs();
+                player.ClearPeriodicBuffs();
                 logger.LogWarning(ex, "Periodic buff processing failed: MatchingId={MatchingId}, PlayerId={PlayerId}",
-                    matchingId, session.PlayerId);
+                    match.MatchingId, player.PlayerId);
             }
         }
     }
+
     /// <summary>생존 플레이어의 수면 회복을 갱신한다.</summary>
     internal static void ProcessSleepRecovery(long matchingId,
         IEnumerable<Player> players, DateTime nowUtc, GameEventLogManager eventLogs, ILogger logger)

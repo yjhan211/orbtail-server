@@ -17,7 +17,11 @@ public sealed class MatchEnvironmentServiceTests
     [InlineData(-1, 2)]
     public void Process_SettlesHumanAndBotWithoutSessionsUsingPreDamageHealth(long firstId, long secondId)
     {
-        TestGameData.EnsureBattleItemCombatLoaded();
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null && !Directory.Exists(Path.Combine(directory.FullName, "network", "Common", "csv")))
+            directory = directory.Parent;
+        network.common.data.helpers.GameDataHelper.SetBasePath(Path.Combine(directory!.FullName, "network"));
+        network.common.data.helpers.GameDataHelper.Initialize();
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var store = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
             .GetRequiredService<MatchRuntimeStore>(provider);
