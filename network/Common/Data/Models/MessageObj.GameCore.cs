@@ -233,7 +233,7 @@ namespace network.common.data.models
     }
 
     /// <summary>
-    ///     오브 강화 요청. Action 1 = 계열 내 오브 강화, TargetItemUid = OrbColor 값 —
+    ///     오브 강화 요청. Action 1 = 같은 OrbGroupId의 오브 강화, TargetItemId = 계열을 선택하는 오브 아이템 ID —
     ///     그 계열에서 몸체에 가장 가까운 T3 미만 오브 하나가 한 티어 오른다 (2026-08-18, 구 계열 일괄 강화).
     ///     서버 권위 — 강화할 오브 없음·소환석 부족이면 거절.
     /// </summary>
@@ -241,8 +241,7 @@ namespace network.common.data.models
     public class C_TO_G_UPGRADE_ORB : IMessagePackObject
     {
         [Key("action")] public int Action { get; set; }
-        [Key("targetUid")] public long TargetItemUid { get; set; }
-        [Key("secondUid")] public long SecondItemUid { get; set; }
+        [Key("targetItemId")] public int TargetItemId { get; set; }
     }
 
     /// <summary>
@@ -255,7 +254,7 @@ namespace network.common.data.models
         [Key("action")] public int Action { get; set; }
         [Key("success")] public bool Success { get; set; }
         [Key("resultItemId")] public int ResultItemId { get; set; }
-        [Key("targetUid")] public long TargetItemUid { get; set; }
+        [Key("targetItemId")] public int TargetItemId { get; set; }
         [Key("stones")] public int StoneCount { get; set; }
         [Key("ordinal")] public int TargetOrdinal { get; set; } = -1;
     }

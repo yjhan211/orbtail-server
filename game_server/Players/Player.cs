@@ -23,6 +23,8 @@ public class Player
     private float? _orbOrbitPhaseDegrees;
     private Vector3f? _orbOrbitLastPosition;
 
+    private readonly Dictionary<int, int> _orbUpgradeCounts = new();
+
     private long _lastMoveProcessedTimestamp;
     private long _lastMoveResponseTimestamp;
 
@@ -149,6 +151,16 @@ public class Player
         Position = movement.Position;
         Velocity = movement.Velocity;
         Rotation = rotation;
+    }
+
+    public int GetOrbUpgradeCount(int orbGroupId) =>
+        _orbUpgradeCounts.GetValueOrDefault(orbGroupId);
+
+    public int IncrementOrbUpgradeCount(int orbGroupId)
+    {
+        int count = GetOrbUpgradeCount(orbGroupId) + 1;
+        _orbUpgradeCounts[orbGroupId] = count;
+        return count;
     }
 
     public HealthChange ApplyDamage(int damage)

@@ -133,7 +133,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("aliveSessions", arenaTick);
         Assert.Contains("runtime.GetAlivePlayers()", arenaTick);
         Assert.Contains("runtime.IsEnded", arenaTick);
-        Assert.DoesNotContain("GrantStartingResources", arenaTick);
+        Assert.DoesNotContain("GrantStartingSummonStones", arenaTick);
         Assert.DoesNotContain("StartingOrbGrantedPlayers", arenaTick);
         string inactiveGameplayBranch = MaskCommentsAndLiterals(
             ReadBracedBlockAfterMarker(
@@ -163,7 +163,7 @@ public sealed class SwarmArenaTickOrderTests
             "orbRecovery.Process(",
             "orbVisuals.Publish(",
             "BroadcastSwarmOrbRankings(",
-            "growth.ProcessBotOrbGrowth(",
+            "botDecisions.ProcessBotOrbGrowth(",
             "ProcessSwarmScoreTimeout(",
             "ProcessPendingMonsterHits(",
             "ProcessSwarmCrossfires(",
@@ -252,11 +252,11 @@ public sealed class SwarmArenaTickOrderTests
     public void GrowthFlow_OnlyBotsChooseSummonOrUpgrade()
     {
         string root = FindRepositoryRoot();
-        string source = ReadNormalizedSource(root, "game_server", "Players", "PlayerOrbGrowthService.cs");
+        string source = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotDecisionService.cs");
         string tickBody = ReadMethodSlice(
             source,
             "public void ProcessBotOrbGrowth(",
-            "public int GetTopOrbCount(");
+            "public void ProcessSwarmBotDoorUnlocks(");
         Assert.DoesNotContain("public void HandlePick(", source);
 
         AssertInOrder(
@@ -383,7 +383,8 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("_swarmWindWoundsUntilUtc", crossfire);
         Assert.DoesNotContain("_swarmFamilyUpgradeCounts", orbBoard);
         Assert.Contains("matchRuntimes.GetOrThrow(matchingId).WindOrbAttacks", windBlade);
-        Assert.Contains("matchRuntimes.GetOrThrow(matchingId).OrbUpgrades", orbBoard);
+        Assert.Contains("player.GetOrbUpgradeCount(orbGroupId)", orbBoard);
+        Assert.DoesNotContain("MatchRuntimeStore", orbBoard);
     }
 
     [Fact]

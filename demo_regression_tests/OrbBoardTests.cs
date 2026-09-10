@@ -51,20 +51,29 @@ public sealed class OrbBoardTests
     }
 
     [Theory]
-    [InlineData(107000010, OrbColor.Red, 1)]
-    [InlineData(107000011, OrbColor.Red, 2)]
-    [InlineData(107000012, OrbColor.Red, 3)]
-    [InlineData(107000020, OrbColor.Green, 1)]
-    [InlineData(107000021, OrbColor.Green, 2)]
-    [InlineData(107000022, OrbColor.Green, 3)]
-    [InlineData(107000030, OrbColor.Blue, 1)]
-    [InlineData(107000031, OrbColor.Blue, 2)]
-    [InlineData(107000032, OrbColor.Blue, 3)]
-    public void ColoredOrbIdsMapToStableColorAndTier(int itemId, OrbColor expectedColor, int expectedTier)
+    [InlineData(107000010, 10700001, OrbColor.Red, 1)]
+    [InlineData(107000011, 10700001, OrbColor.Red, 2)]
+    [InlineData(107000012, 10700001, OrbColor.Red, 3)]
+    [InlineData(107000020, 10700002, OrbColor.Green, 1)]
+    [InlineData(107000021, 10700002, OrbColor.Green, 2)]
+    [InlineData(107000022, 10700002, OrbColor.Green, 3)]
+    [InlineData(107000030, 10700003, OrbColor.Blue, 1)]
+    [InlineData(107000031, 10700003, OrbColor.Blue, 2)]
+    [InlineData(107000032, 10700003, OrbColor.Blue, 3)]
+    public void ColoredOrbIdsMapToStableGroupColorAndTier(
+        int itemId,
+        int expectedGroupId,
+        OrbColor expectedColor,
+        int expectedTier)
     {
         Assert.True(OrbData.TryGetColorAndTier(itemId, out var color, out int tier));
+        Assert.True(OrbData.TryGetOrbGroupAndTier(itemId, out int groupId, out int groupTier));
+        Assert.True(OrbData.TryGetOrbItemId(groupId, groupTier, out int roundTripItemId));
+        Assert.Equal(expectedGroupId, groupId);
         Assert.Equal(expectedColor, color);
         Assert.Equal(expectedTier, tier);
+        Assert.Equal(expectedTier, groupTier);
+        Assert.Equal(itemId, roundTripItemId);
     }
     [Theory]
     [InlineData(107000040, 1, 5)]

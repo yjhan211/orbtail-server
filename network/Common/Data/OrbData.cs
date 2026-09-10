@@ -245,6 +245,39 @@ namespace network.common.data
             return true;
         }
 
+        public static int GetOrbGroupId(int itemId) => itemId / 10;
+
+        public static bool TryGetOrbGroupAndTier(int itemId, out int orbGroupId, out int tier)
+        {
+            if (!TryGetColorAndTier(itemId, out _, out tier))
+            {
+                orbGroupId = 0;
+                return false;
+            }
+
+            orbGroupId = GetOrbGroupId(itemId);
+            return true;
+        }
+
+        public static bool TryGetOrbItemId(int orbGroupId, int tier, out int itemId)
+        {
+            itemId = 0;
+            if (orbGroupId <= 0 || tier is < 1 or > 3)
+            {
+                return false;
+            }
+
+            int candidateItemId = checked(orbGroupId * 10 + tier - 1);
+            if (!TryGetOrbGroupAndTier(candidateItemId, out int candidateGroupId, out int candidateTier) ||
+                candidateGroupId != orbGroupId || candidateTier != tier)
+            {
+                return false;
+            }
+
+            itemId = candidateItemId;
+            return true;
+        }
+
         public static bool IsOrbItem(int itemId) => TryGetColorAndTier(itemId, out _, out _);
 
         public static OrbAttackPattern GetAttackPattern(int itemId)

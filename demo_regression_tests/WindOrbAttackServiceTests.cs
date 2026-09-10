@@ -1,3 +1,4 @@
+using game_server.players;
 using game_server.players.bots;
 using game_server.logging;
 using game_server.orbs;
@@ -19,7 +20,7 @@ public sealed class WindOrbAttackServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947501);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var trails = new OrbTrailService(store);
+        var trails = new PlayerOrbTrailService(store);
         var service = new WindOrbAttackService(store, TestGameSessionServices.CreateHealthService(store, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), trails, logs);
         var now = DateTime.UtcNow;
         var owner = new BotPlayerState { PlayerId = 11 };
@@ -60,7 +61,7 @@ public sealed class WindOrbAttackServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947502);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var trails = new OrbTrailService(store);
+        var trails = new PlayerOrbTrailService(store);
         var service = new WindOrbAttackService(store, TestGameSessionServices.CreateHealthService(store, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), trails, logs);
         using (MatchRuntimeStore.Enter(match))
         {

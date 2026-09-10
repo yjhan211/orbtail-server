@@ -125,7 +125,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             using (runtime.Enter())
             {
                 runtime.SummonStones.AddStones(FirstPlayerId, 100);
-                session.SendOrbUpgradeInfo(fixture.Server.GetOrbGrowth().GetOrbUpgradeInfo(FirstMatchingId, FirstPlayerId));
+                session.SendOrbUpgradeInfo(fixture.Server.GetOrbGrowth().GetOrbUpgradeInfo(fixture.Runtime(FirstMatchingId), session.Player));
             }
             var empty = connection.DeserializeSingle<G_TO_C_ORB_UPGRADE_INFO>(Protocol.G_TO_C_ORB_UPGRADE_INFO);
             Assert.Equal(0, empty.SunCost + empty.WindCost + empty.WaveCost);
@@ -148,7 +148,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             connection.ClearPackets();
 
             await SendAsync(session, Protocol.C_TO_G_UPGRADE_ORB,
-                new C_TO_G_UPGRADE_ORB { Action = Config.ORB_UPGRADE_FAMILY, TargetItemUid = (long)color });
+                new C_TO_G_UPGRADE_ORB { Action = Config.ORB_UPGRADE_GROUP, TargetItemId = summon.SummonedItemId });
             var upgrade = connection.DeserializeSingle<G_TO_C_UPGRADE_ORB_RESULT>(Protocol.G_TO_C_UPGRADE_ORB_RESULT);
             Assert.True(upgrade.Success);
             Assert.True(OrbData.TryGetColorAndTier(upgrade.ResultItemId, out var upgradedColor, out int upgradedTier));
@@ -172,12 +172,12 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             runtime.Inventory.TryAddItemWithCapacity(FirstPlayerId, 107000010, Config.SWARM_ORB_CAPACITY, out _);
             runtime.SummonStones.AddStones(FirstPlayerId, 20);
             var before = runtime.SummonStones.GetSnapshot(FirstPlayerId);
-            var info = fixture.Server.GetOrbGrowth().GetOrbUpgradeInfo(FirstMatchingId, FirstPlayerId);
+            var info = fixture.Server.GetOrbGrowth().GetOrbUpgradeInfo(fixture.Runtime(FirstMatchingId), session.Player);
             Assert.True(info.SunCost > 0);
             Assert.Equal(0, info.WindCost);
             Assert.Equal(0, info.WaveCost);
             Assert.Equal(before, runtime.SummonStones.GetSnapshot(FirstPlayerId));
-            Assert.Equal(0, runtime.OrbUpgrades.GetFamilyUpgradeCount(FirstPlayerId, OrbColor.Red));
+            Assert.Equal(0, runtime.GetParticipant(FirstPlayerId)!.GetOrbUpgradeCount(10700001));
             Assert.Empty(fixture.ConnectionFor(session).DeliveredProtocols);
         }
     }
@@ -333,6 +333,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         RecordingTcpConnection connection = fixture.ConnectionFor(session);
         Assert.True(OrbData.TryGetItemId(color, 1, out int originalItemId));
+        int orbGroupId = OrbData.GetOrbGroupId(originalItemId);
         Assert.True(fixture.Store.GetOrThrow(FirstMatchingId).Inventory.TryAddItemWithCapacity(
             FirstPlayerId,
             originalItemId,
@@ -347,8 +348,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             new C_TO_G_UPGRADE_ORB
             {
                 Action = 999,
-                TargetItemUid = (long)color,
-                SecondItemUid = 123
+                TargetItemId = originalItemId,
             });
 
         Assert.Equal([Protocol.G_TO_C_UPGRADE_ORB_RESULT], connection.DeliveredProtocols);
@@ -358,14 +358,12 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(999, invalid.Action);
         Assert.False(invalid.Success);
         Assert.Equal(0, invalid.ResultItemId);
-        Assert.Equal((long)color, invalid.TargetItemUid);
+        Assert.Equal(originalItemId, invalid.TargetItemId);
         Assert.Equal(20, invalid.StoneCount);
         Assert.Equal(-1, invalid.TargetOrdinal);
         Assert.Equal(originalItemId, Assert.Single(
             fixture.Store.GetOrThrow(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId)).ItemId);
-        Assert.Equal(0, fixture.Runtime(FirstMatchingId).OrbUpgrades.GetFamilyUpgradeCount(
-            FirstPlayerId,
-            color));
+        Assert.Equal(0, fixture.Runtime(FirstMatchingId).GetParticipant(FirstPlayerId)!.GetOrbUpgradeCount(orbGroupId));
 
         connection.ClearPackets();
         int upgradeCost = Math.Min(
@@ -377,9 +375,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Protocol.C_TO_G_UPGRADE_ORB,
             new C_TO_G_UPGRADE_ORB
             {
-                Action = Config.ORB_UPGRADE_FAMILY,
-                TargetItemUid = (long)color,
-                SecondItemUid = 0
+                Action = Config.ORB_UPGRADE_GROUP,
+                TargetItemId = originalItemId,
             });
 
         Assert.Equal(
@@ -396,17 +393,15 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(
             20 - upgradeCost,
             fixture.Store.GetOrThrow(FirstMatchingId).SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
-        Assert.Equal(1, fixture.Runtime(FirstMatchingId).OrbUpgrades.GetFamilyUpgradeCount(
-            FirstPlayerId,
-            color));
+        Assert.Equal(1, fixture.Runtime(FirstMatchingId).GetParticipant(FirstPlayerId)!.GetOrbUpgradeCount(orbGroupId));
 
         G_TO_C_UPGRADE_ORB_RESULT success =
             connection.DeserializeSingle<G_TO_C_UPGRADE_ORB_RESULT>(
                 Protocol.G_TO_C_UPGRADE_ORB_RESULT);
-        Assert.Equal(Config.ORB_UPGRADE_FAMILY, success.Action);
+        Assert.Equal(Config.ORB_UPGRADE_GROUP, success.Action);
         Assert.True(success.Success);
         Assert.Equal(upgradedItemId, success.ResultItemId);
-        Assert.Equal((long)color, success.TargetItemUid);
+        Assert.Equal(originalItemId, success.TargetItemId);
         Assert.Equal(20 - upgradeCost, success.StoneCount);
         Assert.Equal(0, success.TargetOrdinal);
         Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(FirstMatchingId)!.MatchLock));
@@ -434,8 +429,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Task message = Task.Run(() => SendAsync(session, Protocol.C_TO_G_UPGRADE_ORB,
             new C_TO_G_UPGRADE_ORB
             {
-                Action = Config.ORB_UPGRADE_FAMILY,
-                TargetItemUid = (long)OrbColor.Red
+                Action = Config.ORB_UPGRADE_GROUP,
+                TargetItemId = 107000010
             }));
         await Task.Delay(100);
         Assert.False(message.IsCompleted);
@@ -476,8 +471,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Protocol.C_TO_G_UPGRADE_ORB,
             new C_TO_G_UPGRADE_ORB
             {
-                Action = Config.ORB_UPGRADE_FAMILY,
-                TargetItemUid = (long)OrbColor.Red
+                Action = Config.ORB_UPGRADE_GROUP,
+                TargetItemId = 107000010
             });
 
         Assert.Equal(
@@ -501,9 +496,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(
             20 - upgradeCost,
             fixture.Store.GetOrThrow(FirstMatchingId).SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
-        Assert.Equal(1, fixture.Runtime(FirstMatchingId).OrbUpgrades.GetFamilyUpgradeCount(
-            FirstPlayerId,
-            OrbColor.Red));
+        Assert.Equal(1, fixture.Runtime(FirstMatchingId).GetParticipant(FirstPlayerId)!.GetOrbUpgradeCount(10700001));
         Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(FirstMatchingId)!.MatchLock));
 
         // 실패한 핸들러가 잠금을 풀었으므로 종료 정리가 바로 진행된다.
@@ -528,17 +521,17 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         {
             Assert.Equal(upgradedItemId, Assert.Single(runtime.Inventory.GetAllItems(FirstPlayerId)).ItemId);
             Assert.Equal(20 - cost, runtime.SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
-            Assert.Equal(1, runtime.OrbUpgrades.GetFamilyUpgradeCount(FirstPlayerId, OrbColor.Red));
+            Assert.Equal(1, runtime.GetParticipant(FirstPlayerId)!.GetOrbUpgradeCount(10700001));
         };
         await SendAsync(session, Protocol.C_TO_G_UPGRADE_ORB,
-            new C_TO_G_UPGRADE_ORB { Action = Config.ORB_UPGRADE_FAMILY, TargetItemUid = (long)OrbColor.Red });
+            new C_TO_G_UPGRADE_ORB { Action = Config.ORB_UPGRADE_GROUP, TargetItemId = 107000010 });
         var result = connection.DeserializeSingle<G_TO_C_UPGRADE_ORB_RESULT>(Protocol.G_TO_C_UPGRADE_ORB_RESULT);
         Assert.True(result.Success);
         Assert.Equal(upgradedItemId, result.ResultItemId);
         Assert.Equal(0, result.TargetOrdinal);
         Assert.Equal(20 - cost, result.StoneCount);
-        Assert.Equal((long)OrbColor.Red, result.TargetItemUid);
-        Assert.Equal(Config.ORB_UPGRADE_FAMILY, result.Action);
+        Assert.Equal(107000010, result.TargetItemId);
+        Assert.Equal(Config.ORB_UPGRADE_GROUP, result.Action);
     }
 
     [Fact]
@@ -557,11 +550,11 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Config.SWARM_ORB_CAPACITY, out _));
         runtime.SummonStones.AddStones(FirstPlayerId, 20);
         await SendAsync(session, Protocol.C_TO_G_UPGRADE_ORB,
-            new C_TO_G_UPGRADE_ORB { Action = Config.ORB_UPGRADE_FAMILY, TargetItemUid = (long)OrbColor.Red });
+            new C_TO_G_UPGRADE_ORB { Action = Config.ORB_UPGRADE_GROUP, TargetItemId = 107000010 });
         Assert.True(logAttempted);
         Assert.Equal([Protocol.G_TO_C_ERROR], fixture.ConnectionFor(session).DeliveredProtocols);
         // 기록 실패 전 적용된 강화는 되돌리지 않는다. 성공 응답은 보내지 않고 잠금은 해제한다.
-        Assert.Equal(1, runtime.OrbUpgrades.GetFamilyUpgradeCount(FirstPlayerId, OrbColor.Red));
+        Assert.Equal(1, runtime.GetParticipant(FirstPlayerId)!.GetOrbUpgradeCount(10700001));
         Assert.False(Monitor.IsEntered(runtime.MatchLock));
         fixture.MarkTerminal(FirstMatchingId);
         Assert.Null(fixture.Store.GetOrNull(FirstMatchingId));
@@ -583,7 +576,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         };
         var request = new C_TO_G_UPGRADE_ORB
         {
-            Action = Config.ORB_UPGRADE_FAMILY, TargetItemUid = (long)OrbColor.Red
+            Action = Config.ORB_UPGRADE_GROUP, TargetItemId = 107000010
         };
         Task firstTask = Task.Run(() => SendAsync(first, Protocol.C_TO_G_UPGRADE_ORB, request));
         Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
@@ -614,10 +607,10 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         }
         var firstRuntime = first.Match;
         var secondRuntime = second.Match;
-        var request = new C_TO_G_UPGRADE_ORB { Action = Config.ORB_UPGRADE_FAMILY, TargetItemUid = (long)OrbColor.Red };
+        var request = new C_TO_G_UPGRADE_ORB { Action = Config.ORB_UPGRADE_GROUP, TargetItemId = 107000010 };
         await SendAsync(first, Protocol.C_TO_G_UPGRADE_ORB, request);
-        Assert.Equal(1, firstRuntime.OrbUpgrades.GetFamilyUpgradeCount(FirstPlayerId, OrbColor.Red));
-        Assert.Equal(0, secondRuntime.OrbUpgrades.GetFamilyUpgradeCount(SecondPlayerId, OrbColor.Red));
+        Assert.Equal(1, firstRuntime.GetParticipant(FirstPlayerId)!.GetOrbUpgradeCount(10700001));
+        Assert.Equal(0, secondRuntime.GetParticipant(SecondPlayerId)!.GetOrbUpgradeCount(10700001));
         await SendAsync(second, Protocol.C_TO_G_UPGRADE_ORB, request);
         int firstPacketCount = fixture.ConnectionFor(first).DeliveredProtocols.Count;
         int secondPacketCount = fixture.ConnectionFor(second).DeliveredProtocols.Count;
@@ -631,8 +624,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         fixture.SetPlayerMatchStatus(second, PlayerMatchStatus.ELIMINATED);
         await SendAsync(first, Protocol.C_TO_G_UPGRADE_ORB, request);
         await SendAsync(second, Protocol.C_TO_G_UPGRADE_ORB, request);
-        Assert.Equal(1, firstRuntime.OrbUpgrades.GetFamilyUpgradeCount(FirstPlayerId, OrbColor.Red));
-        Assert.Equal(1, secondRuntime.OrbUpgrades.GetFamilyUpgradeCount(SecondPlayerId, OrbColor.Red));
+        Assert.Equal(1, firstRuntime.GetParticipant(FirstPlayerId)!.GetOrbUpgradeCount(10700001));
+        Assert.Equal(1, secondRuntime.GetParticipant(SecondPlayerId)!.GetOrbUpgradeCount(10700001));
         Assert.Equal(firstPacketCount, fixture.ConnectionFor(first).DeliveredProtocols.Count);
         Assert.Equal(secondPacketCount, fixture.ConnectionFor(second).DeliveredProtocols.Count);
     }
@@ -651,7 +644,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         string orbBoard = ReadNormalizedSource(root, "game_server", "Players", "PlayerOrbGrowthService.cs");
 
         Assert.Contains("PlayerOrbGrowthService _orbGrowth", session);
-        Assert.Contains("_orbGrowth.HandleUpgradeOrb(", orbSummon);
+        Assert.Contains("_orbGrowth.UpgradeOrb(", orbSummon);
         Assert.DoesNotContain("SwarmGrowthPickCallback", session);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
         Assert.DoesNotContain("SwarmGrowthPickCallback", combat);

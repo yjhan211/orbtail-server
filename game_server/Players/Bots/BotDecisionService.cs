@@ -16,7 +16,7 @@ using network.packets;
 namespace game_server.players.bots;
 
 /// <summary>
-///     봇의 대피·추격·아이템 회수·문 열기·회복과 절단 가능 여부를 판단한다.
+///     봇의 대피·추격·아이템 회수·문 열기·회복·오브 성장과 절단 가능 여부를 판단한다.
 ///     기억과 재사용 대기 시간은 매치가 소유하며 호출자는 매치 잠금을 보유한다.
 ///     이동 지시의 실제 실행은 BotMovementService가 맡는다.
 /// </summary>
@@ -24,9 +24,75 @@ internal sealed class BotDecisionService(
     MatchRuntimeStore matchRuntimes,
     GameEventLogManager eventLogs,
     PlayerOrbGrowthService growth,
-    OrbTrailService orbTrails,
+    PlayerOrbTrailService orbTrails,
     ILogger<BotDecisionService> logger)
 {
+    private bool TryUpgradeForBot(long matchingId, long playerId)
+    {
+        var runtime = matchRuntimes.GetOrThrow(matchingId);
+        var player = runtime.GetParticipant(playerId)!;
+        var orbGroupIds = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs()
+            .Select(item => OrbData.TryGetOrbGroupAndTier(item.ItemId, out int orbGroupId, out _)
+                ? orbGroupId
+                : 0)
+            .Where(orbGroupId => orbGroupId != 0)
+            .ToList();
+
+        int preferredGroupId = orbGroupIds
+            .GroupBy(orbGroupId => orbGroupId)
+            .OrderByDescending(group => group.Count())
+            .Select(group => group.Key)
+            .FirstOrDefault();
+        if (preferredGroupId == 0)
+        {
+            return false;
+        }
+
+        if (growth.GetUpgradeCost(runtime, player, preferredGroupId) <= 0)
+        {
+            preferredGroupId = orbGroupIds.Distinct().FirstOrDefault(orbGroupId => growth.GetUpgradeCost(runtime, player, orbGroupId) > 0);
+            if (preferredGroupId == 0)
+            {
+                return false;
+            }
+        }
+
+        if (!OrbData.TryGetOrbItemId(preferredGroupId, 1, out int targetItemId))
+        {
+            return false;
+        }
+        return growth.UpgradeOrb(runtime, player, Config.ORB_UPGRADE_GROUP, targetItemId).Success;
+    }
+
+    public void ProcessBotOrbGrowth(long matchingId, IReadOnlyList<BotPlayerState> aliveBots)
+    {
+        var match = matchRuntimes.GetOrThrow(matchingId);
+        foreach (var bot in aliveBots)
+        {
+            if (bot.Player.IsEliminated)
+            {
+                continue;
+            }
+
+            if (match.SummonStones.GetSnapshot(bot.PlayerId).StoneCount < growth.GetNextOrbGrowthCost(match, bot.Player))
+            {
+                continue;
+            }
+            int orbCount = match.Inventory.GetOrbScore(bot.PlayerId).OrbCount;
+            bool preferUpgrade = orbCount >= Config.SWARM_ORB_CAPACITY || (orbCount >= 4 && Random.Shared.Next(3) == 0);
+            if (preferUpgrade && TryUpgradeForBot(matchingId, bot.PlayerId))
+            {
+                continue;
+            }
+
+            if (orbCount < Config.SWARM_ORB_CAPACITY && growth.Summon(match, bot.Player).Success)
+            {
+                continue;
+            }
+            TryUpgradeForBot(matchingId, bot.PlayerId);
+        }
+    }
+
     // 봇은 매치 참가자다. 각 처리 단계의 호출 순서는 MatchCombatService가 정한다.
 
     // 봇 문 잠금해제 (#229). 사람과 같은 규칙을 봇에도 건다 — 봇만 잠긴 문을 통과하면
@@ -528,7 +594,7 @@ internal sealed class BotDecisionService(
         //      찾아가는 공유 자원이고, 미니맵 스냅샷으로 사람에게도 같은 정보가 보인다.
 
         if (matchRuntimes.GetOrThrow(matchingId).SummonStones.GetSnapshot(botPlayerId).StoneCount <
-            growth.GetNextOrbGrowthCost(matchingId, botPlayerId) &&
+            growth.GetNextOrbGrowthCost(matchRuntimes.GetOrThrow(matchingId), bot.Player) &&
             hasSquadOrbs)
         {
             if (TryFindNearestSwarmSupplyMonster(matchingId, bot, out var supplyArea,
@@ -842,7 +908,7 @@ internal sealed class BotDecisionService(
     private bool IsSwarmOrbLeader(long matchingId, long playerId)
     {
         int myOrbCount = matchRuntimes.GetOrThrow(matchingId).Inventory.GetOrbScore(playerId).OrbCount;
-        return myOrbCount > 0 && myOrbCount >= growth.GetTopOrbCount(matchingId);
+        return myOrbCount > 0 && myOrbCount >= growth.GetTopOrbCount(matchRuntimes.GetOrThrow(matchingId));
     }
 
     /// <summary>참가자(사람·봇) 위치 조회 — 피격 반응의 도주 기준점.</summary>

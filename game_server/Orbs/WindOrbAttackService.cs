@@ -21,7 +21,7 @@ namespace game_server.orbs;
 internal sealed class WindOrbAttackService(
     MatchRuntimeStore matchRuntimes,
     PlayerHealthService healthService,
-    OrbTrailService orbTrails,
+    PlayerOrbTrailService orbTrails,
     GameEventLogManager eventLogs)
 {
     // 몸통 여유 — 교차사격과 같은 값.

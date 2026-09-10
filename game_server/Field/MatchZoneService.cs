@@ -1,3 +1,4 @@
+using game_server.players;
 using game_server.matches;
 using game_server.combat;
 using game_server.logging;
@@ -22,7 +23,7 @@ namespace game_server.field;
 internal class MatchZoneService(
     MatchRuntimeStore matchRuntimes,
     GameEventLogManager eventLogs,
-    OrbTrailService orbTrails,
+    PlayerOrbTrailService orbTrails,
     ILogger<MatchZoneService> logger)
 {
     private bool _initialFieldStateSent;
@@ -364,8 +365,8 @@ internal class MatchZoneService(
                 playerId,
                 suffixPosition.X,
                 suffixPosition.Y,
-                OrbTrailService.CutFlashRadius,
-                OrbTrailService.CutVfxKind,
+                PlayerOrbTrailService.CutFlashRadius,
+                PlayerOrbTrailService.CutVfxKind,
                 playerId,
                 suffixStart,
                 ringRecipients.ToImmutable()));

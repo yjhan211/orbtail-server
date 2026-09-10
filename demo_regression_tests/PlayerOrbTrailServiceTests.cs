@@ -1,3 +1,4 @@
+using game_server.players;
 using game_server.orbs;
 using game_server.matches;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -6,9 +7,9 @@ using network.common.data.models;
 
 namespace demo_regression_tests;
 
-public sealed class OrbTrailServiceTests
+public sealed class PlayerOrbTrailServiceTests
 {
-    public OrbTrailServiceTests()
+    public PlayerOrbTrailServiceTests()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory != null && !File.Exists(Path.Combine(directory.FullName, "server.sln")))
@@ -26,7 +27,7 @@ public sealed class OrbTrailServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(947401);
         var second = store.GetOrCreate(947402);
-        var service = new OrbTrailService(store);
+        var service = new PlayerOrbTrailService(store);
         var anchor = new Vector3f(0, 0, 0);
         using (MatchRuntimeStore.Enter(first))
         {
@@ -54,7 +55,7 @@ public sealed class OrbTrailServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947403);
-        var service = new OrbTrailService(store);
+        var service = new PlayerOrbTrailService(store);
         using (MatchRuntimeStore.Enter(match))
         {
             var inventory = match.Inventory.GetPlayerInventory(11);

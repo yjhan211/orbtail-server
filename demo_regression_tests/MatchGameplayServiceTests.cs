@@ -273,10 +273,10 @@ public sealed class MatchGameplayServiceTests
             match.RegisterParticipant(hunter);
             match.RegisterParticipant(prey);
             Assert.True(match.Inventory.TryAddItemWithCapacity(hunter.PlayerId, 107000010, 6, out _));
-            Assert.Equal(1, growth.GetTopOrbCount(match.MatchingId));
+            Assert.Equal(1, growth.GetTopOrbCount(match));
             match.TryEliminatePlayer(prey.PlayerId, network.common.EliminationReason.HEALTH_ZERO);
             match.TryEliminatePlayer(hunter.PlayerId, network.common.EliminationReason.HEALTH_ZERO);
-            Assert.Equal(0, growth.GetTopOrbCount(match.MatchingId));
+            Assert.Equal(0, growth.GetTopOrbCount(match));
         }
     }
 

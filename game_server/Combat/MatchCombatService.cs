@@ -30,10 +30,9 @@ internal class MatchCombatService(
     MatchCleanupService matchCleanup,
     PlayerHealthService healthService,
     MatchResultService matchResults,
-    PlayerOrbGrowthService growth,
     OrbRecoveryService orbRecovery,
     OrbVisualStatePublisher orbVisuals,
-    OrbTrailService orbTrails,
+    PlayerOrbTrailService orbTrails,
     WindOrbAttackService windOrbAttacks,
     SunOrbAttackService sunOrbAttacks,
     MatchZoneService zones,
@@ -213,7 +212,7 @@ internal class MatchCombatService(
         orbVisuals.Publish(matchingId, actors, sessions);
         BroadcastSwarmOrbRankings(matchingId, sessions);
         // 봇은 현재 소환·계열 강화 중 하나에 소환석을 투자한다.
-        growth.ProcessBotOrbGrowth(matchingId, aliveBots);
+        botDecisions.ProcessBotOrbGrowth(matchingId, aliveBots);
         if (ProcessSwarmScoreTimeout(matchingId, nowUtc))
             return;
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.
@@ -559,7 +558,7 @@ internal class MatchCombatService(
     private const float SwarmTrailCutOrbHitRadiusY = 0.42f;
     private const float SwarmTrailCutOrbHitYOffset = 0.15f;
     // 절단 파열 플래시 반경 — 포위 링과 같은 원형을 작게 띄운다.
-    private const float SwarmTrailCutFlashRadius = OrbTrailService.CutFlashRadius;
+    private const float SwarmTrailCutFlashRadius = PlayerOrbTrailService.CutFlashRadius;
 
     // 오브 트레일·절단 래치·반격 창 상태는 matchRuntimes.GetOrThrow(matchingId).TrailCombat (#294 상태 홀더).
 
@@ -1024,7 +1023,7 @@ internal class MatchCombatService(
     // 링 연출 종류: 클라가 색·효과음을 분기한다. 크랙(3)은 링 없이 슬롯 크랙 + 크랙음만 —
     // Radius 필드에 단계(1~4)를 실어 보낸다.
     private const int SwarmRingVfxKindEncircle = 0;
-    private const int SwarmRingVfxKindCut = OrbTrailService.CutVfxKind;
+    private const int SwarmRingVfxKindCut = PlayerOrbTrailService.CutVfxKind;
     private const int OrbRingEffectKindWaveOrb = 2;
     // 반격 보호 (#227 7단계): 5 = 피해자 남은 꼬리의 유리 잔광 개시(Radius에 지속 초),
     // 6 = 그 절단자의 투사체가 잔광 앞에서 깨짐(피해 숫자 없음).

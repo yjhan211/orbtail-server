@@ -140,7 +140,7 @@ internal static class Program
         services.AddSingleton<OrbRecoveryService>();
         services.AddSingleton<GroundItemAutoPickupService>();
         services.AddSingleton<OrbVisualStatePublisher>();
-        services.AddSingleton<OrbTrailService>();
+        services.AddSingleton<PlayerOrbTrailService>();
         services.AddSingleton<WindOrbAttackService>();
         services.AddSingleton<SunOrbAttackService>();
         services.AddTransient<MatchZoneService>();

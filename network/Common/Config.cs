@@ -471,8 +471,8 @@ namespace network.common
         public static int SWARM_STARTING_STONE_GRANT => SwarmConfigData.GetInt("SWARM_STARTING_STONE_GRANT", 5);
 
 
-        /// <summary>결정 패킷 액션 — 클라·서버·로그 공유. TargetItemUid = OrbColor 값.</summary>
-        public const int ORB_UPGRADE_FAMILY = 1;
+        /// <summary>결정 패킷 액션 — 클라·서버·로그 공유. TargetItemId에서 OrbGroupId를 판정.</summary>
+        public const int ORB_UPGRADE_GROUP = 1;
 
     }
 }

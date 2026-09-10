@@ -60,9 +60,9 @@ internal static class GameServerTestAccess
         var logs = runtimes.EventLogs;
         var summaries = new MatchSummaryFileStore();
         var entryFailure = new MatchEntryFailureHandler(runtimes, sessions, lifecycle, logger);
-        var growth = new PlayerOrbGrowthService(runtimes, logs,
+        var growth = new PlayerOrbGrowthService( logs,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<PlayerOrbGrowthService>.Instance);
-        var orbTrails = new OrbTrailService(runtimes);
+        var orbTrails = new PlayerOrbTrailService(runtimes);
         var cleanup = new MatchCleanupService(runtimes, logs, summaries, logger);
         var matchEliminations = TestGameSessionServices.CreateEliminationService(
             runtimes, logs, summaries, logger);
@@ -82,7 +82,7 @@ internal static class GameServerTestAccess
         var field = new MatchZoneService(runtimes, logs, orbTrails,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchZoneService>.Instance);
         var combat = new MatchCombatService(runtimes, logs, cleanup,
-            health, results, growth,
+            health, results,
             new OrbRecoveryService(runtimes, health,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbRecoveryService>.Instance),
             new OrbVisualStatePublisher(runtimes), orbTrails,

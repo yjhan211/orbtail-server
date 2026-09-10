@@ -65,12 +65,12 @@ public partial class GameClientSession
             }
 
             long playerId = PlayerId!.Value;
-            var attempt = _orbGrowth.Summon(match, playerId, Player.CurrentArea);
+            var attempt = _orbGrowth.Summon(match, Player);
 
             if (attempt is { Success: true, AddedItem: not null })
             {
                 SendOrbUpdate(attempt.AddedItem);
-                var upgradeInfo = _orbGrowth.GetOrbUpgradeInfo(MatchingId, playerId);
+                var upgradeInfo = _orbGrowth.GetOrbUpgradeInfo(match, Player);
                 SendOrbUpgradeInfo(upgradeInfo);
             }
 
@@ -121,7 +121,7 @@ public partial class GameClientSession
                 Action = request.Action,
                 Success = false,
                 ResultItemId = 0,
-                TargetItemUid = request.TargetItemUid,
+                TargetItemId = request.TargetItemId,
                 StoneCount = SummonStoneManager.EmptySnapshot.StoneCount,
                 TargetOrdinal = -1
             }));
@@ -139,7 +139,7 @@ public partial class GameClientSession
                     Action = request.Action,
                     Success = false,
                     ResultItemId = 0,
-                    TargetItemUid = request.TargetItemUid,
+                    TargetItemId = request.TargetItemId,
                     StoneCount = match.SummonStones.GetSnapshot(PlayerId.Value).StoneCount,
                     TargetOrdinal = -1
                 }));
@@ -147,17 +147,16 @@ public partial class GameClientSession
                 return Task.CompletedTask;
             }
 
-            var result = _orbGrowth.HandleUpgradeOrb(
+            var result = _orbGrowth.UpgradeOrb(
+                match,
                 Player,
-                matchingId,
                 request.Action,
-                request.TargetItemUid,
-                request.SecondItemUid);
+                request.TargetItemId);
 
             if (result.Success)
             {
                 SendOrbList();
-                SendOrbUpgradeInfo(_orbGrowth.GetOrbUpgradeInfo(matchingId, PlayerId.Value));
+                SendOrbUpgradeInfo(_orbGrowth.GetOrbUpgradeInfo(match, Player));
             }
 
             using var resultPacket = Packet.Create((int)Protocol.G_TO_C_UPGRADE_ORB_RESULT, PlayerId.Value);
@@ -166,7 +165,7 @@ public partial class GameClientSession
                 Action = request.Action,
                 Success = result.Success,
                 ResultItemId = result.ResultItemId,
-                TargetItemUid = request.TargetItemUid,
+                TargetItemId = request.TargetItemId,
                 StoneCount = match.SummonStones.GetSnapshot(PlayerId.Value).StoneCount,
                 TargetOrdinal = result.TargetOrdinal
             }));

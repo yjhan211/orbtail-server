@@ -1,16 +1,15 @@
 using game_server.matches;
-using network.common;
 using network.common.data;
 using network.common.data.models;
 
-namespace game_server.orbs;
+namespace game_server.players;
 
 /// <summary>
 ///     매치의 오브 꼬리 경로에서 좌표를 계산하고 지정 순번 이후의 오브를 삭제한다.
 ///     전투와 구역 폐쇄가 같은 인벤토리 순서·좌표 규칙을 사용한다.
 ///     경로와 인벤토리는 매치가 소유하며 호출자는 매치 잠금을 보유한다.
 /// </summary>
-internal sealed class OrbTrailService(MatchRuntimeStore matchRuntimes)
+internal sealed class PlayerOrbTrailService(MatchRuntimeStore matchRuntimes)
 {
     public int CountSwarmSquadOrbs(long matchingId, long playerId)
     {

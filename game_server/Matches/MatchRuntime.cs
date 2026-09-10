@@ -82,7 +82,6 @@ internal sealed class MatchRuntime
     public TrailCombatState TrailCombat { get; } = new();
     public SunOrbAttackState SunOrbAttacks { get; }
     public WindOrbAttackState WindOrbAttacks { get; } = new();
-    public OrbUpgradeState OrbUpgrades { get; } = new();
 
     // 아이템과 재화
     public InGameInventoryManager Inventory { get; }
@@ -130,7 +129,7 @@ internal sealed class MatchRuntime
         {
             var participant = Bots.GetBot(MatchingId, player.PlayerId)?.Player ?? new Player { Profile = player };
             RegisterParticipant(participant);
-            PlayerOrbGrowthService.GrantStartingResources(this, player.PlayerId);
+            PlayerOrbGrowthService.GrantStartingSummonStones(this, participant);
         }
 
         if (playerRoster.Count > 0 && playerRoster.All(player => player.PlayerId < 0))

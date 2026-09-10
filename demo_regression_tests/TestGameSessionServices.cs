@@ -23,7 +23,7 @@ internal static class TestGameSessionServices
             NullLogger<PlayerHealthService>.Instance);
 
     public static PlayerOrbGrowthService CreatePlayerOrbGrowthService(MatchRuntimeStore store, GameEventLogManager logs) =>
-        new(store, logs, NullLogger<PlayerOrbGrowthService>.Instance);
+        new(logs, NullLogger<PlayerOrbGrowthService>.Instance);
     internal static void StartGameplay(this MatchRuntime runtime)
     {
         typeof(MatchRuntime).GetField("_startsAtUtc", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
