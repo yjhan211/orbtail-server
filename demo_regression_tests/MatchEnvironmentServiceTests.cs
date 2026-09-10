@@ -12,12 +12,56 @@ namespace demo_regression_tests;
 
 public sealed class MatchEnvironmentServiceTests
 {
+    [Theory]
+    [InlineData(1, -2)]
+    [InlineData(-1, 2)]
+    public void Process_SettlesHumanAndBotWithoutSessionsUsingPreDamageHealth(long firstId, long secondId)
+    {
+        TestGameData.EnsureBattleItemCombatLoaded();
+        using var provider = GameServerDependencyInjectionTests.CreateProvider();
+        var store = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetRequiredService<MatchRuntimeStore>(provider);
+        var service = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetRequiredService<MatchEnvironmentService>(provider);
+        var match = store.GetOrCreate(947008);
+        var first = new game_server.players.Player
+        {
+            Profile = new network.common.data.models.PlayerInfo { PlayerId = firstId },
+            Health = 1,
+            Position = new network.common.data.models.Vector3f(10000, 10000, 0)
+        };
+        var second = new game_server.players.Player
+        {
+            Profile = new network.common.data.models.PlayerInfo { PlayerId = secondId },
+            Health = 2,
+            Position = new network.common.data.models.Vector3f(10000, 10000, 0)
+        };
+        using (match.Enter())
+        {
+            match.RegisterParticipant(first);
+            match.RegisterParticipant(second);
+            match.Closures.InitializeMatching().GameStartTime =
+                DateTime.UtcNow.AddSeconds(-network.common.Config.SWARM_MATCH_DURATION_SECONDS - 100);
+            Assert.Empty(match.GetSessions());
+            Assert.True(MatchPressureFieldPolicy.GetDamagePerTick(match, first.Position, DateTime.UtcNow) >= 2);
+
+            service.ProcessTick(match);
+
+            Assert.Equal(0, first.Health);
+            Assert.Equal(0, second.Health);
+            Assert.True(first.IsEliminated);
+            Assert.Equal(2, first.EliminationRank);
+            Assert.False(second.IsEliminated);
+            Assert.True(match.IsEnded);
+        }
+    }
+
     [Fact]
     public void Process_RequiresTheSuppliedMatchLock()
     {
         var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947001);
         var service = CreateService();
-        Assert.Throws<InvalidOperationException>(() => service.ProcessTick(match, []));
+        Assert.Throws<InvalidOperationException>(() => service.ProcessTick(match));
     }
 
     [Fact]
@@ -28,7 +72,7 @@ public sealed class MatchEnvironmentServiceTests
         lock (match.MatchLock)
         {
             match.TryMarkEnded();
-            service.ProcessTick(match, []);
+            service.ProcessTick(match);
             Assert.True(match.IsEnded);
         }
     }
@@ -80,12 +124,13 @@ public sealed class MatchEnvironmentServiceTests
         Assert.NotEmpty(closure.Waves);
         closure.GameStartTime = DateTime.UtcNow.AddSeconds(-network.common.Config.SWARM_MATCH_DURATION_SECONDS - 100);
         var bots = match.Bots.GetBots(match.MatchingId).ToList();
+        foreach (var bot in bots) match.RegisterParticipant(bot.Player);
         var healthBefore = bots.Select(bot => bot.Player.Health).ToArray();
         foreach (var bot in bots)
             Assert.Equal(0, MatchPressureFieldPolicy.GetDamagePerTick(match, bot.Player.Position!, DateTime.UtcNow));
 
         lock (match.MatchLock)
-            CreateService().ProcessTick(match, []);
+            CreateService().ProcessTick(match);
 
         Assert.Equal(healthBefore, bots.Select(bot => bot.Player.Health).ToArray());
         Assert.All(bots, bot => Assert.False(bot.Player.IsEliminated));

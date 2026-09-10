@@ -121,7 +121,7 @@ internal sealed class MatchTickLoop(
             if (currentEnvironmentInterval > _lastEnvironmentInterval)
             {
                 _lastEnvironmentInterval = currentEnvironmentInterval;
-                environment.ProcessTick(runtime, activeSessions);
+                environment.ProcessTick(runtime);
                 if (runtime.IsEnded)
                 {
                     return;

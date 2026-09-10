@@ -126,7 +126,7 @@ internal static class TestMatchTickServices
     private sealed class Environment(Action<MatchRuntime, List<GameClientSession>> run)
         : MatchEnvironmentService(null!, null!, null!, null!, NullLogger<MatchEnvironmentService>.Instance)
     {
-        public override void ProcessTick(MatchRuntime runtime, List<GameClientSession> sessions) => run(runtime, sessions);
+        public override void ProcessTick(MatchRuntime runtime) => run(runtime, runtime.GetSessions());
     }
 
     private sealed class Movement(Action<MatchRuntime> run)

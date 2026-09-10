@@ -1,10 +1,8 @@
 using game_server.players;
 using game_server.matches;
 using game_server;
-using game_server.players.bots;
 using game_server.logging;
 using game_server.matches.results;
-using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common;
 
@@ -24,8 +22,7 @@ internal class MatchEnvironmentService(
 {
     /// <summary>매치의 5초 환경 정산. 50ms 틱이 전투 처리 후 같은 매치 잠금 안에서 호출한다.</summary>
     public virtual void ProcessTick(
-        MatchRuntime match,
-        List<GameClientSession> activeSessions)
+        MatchRuntime match)
     {
         if (!Monitor.IsEntered(match.MatchLock))
             throw new InvalidOperationException("Environmental settlement requires the match lock.");
@@ -34,59 +31,29 @@ internal class MatchEnvironmentService(
 
         long matchingId = match.MatchingId;
 
-        var humans = activeSessions
-            .Where(session =>
-                session.MatchingId == matchingId &&
-                !session.Player.IsEliminated &&
-                !session.IsGameEnded)
-            .ToList();
-        var bots = match.Bots.GetBots(matchingId)
-            .Where(bot => !bot.Player.IsEliminated)
-            .ToList();
-
-        int aliveCount = humans.Count + bots.Count;
+        var players = match.GetAlivePlayers();
+        int aliveCount = players.Count;
         if (aliveCount <= 1)
         {
-
-            if (aliveCount == 1 && humans.Count > 0)
+            if (aliveCount == 1 && players[0].PlayerId > 0)
             {
-                matchResults.FinalizeMatch(matchingId, humans[0].PlayerId ?? 0, MatchEndReason.LastSurvivor);
+                matchResults.FinalizeMatch(matchingId, players[0].PlayerId, MatchEndReason.LastSurvivor);
                 match.AutoAttack.Clear();
                 return;
             }
 
-            if (humans.Count == 0)
-            {
-                long winnerPlayerId = bots.Count == 1 ? bots[0].PlayerId : 0;
-                match.AutoAttack.Clear();
-                matchCleanup.EndBotOnlyMatchIfSettled(matchingId, winnerPlayerId);
-            }
-
+            long winnerPlayerId = aliveCount == 1 ? players[0].PlayerId : 0;
+            match.AutoAttack.Clear();
+            matchCleanup.EndBotOnlyMatchIfSettled(matchingId, winnerPlayerId);
             return;
         }
 
         var targets = new List<EnvironmentalTarget>(aliveCount);
-
-        foreach (var session in humans)
+        var nowUtc = DateTime.UtcNow;
+        foreach (var player in players)
         {
-            int fieldDamage = MatchPressureFieldPolicy.GetDamagePerTick(match, session.Player.Position, DateTime.UtcNow);
-            targets.Add(new EnvironmentalTarget(
-                session.PlayerId!.Value,
-                session.Player.Health,
-                fieldDamage,
-                session,
-                null));
-        }
-
-        foreach (var bot in bots)
-        {
-            int fieldDamage = MatchPressureFieldPolicy.GetDamagePerTick(match, bot.Player.Position!, DateTime.UtcNow);
-            targets.Add(new EnvironmentalTarget(
-                bot.PlayerId,
-                bot.Player.Health,
-                fieldDamage,
-                null,
-                bot));
+            int fieldDamage = MatchPressureFieldPolicy.GetDamagePerTick(match, player.Position, nowUtc);
+            targets.Add(new EnvironmentalTarget(player, player.Health, fieldDamage));
         }
 
         foreach (var target in targets)
@@ -95,7 +62,7 @@ internal class MatchEnvironmentService(
             if (totalDelta == 0)
                 continue;
 
-            var player = target.Session?.Player ?? target.Bot!.Player;
+            var player = target.Player;
             var change = player.ApplyDamage(totalDelta);
             PlayerHealthChangeService.Record(matchingId, player, change, eventLogs, logger);
         }
@@ -110,10 +77,10 @@ internal class MatchEnvironmentService(
             eliminatedTargets.Select(target =>
             {
                 int damage = eventLogs
-                    .GetResultStats(matchingId, target.PlayerId)
+                    .GetResultStats(matchingId, target.Player.PlayerId)
                     .TotalDamageDealt;
                 return new MatchSettlementCandidate(
-                    target.PlayerId,
+                    target.Player.PlayerId,
                     target.PreDamageHealth,
                     damage);
             }));
@@ -140,10 +107,10 @@ internal class MatchEnvironmentService(
         int rank = aliveCount;
         foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())
         {
-            var target = eliminatedTargets.First(entry => entry.PlayerId == candidate.PlayerId);
+            var target = eliminatedTargets.First(entry => entry.Player.PlayerId == candidate.PlayerId);
 
             matchEliminations.EliminatePlayer(
-                matchingId, target.PlayerId, EliminationReason.PRESSURE_FIELD,
+                matchingId, target.Player.PlayerId, EliminationReason.PRESSURE_FIELD,
                 deferGameOver: true,
                 forcedRank: rank);
 
@@ -151,8 +118,7 @@ internal class MatchEnvironmentService(
         }
 
         (bool isGameOver, long? winnerId) = match.CheckGameOver();
-        bool hasActiveSession = match.GetSessions().Any(session => !session.IsGameEnded);
-        if (isGameOver && winnerId.HasValue && hasActiveSession)
+        if (isGameOver && winnerId.HasValue)
         {
             matchResults.FinalizeMatch(matchingId, winnerId.Value, MatchEndReason.PressureFieldSettlement, resolution.DecisiveCriterion);
             match.AutoAttack.Clear();
@@ -160,11 +126,9 @@ internal class MatchEnvironmentService(
     }
 
     private sealed record EnvironmentalTarget(
-        long PlayerId,
+        Player Player,
         int PreDamageHealth,
-        int FieldDamage,
-        GameClientSession? Session,
-        BotPlayerState? Bot);
+        int FieldDamage);
 
     internal readonly record struct MatchSettlementCandidate(
         long PlayerId,

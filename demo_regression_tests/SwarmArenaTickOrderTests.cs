@@ -79,7 +79,7 @@ public sealed class SwarmArenaTickOrderTests
             "combat.ProcessTick(matchingId, activeSessions);",
             "runtime.StartsAtUtc",
             "if (currentEnvironmentInterval > _lastEnvironmentInterval)",
-            "environment.ProcessTick(runtime, activeSessions);",
+            "environment.ProcessTick(runtime);",
             "runtime.IsEnded ||",
             "botMovement.ProcessTick(runtime, botDecisions.DecideMovement);");
 
@@ -90,8 +90,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             matchingSettlement,
             "long matchingId = match.MatchingId;",
-            "var humans = activeSessions",
-            "var bots = match.Bots.GetBots(matchingId)",
+            "var players = match.GetAlivePlayers()",
             "PlayerHealthChangeService.Record(matchingId, player, change, eventLogs, logger);",
             "var eliminatedTargets = targets",
             "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
