@@ -1,4 +1,3 @@
-using game_server.items;
 using game_server.logging;
 using game_server.matches;
 using Microsoft.Extensions.Logging;
@@ -18,7 +17,6 @@ internal sealed class PlayerOrbGrowthService(
 {
     public const int NormalMonsterReward = 1;
     public const int CoreMonsterReward = 3;
-    private const int BaseSummonCost = 2;
 
     // 회복 오브(107000040)는 퇴역했다. 회복은 새 오브 영입이 맡는다 (#219).
     // 공급 차단 토글(SWARM_SUN/WAVE_ORB_ENABLED=false)이면 소환 풀에서 그 색이 빠진다.
@@ -39,18 +37,7 @@ internal sealed class PlayerOrbGrowthService(
         return pool.ToArray();
     }
 
-    public static SummonStoneSnapshot GetSummonStones(Player player) =>
-        new(player.SummonStones.StoneCount, player.SummonStones.SuccessfulSummonCount, GetSummonCost(player.SummonStones.SuccessfulSummonCount));
-
-    /// <summary>소환 비용은 성공한 소환 횟수의 삼각수이고 최소 2다. 상한은 없다.</summary>
-    public static int GetSummonCost(int successfulSummonCount)
-    {
-        long summonNumber = (long)Math.Max(0, successfulSummonCount) + 1;
-        long cost = Math.Max(BaseSummonCost, summonNumber * (summonNumber + 1) / 2);
-        return (int)Math.Min(int.MaxValue, cost);
-    }
-
-    public static SummonStoneSnapshot AddSummonStones(MatchRuntime match, Player player, int amount)
+    public static Player.SummonStoneState AddSummonStones(MatchRuntime match, Player player, int amount)
     {
         if (!Monitor.IsEntered(match.MatchLock))
         {
@@ -59,9 +46,9 @@ internal sealed class PlayerOrbGrowthService(
 
         if (amount > 0)
         {
-            player.SummonStones.StoneCount = checked(player.SummonStones.StoneCount + amount);
+            player.SummonStones = player.SummonStones with { StoneCount = checked(player.SummonStones.StoneCount + amount) };
         }
-        return GetSummonStones(player);
+        return player.SummonStones;
     }
 
     /// <summary>오브 강화 비용을 차감한다. 잔액이 부족하면 변경하지 않는다.</summary>
@@ -77,14 +64,14 @@ internal sealed class PlayerOrbGrowthService(
             return false;
         }
 
-        player.SummonStones.StoneCount -= amount;
+        player.SummonStones = player.SummonStones with { StoneCount = player.SummonStones.StoneCount - amount };
         return true;
     }
 
     /// <summary>
-    ///     비용을 확인하고 첫 후보 오브를 지급받아 소환석과 소환 횟수를 갱신한다. 지급이 실패하면 아무것도 바꾸지 않는다.
+    ///     비용을 확인하고 풀에서 뽑은 오브를 지급받아 소환석과 소환 횟수를 갱신한다. 지급이 실패하면 아무것도 바꾸지 않는다.
     /// </summary>
-    internal static SummonOrbAttempt TrySummon(MatchRuntime match, Player player, Func<int, InGameItemInfo?> grantItem)
+    internal static SummonResult TrySummon(MatchRuntime match, Player player, Func<int, InGameItemInfo?> grantItem)
     {
         if (!Monitor.IsEntered(match.MatchLock))
         {
@@ -92,60 +79,28 @@ internal sealed class PlayerOrbGrowthService(
         }
         ArgumentNullException.ThrowIfNull(grantItem);
 
-        int cost = GetSummonCost(player.SummonStones.SuccessfulSummonCount);
+        int cost = player.SummonStones.NextCost;
         if (player.SummonStones.StoneCount < cost)
         {
-            return SummonOrbAttempt.Failed(ErrorCode.INSUFFICIENT_CURRENCY, GetSummonStones(player));
+            return SummonResult.Failed(ErrorCode.INSUFFICIENT_CURRENCY, player.SummonStones);
         }
 
-        int itemId = GetSummonCandidates(match, player)[0];
-        InGameItemInfo? item = grantItem(itemId);
+        int itemId = DrawSummonOrb(player.SummonStones.SuccessfulSummonCount);
+        var item = grantItem(itemId);
         if (item == null)
         {
-            return SummonOrbAttempt.Failed(ErrorCode.INVENTORY_FULL, GetSummonStones(player));
+            return SummonResult.Failed(ErrorCode.INVENTORY_FULL, player.SummonStones);
         }
 
-        player.SummonStones.StoneCount -= cost;
-        player.SummonStones.SuccessfulSummonCount++;
-        return new SummonOrbAttempt(true, ErrorCode.SUCCESS, itemId, item, GetSummonStones(player));
+        player.SummonStones = new Player.SummonStoneState(player.SummonStones.StoneCount - cost, player.SummonStones.SuccessfulSummonCount + 1);
+        return new SummonResult(true, ErrorCode.SUCCESS, itemId, item, player.SummonStones);
     }
 
-    /// <summary>
-    ///     소환 2택 후보. (매치, 플레이어, 소환 횟수)에만 결정론적으로 묶여 있어 대기 상태·만료 타이머 없이
-    ///     미리 공개할 수 있고 재접속에도 같은 값이 복원된다. 후보 0이 실제 지급 대상이다.
-    /// </summary>
-    public static int[] GetSummonCandidates(MatchRuntime match, Player player)
+    /// <summary>개전 직후에는 잔상과 싸울 수단이 바로 필요하다. 첫 소환만 공격 오브 풀에서 뽑는다.</summary>
+    private static int DrawSummonOrb(int successfulSummonCount)
     {
-        int successfulSummonCount = player.SummonStones.SuccessfulSummonCount;
-        int first = SelectOrbItemId(match.MatchingId, player.PlayerId, successfulSummonCount);
-        int second = SelectOrbItemId(match.MatchingId, player.PlayerId, successfulSummonCount, salt: 1);
-        if (second != first)
-        {
-            return [first, second];
-        }
-
-        // 같은 오브 두 개는 선택이 아니다. 결정론을 유지한 채 풀의 다음 항목으로 민다.
         int[] pool = successfulSummonCount == 0 ? OpeningAttackPool : SummonPool;
-        second = pool[(Array.IndexOf(pool, second) + 1) % pool.Length];
-        return [first, second];
-    }
-
-    private static int SelectOrbItemId(long matchingId, long playerId, int successfulSummonCount, int salt = 0)
-    {
-        // 결과는 매치·플레이어·성공 소환 횟수에만 묶인다. salt 0은 XOR 항등이라 단일 스트림을 보존하고,
-        // 2택의 두 번째 후보만 salt 1로 분기한다.
-        ulong value = unchecked((ulong)matchingId * 0x9E3779B185EBCA87UL)
-                      ^ unchecked((ulong)playerId * 0xC2B2AE3D27D4EB4FUL)
-                      ^ unchecked((ulong)(successfulSummonCount + 1) * 0x165667B19E3779F9UL)
-                      ^ unchecked((ulong)salt * 0x27D4EB2F165667C5UL);
-        value ^= value >> 30;
-        value *= 0xBF58476D1CE4E5B9UL;
-        value ^= value >> 27;
-        value *= 0x94D049BB133111EBUL;
-        value ^= value >> 31;
-        // 개전 직후에는 잔상과 싸울 수단이 바로 필요하다. 첫 소환만 공격 오브로 제한한다.
-        int[] pool = successfulSummonCount == 0 ? OpeningAttackPool : SummonPool;
-        return pool[(int)(value % (ulong)pool.Length)];
+        return pool[Random.Shared.Next(pool.Length)];
     }
 
     internal static void GrantStartingSummonStones(MatchRuntime runtime, Player player)
@@ -163,7 +118,7 @@ internal sealed class PlayerOrbGrowthService(
         AddSummonStones(runtime, player, startingStones);
     }
 
-    public SummonOrbAttempt Summon(MatchRuntime runtime, Player player)
+    public SummonResult Summon(MatchRuntime runtime, Player player)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -299,7 +254,7 @@ internal sealed class PlayerOrbGrowthService(
             throw new InvalidOperationException("Orb growth operations require the match lock.");
         }
 
-        int cost = runtime.Inventory.GetOrbScore(player.PlayerId).OrbCount < Config.SWARM_ORB_CAPACITY ? GetSummonCost(player.SummonStones.SuccessfulSummonCount) : int.MaxValue;
+        int cost = runtime.Inventory.GetOrbScore(player.PlayerId).OrbCount < Config.SWARM_ORB_CAPACITY ? player.SummonStones.NextCost : int.MaxValue;
         var upgrades = GetOrbUpgradeInfo(runtime, player);
         foreach (int upgradeCost in new[] { upgrades.SunCost, upgrades.WindCost, upgrades.WaveCost })
         {
@@ -325,5 +280,12 @@ internal sealed class PlayerOrbGrowthService(
             top = Math.Max(top, runtime.Inventory.GetOrbScore(player.PlayerId).OrbCount);
         }
         return top;
+    }
+
+    public readonly record struct SummonResult(bool Success, ErrorCode ErrorCode, int ItemId,
+        InGameItemInfo? AddedItem, Player.SummonStoneState State)
+    {
+        public static SummonResult Failed(ErrorCode errorCode, Player.SummonStoneState state) =>
+            new(false, errorCode, 0, null, state);
     }
 }

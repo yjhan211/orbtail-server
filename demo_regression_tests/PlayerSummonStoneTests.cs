@@ -47,49 +47,6 @@ public class PlayerSummonStoneTests
     }
 
     [Fact]
-    public void SummonCandidates_AreDeterministicDistinctAndFirstIsGranted()
-    {
-        var (match, player) = Create(214);
-        using (match.Enter())
-        {
-            PlayerOrbGrowthService.AddSummonStones(match, player, PlayerOrbGrowthService.InitialSummonStoneCount);
-
-            // 결정론: 같은 상태에서 몇 번을 조회해도 같은 후보. 재접속 복원의 전제다.
-            var candidates = PlayerOrbGrowthService.GetSummonCandidates(match, player);
-            Assert.Equal(candidates, PlayerOrbGrowthService.GetSummonCandidates(match, player));
-            Assert.Equal(2, candidates.Length);
-
-            // 같은 오브 두 개는 선택이 아니다 — 단, 공급 차단 토글로 풀이 1색이면 성립 불가.
-            int enabledPoolSize = (Config.SWARM_SUN_ORB_ENABLED ? 1 : 0) +
-                                  (Config.SWARM_WIND_ORB_ENABLED ? 1 : 0) +
-                                  (Config.SWARM_WAVE_ORB_ENABLED ? 1 : 0);
-            if (enabledPoolSize > 1)
-                Assert.NotEqual(candidates[0], candidates[1]);
-
-            // 첫 후보가 실제 지급 대상이다.
-            var summon = PlayerOrbGrowthService.TrySummon(match, player, Grant(1));
-            Assert.True(summon.Success);
-            Assert.Equal(candidates[0], summon.ItemId);
-
-            // 소환 후에는 다음 소환 횟수 기준의 새 후보가 나온다 (풀 1색이면 같을 수밖에 없다).
-            if (enabledPoolSize > 1)
-                Assert.NotEqual(candidates, PlayerOrbGrowthService.GetSummonCandidates(match, player));
-        }
-    }
-
-    [Fact]
-    public void FirstSummon_Candidates_AreBothAttackOrbs()
-    {
-        var (match, _) = Create(214);
-        for (long playerId = 1; playerId <= 40; playerId++)
-        {
-            var player = new Player { Profile = new PlayerInfo { PlayerId = playerId } };
-            var candidates = PlayerOrbGrowthService.GetSummonCandidates(match, player);
-            Assert.All(candidates, itemId => Assert.False(OrbData.IsRecoveryOrb(itemId)));
-        }
-    }
-
-    [Fact]
     public void FirstSummon_IsAlwaysAnAttackOrb()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
@@ -143,26 +100,20 @@ public class PlayerSummonStoneTests
                 Assert.Contains(attempt.ItemId, PlayerOrbGrowthService.SummonPoolItemIds);
             }
 
-            Assert.Equal(43, PlayerOrbGrowthService.GetSummonStones(player).StoneCount);
+            Assert.Equal(43, player.SummonStones.StoneCount);
         }
     }
 
     [Fact]
-    public void FullInventory_DoesNotSpendStonesOrAdvanceRandomResult()
+    public void FullInventory_DoesNotSpendStones()
     {
-        var (blockedMatch, blockedPlayer) = Create(202);
-        var (controlMatch, controlPlayer) = Create(202);
-        SummonOrbAttempt blocked, retry, control;
-        using (blockedMatch.Enter())
+        var (match, player) = Create(202);
+        PlayerOrbGrowthService.SummonResult blocked, retry;
+        using (match.Enter())
         {
-            PlayerOrbGrowthService.AddSummonStones(blockedMatch, blockedPlayer, 10);
-            blocked = PlayerOrbGrowthService.TrySummon(blockedMatch, blockedPlayer, _ => null);
-            retry = PlayerOrbGrowthService.TrySummon(blockedMatch, blockedPlayer, Grant(1));
-        }
-        using (controlMatch.Enter())
-        {
-            PlayerOrbGrowthService.AddSummonStones(controlMatch, controlPlayer, 10);
-            control = PlayerOrbGrowthService.TrySummon(controlMatch, controlPlayer, Grant(1));
+            PlayerOrbGrowthService.AddSummonStones(match, player, 10);
+            blocked = PlayerOrbGrowthService.TrySummon(match, player, _ => null);
+            retry = PlayerOrbGrowthService.TrySummon(match, player, Grant(1));
         }
 
         Assert.False(blocked.Success);
@@ -170,7 +121,7 @@ public class PlayerSummonStoneTests
         Assert.Equal(10, blocked.State.StoneCount);
         Assert.Equal(0, blocked.State.SuccessfulSummonCount);
         Assert.True(retry.Success);
-        Assert.Equal(control.ItemId, retry.ItemId);
+        Assert.Contains(retry.ItemId, PlayerOrbGrowthService.SummonPoolItemIds);
         Assert.Equal(8, retry.State.StoneCount);
     }
 
@@ -192,7 +143,7 @@ public class PlayerSummonStoneTests
             Assert.False(attempt.Success);
             Assert.Equal(ErrorCode.INSUFFICIENT_CURRENCY, attempt.ErrorCode);
             Assert.False(grantCalled);
-            Assert.Equal(new SummonStoneSnapshot(1, 0, 2), attempt.State);
+            Assert.Equal(new Player.SummonStoneState(1, 0), attempt.State);
         }
     }
 
@@ -203,7 +154,7 @@ public class PlayerSummonStoneTests
         Assert.Throws<InvalidOperationException>(() => PlayerOrbGrowthService.AddSummonStones(match, player, 1));
         Assert.Throws<InvalidOperationException>(() => PlayerOrbGrowthService.TrySpendSummonStones(match, player, 1));
         Assert.Throws<InvalidOperationException>(() => PlayerOrbGrowthService.TrySummon(match, player, Grant(1)));
-        Assert.Equal(SummonStoneSnapshot.Empty, PlayerOrbGrowthService.GetSummonStones(player));
+        Assert.Equal(Player.SummonStoneState.Empty, player.SummonStones);
     }
 
     [Fact]
@@ -216,8 +167,8 @@ public class PlayerSummonStoneTests
 
         using (MatchRuntimeStore.Enter(runtime)) { runtime.TryMarkEnded(); }
 
-        Assert.Equal(SummonStoneSnapshot.Empty, TestGameSessionServices.SummonStones(runtime, 10));
-        Assert.Equal(SummonStoneSnapshot.Empty, TestGameSessionServices.SummonStones(runtime, 20));
+        Assert.Equal(Player.SummonStoneState.Empty, TestGameSessionServices.SummonStones(runtime, 10));
+        Assert.Equal(Player.SummonStoneState.Empty, TestGameSessionServices.SummonStones(runtime, 20));
         Assert.Null(store.GetOrNull(202));
     }
 }

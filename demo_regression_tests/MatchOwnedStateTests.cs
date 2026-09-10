@@ -80,7 +80,7 @@ public sealed class MatchOwnedStateTests
         Assert.Empty(ground.GetSnapshot(area));
         Assert.DoesNotContain(roster.BuildGameResult(), row => row.playerId == 11);
         Assert.Null(closures.GetMatchingState());
-        Assert.Equal(SummonStoneSnapshot.Empty, TestGameSessionServices.SummonStones(runtime, 11));
+        Assert.Equal(Player.SummonStoneState.Empty, TestGameSessionServices.SummonStones(runtime, 11));
         Assert.False(encounters.ResolveCorridorEncounter(11, new(0, 0, 0),
             [(12L, new(0, 0, 0))]).HasEvent);
         Assert.Throws<InvalidOperationException>(() => inventory.AddItem(11, 107000010));

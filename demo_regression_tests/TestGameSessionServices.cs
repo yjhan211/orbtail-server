@@ -141,13 +141,13 @@ internal static class TestGameSessionServices
         return player;
     }
 
-    public static SummonStoneSnapshot SummonStones(MatchRuntime match, long playerId)
+    public static Player.SummonStoneState SummonStones(MatchRuntime match, long playerId)
     {
         var player = match.GetParticipant(playerId) ?? match.Bots.GetBot(match.MatchingId, playerId)?.Player;
-        return player == null ? SummonStoneSnapshot.Empty : PlayerOrbGrowthService.GetSummonStones(player);
+        return player == null ? Player.SummonStoneState.Empty : player.SummonStones;
     }
 
-    public static SummonStoneSnapshot AddSummonStones(MatchRuntime match, long playerId, int amount)
+    public static Player.SummonStoneState AddSummonStones(MatchRuntime match, long playerId, int amount)
     {
         var player = GetOrRegisterPlayer(match, playerId);
         using (match.Enter())
