@@ -148,7 +148,7 @@ public partial class GameClientSession
             }
 
             var result = _growth.HandleUpgradeOrb(
-                this,
+                Player,
                 matchingId,
                 request.Action,
                 request.TargetItemUid,

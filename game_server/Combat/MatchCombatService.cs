@@ -221,7 +221,7 @@ internal class MatchCombatService(
         orbVisuals.Publish(matchingId, actors, sessions);
         BroadcastSwarmOrbRankings(matchingId, sessions, bots);
         // 성장 카드 (#226 단계 C): 소환석이 비용에 닿는 즉시 3택 오퍼 — 상자 트리거 퇴역.
-        growth.ProcessOffers(matchingId, aliveSessions, aliveBots);
+        growth.ProcessOffers(matchingId, players, aliveBots);
         if (ProcessSwarmScoreTimeout(matchingId, nowUtc, sessions, aliveSessions, aliveBots))
             return;
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.

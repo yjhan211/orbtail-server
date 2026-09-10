@@ -2,7 +2,7 @@ using game_server.matches;
 using game_server.players.bots;
 using game_server.logging;
 using game_server.orbs;
-using game_server.sessions;
+using game_server.players;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -30,8 +30,8 @@ internal sealed class MatchGrowthService(
     private static readonly int[] SwarmStartingOrbPool = OrbUpgradeService.CreateStartingOrbPool();
 
     /// <summary>플레이어의 오브 강화 요청을 전용 서비스에 전달한다. 호출자의 매치 잠금을 그대로 사용한다.</summary>
-    public (bool Success, int ResultItemId, int TargetOrdinal) HandleUpgradeOrb(GameClientSession session, long matchingId, int action, long targetItemUid, long secondItemUid) =>
-        orbUpgrades.HandleUpgradeOrb(session, matchingId, action, targetItemUid, secondItemUid);
+    public (bool Success, int ResultItemId, int TargetOrdinal) HandleUpgradeOrb(Player player, long matchingId, int action, long targetItemUid, long secondItemUid) =>
+        orbUpgrades.HandleUpgradeOrb(player, matchingId, action, targetItemUid, secondItemUid);
 
     /// <summary>현재 오브 수와 카드별 구매 횟수로 비용을 계산한다. 차감이나 카운터 변경은 하지 않는다.</summary>
     public (int BaseCost, int Surcharge, int FinalCost, int OrbCount,
@@ -111,10 +111,11 @@ internal sealed class MatchGrowthService(
 
     public void ProcessOffers(
         long matchingId,
-        List<GameClientSession> aliveSessions, List<BotPlayerState> aliveBots)
+        IReadOnlyList<Player> players, IReadOnlyList<BotPlayerState> aliveBots)
     {
         foreach (var bot in aliveBots)
         {
+            if (bot.Player.IsEliminated) continue;
             var (baseCost, surcharge, finalCost, orbCount, costSummon, costAttack, costDefense) =
                 GetCostBreakdown(matchingId, bot.PlayerId);
             if (matchRuntimes.GetOrThrow(matchingId).SummonStones.GetSnapshot(bot.PlayerId).StoneCount < finalCost)
@@ -132,7 +133,7 @@ internal sealed class MatchGrowthService(
                 continue;
 
             int cardIndex = ChooseSwarmBotGrowthCard(
-                matchingId, bot, offer, orbCount, aliveSessions, aliveBots);
+                matchingId, bot.Player, offer, orbCount, players);
             if (cardIndex == SwarmGrowthOfferState.CardEnhance)
             {
                 orbUpgrades.TryUpgradeForBot(matchingId, bot.PlayerId);
@@ -156,48 +157,26 @@ internal sealed class MatchGrowthService(
     /// <summary>생존자 최다 오브 수 — 봇 성장·추격 판단의 순위 기준.</summary>
     public int GetTopOrbCount(long matchingId)
     {
+        var match = matchRuntimes.GetOrThrow(matchingId);
         int top = 0;
-        foreach (var session in matchRuntimes.GetOrThrow(matchingId).GetSessions())
-        {
-            if (session.PlayerId.HasValue && !session.Player.IsEliminated)
-                top = Math.Max(top, matchRuntimes.GetOrThrow(matchingId).Inventory.GetOrbScore(session.PlayerId.Value).OrbCount);
-        }
-
-        foreach (var bot in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
-        {
-            if (!bot.Player.IsEliminated)
-                top = Math.Max(top, matchRuntimes.GetOrThrow(matchingId).Inventory.GetOrbScore(bot.PlayerId).OrbCount);
-        }
-
+        foreach (var player in match.GetAlivePlayers())
+            top = Math.Max(top, match.Inventory.GetOrbScore(player.PlayerId).OrbCount);
         return top;
     }
 
-    /// <summary>처치각 판독 (#226 F): 같은 구역에 확실히 약한(전력 ×1.25 미만) 적이 있는가.</summary>
-    private bool HasSwarmPreyInArea(
-        long matchingId, BotPlayerState bot,
-        List<GameClientSession> aliveSessions, List<BotPlayerState> aliveBots)
+    /// <summary>같은 구역에 자신보다 확실히 약한 생존 참가자가 있는지 판단한다.</summary>
+    internal bool HasSwarmPreyInArea(long matchingId, Player player, IReadOnlyList<Player> players)
     {
-        float myPower = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(bot.PlayerId).GetOrbPower();
-        if (myPower <= 0f)
-            return false;
-
-        foreach (var session in aliveSessions)
+        var inventory = matchRuntimes.GetOrThrow(matchingId).Inventory;
+        float myPower = inventory.GetPlayerInventory(player.PlayerId).GetOrbPower();
+        if (myPower <= 0f) return false;
+        foreach (var other in players)
         {
-            if (session.PlayerId.HasValue && session.Player.CurrentArea == bot.Player.CurrentArea &&
-                matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(session.PlayerId.Value).GetOrbPower() *
-                BotPreyPowerAdvantage <= myPower)
+            if (other.IsEliminated || other.PlayerId == player.PlayerId || other.CurrentArea != player.CurrentArea)
+                continue;
+            if (inventory.GetPlayerInventory(other.PlayerId).GetOrbPower() * BotPreyPowerAdvantage <= myPower)
                 return true;
         }
-
-        foreach (var other in aliveBots)
-        {
-            if (other.PlayerId != bot.PlayerId &&
-                other.Player.CurrentArea == bot.Player.CurrentArea &&
-                matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(other.PlayerId).GetOrbPower() *
-                BotPreyPowerAdvantage <= myPower)
-                return true;
-        }
-
         return false;
     }
 
@@ -282,8 +261,8 @@ internal sealed class MatchGrowthService(
     }
 
     private int ChooseSwarmBotGrowthCard(
-        long matchingId, BotPlayerState bot, SwarmGrowthOfferState offer, int orbCount,
-        List<GameClientSession> aliveSessions, List<BotPlayerState> aliveBots)
+        long matchingId, Player player, SwarmGrowthOfferState offer, int orbCount,
+        IReadOnlyList<Player> players)
     {
         if (orbCount < 5)
             return SwarmGrowthOfferState.CardMultiply;
@@ -291,7 +270,7 @@ internal sealed class MatchGrowthService(
         int topOrbCount = GetTopOrbCount(matchingId);
         bool isLeader = orbCount >= topOrbCount;
         int leaderGap = topOrbCount - orbCount;
-        bool hasPrey = HasSwarmPreyInArea(matchingId, bot, aliveSessions, aliveBots);
+        bool hasPrey = HasSwarmPreyInArea(matchingId, player, players);
 
         var (multiply, enhance) = leaderGap >= 3 ? (70, 20) :
             isLeader ? (35, 20) :

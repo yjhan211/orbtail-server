@@ -2,7 +2,7 @@ using game_server;
 using game_server.logging;
 using game_server.orbs;
 using game_server.matches;
-using game_server.sessions;
+using game_server.players;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -95,7 +95,7 @@ internal sealed class OrbUpgradeService(
     ///     targetOrdinal = 오른 오브의 열 순번 — 클라가 그 오브 위에 강화 이펙트를 띄운다.
     /// </summary>
     private bool TryUpgrade(
-        long matchingId, long playerId, OrbColor color, GameClientSession? session,
+        long matchingId, long playerId, OrbColor color,
         out int resultItemId, out int targetOrdinal)
     {
         resultItemId = 0;
@@ -125,7 +125,7 @@ internal sealed class OrbUpgradeService(
 
         eventLogs.LogSystem(
             matchingId,
-            $"ORB_UPGRADED player={playerId} bot={session == null} family={color} ordinal={ordinal} " +
+            $"ORB_UPGRADED player={playerId} bot={playerId < 0} family={color} ordinal={ordinal} " +
             $"uid={target.ItemUid} tier={tier}->{tier + 1} cost={cost} replaced={replaced}");
         return replaced;
     }
@@ -150,19 +150,19 @@ internal sealed class OrbUpgradeService(
     ///     강화 결과와 대상 순번을 반환한다. 요청 응답 패킷은 호출한 핸들러가 전송한다.
     /// </summary>
     public (bool Success, int ResultItemId, int TargetOrdinal) HandleUpgradeOrb(
-        GameClientSession session, long matchingId, int action, long targetUid, long secondUid)
+        Player player, long matchingId, int action, long targetUid, long secondUid)
     {
         _ = secondUid;
-        if (!session.PlayerId.HasValue || session.Player.IsEliminated)
+        if (player.PlayerId == 0 || player.IsEliminated)
             return (false, 0, -1);
-        long playerId = session.PlayerId.Value;
+        long playerId = player.PlayerId;
 
         bool success = false;
         int resultItemId = 0;
         int targetOrdinal = -1;
         if (action == Config.ORB_UPGRADE_FAMILY)
             success = TryUpgrade(
-                matchingId, playerId, (OrbColor)targetUid, session, out resultItemId, out targetOrdinal);
+                matchingId, playerId, (OrbColor)targetUid, out resultItemId, out targetOrdinal);
 
         logger.LogInformation(
             "Orb upgrade: MatchingId={MatchingId}, PlayerId={PlayerId}, Action={Action}, Target={Target}, Success={Success}, Result={Result}, Ordinal={Ordinal}",
@@ -197,6 +197,6 @@ internal sealed class OrbUpgradeService(
                 return false;
         }
 
-        return TryUpgrade(matchingId, playerId, favorite, session: null, out _, out _);
+        return TryUpgrade(matchingId, playerId, favorite, out _, out _);
     }
 }

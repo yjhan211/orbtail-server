@@ -11,6 +11,36 @@ namespace demo_regression_tests;
 public sealed class MatchGameplayServiceTests
 {
     [Fact]
+    public void GrowthUsesPlayerRosterWithoutConnectionsAndIgnoresEliminatedPrey()
+    {
+        TestGameData.EnsureBattleItemCombatLoaded();
+        using var provider = GameServerDependencyInjectionTests.CreateProvider();
+        var growth = provider.GetRequiredService<MatchGrowthService>();
+        var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947798);
+        var hunter = new game_server.players.Player
+        {
+            Profile = new PlayerInfo { PlayerId = -1 }, CurrentArea = network.common.AreaType.S2Ground
+        };
+        var prey = new game_server.players.Player
+        {
+            Profile = new PlayerInfo { PlayerId = 1 }, CurrentArea = network.common.AreaType.S2Ground
+        };
+        using (match.Enter())
+        {
+            match.RegisterParticipant(hunter);
+            match.RegisterParticipant(prey);
+            Assert.True(match.Inventory.TryAddItemWithCapacity(hunter.PlayerId, 107000010, 6, out _));
+            Assert.Equal(1, growth.GetTopOrbCount(match.MatchingId));
+            Assert.False(growth.HasSwarmPreyInArea(match.MatchingId, hunter, [hunter]));
+            Assert.True(growth.HasSwarmPreyInArea(match.MatchingId, hunter, [hunter, prey]));
+            match.TryEliminatePlayer(prey.PlayerId, network.common.EliminationReason.HEALTH_ZERO);
+            Assert.False(growth.HasSwarmPreyInArea(match.MatchingId, hunter, [hunter, prey]));
+            match.TryEliminatePlayer(hunter.PlayerId, network.common.EliminationReason.HEALTH_ZERO);
+            Assert.Equal(0, growth.GetTopOrbCount(match.MatchingId));
+        }
+    }
+
+    [Fact]
     public void WaveVortexDamagesAndSlowsPlayersWithoutSessionOrBotState()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
