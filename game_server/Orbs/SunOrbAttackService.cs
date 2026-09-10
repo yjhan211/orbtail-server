@@ -257,9 +257,7 @@ internal sealed class SunOrbAttackService(
     public void ProcessSwarmCrossfires(
         long matchingId,
         DateTime nowUtc,
-        List<SwarmParticipantSpatial> participants,
-        List<GameClientSession> aliveSessions,
-        List<BotPlayerState> aliveBots,
+        IReadOnlyList<Player> players,
         List<GameClientSession> allSessions)
     {
         if (!SwarmCrossfireEnabled)
@@ -304,24 +302,25 @@ internal sealed class SunOrbAttackService(
                     shape.WeaponItemId, shape.Area, monsterDamage, critical, allSessions);
             }
 
-            foreach (var participant in participants)
+            foreach (var participant in players)
             {
-                if (participant.PlayerId == shape.OwnerId || participant.Area != shape.Area ||
+                if (participant.IsEliminated || participant.Position == null) continue;
+                if (participant.PlayerId == shape.OwnerId || participant.CurrentArea != shape.Area ||
                     shape.HitVictims.Contains(participant.PlayerId))
                     continue;
                 if (!TryGetSwarmCrossfireSweptPlayerBody(
-                        shape, participant.Position, lastFront, front, out _))
+                        shape, participant.Position!, lastFront, front, out _))
                     continue;
 
                 shape.HitVictims.Add(participant.PlayerId);
                 matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(playerEliminations,
                     shape.OwnerId, shape.WeaponItemId, shape.Area, participant.PlayerId,
                     $"ORB_CROSSFIRE_HIT event={shape.EventId} shape=pierce anchor={shape.AnchorMonsterId}",
-                    matchRuntimes.GetOrThrow(matchingId).GetAlivePlayers(), allSessions);
+                    players, allSessions);
                 if (matchRuntimes.GetOrThrow(matchingId).IsEnded) return;
                 ApplySwarmSunBurn(
                     matchingId, shape.OwnerId, shape.WeaponItemId, shape.Area,
-                    participant.PlayerId, nowUtc, aliveSessions);
+                    participant.PlayerId, nowUtc, players);
             }
 
             if (front < sweepEnd)
@@ -518,7 +517,7 @@ internal sealed class SunOrbAttackService(
     /// <summary>화상 부여·갱신 — 첫 틱은 1초 뒤(직격과 같은 프레임에 겹치지 않게). HUD 통지 포함.</summary>
     private void ApplySwarmSunBurn(
         long matchingId, long ownerId, int weaponItemId, AreaType area, long victimId,
-        DateTime nowUtc, List<GameClientSession> aliveSessions)
+        DateTime nowUtc, IReadOnlyList<Player> players)
     {
         matchRuntimes.GetOrThrow(matchingId).SunOrbAttacks.SetSunBurn(
             victimId,
@@ -528,7 +527,7 @@ internal sealed class SunOrbAttackService(
             nowUtc,
             Config.SWARM_SUN_BURN_SECONDS,
             Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS);
-        var victimSession = aliveSessions.FirstOrDefault(session => session.PlayerId == victimId);
+        var victimSession = players.FirstOrDefault(player => player.PlayerId == victimId)?.Session;
         if (victimSession == null || !victimSession.PlayerId.HasValue || ownerId == 0) return;
 
         using var packet = PacketMaker.G_TO_C_STATUS_EFFECT(new()
@@ -546,8 +545,7 @@ internal sealed class SunOrbAttackService(
     public void ProcessSwarmSunBurns(
         long matchingId,
         DateTime nowUtc,
-        List<GameClientSession> aliveSessions,
-        List<BotPlayerState> aliveBots,
+        IReadOnlyList<Player> players,
         List<GameClientSession> allSessions)
     {
         matchRuntimes.GetOrThrow(matchingId).SunOrbAttacks.ProcessSunBurns(
@@ -555,7 +553,7 @@ internal sealed class SunOrbAttackService(
             Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS,
             (victimId, burn) =>
                 matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(playerEliminations, burn.OwnerId, burn.WeaponItemId, burn.Area,
-                    victimId, "SUN_BURN_TICK", matchRuntimes.GetOrThrow(matchingId).GetAlivePlayers(), allSessions,
+                    victimId, "SUN_BURN_TICK", players, allSessions,
                     Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER, isPeriodicDamage: true));
     }
 

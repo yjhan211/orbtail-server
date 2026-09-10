@@ -170,12 +170,12 @@ internal class MatchCombatService(
         if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
             return;
 
-        windOrbAttacks.Process(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+        windOrbAttacks.Process(matchingId, nowUtc, players, sessions);
         if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
             return;
 
         // 화상 틱 (#268): 교차사격 충격이 남긴 지속 피해를 정산한다.
-        sunOrbAttacks.ProcessSwarmSunBurns(matchingId, nowUtc, aliveSessions, aliveBots, sessions);
+        sunOrbAttacks.ProcessSwarmSunBurns(matchingId, nowUtc, players, sessions);
         if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
             return;
 
@@ -227,7 +227,7 @@ internal class MatchCombatService(
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.
         matchRuntimes.GetOrThrow(matchingId).CombatDamage.ProcessPendingMonsterHits(nowUtc, sessions);
         // 교차사격 판정 (#232 2단계): 예고가 끝난 모양을 이번 틱 위치로 판정한다.
-        sunOrbAttacks.ProcessSwarmCrossfires(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+        sunOrbAttacks.ProcessSwarmCrossfires(matchingId, nowUtc, players, sessions);
         if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
             return;
 

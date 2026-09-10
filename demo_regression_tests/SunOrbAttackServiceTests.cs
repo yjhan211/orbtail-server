@@ -34,17 +34,14 @@ public sealed class SunOrbAttackServiceTests
                 LastFront = -0.35f, DetonateAtWall = false
             };
             match.SunOrbAttacks.AddShape(shape);
-            List<SwarmParticipantSpatial> participants =
-            [
-                new(11, AreaType.S2Ground, new Vector3f(2, Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y, 0)),
-                new(12, AreaType.S2Ground, new Vector3f(2, Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y, 0))
-            ];
-            service.ProcessSwarmCrossfires(match.MatchingId, now, participants, [], [owner, victim], []);
+            owner.Player.CurrentArea = victim.Player.CurrentArea = AreaType.S2Ground;
+            owner.Player.Position = victim.Player.Position = new Vector3f(2, Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y, 0);
+            service.ProcessSwarmCrossfires(match.MatchingId, now, [owner.Player, victim.Player], []);
             Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
             Assert.Empty(shape.HitVictims);
 
             var hitAt = now.AddSeconds(1.6);
-            service.ProcessSwarmCrossfires(match.MatchingId, hitAt, participants, [], [owner, victim], []);
+            service.ProcessSwarmCrossfires(match.MatchingId, hitAt, [owner.Player, victim.Player], []);
             int healthAfterHit = victim.Player.Health;
             Assert.InRange(healthAfterHit, 1, Config.MAX_HEALTH - 1);
             Assert.Equal(Config.MAX_HEALTH, owner.Player.Health);
@@ -53,10 +50,10 @@ public sealed class SunOrbAttackServiceTests
             Assert.Equal(hitAt.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS), burn!.NextTickAtUtc);
 
             service.ProcessSwarmCrossfires(match.MatchingId, hitAt.AddSeconds(0.1),
-                participants, [], [owner, victim], []);
+                [owner.Player, victim.Player], []);
             Assert.Equal(healthAfterHit, victim.Player.Health);
             service.ProcessSwarmCrossfires(match.MatchingId, now.AddSeconds(3),
-                participants, [], [owner, victim], []);
+                [owner.Player, victim.Player], []);
             Assert.Equal(healthAfterHit, victim.Player.Health);
             Assert.Equal(0, match.SunOrbAttacks.ShapeCount);
             Assert.Empty(match.SunOrbAttacks.DodgeSnapshot);
@@ -81,7 +78,7 @@ public sealed class SunOrbAttackServiceTests
         {
             var victim = new BotPlayerState { PlayerId = 12 };
             second.RegisterParticipant(victim.Player);
-            service.ProcessSwarmSunBurns(second.MatchingId, due, [], [victim], []);
+            service.ProcessSwarmSunBurns(second.MatchingId, due, [victim.Player], []);
             Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
             second.TryMarkEnded();
         }
@@ -89,14 +86,14 @@ public sealed class SunOrbAttackServiceTests
         {
             var victim = new BotPlayerState { PlayerId = 12 };
             first.RegisterParticipant(victim.Player);
-            service.ProcessSwarmSunBurns(first.MatchingId, now, [], [victim], []);
+            service.ProcessSwarmSunBurns(first.MatchingId, now, [victim.Player], []);
             Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
-            service.ProcessSwarmSunBurns(first.MatchingId, due, [], [victim], []);
+            service.ProcessSwarmSunBurns(first.MatchingId, due, [victim.Player], []);
             int expected = Math.Max(1, (int)MathF.Round(
                 Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE) *
                 Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER));
             Assert.Equal(Config.MAX_HEALTH - expected, victim.Player.Health);
-            service.ProcessSwarmSunBurns(first.MatchingId, due, [], [victim], []);
+            service.ProcessSwarmSunBurns(first.MatchingId, due, [victim.Player], []);
             Assert.Equal(Config.MAX_HEALTH - expected, victim.Player.Health);
             first.TryMarkEnded();
         }

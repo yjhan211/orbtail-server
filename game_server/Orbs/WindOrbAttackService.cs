@@ -37,16 +37,15 @@ internal sealed class WindOrbAttackService(
     public void Process(
         long matchingId,
         DateTime nowUtc,
-        List<SwarmParticipantSpatial> participants,
-        List<GameClientSession> aliveSessions,
-        List<BotPlayerState> aliveBots,
+        IReadOnlyList<Player> players,
         List<GameClientSession> allSessions)
     {
         IReadOnlyList<SwarmArenaCombatTarget>? monsters = null;
         WindOrbAttackState windOrbAttacks = matchRuntimes.GetOrThrow(matchingId).WindOrbAttacks;
 
-        foreach (var owner in participants)
+        foreach (var owner in players)
         {
+            if (owner.IsEliminated || owner.Position == null) continue;
             var trailOrbs = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(owner.PlayerId).GetOrderedOrbs();
             if (trailOrbs.Count == 0)
                 continue;
@@ -65,7 +64,7 @@ internal sealed class WindOrbAttackService(
                     continue;
 
                 tiers ??= orbTrails.GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
-                var origin = orbTrails.GetSwarmOrbTrailPosition(matchingId, owner.PlayerId, ordinal, owner.Position, tiers);
+                var origin = orbTrails.GetSwarmOrbTrailPosition(matchingId, owner.PlayerId, ordinal, owner.Position!, tiers);
                 float radius = Config.SWARM_WIND_BLADE_RADIUS_BY_TIER[Math.Clamp(tier, 1, 3) - 1];
                 monsters ??= matchRuntimes.GetOrThrow(matchingId).Monsters.GetCombatTargets(matchingId);
 
@@ -73,7 +72,7 @@ internal sealed class WindOrbAttackService(
                 List<SwarmArenaCombatTarget>? monstersInRadius = null;
                 foreach (var monster in monsters)
                 {
-                    if (monster.Area != owner.Area)
+                    if (monster.Area != owner.CurrentArea)
                         continue;
                     if (!SwarmCombatGeometry.IsWithinGroundRadius(
                             origin, monster.Position, radius + SwarmCombatGeometry.MonsterRadius))
@@ -81,15 +80,16 @@ internal sealed class WindOrbAttackService(
                     (monstersInRadius ??= new List<SwarmArenaCombatTarget>()).Add(monster);
                 }
 
-                List<SwarmParticipantSpatial>? playersInRadius = null;
-                foreach (var participant in participants)
+                List<Player>? playersInRadius = null;
+                foreach (var participant in players)
                 {
-                    if (participant.PlayerId == owner.PlayerId || participant.Area != owner.Area)
+                    if (participant.IsEliminated || participant.Position == null) continue;
+                    if (participant.PlayerId == owner.PlayerId || participant.CurrentArea != owner.CurrentArea)
                         continue;
                     if (!SwarmCombatGeometry.IsWithinGroundRadius(
-                            origin, participant.Position, radius + SwarmWindBladePlayerRadius))
+                            origin, participant.Position!, radius + SwarmWindBladePlayerRadius))
                         continue;
-                    (playersInRadius ??= new List<SwarmParticipantSpatial>()).Add(participant);
+                    (playersInRadius ??= new List<Player>()).Add(participant);
                 }
 
                 // 짧은 시동 게이트: "즉시 틱"은 오브가 돌기도 전에 피해가 들어가 어색하다 — 표적이 반경에 든 순간부터
@@ -121,7 +121,7 @@ internal sealed class WindOrbAttackService(
                             damage, out bool critical);
                         matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmMonsterHitNow(
                             monster.CombatTargetId, monster.MonsterId, owner.PlayerId,
-                            item.ItemId, owner.Area, monsterDamage, critical, allSessions);
+                            item.ItemId, owner.CurrentArea, monsterDamage, critical, allSessions);
                     }
                 }
 
@@ -136,12 +136,12 @@ internal sealed class WindOrbAttackService(
 
                         shocks++;
                         // 충격 먼저, 상처는 그다음 — 상처를 낸 그 틱이 자기 충격에 치명타를 걸지 않게.
-                        matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(playerEliminations, owner.PlayerId, item.ItemId, owner.Area, participant.PlayerId,
-                            $"WIND_BLADE_HIT ordinal={ordinal}", matchRuntimes.GetOrThrow(matchingId).GetAlivePlayers(), allSessions);
+                        matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(playerEliminations, owner.PlayerId, item.ItemId, owner.CurrentArea, participant.PlayerId,
+                            $"WIND_BLADE_HIT ordinal={ordinal}", players, allSessions);
                         if (matchRuntimes.GetOrThrow(matchingId).IsEnded) return;
                         ApplyWindOrbWound(
-                            windOrbAttacks, owner.PlayerId, owner.Area, participant.PlayerId,
-                            nowUtc, aliveSessions);
+                            windOrbAttacks, owner.PlayerId, owner.CurrentArea, participant.PlayerId,
+                            nowUtc, players);
                     }
                 }
 
@@ -160,10 +160,10 @@ internal sealed class WindOrbAttackService(
     /// <summary>상처 부여·갱신 — HUD 통지 포함. 효과는 ApplySwarmShock의 치명타 굴림이 읽는다.</summary>
     private void ApplyWindOrbWound(
         WindOrbAttackState windOrbAttacks, long ownerId, AreaType area, long victimId,
-        DateTime nowUtc, List<GameClientSession> aliveSessions)
+        DateTime nowUtc, IReadOnlyList<Player> players)
     {
         windOrbAttacks.ApplyWound(victimId, nowUtc.AddSeconds(Config.SWARM_WIND_WOUND_SECONDS));
-        var victimSession = aliveSessions.FirstOrDefault(session => session.PlayerId == victimId);
+        var victimSession = players.FirstOrDefault(player => player.PlayerId == victimId)?.Session;
         if (victimSession == null || !victimSession.PlayerId.HasValue || ownerId == 0) return;
 
         using var packet = PacketMaker.G_TO_C_STATUS_EFFECT(new()

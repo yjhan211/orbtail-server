@@ -30,15 +30,15 @@ public sealed class WindOrbAttackServiceTests
         {
             match.Inventory.GetPlayerInventory(11).AddItem(107000020, forceSeparateStack: true);
             var origin = trails.GetSwarmOrbTrailPosition(match.MatchingId, 11, 0, new Vector3f(0, 0, 0));
-            List<SwarmParticipantSpatial> participants =
-                [new(11, AreaType.None, new Vector3f(0, 0, 0)), new(12, AreaType.None, origin)];
-            service.Process(match.MatchingId, now, participants, [], [owner, victim], []);
+            owner.Player.Position = new Vector3f(0, 0, 0);
+            victim.Player.Position = origin;
+            service.Process(match.MatchingId, now, [owner.Player, victim.Player], []);
             Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
             Assert.False(match.WindOrbAttacks.IsWounded(12, now));
 
             var hitAt = now.AddSeconds(Math.Max(Config.SWARM_WIND_BLADE_TICK_SECONDS,
                 Config.SWARM_WIND_BLADE_SPINUP_SECONDS) + 0.001);
-            service.Process(match.MatchingId, hitAt, participants, [], [owner, victim], []);
+            service.Process(match.MatchingId, hitAt, [owner.Player, victim.Player], []);
             int expected = Math.Max(1, (int)MathF.Round(
                 Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE)));
             Assert.Equal(Config.MAX_HEALTH - expected, victim.Player.Health);
@@ -46,7 +46,7 @@ public sealed class WindOrbAttackServiceTests
             Assert.Equal(Config.MAX_HEALTH, owner.Player.Health);
 
             service.Process(match.MatchingId, hitAt.AddSeconds(Config.SWARM_WIND_BLADE_TICK_SECONDS + 0.001),
-                participants, [], [owner, victim], []);
+                [owner.Player, victim.Player], []);
             Assert.Equal(Config.MAX_HEALTH - expected, victim.Player.Health);
             match.TryMarkEnded();
         }
@@ -68,11 +68,13 @@ public sealed class WindOrbAttackServiceTests
             var victim = new BotPlayerState { PlayerId = 12 };
             match.RegisterParticipant(victim.Player);
             var origin = trails.GetSwarmOrbTrailPosition(match.MatchingId, 11, 0, new Vector3f(0, 0, 0));
-            List<SwarmParticipantSpatial> participants =
-                [new(11, AreaType.None, new Vector3f(0, 0, 0)), new(12, otherArea ? (AreaType)1 : AreaType.None, origin)];
+            var owner = new BotPlayerState { PlayerId = 11 };
+            owner.Player.Position = new Vector3f(0, 0, 0);
+            victim.Player.Position = origin;
+            victim.Player.CurrentArea = otherArea ? (AreaType)1 : AreaType.None;
             var now = DateTime.UtcNow;
-            service.Process(match.MatchingId, now, participants, [], [victim], []);
-            service.Process(match.MatchingId, now.AddSeconds(1), participants, [], [victim], []);
+            service.Process(match.MatchingId, now, [owner.Player, victim.Player], []);
+            service.Process(match.MatchingId, now.AddSeconds(1), [owner.Player, victim.Player], []);
             Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
             Assert.False(match.WindOrbAttacks.IsWounded(12, now.AddSeconds(1)));
             match.TryMarkEnded();
