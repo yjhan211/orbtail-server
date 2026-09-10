@@ -220,10 +220,10 @@ internal class MatchCombatService(
         var actors = BuildSwarmArenaCombatActors(matchingId, players, nowUtc);
         orbRecovery.Process(matchingId, actors, players, nowUtc);
         orbVisuals.Publish(matchingId, actors, sessions);
-        BroadcastSwarmOrbRankings(matchingId, sessions, bots);
+        BroadcastSwarmOrbRankings(matchingId, sessions);
         // 성장 카드 (#226 단계 C): 소환석이 비용에 닿는 즉시 3택 오퍼 — 상자 트리거 퇴역.
         growth.ProcessOffers(matchingId, players, aliveBots);
-        if (ProcessSwarmScoreTimeout(matchingId, nowUtc, sessions, aliveSessions, aliveBots))
+        if (ProcessSwarmScoreTimeout(matchingId, nowUtc))
             return;
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.
         matchRuntimes.GetOrThrow(matchingId).CombatDamage.ProcessPendingMonsterHits(nowUtc, sessions);
@@ -1388,19 +1388,14 @@ internal class MatchCombatService(
     }
 
     /// <summary>
-    ///     5분 점수 만료 판정 (#226 단계 B): 개전 후 5분이 지나면 생존자 중 오브 최다
-    ///     보유자가 승리한다. 동점은 총 티어 합 → (철갑, 단계 C 예정) → 본체 게이지(오염
-    ///     낮은 쪽) → PlayerId 낮은 쪽. 단독 생존 조기 종료와 같은 MatchResultService.FinalizeMatch
-    ///     경로라 결과 화면도 같다. 잼 승점(#222 M3-2)은 퇴역.
+    ///     제한 시간이 지나면 생존 참가자의 오브 수 → 티어 합 → 내구 보너스 합 → 체력 → ID 순으로 승자를 정한다.
+    ///     연결 유무와 관계없이 같은 결과 확정 경로를 사용한다.
     /// </summary>
-    private bool ProcessSwarmScoreTimeout(
+    internal bool ProcessSwarmScoreTimeout(
         long matchingId,
-        DateTime nowUtc,
-        List<GameClientSession> sessions,
-        List<GameClientSession> aliveSessions,
-        List<BotPlayerState> aliveBots)
+        DateTime nowUtc)
     {
-        if (_timeoutResultProcessed)
+        if (_timeoutResultProcessed || IsMatchTerminal(matchingId))
             return false;
 
         var startedAtUtc = matchRuntimes.GetOrThrow(matchingId).StartsAtUtc;
@@ -1418,12 +1413,7 @@ internal class MatchCombatService(
         if ((nowUtc - startedAtUtc.Value).TotalSeconds < Config.SWARM_MATCH_DURATION_SECONDS)
             return false;
 
-        var candidates = aliveSessions
-            .Where(session => session.PlayerId.HasValue)
-            .Select(session => (
-                PlayerId: session.PlayerId!.Value,
-                Health: session.Player.Health))
-            .Concat(aliveBots.Select(bot => (bot.PlayerId, bot.Player.Health)))
+        var candidates = matchRuntimes.GetOrThrow(matchingId).GetAlivePlayers()
             .Select(candidate =>
             {
                 var (orbCount, tierSum) = GetSwarmOrbScore(matchingId, candidate.PlayerId);
@@ -1454,14 +1444,8 @@ internal class MatchCombatService(
             candidates.Count > 0 ? candidates[0].TierSum : 0,
             candidates.Count);
 
-        if (sessions.Any(session => !session.IsGameEnded))
-        {
-            matchResults.FinalizeMatch(matchingId, winnerId, MatchEndReason.OrbScoreTimeout);
-            matchRuntimes.GetOrNull(matchingId)?.AutoAttack.Clear();
-            return true;
-        }
-
-        matchCleanup.EndBotOnlyMatchIfSettled(matchingId, winnerId);
+        matchResults.FinalizeMatch(matchingId, winnerId, MatchEndReason.OrbScoreTimeout);
+        matchRuntimes.GetOrNull(matchingId)?.AutoAttack.Clear();
         return true;
     }
 
@@ -1478,20 +1462,16 @@ internal class MatchCombatService(
     ///     이름·수치·본인 순위를 그대로 비춘다.
     /// </summary>
     private void BroadcastSwarmOrbRankings(
-        long matchingId, List<GameClientSession> sessions, List<BotPlayerState> bots)
+        long matchingId, List<GameClientSession> sessions)
     {
-        var entries = sessions
-            .Where(session => session.PlayerId.HasValue)
-            .Select(session => (PlayerId: session.PlayerId!.Value,
-                Eliminated: session.Player.IsEliminated))
-            .Concat(bots.Select(bot => (bot.PlayerId, Eliminated: bot.Player.IsEliminated)))
+        var entries = matchRuntimes.GetOrThrow(matchingId).GetPlayers()
             .Select(entry =>
             {
                 var (orbCount, tierSum) = GetSwarmOrbScore(matchingId, entry.PlayerId);
                 // 탈락자는 0점 — 순위표에서 자연히 바닥으로 내려간다.
                 return (entry.PlayerId,
-                    Orbs: entry.Eliminated ? 0 : orbCount,
-                    TierSum: entry.Eliminated ? 0 : tierSum);
+                    Orbs: entry.IsEliminated ? 0 : orbCount,
+                    TierSum: entry.IsEliminated ? 0 : tierSum);
             })
             .OrderByDescending(entry => entry.Orbs)
             .ThenByDescending(entry => entry.TierSum)

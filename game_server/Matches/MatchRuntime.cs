@@ -183,6 +183,15 @@ internal sealed class MatchRuntime
         }
     }
 
+    /// <summary>연결·탈락 여부와 관계없이 매치의 전체 참가자 스냅샷을 반환한다.</summary>
+    public List<Player> GetPlayers()
+    {
+        lock (MatchLock)
+        {
+            return _participants.Values.ToList();
+        }
+    }
+
     public List<PlayerInfo> GetPlayerProfiles()
     {
         lock (MatchLock)
