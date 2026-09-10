@@ -47,8 +47,6 @@ internal class MatchCombatService(
     private DateTime? _nextContactLogAtUtc;
 
     private const int SwarmArenaBasicDamage = 12;
-    // 봇도 사람과 동일한 접촉 피해 규칙을 적용한다.
-    private const float SwarmBotContactDamageMultiplier = 1f;
     // 사거리는 클라 표시(PlayerRangeRing)와 공유 — Config가 단일 출처다.
     private static float SwarmArenaBasicRange => Config.SWARM_ORB_ATTACK_RANGE;
     private const float SwarmArenaBasicAttackIntervalSeconds = 1f;
@@ -1409,37 +1407,15 @@ internal class MatchCombatService(
             }
         }
 
-        var session = aliveSessions.FirstOrDefault(candidate =>
-            candidate.PlayerId == damage.TargetPlayerId);
+        var session = aliveSessions.FirstOrDefault(candidate => candidate.PlayerId == damage.TargetPlayerId);
+        var victim = session?.Player
+            ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == damage.TargetPlayerId)?.Player;
+        if (victim == null) return;
+
         if (session != null)
-        {
-            // 피격은 수면을 깨지 않는다 — 자면서 맞는 건 본인의 선택이다.
-            // 3초 진입 잠금만 찍어 맞자마자 새로 눕는 것은 계속 막는다.
-            session.Player.MarkSwarmCombat(DateTime.UtcNow);
-            // #229: 문 게이지도 같이 끊는다 — 문 앞을 비우지 못하면 방을 못 연다.
             session.BreakDoorUnlockGauge();
-            // 오염 경로 — 체력 감소·피격 피드백·일반 탈락 흐름까지 담당한다.
-            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmAfterimageMonsterHit(session, damage.MonsterId, damage.Damage);
-            return;
-        }
-
-        var bot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == damage.TargetPlayerId);
-        if (bot == null)
-            return;
-
-        // 반올림으로 맞춘다 (#229 4단계-보정): 잘라내기라 raw 6(배율 통과 3)이 1로, raw 8(4)이
-        // 2로 뭉개져 페이즈별 접촉 곡선이 봇에게는 통째로 평평했다. 사람 경로는 Round를 쓴다.
-        int botDamage = Math.Max(1, (int)MathF.Round(damage.Damage * SwarmBotContactDamageMultiplier));
-        int legacyBefore = bot.Player.Health;
-        PlayerHealthChangeService.Record(matchingId, bot.Player, bot.Player.ApplyDamage(botDamage), eventLogs, logger);
-        matchRuntimes.GetOrThrow(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
-        bot.Player.MarkSwarmCombat(DateTime.UtcNow);
-        // 세 번째 봇 경로도 남긴다 — 앞의 두 경로만 로그를 붙여 놓으면 여기로 빠진 피해가
-        // 그대로 안 보인다.
-        eventLogs.LogSwarmAfterimageHit(
-            matchingId, damage.MonsterId, bot.PlayerId, damage.Area.ToString(),
-            botDamage, legacyBefore, bot.Player.Health,
-            bot.Player.Health <= 0, isBot: true, DateTimeOffset.UtcNow);
+        matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmAfterimageMonsterHit(
+            victim, damage.MonsterId, damage.Damage);
     }
 
     /// <summary>

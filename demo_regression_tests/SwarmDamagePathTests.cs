@@ -165,7 +165,7 @@ public class SwarmDamagePathTests
         string combat = File.ReadAllText(
             Path.Combine(root, "game_server", "Combat", "MatchCombatService.cs"));
         // 피격·절단 가해는 수면을 깨지 않고 교전 잠금만 찍는다.
-        Assert.Contains("MarkSwarmCombat(DateTime.UtcNow)", combat);
+        Assert.Contains("victim.MarkSwarmCombat(nowUtc)", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Combat", "MatchCombatDamageService.cs")));
         Assert.Contains("MarkSwarmCombat(nowUtc)", combat);
         // 아레나에서 수면을 깨우는 호출이 되살아나면 계약 위반이다 (폐쇄·경고 깨우기 퇴역).
         Assert.DoesNotContain("BreakSwarmSleep", combat);

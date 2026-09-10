@@ -152,31 +152,50 @@ internal sealed class MatchCombatDamageService(
     }
 
     /// <summary>몬스터 피해를 적용하고 같은 피해량을 클라이언트에 알린다.</summary>
-    public void ApplySwarmAfterimageMonsterHit(
-        GameClientSession victimSession, int monsterId, int damage)
+    public void ApplySwarmAfterimageMonsterHit(Player victim, int monsterId, int damage)
     {
-        if (!victimSession.PlayerId.HasValue || victimSession.Player.IsEliminated || monsterId <= 0 || damage <= 0) return;
-        int healthBefore = victimSession.Player.Health;
+        if (victim.IsEliminated || monsterId <= 0 || damage <= 0) return;
+
+        var nowUtc = DateTime.UtcNow;
+        // 수면 상태는 유지하되 피격 직후의 수면 진입·회복을 제한한다.
+        victim.MarkSwarmCombat(nowUtc);
+        var bot = runtime.Bots.GetBots(runtime.MatchingId).FirstOrDefault(bot => ReferenceEquals(bot.Player, victim));
+        if (bot != null)
+        {
+            bot.LastDamagedAtUtc = nowUtc;
+            runtime.BotTactics.LastDamagedAtUtc[(runtime.MatchingId, victim.PlayerId)] = nowUtc;
+        }
+
+        int healthBefore = victim.Health;
         int healthAfter = Math.Max(0, healthBefore - damage);
         bool isLethal = healthBefore > 0 && healthAfter <= 0;
+        bool isBot = BotPlayerManager.IsBotPlayerId(victim.PlayerId);
         eventLogs.LogSwarmAfterimageHit(
-            victimSession.MatchingId, monsterId, victimSession.PlayerId.Value, victimSession.Player.CurrentArea.ToString(), damage,
-            healthBefore, healthAfter, isLethal, isBot: false, DateTimeOffset.UtcNow);
+            runtime.MatchingId, monsterId, victim.PlayerId, victim.CurrentArea.ToString(), damage,
+            healthBefore, healthAfter, isLethal, isBot, new DateTimeOffset(nowUtc));
         logger.LogInformation(
-            "Emotion afterimage attack: MatchingId={MatchingId}, MonsterId={MonsterId}, Target={Target}, TargetKind=Human, Damage={Damage}, HealthBefore={HealthBefore}, HealthAfter={HealthAfter}, Killed={Killed}",
-            victimSession.MatchingId, monsterId, victimSession.PlayerId.Value, damage, healthBefore, healthAfter, isLethal);
-        var change = victimSession.Player.ApplyDamage(damage);
-        victimSession.HealthChanges.Handle(victimSession.Match, victimSession.Player, change);
+            "Monster attack: MatchingId={MatchingId}, MonsterId={MonsterId}, Target={Target}, IsBot={IsBot}, Damage={Damage}, HealthBefore={HealthBefore}, HealthAfter={HealthAfter}, Killed={Killed}",
+            runtime.MatchingId, monsterId, victim.PlayerId, isBot, damage, healthBefore, healthAfter, isLethal);
+
+        var change = victim.ApplyDamage(damage);
+        var session = victim.Session;
+        // 기존 탈락 순서 유지: 사람은 즉시, 봇은 전투 루프의 탈락 단계에서 처리한다.
+        if (session != null)
+            session.HealthChanges.Handle(runtime, victim, change);
+        else
+            PlayerHealthChangeService.Record(runtime.MatchingId, victim, change, eventLogs, logger);
+
+        if (session == null) return;
         using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
         {
             AttackerId = monsterId,
             AttackerKind = CombatEntityKind.Monster,
-            TargetId = victimSession.PlayerId.Value,
-            AreaType = victimSession.Player.CurrentArea,
+            TargetId = victim.PlayerId,
+            AreaType = victim.CurrentArea,
             Damage = damage,
-            TargetHealth = victimSession.Player.Health
+            TargetHealth = victim.Health
         });
-        victimSession.TrySend(packet);
+        session.TrySend(packet);
     }
 
     private static double SwarmCriticalChance => SwarmConfigData.GetDouble("SWARM_CRITICAL_CHANCE", 0.15d);

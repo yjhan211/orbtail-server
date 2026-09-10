@@ -186,6 +186,42 @@ public sealed class GameClientSessionPublicationTests
     }
 
     [Fact]
+    public void MonsterHitUsesSameHealthAndRecoveryRulesForHumanAndBot()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 102, (AreaType)50);
+        var match = session.Match;
+        var bot = new game_server.players.bots.BotPlayerState { PlayerId = -11 };
+        bot.Player.Health = session.Player.Health;
+        bot.Player.CurrentArea = session.Player.CurrentArea;
+        match.Bots.GetBots(match.MatchingId).Add(bot);
+        int before = bot.Player.Health;
+        using (match.Enter())
+        {
+            match.CombatDamage.ApplySwarmAfterimageMonsterHit(session.Player, 42, 5);
+            match.CombatDamage.ApplySwarmAfterimageMonsterHit(bot.Player, 42, 5);
+        }
+        Assert.Equal(before - 5, bot.Player.Health);
+        Assert.Equal(session.Player.Health, bot.Player.Health);
+        Assert.False(session.Player.CanSleep(DateTime.UtcNow));
+        Assert.False(bot.Player.CanSleep(DateTime.UtcNow));
+        Assert.True(bot.LastDamagedAtUtc > DateTime.MinValue);
+        Assert.Equal(0, bot.LastProximityAttackerPlayerId);
+        var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
+        Assert.Equal(CombatEntityKind.Monster, hit.AttackerKind);
+        Assert.Equal(42, hit.AttackerId);
+        Assert.Equal(5, hit.Damage);
+        Assert.Equal(session.Player.Health, hit.TargetHealth);
+
+        using (match.Enter())
+        {
+            match.CombatDamage.ApplySwarmAfterimageMonsterHit(bot.Player, 42, Config.MAX_HEALTH);
+            Assert.Equal(0, bot.Player.Health);
+            Assert.False(bot.Player.IsEliminated); // 봇 탈락은 기존 전투 루프가 처리한다.
+        }
+    }
+
+    [Fact]
     public void MonsterFeedback_DoesNotPackIdentityOrFlagsIntoHealth()
     {
         using var fixture = new SessionFixture();
@@ -209,7 +245,7 @@ public sealed class GameClientSessionPublicationTests
         using (session.Match.Enter())
         {
             var combat = session.Match.CombatDamage;
-            combat.ApplySwarmAfterimageMonsterHit(session, 42, 1);
+            combat.ApplySwarmAfterimageMonsterHit(session.Player, 42, 1);
         }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(CombatEntityKind.Monster, hit.AttackerKind);
