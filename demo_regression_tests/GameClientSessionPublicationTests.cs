@@ -973,8 +973,8 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("RunWithMatchLock", combat);
         Assert.DoesNotContain("RunWithMatchLock", bots);
         Assert.DoesNotContain("RunWithMatchLock", botPickup);
-        Assert.Contains("victim.InterruptDoor()", combat);
-        Assert.Contains("victim.Session?.SendDoorOpenInterrupted(interactId);", combat);
+        Assert.Contains("victim.InterruptDoor()", ReadNormalizedSource(root, "game_server", "Combat", "MatchCombatDamageService.cs"));
+        Assert.Contains("victim.Session?.SendDoorOpenInterrupted(interactId);", ReadNormalizedSource(root, "game_server", "Combat", "MatchCombatDamageService.cs"));
 
         Assert.DoesNotContain(
             "RunWithMatchLock",

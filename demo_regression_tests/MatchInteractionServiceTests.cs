@@ -139,4 +139,36 @@ public sealed class MatchInteractionServiceTests
         }
     }
 
+    [Theory]
+    [InlineData(101)]
+    [InlineData(-101)]
+    public void SharedDoorFlowChecksTimeAndFirstDoorProtection(long playerId)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null && !File.Exists(Path.Combine(directory.FullName, "server.sln")))
+            directory = directory.Parent;
+        network.common.data.helpers.GameDataHelper.SetBasePath(Path.Combine(directory!.FullName, "network"));
+        network.common.data.helpers.GameDataHelper.Initialize();
+        var door = network.common.data.GameDoorData.GetAll().First();
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(984405);
+        var player = new Player { Profile = new PlayerInfo { PlayerId = playerId }, CurrentArea = door.AreaType };
+        long duration = (long)TimeSpan.FromSeconds(Config.GetSwarmDoorGaugeSeconds(door.DoorId)).TotalMilliseconds;
+        using (match.Enter())
+        {
+            Assert.False(MatchInteractionService.TryFinishDoor(match, player, 10, door.DoorId, duration, out _));
+            Assert.Equal(ErrorCode.SUCCESS, MatchInteractionService.StartDoor(match, player, 10, door.DoorId, 0));
+            Assert.Null(player.InterruptDoor());
+            Assert.False(MatchInteractionService.TryFinishDoor(match, player, 10, door.DoorId, duration - 1, out var error));
+            Assert.Equal(ErrorCode.DOOR_OPEN_TOO_EARLY, error);
+            Assert.True(MatchInteractionService.TryFinishDoor(match, player, 10, door.DoorId, duration, out error));
+            Assert.True(match.Doors.IsDoorOpen(door.DoorId));
+            Assert.False(MatchInteractionService.TryFinishDoor(match, player, 10, door.DoorId, duration, out _));
+            match.Doors.CloseDoorsForAreas([door.AreaType]);
+            Assert.Equal(ErrorCode.SUCCESS, MatchInteractionService.StartDoor(match, player, 11, door.DoorId, duration));
+            Assert.Equal(11, player.InterruptDoor());
+            Assert.False(MatchInteractionService.TryFinishDoor(match, player, 11, door.DoorId, duration * 2, out _));
+            Assert.False(match.Doors.IsDoorOpen(door.DoorId));
+        }
+    }
 }

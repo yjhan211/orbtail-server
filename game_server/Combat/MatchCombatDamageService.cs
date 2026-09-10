@@ -139,6 +139,12 @@ internal sealed class MatchCombatDamageService(
     {
         var nowUtc = DateTime.UtcNow;
         victim.MarkSwarmCombat(nowUtc);
+        if (victim.InterruptDoor() is { } interactId)
+        {
+            eventLogs.LogExploreCancelled(runtime.MatchingId, victim.PlayerId, interactId,
+                victim.CurrentArea.ToString(), "door_unlock_hit", isBot: victim.PlayerId < 0);
+            victim.Session?.SendDoorOpenInterrupted(interactId);
+        }
         var bot = runtime.Bots.GetBots(runtime.MatchingId).FirstOrDefault(bot => ReferenceEquals(bot.Player, victim));
         if (bot == null) return;
 
@@ -156,6 +162,12 @@ internal sealed class MatchCombatDamageService(
         var nowUtc = DateTime.UtcNow;
         // 수면 상태는 유지하되 피격 직후의 수면 진입·회복을 제한한다.
         victim.MarkSwarmCombat(nowUtc);
+        if (victim.InterruptDoor() is { } interactId)
+        {
+            eventLogs.LogExploreCancelled(runtime.MatchingId, victim.PlayerId, interactId,
+                victim.CurrentArea.ToString(), "door_unlock_hit", isBot: victim.PlayerId < 0);
+            victim.Session?.SendDoorOpenInterrupted(interactId);
+        }
         var bot = runtime.Bots.GetBots(runtime.MatchingId).FirstOrDefault(bot => ReferenceEquals(bot.Player, victim));
         if (bot != null)
         {
@@ -337,7 +349,6 @@ internal sealed class MatchCombatDamageService(
         long victimId,
         string label,
         IReadOnlyList<Player> players,
-        List<GameClientSession> allSessions,
         float damageScale = 1f,
         bool isPeriodicDamage = false)
     {

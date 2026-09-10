@@ -141,7 +141,4 @@ public class BotPlayerState
     /// <summary>Server-authoritative movement multiplier from currently living Wind orbs.</summary>
     public float WindMoveSpeedMultiplier { get; set; } = 1f;
 
-    // #229: 문 잠금해제 게이지. 사람과 같은 규칙 — 맞으면 풀린다(LastDamagedAtUtc 참조).
-    public int SwarmDoorUnlockDoorId { get; set; }
-    public DateTime SwarmDoorUnlockStartedAtUtc { get; set; } = DateTime.MinValue;
 }

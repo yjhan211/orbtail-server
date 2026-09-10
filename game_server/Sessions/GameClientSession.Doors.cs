@@ -44,12 +44,11 @@ public partial class GameClientSession
             {
                 error = info.ZoneId != (int)Player.CurrentArea
                     ? ErrorCode.AREA_MISMATCH
-                    : MatchInteractionService.CheckDoorGauge(match, Player.CurrentArea, info.DoorId);
+                    : MatchInteractionService.StartDoor(match, Player, msg.InteractId, info.DoorId, Environment.TickCount64);
             }
 
             if (error == ErrorCode.SUCCESS)
             {
-                Player.BeginDoor(msg.InteractId, Environment.TickCount64);
                 _gameEventLogManager.LogExploreStart(MatchingId, PlayerId.Value, msg.InteractId, Player.CurrentArea.ToString(), isBot: false);
             }
 
@@ -101,10 +100,8 @@ public partial class GameClientSession
             {
                 Player.TryFinishInteraction(msg.InteractId);
             }
-            else if (Player.TryFinishDoor(msg.InteractId, Environment.TickCount64,
-                         TimeSpan.FromSeconds(Config.GetSwarmDoorGaugeSeconds(doorId)), out error))
+            else if (MatchInteractionService.TryFinishDoor(match, Player, msg.InteractId, doorId, Environment.TickCount64, out error))
             {
-                MatchInteractionService.FinishDoor(match, Player, doorId);
                 completed = true;
                 using var updatePacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, PlayerId.Value);
                 foreach (var session in match.GetSessions())

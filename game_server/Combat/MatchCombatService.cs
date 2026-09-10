@@ -1251,7 +1251,7 @@ internal class MatchCombatService(
             // 충격 면역 없음: 겹친 링에 다 맞는다 — 침수는 지속 갱신이라 중첩 무해.
             soaked++;
             matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(playerEliminations, ownerId, sourceItemId, area, participant.PlayerId,
-                "WAVE_VORTEX_HIT", players, allSessions,
+                "WAVE_VORTEX_HIT", players,
                 Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER);
 
             if (IsMatchTerminal(matchingId)) return;
@@ -1368,12 +1368,6 @@ internal class MatchCombatService(
             }
         }
 
-        if (victim.InterruptDoor() is { } interactId)
-        {
-            eventLogs.LogExploreCancelled(matchingId, victim.PlayerId, interactId,
-                victim.CurrentArea.ToString(), "door_unlock_hit", isBot: victim.PlayerId < 0);
-            victim.Session?.SendDoorOpenInterrupted(interactId);
-        }
         match.CombatDamage.ApplySwarmAfterimageMonsterHit(playerEliminations,
             victim, damage.MonsterId, damage.Damage);
     }

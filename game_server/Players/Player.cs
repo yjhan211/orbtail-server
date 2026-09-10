@@ -228,13 +228,19 @@ public class Player
     }
 
     public void BeginInteraction(int interactId) => _pending.Add(interactId);
-    public bool TryFinishInteraction(int interactId) => _pending.Remove(interactId);
+    public bool TryFinishInteraction(int interactId)
+    {
+        if (_pendingDoor == interactId) _pendingDoor = null;
+        return _pending.Remove(interactId);
+    }
     public int[] GetPendingInteractionIds() => _pending.ToArray();
     public void ClearPendingInteractions()
     {
         _pending.Clear();
         _pendingDoor = null;
     }
+
+    internal int? PendingDoorInteractionId => _pendingDoor;
 
     public void BeginDoor(int interactId, long startedAt)
     {

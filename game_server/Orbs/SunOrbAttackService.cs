@@ -316,7 +316,7 @@ internal sealed class SunOrbAttackService(
                 matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(playerEliminations,
                     shape.OwnerId, shape.WeaponItemId, shape.Area, participant.PlayerId,
                     $"ORB_CROSSFIRE_HIT event={shape.EventId} shape=pierce anchor={shape.AnchorMonsterId}",
-                    players, allSessions);
+                    players);
                 if (matchRuntimes.GetOrThrow(matchingId).IsEnded) return;
                 ApplySwarmSunBurn(
                     matchingId, shape.OwnerId, shape.WeaponItemId, shape.Area,
@@ -553,7 +553,7 @@ internal sealed class SunOrbAttackService(
             Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS,
             (victimId, burn) =>
                 matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(playerEliminations, burn.OwnerId, burn.WeaponItemId, burn.Area,
-                    victimId, "SUN_BURN_TICK", players, allSessions,
+                    victimId, "SUN_BURN_TICK", players,
                     Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER, isPeriodicDamage: true));
     }
 
