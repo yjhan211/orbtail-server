@@ -302,30 +302,21 @@ internal class MatchZoneService(
         IReadOnlyList<GameClientSession> sessions,
         ImmutableArray<SwarmClosureOutbound>.Builder outbound)
     {
+        var runtime = matchRuntimes.GetOrThrow(matchingId);
         var closed = closedAreas.ToHashSet();
-        var owners = new List<(long PlayerId, Vector3f Position, GameClientSession? Session)>();
-        foreach (var session in sessions)
+        foreach (var player in runtime.GetAlivePlayers())
         {
-            if (session.PlayerId.HasValue && !session.Player.IsEliminated &&
-                session.Player.Position != null)
-                owners.Add((session.PlayerId.Value, session.Player.Position, session));
-        }
-
-        foreach (var bot in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
-        {
-            if (!bot.Player.IsEliminated)
-                owners.Add((bot.PlayerId, bot.Player.Position!, null));
-        }
-
-        foreach (var (playerId, ownerPosition, ownerSession) in owners)
-        {
+            if (player.Position == null) continue;
+            long playerId = player.PlayerId;
+            var ownerPosition = player.Position;
+            var ownerSession = player.Session;
             // 본인이 폐쇄 구역 안이면 꼬리는 그대로 둔다: 즉사가 퇴역해 본인은 틱 피해을 받으며
             // 문을 따고 나가는 중이다 — 여기서 꼬리까지 지우면 나가도 빈손이라 살아남을 이유가 없다.
             var ownerCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, ownerPosition);
             if (closed.Contains(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, ownerCell)))
                 continue;
 
-            int orbCount = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs().Sum(item => item.Count);
+            int orbCount = runtime.Inventory.GetPlayerInventory(playerId).GetOrderedOrbs().Sum(item => item.Count);
             if (orbCount == 0)
                 continue;
             var closureTiers = orbTrails.GetSwarmOrbTiersInOrder(matchingId, playerId);
@@ -350,7 +341,7 @@ internal class MatchZoneService(
             var destroyed = orbTrails.DestroySwarmOrbsFromOrdinal(matchingId, playerId, suffixStart);
             foreach (var destroyedItem in destroyed)
             {
-                matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbDurabilityBonus.Remove((matchingId, playerId, destroyedItem.ItemUid));
+                runtime.TrailCombat.OrbDurabilityBonus.Remove((matchingId, playerId, destroyedItem.ItemUid));
                 if (ownerSession != null)
                 {
                     outbound.Add(new SwarmInventoryUpdateOutbound(

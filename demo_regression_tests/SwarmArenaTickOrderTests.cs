@@ -346,6 +346,9 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain(".TrySend(", orbPrepare);
         Assert.DoesNotContain("SendOrbUpdate(", orbPrepare);
         Assert.DoesNotContain("SendOrbRingEffect(", orbPrepare);
+        Assert.Contains("foreach (var player in runtime.GetAlivePlayers())", orbPrepare);
+        Assert.DoesNotContain("Bots.GetBots", orbPrepare);
+        Assert.DoesNotContain("owners.Add", orbPrepare);
 
         AssertInOrder(
             dispatch,
