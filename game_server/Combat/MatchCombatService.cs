@@ -162,7 +162,7 @@ internal class MatchCombatService(
         UpdateSwarmOrbTrails(matchingId, participants);
         if (SwarmTrailCutEnabled)
         {
-            ProcessSwarmTrailCuts(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+            ProcessSwarmTrailCuts(matchingId, nowUtc, participants, sessions);
             // 반격 보호 창 결산 (#227 7단계) — 만료된 쌍만 CUT_RETALIATION_WINDOW로 남긴다.
             ProcessSwarmRetaliationWindows(matchingId, nowUtc, participants);
         }
@@ -700,8 +700,6 @@ internal class MatchCombatService(
         long matchingId,
         DateTime nowUtc,
         List<SwarmParticipantSpatial> participants,
-        List<GameClientSession> aliveSessions,
-        List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
         // 소유자별 열 좌표·개체 uid는 틱당 1회만 계산한다.
@@ -750,7 +748,7 @@ internal class MatchCombatService(
             if (!chains.ContainsKey(cutter.PlayerId))
                 continue;
             TryPerformSwarmTrailCut(matchingId, cutter.PlayerId, cutter.PlayerId, cutter.Area,
-                previous!, cutter.Position, chains, nowUtc, aliveSessions, aliveBots, allSessions);
+                previous!, cutter.Position, chains, nowUtc, allSessions);
         }
     }
 
@@ -780,13 +778,10 @@ internal class MatchCombatService(
     ///     절단 한 건당 1회만 부르므로 전수 조회를 그대로 쓴다.
     /// </summary>
     private int GetSwarmPlayerRank(
-        long matchingId, long playerId,
-        List<GameClientSession> aliveSessions, List<BotPlayerState> aliveBots)
+        long matchingId, long playerId)
     {
-        var entries = aliveSessions
-            .Where(session => session.PlayerId.HasValue)
-            .Select(session => session.PlayerId!.Value)
-            .Concat(aliveBots.Select(bot => bot.PlayerId))
+        var entries = matchRuntimes.GetOrThrow(matchingId).GetAlivePlayers()
+            .Select(player => player.PlayerId)
             .Select(id =>
             {
                 var (orbCount, tierSum) = GetSwarmOrbScore(matchingId, id);
@@ -843,10 +838,12 @@ internal class MatchCombatService(
         Dictionary<long, (AreaType Area, Vector3f OwnerPosition, List<Vector3f> Points,
             List<long> Uids, List<int> ItemIds)> chains,
         DateTime nowUtc,
-        List<GameClientSession> aliveSessions,
-        List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
+        var match = matchRuntimes.GetOrThrow(matchingId);
+        var cutter = match.GetParticipant(cutterId);
+        if (match.IsEnded || cutter == null || cutter.IsEliminated) return;
+
         float segmentDx = current.X - previous.X;
         float segmentDy = current.Y - previous.Y;
         float segmentLengthSquared = segmentDx * segmentDx + segmentDy * segmentDy;
@@ -863,7 +860,8 @@ internal class MatchCombatService(
         AreaType bestArea = AreaType.None;
         foreach (var (ownerId, chain) in chains)
         {
-            if (ownerId == cutterId || chain.Area != cutterArea)
+            if (ownerId == cutterId || chain.Area != cutterArea ||
+                match.GetParticipant(ownerId) is not { IsEliminated: false })
                 continue;
             // 반격 보호 (#227 7단계): 방금 이 피해자를 자른 '그 절단자'만 막힌다 —
             // 제3자는 정상적으로 자를 수 있다(전역 면역 퇴역).
@@ -922,11 +920,8 @@ internal class MatchCombatService(
 
         // 비용 선결 (#232 단일 절단): +35를 감당할 수 없으면(만충 = 탈락) 절단도 비용도 없다.
         // 래치도 안 찍는다 — 다음 틱에 사정이 달라져 있으면(회복) 그때 다시 판정한다.
-        var cutterSession = aliveSessions.FirstOrDefault(session => session.PlayerId == cutterId);
-        var cutterBot = cutterSession == null
-            ? aliveBots.FirstOrDefault(candidate => candidate.PlayerId == cutterId)
-            : null;
-        int cutterHealthBefore = cutterSession?.Player.Health ?? cutterBot?.Player.Health ?? 0;
+        var cutterBot = match.Bots.GetBot(matchingId, cutterId);
+        int cutterHealthBefore = cutter.Health;
         if (cutterHealthBefore - SwarmSingleCutHealthCost <= 0)
         {
             eventLogs.LogSystem(
@@ -949,7 +944,7 @@ internal class MatchCombatService(
 
         // #229 6단계: 절단은 내가 몸으로 지르는 가해다 — 교전 잠금을 찍어 절단하고 바로 눕는
         // 도주 회복을 막는다. 수면 해제는 안 건다 — 절단하러 움직인 순간 이동이 이미 깨웠다.
-        cutterSession?.Player.MarkSwarmCombat(nowUtc);
+        cutter.MarkSwarmCombat(nowUtc);
 
         // 절단 진입 계측 (#227 3·6단계): 공격자·피해자·후보 ordinal·그 자리를 덮던 적 오브
         // 사거리 수(국소 화망). 내구 1·즉시 파괴, 손실 = 후보 순번부터 꼬리 끝까지.
@@ -970,12 +965,12 @@ internal class MatchCombatService(
         var destroyedItem = destroyedItems[0];
         // 반격 보호 개시 (#227 7단계): 방금 자른 그 사람은 1.2초 동안 이 피해자를 다시 못 자른다.
         OpenSwarmRetaliationWindow(matchingId, creditPlayerId, bestOwnerId, bestArea, nowUtc, allSessions);
-        var ownerSession = aliveSessions.FirstOrDefault(session => session.PlayerId == bestOwnerId);
+        var owner = match.GetParticipant(bestOwnerId)!;
         var ownerChain = chains[bestOwnerId];
         foreach (var lost in destroyedItems)
         {
             matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbDurabilityBonus.Remove((matchingId, bestOwnerId, lost.ItemUid));
-            ownerSession?.SendOrbUpdate(lost);
+            owner.Session?.SendOrbUpdate(lost);
         }
         // 절단 낙수 없음 (#232): 소환석·드롭·점수·웨이브 기여를 지급하지 않는다. 잃은 것은 그냥 사라진다.
 
@@ -988,32 +983,17 @@ internal class MatchCombatService(
         // 공격자 치명상 (#232): 같은 사건으로 +35. 사람은 사격 피격 경로(체력 감소·피격 숫자)를 타고
         // 8초 수면 회복 차단이 걸린다. 봇도 같은 차단을 적용한다.
         DateTime healLockUntil = nowUtc.AddSeconds(SwarmSingleCutHealLockSeconds);
-        int cutterHealthAfter;
-        if (cutterSession != null)
+        match.CombatDamage.ApplyProximityAutoCombatHit(playerEliminations,
+            cutter, cutterId, cutterArea, destroyedItem.ItemId, SwarmSingleCutHealthCost);
+        cutter.BlockHealingUntil(healLockUntil);
+        int cutterHealthAfter = cutter.Health;
+        if (cutterBot != null)
         {
-            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplyProximityAutoCombatHit(playerEliminations, cutterSession.Player,
-                cutterId, cutterArea, destroyedItem.ItemId, SwarmSingleCutHealthCost);
-            cutterSession.Player.BlockHealingUntil(healLockUntil);
-            cutterHealthAfter = cutterSession.Player.Health;
-        }
-        else if (cutterBot != null)
-        {
-            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplyProximityAutoCombatHit(playerEliminations,
-                cutterBot.Player, cutterId, cutterArea, destroyedItem.ItemId, SwarmSingleCutHealthCost);
-            cutterBot.LastDamagedAtUtc = nowUtc;
-            cutterBot.Player.BlockHealingUntil(healLockUntil);
-            matchRuntimes.GetOrThrow(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
-            cutterBot.Player.MarkSwarmCombat(nowUtc);
-            // 봇 절단 시각 — 절단 자제 쿨다운(IsSwarmBotCutAllowed)과 절단 후 회수 창이 읽는다.
-            matchRuntimes.GetOrThrow(matchingId).BotTactics.LastTrailCutAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
-            cutterHealthAfter = cutterBot.Player.Health;
-        }
-        else
-        {
-            cutterHealthAfter = cutterHealthBefore;
+            // 봇 AI가 읽는 절단 자제·회수 시각만 별도로 기록한다.
+            match.BotTactics.LastTrailCutAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
         }
 
-        var ownerBot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == bestOwnerId);
+        var ownerBot = match.Bots.GetBot(matchingId, bestOwnerId);
         if (ownerBot != null)
         {
             // 절단당한 봇은 피격 반응(도주 판단)으로 즉시 넘어간다.
@@ -1031,7 +1011,7 @@ internal class MatchCombatService(
         int orbsBefore = ownerChain.ItemIds.Count;
         int orbsAfter = orbTrails.CountSwarmSquadOrbs(matchingId, bestOwnerId);
         int attackOrbsAfter = CountSwarmAttackOrbs(GetSwarmOrbItemIdsInOrder(matchingId, bestOwnerId));
-        int rankAfter = GetSwarmPlayerRank(matchingId, bestOwnerId, aliveSessions, aliveBots);
+        int rankAfter = GetSwarmPlayerRank(matchingId, bestOwnerId);
 
         // 잃은 만큼 소환 비용을 되돌린다 (#229): 오브 수가 곧 소환 카운터라, 잘려 나간 몫이
         // 값에 남으면 절단당한 쪽이 재건 비용까지 떠안아 격차가 한 방향으로만 벌어진다.
