@@ -1,13 +1,13 @@
 namespace game_server.items;
 
-public enum GroundItemPickupDisposition
+public enum GroundItemDisposition
 {
     Store,
     AutoUse,
     LeaveOnGround
 }
 
-public static class GroundItemPickupPolicy
+public static class GroundItemPolicy
 {
     public const int BandageItemId = 201000008;
     public const int FirstAidKitItemId = 201000018;
@@ -23,7 +23,7 @@ public static class GroundItemPickupPolicy
 
     public static bool ShouldDropOnElimination(int itemId) => !IsImmediateUseItem(itemId);
 
-    public static GroundItemPickupDisposition Resolve(
+    public static GroundItemDisposition Resolve(
         int itemId,
         int health,
         out int healthRecovery,
@@ -34,7 +34,7 @@ public static class GroundItemPickupPolicy
         if (itemId == global::network.common.Config.JAM_GROUND_ITEM_ID)
         {
             healthRecovery = 0;
-            return GroundItemPickupDisposition.LeaveOnGround;
+            return GroundItemDisposition.LeaveOnGround;
         }
         healthRecovery = itemId switch
         {
@@ -47,13 +47,13 @@ public static class GroundItemPickupPolicy
         // 원작 하트 문법: 만피면 흐릿해지고 못 줍는다 — 본체 체력이 가득하면 바닥에 남긴다.
         // 낭비 방지 + 다친 쪽이 줍는 경합 유지. (오브 HP 게이트는 오브 HP 전투 퇴역으로 #318에서 삭제)
         if (itemId == HeartItemId && health >= global::network.common.Config.MAX_HEALTH)
-            return GroundItemPickupDisposition.LeaveOnGround;
+            return GroundItemDisposition.LeaveOnGround;
 
         if (healthRecovery == 0)
-            return GroundItemPickupDisposition.Store;
+            return GroundItemDisposition.Store;
 
         return IsImmediateUseItem(itemId)
-            ? GroundItemPickupDisposition.AutoUse
-            : GroundItemPickupDisposition.Store;
+            ? GroundItemDisposition.AutoUse
+            : GroundItemDisposition.Store;
     }
 }

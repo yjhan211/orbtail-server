@@ -57,16 +57,34 @@ internal sealed class PlayerEliminationService(
         var position = eliminatedPlayer.Position;
         if (position != null && eliminatedArea != AreaType.None)
         {
-            var drop = EliminationInventoryDropper.DropAll(
-                runtime.Inventory, runtime.GroundItems, matchingId, eliminatedPlayerId,
-                eliminatedArea, position.X, position.Y, Config.SWARM_MATCH_MAP);
-            if (drop.RemovedItems.Count > 0)
+            var removedItems = runtime.Inventory.TakeAllItems(eliminatedPlayerId);
+            var droppedItemIds = new List<int>();
+            foreach (var item in removedItems)
+            {
+                if (!GroundItemPolicy.ShouldDropOnElimination(item.ItemId))
+                {
+                    continue;
+                }
+
+                for (int count = 0; count < item.Count; count++)
+                {
+                    droppedItemIds.Add(item.ItemId);
+                }
+            }
+
+            var spawnedItems = runtime.GroundItems.SpawnItems(
+                eliminatedArea,
+                position.X,
+                position.Y,
+                droppedItemIds,
+                mapId: Config.SWARM_MATCH_MAP,
+                layout: GroundItemSpawnLayout.EliminationScatter);
+
+            if (removedItems.Count > 0)
             {
                 var emptyBoard = runtime.Inventory.GetPlayerInventory(eliminatedPlayerId);
-                gameEventLogManager.LogOrbBoardTransition(
-                    matchingId, eliminatedPlayerId, emptyBoard.GetAllItems(), 0,
-                    eliminatedArea.ToString(), "elimination_drop", isBot: eliminatedBot != null);
-                foreach (var item in drop.RemovedItems)
+                gameEventLogManager.LogOrbBoardTransition(matchingId, eliminatedPlayerId, emptyBoard.GetAllItems(), 0, eliminatedArea.ToString(), "elimination_drop", isBot: eliminatedBot != null);
+                foreach (var item in removedItems)
                 {
                     eliminatedSession?.SendOrbUpdate(new InGameItemInfo
                     {
@@ -77,13 +95,10 @@ internal sealed class PlayerEliminationService(
                     });
                 }
             }
-            if (drop.DroppedItemIds.Count > 0)
+            if (droppedItemIds.Count > 0)
             {
-                gameEventLogManager.LogEliminationDrop(
-                    matchingId, eliminatedPlayerId, eliminatedArea.ToString(),
-                    drop.DroppedItemIds, drop.SpawnedItems,
-                    GameEventLogManager.CalculateDropRecoveryTotal(drop.DroppedItemIds), isBot: eliminatedBot != null);
-                if (drop.SpawnedItems.Count > 0)
+                gameEventLogManager.LogEliminationDrop(matchingId, eliminatedPlayerId, eliminatedArea.ToString(), droppedItemIds, spawnedItems, GameEventLogManager.CalculateDropRecoveryTotal(droppedItemIds), isBot: eliminatedBot != null);
+                if (spawnedItems.Count > 0)
                 {
                     var targetSessions = new List<GameClientSession>();
                     foreach (var session in runtime.GetSessions())
@@ -94,9 +109,7 @@ internal sealed class PlayerEliminationService(
                         }
                     }
 
-                    using var spawnedPacket = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
-                        (int)eliminatedArea,
-                        drop.SpawnedItems.ToList());
+                    using var spawnedPacket = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)eliminatedArea, spawnedItems.ToList());
                     foreach (var session in targetSessions)
                     {
                         session.TrySend(spawnedPacket);

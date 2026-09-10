@@ -771,8 +771,8 @@ public class GameEventLogManager
     public static int CalculateDropRecoveryTotal(IEnumerable<int> itemIds) =>
         itemIds.Sum(itemId => itemId switch
         {
-            GroundItemPickupPolicy.BandageItemId => GroundItemPickupPolicy.BandageRecovery,
-            GroundItemPickupPolicy.FirstAidKitItemId => GroundItemPickupPolicy.FirstAidKitRecovery,
+            GroundItemPolicy.BandageItemId => GroundItemPolicy.BandageRecovery,
+            GroundItemPolicy.FirstAidKitItemId => GroundItemPolicy.FirstAidKitRecovery,
             _ => 0
         });
 

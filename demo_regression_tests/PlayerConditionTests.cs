@@ -127,13 +127,13 @@ public sealed class PlayerConditionTests
     [Fact]
     public void HeartPickupRequiresMissingHealth()
     {
-        Assert.Equal(GroundItemPickupDisposition.LeaveOnGround,
-            GroundItemPickupPolicy.Resolve(GroundItemPickupPolicy.HeartItemId,
+        Assert.Equal(GroundItemDisposition.LeaveOnGround,
+            GroundItemPolicy.Resolve(GroundItemPolicy.HeartItemId,
                 Config.MAX_HEALTH, out _));
-        Assert.Equal(GroundItemPickupDisposition.AutoUse,
-            GroundItemPickupPolicy.Resolve(GroundItemPickupPolicy.HeartItemId,
+        Assert.Equal(GroundItemDisposition.AutoUse,
+            GroundItemPolicy.Resolve(GroundItemPolicy.HeartItemId,
                 Config.MAX_HEALTH - 1, out int recovery));
-        Assert.Equal(GroundItemPickupPolicy.HeartRecovery, recovery);
+        Assert.Equal(GroundItemPolicy.HeartRecovery, recovery);
     }
 
     [Fact]

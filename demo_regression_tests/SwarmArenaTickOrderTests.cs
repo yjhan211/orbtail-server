@@ -231,7 +231,7 @@ public sealed class SwarmArenaTickOrderTests
             elimination,
             "TryEliminatePlayer(",
             "eliminatedBot.Path.Clear();",
-            "EliminationInventoryDropper.DropAll(",
+            "eliminatedPlayer.Inventory.TakeAllItems(",
             "session.TrySend(eliminatedPacket);",
             "CheckGameOver()");
 
@@ -241,7 +241,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             humanElimination,
             "TryEliminatePlayer(",
-            "EliminationInventoryDropper.DropAll(",
+            "eliminatedPlayer.Inventory.TakeAllItems(",
             "session.TrySend(eliminatedPacket);",
             "CheckGameOver(",
             "FinalizeMatch(");

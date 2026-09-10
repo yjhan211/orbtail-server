@@ -19,10 +19,22 @@ public sealed class PlayerPickupServiceTests
             var item = Assert.Single(match.GroundItems.SpawnItems(
                 Config.SWARM_MATCH_GROUND_AREA, 0, 0, [Config.KEY_GROUND_ITEM_ID]));
             TestGroundItemLanding.Complete(match.GroundItems);
-            var result = GroundItemPickupService.TryPickup(match, 1, Config.SWARM_MATCH_GROUND_AREA,
-                At(item, 0, 0), 100, item.GroundItemUid);
-            Assert.Equal(GroundItemClaimStatus.Rejected, result.Status);
-            Assert.Equal(ErrorCode.ITEM_NOT_USABLE, result.Rejection);
+            var player = new Player
+            {
+                Profile = new PlayerInfo { PlayerId = 1 },
+                CurrentArea = Config.SWARM_MATCH_GROUND_AREA,
+                Position = At(item, 0, 0)
+            };
+            match.RegisterParticipant(player);
+            PlayerPickupService.AddReachableItemsInArea(
+                player,
+                match.GroundItems,
+                player.CurrentArea,
+                player.Position,
+                player.Position);
+
+            CreateService(store).PickUp(match, player);
+
             Assert.NotNull(match.GroundItems.GetItem(item.GroundItemUid));
             Assert.Empty(match.Inventory.GetAllItems(1));
             match.TryMarkEnded();
@@ -37,15 +49,66 @@ public sealed class PlayerPickupServiceTests
         using (match.Enter())
         {
             var item = Spawn(match);
-            var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
+            var player = new Player
+            {
+                Profile = new PlayerInfo { PlayerId = 1 },
+                CurrentArea = Config.SWARM_MATCH_GROUND_AREA,
+                Position = At(item, 5, 0)
+            };
+            match.RegisterParticipant(player);
             PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, Config.SWARM_MATCH_GROUND_AREA,
                 At(item, -5, 0), At(item, 5, 0));
             var candidate = Assert.Single(PlayerPickupService.TakeReachableItems(player));
             Assert.Equal(item.GroundItemUid, candidate.GroundItemUid);
-            var result = GroundItemPickupService.TryPickup(match, 1, candidate.Area,
-                candidate.Position, 100, candidate.GroundItemUid);
-            Assert.Equal(GroundItemClaimStatus.Success, result.Status);
+
+            player.ReachableItems.TryAdd(candidate.GroundItemUid, candidate);
+            CreateService(store).PickUp(match, player);
+
+            Assert.Null(match.GroundItems.GetItem(item.GroundItemUid));
             Assert.Empty(PlayerPickupService.TakeReachableItems(player));
+            match.TryMarkEnded();
+        }
+    }
+
+    [Fact]
+    public void PickupRequiresOwningMatchLock()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(984201);
+        var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
+        var service = CreateService(store);
+
+        Assert.Throws<InvalidOperationException>(() => service.PickUp(match, player));
+
+        using (match.Enter())
+        {
+            match.TryMarkEnded();
+        }
+    }
+
+    [Fact]
+    public void MissingItemDoesNotChangePlayerState()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(984202);
+        var player = new Player
+        {
+            Profile = new PlayerInfo { PlayerId = 1 },
+            CurrentArea = Config.SWARM_MATCH_GROUND_AREA,
+            Position = new Vector3f(0, 0, 0)
+        };
+        player.ReachableItems.TryAdd(
+            long.MaxValue,
+            new Player.ReachableItem(long.MaxValue, player.CurrentArea, player.Position));
+        int healthBeforePickup = player.Health;
+
+        using (match.Enter())
+        {
+            CreateService(store).PickUp(match, player);
+
+            Assert.Equal(healthBeforePickup, player.Health);
+            Assert.Empty(match.Inventory.GetAllItems(player.PlayerId));
+            Assert.Empty(player.ReachableItems);
             match.TryMarkEnded();
         }
     }
@@ -124,6 +187,12 @@ public sealed class PlayerPickupServiceTests
         TestGroundItemLanding.Complete(match.GroundItems);
         return item;
     }
+
+    private static PlayerPickupService CreateService(MatchRuntimeStore store) =>
+        new(
+            store.EventLogs,
+            TestGameSessionServices.CreateHealthService(store, store.EventLogs),
+            NullLogger<PlayerPickupService>.Instance);
 
     private static Vector3f At(GroundItemInfo item, float dx, float dy) => new(item.PositionX + dx, item.PositionY + dy, 0);
 }

@@ -12,7 +12,7 @@ using network.packets;
 namespace game_server.players;
 
 /// <summary>
-///     사람과 봇의 이동 경로·현재 위치에서 바닥 아이템 획득 후보를 찾고, 매치 틱에서 획득을 확정한다.
+///     사람과 봇의 이동 경로·현재 위치에서 바닥 아이템 획득 후보를 찾고, 매치 틱에서 획득을 원자적으로 확정한다.
 ///     획득한 아이템의 효과를 적용하고 결과를 전송하며, 이벤트 로그를 남긴다.
 ///     획득 후보는 Player가 보관하며, 호출자는 해당 매치 잠금을 보유해야 한다.
 /// </summary>
@@ -147,49 +147,107 @@ internal sealed class PlayerPickupService(
         AddReachableItemsInArea(player, match.GroundItems, player.CurrentArea, player.Position, player.Position);
         foreach (var reachable in TakeReachableItems(player))
         {
-            if (match.IsEnded) break;
-            var item = match.GroundItems.GetItem(reachable.GroundItemUid);
-            if (player.PlayerId < 0 && item is { ItemId: Config.SUMMON_STONE_GROUND_ITEM_ID or Config.BOOTS_GROUND_ITEM_ID } &&
-                match.GroundItems.IsYoungerThan(item.GroundItemUid, BotPlayerManager.SummonStoneBotReactionDelay))
+            if (match.IsEnded)
             {
-                continue;
+                break;
             }
-            var pickup = GroundItemPickupService.TryPickup(match, player.PlayerId, reachable.Area,
-                reachable.Position, player.Health, reachable.GroundItemUid);
-            if (pickup.Status != GroundItemClaimStatus.Success || pickup.ClaimedItem == null)
-            {
-                continue;
-            }
-            ApplyPickup(match, player, pickup);
-            if (player.PlayerId < 0)
+
+            bool pickedUp = TryPickUpItem(match, player, reachable);
+            if (pickedUp && player.PlayerId < 0)
             {
                 break;
             }
         }
     }
 
-    private void ApplyPickup(MatchRuntime match, Player player, GroundItemPickupResult pickup)
+    private bool TryPickUpItem(MatchRuntime match, Player player, Player.ReachableItem reachable)
     {
-        var claimedItem = pickup.ClaimedItem!;
-        var addedItem = pickup.AddedItem;
+        var item = match.GroundItems.GetItem(reachable.GroundItemUid);
+        if (player.PlayerId < 0 &&
+            item is { ItemId: Config.SUMMON_STONE_GROUND_ITEM_ID or Config.BOOTS_GROUND_ITEM_ID } &&
+            match.GroundItems.IsYoungerThan(item.GroundItemUid, BotPlayerManager.SummonStoneBotReactionDelay))
+        {
+            return false;
+        }
 
-        if (pickup.BootsPickup)
+        InGameItemInfo? addedItem = null;
+        bool autoUsed = false;
+        bool summonStonePickup = false;
+        bool bootsPickup = false;
+        int healthRecovery = 0;
+        long discovererPlayerId = match.GroundItems.GetDiscovererPlayerId(reachable.GroundItemUid);
+
+        var status = match.GroundItems.TryClaim(
+            reachable.GroundItemUid,
+            player.PlayerId,
+            reachable.Area,
+            reachable.Position.X,
+            reachable.Position.Y,
+            groundItem =>
+            {
+                if (groundItem.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
+                {
+                    summonStonePickup = true;
+                    return true;
+                }
+
+                if (groundItem.ItemId == Config.BOOTS_GROUND_ITEM_ID)
+                {
+                    bootsPickup = true;
+                    return true;
+                }
+
+                if (groundItem.ItemId == Config.KEY_GROUND_ITEM_ID)
+                {
+                    return false;
+                }
+
+                var disposition = GroundItemPolicy.Resolve(
+                    groundItem.ItemId,
+                    player.Health,
+                    out healthRecovery,
+                    match.MatchingId,
+                    player.PlayerId);
+                if (disposition == GroundItemDisposition.LeaveOnGround)
+                {
+                    return false;
+                }
+
+                if (disposition == GroundItemDisposition.AutoUse)
+                {
+                    autoUsed = true;
+                    return true;
+                }
+
+                return match.Inventory.GetPlayerInventory(player.PlayerId).TryAddItemWithCapacity(
+                    groundItem.ItemId,
+                    Config.GetOrbCapacity(),
+                    out addedItem);
+            },
+            out var claimedItem);
+
+        if (status != GroundItemClaimStatus.Success || claimedItem == null)
+        {
+            return false;
+        }
+
+        if (bootsPickup)
         {
             if (match.Bots.GetBot(match.MatchingId, player.PlayerId) is { } bot)
             {
                 bot.BootsSpeedUntilUtc = DateTime.UtcNow.AddSeconds(Config.BOOTS_SPEED_DURATION_SECONDS);
             }
         }
-        else if (pickup.SummonStonePickup)
+        else if (summonStonePickup)
         {
             var summonState = PlayerOrbGrowthService.AddSummonStones(match, player, 1);
             player.Session?.SendSummonStoneState(1, claimedItem.PositionX, claimedItem.PositionY);
             eventLogs.LogSummonStoneAward(match.MatchingId, player.PlayerId, monsterId: 0, amount: 1, summonState.StoneCount, player.CurrentArea.ToString(), isCore: false, isBot: player.PlayerId < 0);
         }
-        else if (pickup.AutoUsed)
+        else if (autoUsed)
         {
-            var change = healthService.Recover(match, player, pickup.HealthRecovery);
-            int requested = pickup.HealthRecovery;
+            var change = healthService.Recover(match, player, healthRecovery);
+            int requested = healthRecovery;
             int recovered = change.Recovered;
             eventLogs.LogRecoveryUse(match.MatchingId, player.PlayerId, claimedItem.ItemId, recovered, source: "ground_auto_use", isBot: player.PlayerId < 0);
             eventLogs.LogPelletPickupOutcome(match.MatchingId, player.PlayerId, claimedItem.ItemId, requested, recovered, recovered == 0 ? "wasted" : recovered == requested ? "effective" : "partial_waste", isBot: player.PlayerId < 0);
@@ -200,7 +258,7 @@ internal sealed class PlayerPickupService(
 
         }
 
-        using (var removed = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(claimedItem.GroundItemUid, player.PlayerId, pickup.AutoUsed))
+        using (var removed = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(claimedItem.GroundItemUid, player.PlayerId, autoUsed))
         {
             var targetSessions = new List<GameClientSession>();
             foreach (var other in match.GetSessions())
@@ -216,13 +274,14 @@ internal sealed class PlayerPickupService(
                 other.TrySend(removed);
             }
         }
-        eventLogs.LogGroundItemPickup(match.MatchingId, player.PlayerId, pickup.DiscovererPlayerId, claimedItem.GroundItemUid, claimedItem.ItemId, player.CurrentArea.ToString(), pickup.AutoUsed, isBot: player.PlayerId < 0);
-        if (pickup is { SummonStonePickup: false, BootsPickup: false })
+        eventLogs.LogGroundItemPickup(match.MatchingId, player.PlayerId, discovererPlayerId, claimedItem.GroundItemUid, claimedItem.ItemId, player.CurrentArea.ToString(), autoUsed, isBot: player.PlayerId < 0);
+        if (!summonStonePickup && !bootsPickup)
         {
             var boardAfterPickup = match.Inventory.GetPlayerInventory(player.PlayerId);
             eventLogs.LogOrbBoardTransition(match.MatchingId, player.PlayerId, boardAfterPickup.GetAllItems(), boardAfterPickup.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0, player.CurrentArea.ToString(), "pickup", isBot: player.PlayerId < 0);
         }
-        using var result = PacketMaker.G_TO_C_GROUND_ITEM_PICKUP_RESULT(claimedItem.GroundItemUid, claimedItem.ItemId, true, pickup.AutoUsed, ErrorCode.SUCCESS);
+        using var result = PacketMaker.G_TO_C_GROUND_ITEM_PICKUP_RESULT(claimedItem.GroundItemUid, claimedItem.ItemId, true, autoUsed, ErrorCode.SUCCESS);
         player.Session?.TrySend(result);
+        return true;
     }
 }
