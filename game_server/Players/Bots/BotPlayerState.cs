@@ -1,12 +1,11 @@
 using game_server.players;
 using game_server.combat;
 using network.common;
-using network.common.data;
 using network.common.data.models;
 
 namespace game_server.players.bots;
 
-/// <summary>공통 MatchPlayer를 참조하며 봇의 판단·경로·행동 대기 상태를 보관한다.</summary>
+/// <summary>공통 Player를 참조하며 봇의 판단·경로·행동 대기 상태를 보관한다.</summary>
 public class BotPlayerState
 {
     /// <summary>매치 참가자와 공유하는 체력·위치·탈락 상태. 봇의 판단·경로 상태는 별도로 보관한다.</summary>
@@ -23,29 +22,6 @@ public class BotPlayerState
     public List<int> ActiveBuffIds { get; set; } = new();
 
     public string Name { get; set; } = "";
-
-    // 오브 궤도 위상 (#232): 사람 세션과 같은 규칙 — 이동한 거리만큼 돈다. null = 아직 시드 전.
-    private float? _orbOrbitPhaseDegrees;
-    private Vector3f? _orbOrbitLastPosition;
-
-    /// <summary>오브 궤도 위상 — 서버 전투의 오브별 자리 근거이자 G_TO_C_MOVE 보정값.</summary>
-    public float OrbOrbitPhaseDegrees =>
-        _orbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(PlayerId);
-
-    /// <summary>이동 이벤트마다 호출 — 직전 이벤트 위치에서 이번 위치까지 거리만큼 돈다(텔레포트급은 무시).</summary>
-    public void AdvanceOrbOrbit(Vector3f newPosition)
-    {
-        if (_orbOrbitLastPosition != null)
-        {
-            float dx = newPosition.X - _orbOrbitLastPosition.X;
-            float dy = newPosition.Y - _orbOrbitLastPosition.Y;
-            _orbOrbitPhaseDegrees = SwarmOrbOrbit.AdvancePhase(
-                OrbOrbitPhaseDegrees, MathF.Sqrt(dx * dx + dy * dy));
-        }
-
-        _orbOrbitLastPosition = new Vector3f(newPosition.X, newPosition.Y, newPosition.Z);
-    }
-
 
     // === #127 walking pathfinding ===
     public List<BotPathfinder.Step> Path { get; set; } = new();

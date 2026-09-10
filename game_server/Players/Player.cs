@@ -1,5 +1,6 @@
 using game_server.sessions;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 
 namespace game_server.players;
@@ -18,6 +19,8 @@ public class Player
 
     private GameClientSession? _session;
     private PlayerState _state = PlayerState.IDLE;
+    private float? _orbOrbitPhaseDegrees;
+    private Vector3f? _orbOrbitLastPosition;
 
     internal long LastMoveProcessedTimestamp;
     internal long LastMoveResponseTimestamp;
@@ -54,7 +57,7 @@ public class Player
     public Vector3f Velocity { get; internal set; } = new();
     public float Rotation { get; internal set; }
     public AreaType CurrentArea { get; internal set; } = AreaType.None;
-    public float OrbOrbitPhaseDegrees { get; internal set; }
+    public float OrbOrbitPhaseDegrees => _orbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(PlayerId);
 
     public int Health { get; set; } = Config.MAX_HEALTH;
 
@@ -79,6 +82,25 @@ public class Player
     internal bool DetachSession(GameClientSession session) =>
         ReferenceEquals(Interlocked.CompareExchange(ref _session, null, session), session);
 
+    /// <summary>위상을 초기화한다. 기준 위치가 없으면 첫 이동은 기준만 기록한다.</summary>
+    public void ResetOrbOrbit(Vector3f? position = null)
+    {
+        _orbOrbitPhaseDegrees = SwarmOrbOrbit.InitialPhaseDegrees(PlayerId);
+        _orbOrbitLastPosition = position == null ? null : new Vector3f(position.X, position.Y, position.Z);
+    }
+
+    /// <summary>직전 이동부터의 거리로 오브 위상을 갱신한다. 텔레포트급 이동은 회전에 반영하지 않는다.</summary>
+    public void AdvanceOrbOrbit(Vector3f position)
+    {
+        if (_orbOrbitLastPosition != null)
+        {
+            float dx = position.X - _orbOrbitLastPosition.X;
+            float dy = position.Y - _orbOrbitLastPosition.Y;
+            _orbOrbitPhaseDegrees = SwarmOrbOrbit.AdvancePhase(
+                OrbOrbitPhaseDegrees, MathF.Sqrt(dx * dx + dy * dy));
+        }
+        _orbOrbitLastPosition = new Vector3f(position.X, position.Y, position.Z);
+    }
     public HealthChange ApplyDamage(int damage)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(damage);

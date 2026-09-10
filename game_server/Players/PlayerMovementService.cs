@@ -57,7 +57,7 @@ internal sealed class PlayerMovementService(
         player.Velocity = new Vector3f();
         player.Rotation = 0f;
         player.CurrentArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, spawnCell);
-        player.OrbOrbitPhaseDegrees = SwarmOrbOrbit.InitialPhaseDegrees(player.PlayerId);
+        player.ResetOrbOrbit(player.Position);
     }
 
     /// <summary>검증된 이동 값을 함께 반영한다. 호출자는 매치 잠금을 잡아야 한다.</summary>
@@ -84,13 +84,7 @@ internal sealed class PlayerMovementService(
         };
     }
 
-    private void AdvanceOrbOrbit(Player player, Vector3f from, Vector3f to)
-    {
-        float dx = to.X - from.X;
-        float dy = to.Y - from.Y;
-        player.OrbOrbitPhaseDegrees = SwarmOrbOrbit.AdvancePhase(
-            player.OrbOrbitPhaseDegrees, MathF.Sqrt(dx * dx + dy * dy));
-    }
+
 
     public (ValidatedMovement Movement, Cell Cell, long ServerTimestamp)? Apply(MatchRuntime match, Player player, C_TO_G_MOVE msg, float deltaTime)
     {
@@ -125,8 +119,7 @@ internal sealed class PlayerMovementService(
         if (player.TryStopSleep())
             player.Session?.SendPlayerState();
         // 오브 궤도 (#232): 검증된 이동 거리만큼 돈다 — 멈추면 이동 패킷이 없으니 저절로 선다.
-        if (player.Position != null)
-            AdvanceOrbOrbit(player, player.Position, validatedPosition);
+        player.AdvanceOrbOrbit(validatedPosition);
         // 승인된 구간마다 후보를 기록한다. 구역을 넘으면 경로 위 좌표가 속한 구역도 확인한다.
         var pickupArea = newArea == AreaType.None ? player.CurrentArea : newArea;
         if (player.Session is { } session)

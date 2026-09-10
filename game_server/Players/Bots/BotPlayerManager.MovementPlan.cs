@@ -167,7 +167,7 @@ public partial class BotPlayerManager
     {
         BotPlayerState? bot = GetBot(matchingId, movement.BotPlayerId);
         if (advanceOrbOrbit)
-            bot?.AdvanceOrbOrbit(movement.Position);
+            bot?.Player.AdvanceOrbOrbit(movement.Position);
 
         long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         if (movement.IsAreaTransition)
@@ -201,7 +201,7 @@ public partial class BotPlayerManager
                 enteringBot = SwarmBotPlayerInfoSnapshot.Capture(botInfo, objectInfo);
         }
 
-        float orbOrbitPhase = bot?.OrbOrbitPhaseDegrees
+        float orbOrbitPhase = bot?.Player.OrbOrbitPhaseDegrees
                               ?? SwarmOrbOrbit.InitialPhaseDegrees(movement.BotPlayerId);
         SwarmBotEncounterDispatch? encounter = PrepareEncounter(
             encounters,
