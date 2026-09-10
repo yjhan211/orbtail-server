@@ -66,7 +66,7 @@ public sealed class SessionPacketProcessingTests
         Assert.DoesNotContain("ScheduleMessageAsync", main);
         Assert.DoesNotContain("ScheduleMessageAsync", move);
         int check = move.IndexOf("!MovementValidationPolicy.IsFinite(msg.Position)", StringComparison.Ordinal);
-        int apply = move.IndexOf("PlayerMovement.Apply(msg, deltaTime)", StringComparison.Ordinal);
+        int apply = move.IndexOf("PlayerMovement.Apply(match, Player, msg, deltaTime)", StringComparison.Ordinal);
         Assert.True(check >= 0 && check < apply);
     }
     [Fact]

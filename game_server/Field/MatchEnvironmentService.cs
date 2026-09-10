@@ -98,7 +98,7 @@ internal class MatchEnvironmentService(
 
             if (target.Session != null)
             {
-                target.Session.HealthChanges.Handle(
+                target.Session.HealthChanges.Handle(target.Session.Match, target.Session.Player,
                     target.Session.Player.ApplyDamage(totalDelta),
                     deferElimination: true);
             }

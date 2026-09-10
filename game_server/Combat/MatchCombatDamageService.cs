@@ -116,7 +116,7 @@ internal sealed class MatchCombatDamageService(
             BotPlayerManager.IsBotPlayerId(sourcePlayerId), DateTimeOffset.UtcNow);
 
         var change = victimSession.Player.ApplyDamage(damage);
-        victimSession.HealthChanges.Handle(change, attackerPlayerId: sourcePlayerId);
+        victimSession.HealthChanges.Handle(victimSession.Match, victimSession.Player, change, attackerPlayerId: sourcePlayerId);
         using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
         {
             AttackerId = sourcePlayerId,
@@ -147,7 +147,7 @@ internal sealed class MatchCombatDamageService(
             "Emotion afterimage attack: MatchingId={MatchingId}, MonsterId={MonsterId}, Target={Target}, TargetKind=Human, Damage={Damage}, HealthBefore={HealthBefore}, HealthAfter={HealthAfter}, Killed={Killed}",
             victimSession.MatchingId, monsterId, victimSession.PlayerId.Value, damage, healthBefore, healthAfter, isLethal);
         var change = victimSession.Player.ApplyDamage(damage);
-        victimSession.HealthChanges.Handle(change);
+        victimSession.HealthChanges.Handle(victimSession.Match, victimSession.Player, change);
         using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
         {
             AttackerId = monsterId,

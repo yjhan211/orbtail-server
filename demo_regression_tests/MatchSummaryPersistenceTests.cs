@@ -129,143 +129,44 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     public void NormalAndNoHumanFinalization_KeepCaptureAndPostCommitPersistenceOrdering()
     {
         string root = FindRepositoryRoot();
-        string sessionSource = ReadNormalizedSource(
-            root,
-            "game_server",
-            "Matches",
-            "Results",
-            "MatchResultService.cs");
-        string normalFinalization = ReadMethodSlice(
-            sessionSource,
-            "public void FinalizeMatch(",
-            "private void SendResultsAndMarkEnded(");
-        string terminalPublication = ReadMethodSlice(
-            sessionSource,
-            "private void SendResultsAndMarkEnded(",
-            "private void TryRunSessionEndStep(");
+        string source = ReadNormalizedSource(root, "game_server", "Matches", "Results", "MatchResultService.cs");
+        string finalization = ReadMethodSlice(source, "public void FinalizeMatch(", "private void SendCompletionNotifications(");
+        string notifications = ReadMethodSlice(source, "private void SendCompletionNotifications(", "public List<GameResultPlayerInfo> BuildPlayerResults(");
 
-        int runtimeLookup = Find(normalFinalization, "_matchRuntimes.GetOrNull(matchingId)");
-        int lockEntry = Find(normalFinalization, "runtime.Enter()");
-        int terminalMark = Find(normalFinalization, "runtime.TryMarkEnded()");
-        int resultPayload = Find(normalFinalization, "MessagePackSerializer.Serialize(new G_TO_C_GAME_RESULT");
-        int preparedTerminalPlan = Find(normalFinalization, "var terminalPlan = new MatchTerminalPublicationPlan(");
-        int finalizationClaim = Find(normalFinalization, "_gameEventLogManager.TryBeginFinalization(");
-        int normalFinalEvent = Find(normalFinalization, "_gameEventLogManager.LogMatchEnded(");
-        int eventLogFailure = Find(normalFinalization, "Final match event logging failed;");
-        int normalCapture = Find(normalFinalization, "MatchSummaryFileStore.Prepare(");
-        int summaryCaptureFailure = Find(normalFinalization, "Final match summary capture failed;");
-        int inLockPublication = Find(normalFinalization, "SendResultsAndMarkEnded(terminalPlan);");
-        int afterRelease = Find(normalFinalization, "runtime.AfterRelease.Add(");
-        int lifecyclePlanDispatch = Find(
-            normalFinalization,
-            "terminalPlan.LifecyclePublications");
-        int resultPublication = Find(terminalPublication, "Protocol.G_TO_C_GAME_RESULT");
-        int endPublication = Find(terminalPublication, "Protocol.G_TO_C_GAME_END");
-        int markEnded = Find(
-            terminalPublication,
-            "publication.Session.MarkGameEndedAndPrepareLifecyclePublication()");
-        int lifecyclePreparationCommit = Find(
-            terminalPublication,
-            "plan.LifecyclePublications.Add(lifecyclePublication);");
-        int lifecycleDispatch = Find(terminalPublication, "foreach (Action dispatch in lifecyclePublications)");
-        int lifecycleDispatchInvocation = Find(terminalPublication, "dispatch();");
-        const string persistCallPattern = @"MatchSummaryPersistence\.Persist\s*\(";
-        RegexOptions sourceContractOptions =
-            RegexOptions.Singleline |
-            RegexOptions.IgnorePatternWhitespace |
-            RegexOptions.CultureInvariant;
+        static void InOrder(string body, params string[] markers)
+        {
+            int previous = -1;
+            foreach (string marker in markers)
+            {
+                int index = Find(body, marker);
+                Assert.True(index > previous, $"Expected '{marker}' after the previous finalization step.");
+                previous = index;
+            }
+        }
 
-        // 잠금 진입 → 터미널 표시 → 결과 동결 → 로그·요약 캡처 → 잠금 안 발행 → 잠금 밖 후처리.
-        Assert.True(runtimeLookup < lockEntry);
-        Assert.True(lockEntry < terminalMark);
-        Assert.True(terminalMark < resultPayload);
-        Assert.True(resultPayload < preparedTerminalPlan);
-        Assert.True(preparedTerminalPlan < finalizationClaim);
-        Assert.True(finalizationClaim < normalFinalEvent);
-        Assert.True(normalFinalEvent < eventLogFailure);
-        Assert.True(eventLogFailure < normalCapture);
-        Assert.True(normalCapture < summaryCaptureFailure);
-        Assert.True(summaryCaptureFailure < inLockPublication);
-        Assert.True(inLockPublication < afterRelease);
-        Assert.True(afterRelease < lifecyclePlanDispatch);
-        Assert.True(resultPublication < endPublication);
-        Assert.True(endPublication < markEnded);
-        Assert.True(markEnded < lifecyclePreparationCommit);
-        Assert.True(lifecyclePreparationCommit < lifecycleDispatch);
-        Assert.True(lifecycleDispatch < lifecycleDispatchInvocation);
-        Assert.DoesNotContain(".TrySend(", normalFinalization);
-        Assert.DoesNotContain(".MarkGameEnded(", normalFinalization);
-        Assert.Single(Regex.Matches(normalFinalization, persistCallPattern));
-        Assert.Matches(
-            new Regex(
-                """
-                runtime\.AfterRelease\.Add\s*\(\s*\(\s*\)\s*=>\s*
-                \{\s*
-                    SendCompletionNotifications\s*
-                    \(\s*
-                        matchingId\s*,\s*
-                        terminalPlan\.LifecyclePublications\s*
-                    \)\s*;\s*
-                    if\s*\(\s*capturedSummary\s*!=\s*null\s*\)\s*
-                    \{\s*
-                        MatchSummaryPersistence\.Persist\s*
-                        \(\s*
-                            capturedSummary\s*,\s*
-                            _matchSummaryFileStore\s*,\s*
-                            Logger\s*
-                        \)\s*;\s*
-                    \}\s*
-                \}\s*\)\s*;
-                """,
-                sourceContractOptions),
-            normalFinalization);
-        Assert.Matches(
-            new Regex(
-                """
-                foreach\s*\(\s*MatchTerminalSessionPublication\s+publication.*?
-                    Protocol\.G_TO_C_GAME_RESULT.*?
-                foreach\s*\(\s*MatchTerminalSessionPublication\s+publication.*?
-                    Protocol\.G_TO_C_GAME_END.*?
-                foreach\s*\(\s*MatchTerminalSessionPublication\s+publication.*?
-                    publication\.Session\.MarkGameEndedAndPrepareLifecyclePublication\s*\(\s*\).*?
-                    plan\.LifecyclePublications\.Add\s*\(\s*lifecyclePublication\s*\).*?
-                foreach\s*\(\s*Action\s+dispatch\s+in\s+lifecyclePublications\s*\).*?
-                    dispatch\s*\(\s*\)
-                """,
-                sourceContractOptions),
-            terminalPublication);
+        // 종료 확정·결과 생성·로그 캡처·패킷 전송은 잠금 안, 완료 통지·파일 저장은 잠금 해제 후.
+        InOrder(finalization,
+            "matchRuntimes.GetOrNull(matchingId)", "runtime.Enter()", "runtime.TryMarkEnded()",
+            "MessagePackSerializer.Serialize(new G_TO_C_GAME_RESULT", "gameEventLogManager.TryBeginFinalization(",
+            "gameEventLogManager.LogMatchEnded(", "Final match event logging failed;",
+            "MatchSummaryFileStore.Prepare(", "Final match summary capture failed;",
+            "Protocol.G_TO_C_GAME_RESULT", "session.TrySend(resultPacket);",
+            "Protocol.G_TO_C_GAME_END", "session.TrySend(endPacket);",
+            "session.MarkGameEndedAndPrepareLifecyclePublication()", "completionNotifications.Add(lifecyclePublication);",
+            "runtime.AfterRelease.Add(() => SendCompletionNotifications(matchingId, completionNotifications));",
+            "runtime.AfterRelease.Add(() => matchSummaryFileStore.Save(capturedSummary, capturedEvents, logger));");
+        Assert.Contains("if (capturedSummary != null)", finalization);
+        Assert.Single(Regex.Matches(finalization, @"matchSummaryFileStore\.Save\s*\("));
+        InOrder(notifications, "foreach (var dispatch in lifecyclePublications)", "dispatch();", "Deferred matching lifecycle dispatch failed:");
 
-        string serverSource = ReadNormalizedSource(root, "game_server", "Matches", "Results", "MatchCleanupService.cs");
-        string noHumanFinalization = serverSource;
-
-        int noHumanLock = Find(noHumanFinalization, "runtime.Enter()");
-        int noHumanTerminalMark = Find(noHumanFinalization, "runtime.TryMarkEnded();");
-        int abandonedEvent = Find(noHumanFinalization, "eventLogs.LogMatchAbandoned(");
-        int noHumanCapture = Find(noHumanFinalization, "MatchSummaryFileStore.Prepare(");
-        int noHumanAfterRelease = Find(noHumanFinalization, "runtime.AfterRelease.Add(");
-
-        Assert.True(noHumanLock < noHumanTerminalMark);
-        Assert.True(noHumanTerminalMark < abandonedEvent);
-        Assert.True(abandonedEvent < noHumanCapture);
-        Assert.True(noHumanCapture < noHumanAfterRelease);
-        Assert.Single(Regex.Matches(noHumanFinalization, persistCallPattern));
-        Assert.Matches(
-            new Regex(
-                """
-                runtime\.AfterRelease\.Add\s*\(\s*\(\s*\)\s*=>\s*MatchSummaryPersistence\.Persist\s*
-                \(\s*
-                    summaryRequest\s*,\s*
-                    summaryFileStore\s*,\s*
-                    logger\s*
-                \)\s*\)\s*;
-                """,
-                sourceContractOptions),
-            noHumanFinalization);
-        Assert.DoesNotContain("PersistMatchSummary(", noHumanFinalization);
-        Assert.DoesNotContain("SendResultsAndMarkEnded", noHumanFinalization);
-        Assert.DoesNotContain(".TrySend(", noHumanFinalization);
+        string cleanup = ReadNormalizedSource(root, "game_server", "Matches", "Results", "MatchCleanupService.cs");
+        string noHumans = cleanup.Substring(Find(cleanup, "public void CleanupIfNoHumanSessionsRemain("));
+        InOrder(noHumans, "runtime.Enter()", "runtime.TryMarkEnded();", "eventLogs.LogMatchAbandoned(",
+            "MatchSummaryFileStore.Prepare(", "if (summaryRequest != null)",
+            "runtime.AfterRelease.Add(() => summaryFileStore.Save(summaryRequest, capturedEvents, logger));");
+        Assert.Single(Regex.Matches(noHumans, @"summaryFileStore\.Save\s*\("));
+        Assert.DoesNotContain(".TrySend(", noHumans);
     }
-
     [Theory]
     [InlineData(MatchingLifecycleSubjects.PlayerLeft)]
     [InlineData(MatchingLifecycleSubjects.PlayerCompleted)]
@@ -563,7 +464,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         int terminalClaim = Find(
             preparation,
             "if (!playerSubjects.TryAdd(playerId, subject))");
-        int claimRejected = Find(preparation, "return null;");
+        int claimRejected = preparation.IndexOf("return null;", terminalClaim, StringComparison.Ordinal);
         int deferredFactory = Find(preparation, "return () =>");
         int exactlyOnceGuard = Find(preparation, "Interlocked.Exchange(ref dispatchStarted, 1)");
         int trackedPublication = Find(

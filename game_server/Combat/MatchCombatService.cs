@@ -499,7 +499,7 @@ internal class MatchCombatService(
             {
                 session.Player.UpdatePeriodicBuffs(nowUtc, Config.MAX_HEALTH, health =>
                 {
-                    session.HealthChanges.Handle(session.Player.ChangeHealth(health, Config.MAX_HEALTH));
+                    session.HealthChanges.Handle(session.Match, session.Player, session.Player.ChangeHealth(health, Config.MAX_HEALTH));
                     if (session.Player.IsEliminated || session.IsGameEnded || IsMatchTerminal(matchingId))
                         session.Player.ClearPeriodicBuffs();
                 });
@@ -520,7 +520,7 @@ internal class MatchCombatService(
         {
             int recovered = session.Player.GetSleepRecovery(nowUtc, session.Player.IsEliminated, Config.MAX_HEALTH);
             if (recovered <= 0) continue;
-            session.HealthChanges.Handle(session.Player.Recover(recovered));
+            session.HealthChanges.Handle(session.Match, session.Player, session.Player.Recover(recovered));
             if (!session.PlayerId.HasValue) continue;
 
             using var packet = PacketMaker.G_TO_C_HEALTH_RECOVERY(new()

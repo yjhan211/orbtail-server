@@ -120,6 +120,13 @@ public sealed class MatchStartCountdownPublicationTests
                     new PlayerInfo { PlayerId = 303 }, new PlayerInfo { PlayerId = -404 }]);
         }
 
+        // 구성 확정 전에도 등록할 세션은 매치의 실제 참가자를 가리켜야 한다.
+        if (!hasComposition)
+        {
+            runtime.RegisterParticipant(new MatchPlayer { Profile = new PlayerInfo { PlayerId = 101 } });
+            runtime.RegisterParticipant(new MatchPlayer { Profile = new PlayerInfo { PlayerId = 202 } });
+            Assert.False(runtime.IsSetupComplete);
+        }
         var anchor = new RecordingEntrySession();
         SetSessionIdentity(server.GetMatchRuntimes(), anchor, playerId: 101, matchingId);
         var other = new RecordingEntrySession();
@@ -138,9 +145,9 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.Equal(1, other.DisconnectCount);
         Assert.Empty(anchor.Match.GetSessions());
         ConcurrentDictionary<long, string> playerSubjects = GetTerminalSubjects(server)[matchingId];
-        Assert.Equal(MatchingLifecycleSubjects.PlayerEntryFailed, playerSubjects[101]);
         if (hasComposition)
         {
+            Assert.Equal(MatchingLifecycleSubjects.PlayerEntryFailed, playerSubjects[101]);
             // 아직 접속하지 않은 사람도 정리하고 봇은 포함하지 않는다.
             Assert.Equal(MatchingLifecycleSubjects.PlayerEntryFailed, playerSubjects[202]);
             Assert.Equal(MatchingLifecycleSubjects.PlayerEntryFailed, playerSubjects[303]);
@@ -148,15 +155,24 @@ public sealed class MatchStartCountdownPublicationTests
         }
         else
         {
-            Assert.Equal(2, playerSubjects.Count);
+            // 구성 전 실패를 일으킨 본인은 전체 통지 대상에서 제외된다.
+            Assert.False(playerSubjects.ContainsKey(101));
+            Assert.Single(playerSubjects);
         }
 
         // 이미 끝난 매치에 늦게 온 호출은 자기 세션의 entry_failed만 발행하고 끊기는 반복하지 않는다.
         InvokeEntryAbort(server, other);
         InvokeEntryAbort(server, other);
 
-        Assert.Equal(hasComposition ? 3 : 2, playerSubjects.Count);
+        Assert.Equal(hasComposition ? 3 : 1, playerSubjects.Count);
         Assert.Equal(MatchingLifecycleSubjects.PlayerEntryFailed, playerSubjects[202]);
+        // 처음 실패한 세션의 늦은 호출도 자신의 통지만 한 번 등록한다.
+        InvokeEntryAbort(server, anchor);
+        InvokeEntryAbort(server, anchor);
+        Assert.Equal(hasComposition ? 3 : 2, playerSubjects.Count);
+        Assert.Equal(MatchingLifecycleSubjects.PlayerEntryFailed, playerSubjects[101]);
+        Assert.Equal(1, anchor.FatalCount);
+        Assert.Equal(1, anchor.DisconnectCount);
         Assert.Equal(1, other.FatalCount);
         Assert.Equal(1, other.DisconnectCount);
     }

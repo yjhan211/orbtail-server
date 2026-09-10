@@ -92,7 +92,7 @@ public sealed class SwarmArenaTickOrderTests
             "long matchingId = match.MatchingId;",
             "var humans = activeSessions",
             "var bots = match.Bots.GetBots(matchingId)",
-            "target.Session.HealthChanges.Handle(",
+            "target.Session.HealthChanges.Handle(target.Session.Match, target.Session.Player,",
             "var eliminatedTargets = targets",
             "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
             "matchEliminations.EliminatePlayer(",
@@ -195,7 +195,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             healthNotification,
             "if (!change.Changed) return;",
-            "session.SendHealth(",
+            "player.Session?.SendHealth(",
             "eliminations.EliminatePlayer(");
 
         string applyProximityHit = ReadMethodSlice(
@@ -206,7 +206,7 @@ public sealed class SwarmArenaTickOrderTests
             applyProximityHit,
             "eventLogs.LogHit(",
             "victimSession.Player.ApplyDamage(damage);",
-            "victimSession.HealthChanges.Handle(change, attackerPlayerId: sourcePlayerId);",
+            "victimSession.HealthChanges.Handle(victimSession.Match, victimSession.Player, change, attackerPlayerId: sourcePlayerId);",
             "PacketMaker.G_TO_C_COMBAT_HIT(",
             "victimSession.TrySend(packet);");
 

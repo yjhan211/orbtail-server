@@ -42,20 +42,43 @@ public sealed class GameMatchEntryRosterTests
         Assert.Equal(bots, ids.Distinct().Count());
         Assert.Empty(ids.Intersect(otherIds));
     }
-    public static IEnumerable<object[]> InvalidParticipantManifests()
+    // ID 구성은 발행 측의 계약이다. 소비 측에서는 인원수 검증 후 entry_ready를 확인한다.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(8)]
+    public async Task PrepareMatchAsync_RequiresEntryReadyForValidParticipantCounts(int humanCount)
+    {
+        var redis = new InMemoryRedisOperations();
+        var logger = new RecordingLogger();
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(logger);
+        var service = TestGameSessionServices.CreateEntryService(redis, store, logger);
+        var runtime = store.GetOrCreate(981021);
+        var manifest = new MatchManifest
+        {
+            HumanPlayerIds = Enumerable.Range(1, humanCount).Select(id => (long)id).ToList(),
+            BotCount = 8 - humanCount
+        };
+        await redis.HashSetAsync(network.common.MatchingRedisKeys.Key(runtime.MatchingId),
+            network.common.MatchingRedisKeys.ManifestField, MessagePack.MessagePackSerializer.Serialize(manifest));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.PrepareMatchAsync(runtime.MatchingId, runtime));
+        Assert.Equal($"Matching handoff was not committed for match {runtime.MatchingId}.", error.Message);
+        Assert.False(runtime.IsSetupComplete);
+        Assert.Empty(runtime.GetPlayerProfiles());
+        Assert.Equal(1, runtime.EntryInitializationLock.CurrentCount);
+    }
+    public static IEnumerable<object[]> InvalidParticipantCounts()
     {
         yield return [new MatchManifest { HumanPlayerIds = [1], BotCount = -1 }];
         yield return [new MatchManifest { HumanPlayerIds = [1], BotCount = 8 }];
         yield return [new MatchManifest { HumanPlayerIds = [1], BotCount = int.MaxValue }];
         yield return [new MatchManifest { BotCount = 8 }];
-        yield return [new MatchManifest { HumanPlayerIds = [1, 1] }];
-        yield return [new MatchManifest { HumanPlayerIds = [-1] }];
-        yield return [new MatchManifest { HumanPlayerIds = [0] }];
     }
 
     [Theory]
-    [MemberData(nameof(InvalidParticipantManifests))]
-    public async Task PrepareMatchAsync_RejectsInvalidParticipantsBeforeCheckingEntryReady(MatchManifest manifest)
+    [MemberData(nameof(InvalidParticipantCounts))]
+    public async Task PrepareMatchAsync_RejectsInvalidParticipantCountsBeforeCheckingEntryReady(MatchManifest manifest)
     {
         var redis = new InMemoryRedisOperations();
         var logger = new RecordingLogger();
@@ -66,7 +89,7 @@ public sealed class GameMatchEntryRosterTests
             network.common.MatchingRedisKeys.ManifestField, MessagePack.MessagePackSerializer.Serialize(manifest));
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.PrepareMatchAsync(runtime.MatchingId, runtime));
-        Assert.Equal("Invalid match participant configuration.", error.Message);
+        Assert.Equal("Invalid match participant count.", error.Message);
         Assert.False(runtime.IsSetupComplete);
         Assert.Equal(1, runtime.EntryInitializationLock.CurrentCount);
     }

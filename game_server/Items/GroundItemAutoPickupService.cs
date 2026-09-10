@@ -116,7 +116,7 @@ internal sealed class GroundItemAutoPickupService(
             int effectiveHealthRecovery = Math.Min(pickup.HealthRecovery, Math.Max(0, Config.MAX_HEALTH - session.Player.Health));
             int requestedRecovery = pickup.HealthRecovery;
             int effectiveRecovery = effectiveHealthRecovery;
-            session.HealthChanges.Handle(session.Player.Recover(pickup.HealthRecovery));
+            session.HealthChanges.Handle(session.Match, session.Player, session.Player.Recover(pickup.HealthRecovery));
             // 하트는 앞줄 오브 HP도 만충으로 (#222 M4) — 원작 하트의 스쿼드 회복.
             if (claimedItem.ItemId == Config.HEART_GROUND_ITEM_ID)
                 GameClientSession.SwarmHeartPickupCallback?.Invoke(session.MatchingId, session.PlayerId.Value);

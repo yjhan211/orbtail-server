@@ -45,9 +45,9 @@ public partial class GameClientSession
                 }
 
                 long timestamp = Stopwatch.GetTimestamp();
-                float deltaTime = PlayerMovement.CalculateMoveDeltaTime(timestamp);
+                float deltaTime = PlayerMovement.CalculateMoveDeltaTime(Player, timestamp);
 
-                var result = PlayerMovement.Apply(msg, deltaTime);
+                var result = PlayerMovement.Apply(match, Player, msg, deltaTime);
                 if (result == null)
                 {
                     return Task.CompletedTask;
@@ -59,12 +59,12 @@ public partial class GameClientSession
                 bool requiresClientCorrection = validation.RequiresCorrection;
 
                 using var packet = PacketMaker.G_TO_C_MOVE(PlayerId.Value, validatedPosition, validatedVelocity, msg.Rotation, currentCell, serverTimestamp, Player.OrbOrbitPhaseDegrees);
-                PlayerMovement.Broadcast(packet);
+                PlayerMovement.Broadcast(this, packet);
 
-                if (requiresClientCorrection || PlayerMovement.ShouldSendMoveResponse(timestamp))
+                if (requiresClientCorrection || PlayerMovement.ShouldSendMoveResponse(Player, timestamp))
                 {
                     TrySend(packet);
-                    PlayerMovement.RecordMoveResponse(timestamp);
+                    PlayerMovement.RecordMoveResponse(Player, timestamp);
                 }
             }
             catch (Exception ex)

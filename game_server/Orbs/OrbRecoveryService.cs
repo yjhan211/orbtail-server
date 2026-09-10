@@ -83,7 +83,7 @@ internal sealed class OrbRecoveryService(
                 if (previousHealth < Config.MAX_HEALTH)
                 {
                     var change = session.Player.Recover(requestedRecovery);
-                    session.HealthChanges.Handle(change);
+                    session.HealthChanges.Handle(session.Match, session.Player, change);
                     effectiveRecovery = change.Recovered;
                 }
             }

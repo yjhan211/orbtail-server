@@ -85,7 +85,7 @@ public sealed class GameClientSessionPublicationTests
             var change = session.Player.Recover(10);
             Assert.Equal(expectedHealth, session.Player.Health);
             Assert.Equal(Math.Min(10, missingHealth), change.Recovered);
-            session.HealthChanges.Handle(change);
+            session.HealthChanges.Handle(session.Match, session.Player, change);
         }
         Assert.Equal(expectedHealth, session.Player.Health);
         var packet = fixture.ConnectionFor(session)

@@ -80,11 +80,11 @@ public partial class GameClientSession : SessionBase
         _registerSessionCallback = registerSessionCallback;
 
         _gameEventLogManager = gameEventLogManager;
-        HealthChanges = new PlayerHealthChangeService(this, gameEventLogManager, matchEliminations, logger);
+        HealthChanges = new PlayerHealthChangeService(gameEventLogManager, matchEliminations, logger);
         _growth = growth;
 
         _matchEntry = matchEntry;
-        PlayerMovement = new PlayerMovementService(this, movementValidation, gameEventLogManager, logger);
+        PlayerMovement = new PlayerMovementService(movementValidation, gameEventLogManager, logger);
         _orbInventory = orbInventory;
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Connection.TrySend;
         _matchSessionCleanup = matchSessionCleanup;
@@ -276,7 +276,7 @@ public partial class GameClientSession : SessionBase
 
                 runtime.BeginEntry(PlayerId.Value);
 
-                PlayerMovement.InitializeSpawn(matchingSpawnCell);
+                PlayerMovement.InitializeSpawn(Player, matchingSpawnCell);
 
                 Logger.LogInformation(
                     "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
@@ -285,7 +285,7 @@ public partial class GameClientSession : SessionBase
 
 
 
-                PlayerMovement.SendInteractableList(Player.CurrentArea);
+                PlayerMovement.SendInteractableList(this, Player.CurrentArea);
 
                 GroundItemNotificationService.SendSnapshot(this, Player.CurrentArea);
                 SendOrbList();
@@ -383,11 +383,11 @@ public partial class GameClientSession : SessionBase
 
             if (sessions.Count > 0)
             {
-                using var others = PacketMaker.G_TO_C_OBJECT_INFO(sessions.Select(s => s.PlayerMovement.CaptureGameObjectInfo(s.Player.State)).ToList());
+                using var others = PacketMaker.G_TO_C_OBJECT_INFO(sessions.Select(s => s.PlayerMovement.CaptureGameObjectInfo(s.Match, s.Player, s.Player.State)).ToList());
                 TrySend(others);
             }
 
-            using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([PlayerMovement.CaptureGameObjectInfo(Player.State)]))
+            using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([PlayerMovement.CaptureGameObjectInfo(Match, Player, Player.State)]))
             {
                 foreach (var session in sessions)
                 {

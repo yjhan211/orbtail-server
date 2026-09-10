@@ -83,7 +83,7 @@ public sealed class MovementValidationServiceTests
         int check = source.IndexOf("validationService.GetBlockedTransitionCell(", StringComparison.Ordinal);
         int reject = source.IndexOf("PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(newArea, blockedCell);", check, StringComparison.Ordinal);
         int stop = source.IndexOf("return null;", reject, StringComparison.Ordinal);
-        int commit = source.IndexOf("ApplyValidatedMovement(validation, msg.Rotation);", StringComparison.Ordinal);
+        int commit = source.IndexOf("ApplyValidatedMovement(player, validation, msg.Rotation);", StringComparison.Ordinal);
         Assert.True(check >= 0 && reject > check && stop > reject && commit > stop);
     }
 
