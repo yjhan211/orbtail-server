@@ -13,6 +13,36 @@ public sealed class MatchGameplayServiceTests
     [Theory]
     [InlineData(101)]
     [InlineData(-101)]
+    public void MonsterContactFindsPlayerWithoutSessionAndInterruptsPendingDoor(long playerId)
+    {
+        using var provider = GameServerDependencyInjectionTests.CreateProvider();
+        var service = provider.GetRequiredService<MatchCombatService>();
+        var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947801);
+        var player = new game_server.players.Player
+        {
+            Profile = new PlayerInfo { PlayerId = playerId }, Health = 100
+        };
+        using (match.Enter())
+        {
+            match.RegisterParticipant(player);
+            player.CompleteDoor();
+            player.BeginDoor(702000101, 0);
+            service.ApplySwarmParticipantDamage(match.MatchingId,
+                new SwarmPlayerDamage(1, playerId, player.CurrentArea, 12), []);
+            Assert.Equal(100 - network.common.Config.ScaleSwarmDamageTaken(12), player.Health);
+            Assert.False(player.TryFinishDoor(702000101, 3000, TimeSpan.FromSeconds(3), out _));
+
+            player.Status = network.common.PlayerMatchStatus.ELIMINATED;
+            int health = player.Health;
+            service.ApplySwarmParticipantDamage(match.MatchingId,
+                new SwarmPlayerDamage(1, playerId, player.CurrentArea, 12), []);
+            Assert.Equal(health, player.Health);
+        }
+    }
+
+    [Theory]
+    [InlineData(101)]
+    [InlineData(-101)]
     public void PeriodicBuffsHealAndEliminateParticipantsWithoutConnections(long playerId)
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();

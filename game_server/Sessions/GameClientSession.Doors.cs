@@ -131,13 +131,8 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
-    internal void BreakDoorUnlockGauge()
+    internal void SendDoorOpenInterrupted(int interactId)
     {
-        if (Player.InterruptDoor() is not { } interactId)
-        {
-            return;
-        }
-        _gameEventLogManager.LogExploreCancelled(MatchingId, PlayerId ?? 0, interactId, Player.CurrentArea.ToString(), "door_unlock_hit", isBot: false);
         if (!PlayerId.HasValue)
         {
             return;

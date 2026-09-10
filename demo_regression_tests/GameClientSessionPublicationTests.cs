@@ -921,13 +921,14 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("RunWithMatchLock", combat);
         Assert.DoesNotContain("RunWithMatchLock", bots);
         Assert.DoesNotContain("RunWithMatchLock", botPickup);
-        Assert.Contains("session.BreakDoorUnlockGauge();", combat);
+        Assert.Contains("victim.InterruptDoor()", combat);
+        Assert.Contains("victim.Session?.SendDoorOpenInterrupted(interactId);", combat);
 
         Assert.DoesNotContain(
             "RunWithMatchLock",
             ReadMethodSlice(
                 doors,
-                "internal void BreakDoorUnlockGauge()",
+                "internal void SendDoorOpenInterrupted(int interactId)",
                 "private void SendDoorStateList("));
     }
 
@@ -971,7 +972,8 @@ public sealed class GameClientSessionPublicationTests
         {
             interactions.CompleteDoor(); // 첫 문 피격 면제 이후의 문을 검사한다.
             interactions.BeginDoor(702000101, 0);
-            session.BreakDoorUnlockGauge();
+            int interactId = Assert.IsType<int>(interactions.InterruptDoor());
+            session.SendDoorOpenInterrupted(interactId);
             Assert.False(interactions.TryFinishDoor(702000101, 3000, TimeSpan.FromSeconds(3), out var error));
             Assert.Equal(ErrorCode.INVALID_GAME_STATE, error);
         }

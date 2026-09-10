@@ -196,7 +196,7 @@ internal class MatchCombatService(
 
         foreach (var damage in tick.PlayerDamage)
         {
-            ApplySwarmParticipantDamage(matchingId, damage, aliveSessions, aliveBots, sessions);
+            ApplySwarmParticipantDamage(matchingId, damage, sessions);
             if (sessions.Any(session => session.IsGameEnded))
                 return;
         }
@@ -1366,20 +1366,22 @@ internal class MatchCombatService(
     ///     (×1.25 우위) 최근접(약자)을 함께 찾는다. 빈손이면 살아있는 몹도 강자로 취급한다.
     /// </summary>
 
-    private void ApplySwarmParticipantDamage(
+    internal void ApplySwarmParticipantDamage(
         long matchingId,
         SwarmPlayerDamage damage,
-        List<GameClientSession> aliveSessions,
-        List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
+        var match = matchRuntimes.GetOrThrow(matchingId);
+        var victim = match.GetParticipant(damage.TargetPlayerId);
+        if (match.IsEnded || victim == null || victim.IsEliminated) return;
+
         // 받는 피해 배율(봇·플레이어 전부 1/3만 받게 결정): 사람·봇·로그가 전부 같은 값을 보게 진입점에서 한 번
         // 줄인다. 페이즈 곡선은 그대로 두고 배율만 곱한다 — 곡선을 고치면 "위협이 세지는 리듬"까지 다시 잡아야 한다.
         damage = damage with { Damage = Config.ScaleSwarmDamageTaken(damage.Damage) };
 
         // 파도 문양 몹 공격 연출: 접촉 강타가 주변까지 튀므로 같은 구역 전원에게 공격 VFX를 쏴
         // 몸 기울임이 출처를 말하게 한다 (보스 투사체 분기는 #335에서 삭제 — 보스 스폰 경로 없음).
-        if (matchRuntimes.GetOrThrow(matchingId).Monsters.IsWavePatternMonster(matchingId, damage.MonsterId))
+        if (match.Monsters.IsWavePatternMonster(matchingId, damage.MonsterId))
         {
             using var vfxPacket = Packet.Create((int)Protocol.G_TO_C_MONSTER_ATTACK_VFX);
             vfxPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_ATTACK_VFX
@@ -1395,14 +1397,13 @@ internal class MatchCombatService(
             }
         }
 
-        var session = aliveSessions.FirstOrDefault(candidate => candidate.PlayerId == damage.TargetPlayerId);
-        var victim = session?.Player
-            ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == damage.TargetPlayerId)?.Player;
-        if (victim == null) return;
-
-        if (session != null)
-            session.BreakDoorUnlockGauge();
-        matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmAfterimageMonsterHit(playerEliminations,
+        if (victim.InterruptDoor() is { } interactId)
+        {
+            eventLogs.LogExploreCancelled(matchingId, victim.PlayerId, interactId,
+                victim.CurrentArea.ToString(), "door_unlock_hit", isBot: victim.PlayerId < 0);
+            victim.Session?.SendDoorOpenInterrupted(interactId);
+        }
+        match.CombatDamage.ApplySwarmAfterimageMonsterHit(playerEliminations,
             victim, damage.MonsterId, damage.Damage);
     }
 
