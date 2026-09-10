@@ -2,6 +2,7 @@ using game_server.items;
 using game_server.logging;
 using game_server.matches;
 using game_server.matches.results;
+using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -22,6 +23,11 @@ internal sealed class PlayerEliminationService(
 {
     public void EliminatePlayer(MatchRuntime runtime, Player eliminatedPlayer, EliminationReason reason, long? causePlayerId = null, bool deferGameOver = false, long attackerPlayerId = 0, int forcedRank = 0)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Player elimination requires the match lock.");
+        }
+
         long matchingId = runtime.MatchingId;
         long eliminatedPlayerId = eliminatedPlayer.PlayerId;
         var allSessions = runtime.GetSessions();
@@ -77,7 +83,25 @@ internal sealed class PlayerEliminationService(
                     matchingId, eliminatedPlayerId, eliminatedArea.ToString(),
                     drop.DroppedItemIds, drop.SpawnedItems,
                     GameEventLogManager.CalculateDropRecoveryTotal(drop.DroppedItemIds), isBot: eliminatedBot != null);
-                GroundItemNotificationService.BroadcastSpawned(runtime, eliminatedArea, drop.SpawnedItems);
+                if (drop.SpawnedItems.Count > 0)
+                {
+                    var targetSessions = new List<GameClientSession>();
+                    foreach (var session in runtime.GetSessions())
+                    {
+                        if (!session.Player.IsEliminated && session.Player.CurrentArea == eliminatedArea)
+                        {
+                            targetSessions.Add(session);
+                        }
+                    }
+
+                    using var spawnedPacket = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
+                        (int)eliminatedArea,
+                        drop.SpawnedItems.ToList());
+                    foreach (var session in targetSessions)
+                    {
+                        session.TrySend(spawnedPacket);
+                    }
+                }
             }
         }
 

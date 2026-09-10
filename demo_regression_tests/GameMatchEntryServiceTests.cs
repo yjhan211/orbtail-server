@@ -47,23 +47,23 @@ public sealed class GameMatchEntryServiceTests
         int humanStones = Config.SWARM_STARTING_STONE_GRANT;
         for (int index = 0; index < Config.SWARM_STARTING_ORB_GRANT_COUNT; index++)
             humanStones += Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(index));
-        Assert.Equal(humanStones, runtime.SummonStones.GetSnapshot(1001).StoneCount);
-        Assert.Equal(humanStones, runtime.SummonStones.GetSnapshot(1002).StoneCount);
+        Assert.Equal(humanStones, TestGameSessionServices.SummonStones(runtime, 1001).StoneCount);
+        Assert.Equal(humanStones, TestGameSessionServices.SummonStones(runtime, 1002).StoneCount);
         Assert.Empty(runtime.Inventory.GetPlayerInventory(1001).GetOrderedOrbs());
         long botId = Assert.Single(runtime.GetPlayerProfiles(), player => player.PlayerId < 0).PlayerId;
         Assert.Empty(runtime.Inventory.GetPlayerInventory(botId).GetOrderedOrbs());
-        Assert.Equal(humanStones, runtime.SummonStones.GetSnapshot(botId).StoneCount);
+        Assert.Equal(humanStones, TestGameSessionServices.SummonStones(runtime, botId).StoneCount);
 
         using (runtime.Enter())
         {
-            Assert.True(runtime.SummonStones.TrySpendStones(1001, 1, out _));
+            Assert.True(TestGameSessionServices.SpendSummonStones(runtime, 1001, 1));
             Assert.Throws<InvalidOperationException>(() =>
                 runtime.InitializeMatch(runtime.Mode, runtime.SpawnCells, runtime.GetPlayerProfiles()));
         }
         await service.PrepareMatchAsync(runtime.MatchingId, runtime);
-        Assert.Equal(humanStones, runtime.SummonStones.GetSnapshot(botId).StoneCount);
-        Assert.Equal(humanStones - 1, runtime.SummonStones.GetSnapshot(1001).StoneCount);
-        Assert.Equal(humanStones, runtime.SummonStones.GetSnapshot(1002).StoneCount);
+        Assert.Equal(humanStones, TestGameSessionServices.SummonStones(runtime, botId).StoneCount);
+        Assert.Equal(humanStones - 1, TestGameSessionServices.SummonStones(runtime, 1001).StoneCount);
+        Assert.Equal(humanStones, TestGameSessionServices.SummonStones(runtime, 1002).StoneCount);
         Assert.Empty(runtime.Inventory.GetPlayerInventory(botId).GetOrderedOrbs());
     }
 

@@ -38,7 +38,7 @@ internal class BotMovementService(
         double sessionSnapshotElapsedMilliseconds =
             Stopwatch.GetElapsedTime(tickStartedAt).TotalMilliseconds;
         SwarmBotMovementPlan plan = runtime.Bots.PrepareMovementTick(
-            runtime.Closures, runtime.Inventory, runtime.GroundItems, runtime.SummonStones, runtime.Encounters,
+            runtime.Closures, runtime.Inventory, runtime.GroundItems, runtime.Encounters,
             eventLogs,
             runtime.GetAlivePlayers(),
             observers,

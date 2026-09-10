@@ -74,7 +74,7 @@ internal sealed class BotDecisionService(
                 continue;
             }
 
-            if (match.SummonStones.GetSnapshot(bot.PlayerId).StoneCount < growth.GetNextOrbGrowthCost(match, bot.Player))
+            if (bot.Player.SummonStones.StoneCount < growth.GetNextOrbGrowthCost(match, bot.Player))
             {
                 continue;
             }
@@ -593,7 +593,7 @@ internal sealed class BotDecisionService(
         //      지역 공급 (#226 단계 B): 몹이 남은 가장 가까운 공급 무리로 향한다 — 몹은
         //      찾아가는 공유 자원이고, 미니맵 스냅샷으로 사람에게도 같은 정보가 보인다.
 
-        if (matchRuntimes.GetOrThrow(matchingId).SummonStones.GetSnapshot(botPlayerId).StoneCount <
+        if (bot.Player.SummonStones.StoneCount <
             growth.GetNextOrbGrowthCost(matchRuntimes.GetOrThrow(matchingId), bot.Player) &&
             hasSquadOrbs)
         {

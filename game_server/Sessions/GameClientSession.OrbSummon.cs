@@ -1,4 +1,5 @@
 using game_server.items;
+using game_server.players;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -32,9 +33,9 @@ public partial class GameClientSession
                 SummonedItemUid = 0,
                 State = new SummonStoneStateInfo
                 {
-                    StoneCount = SummonStoneManager.EmptySnapshot.StoneCount,
-                    SuccessfulSummonCount = SummonStoneManager.EmptySnapshot.SuccessfulSummonCount,
-                    NextCost = SummonStoneManager.EmptySnapshot.NextCost
+                    StoneCount = SummonStoneSnapshot.Empty.StoneCount,
+                    SuccessfulSummonCount = SummonStoneSnapshot.Empty.SuccessfulSummonCount,
+                    NextCost = SummonStoneSnapshot.Empty.NextCost
                 }
             }));
             TrySend(failurePacket);
@@ -45,7 +46,7 @@ public partial class GameClientSession
         {
             if (match.IsEnded || IsGameplayActionBlocked(out _))
             {
-                var state = match.SummonStones.GetSnapshot(PlayerId ?? 0);
+                var state = PlayerOrbGrowthService.GetSummonStones(Player);
                 using var failurePacket = Packet.Create((int)Protocol.G_TO_C_SUMMON_ORB_RESULT, PlayerId ?? 0);
                 failurePacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SUMMON_ORB_RESULT
                 {
@@ -122,7 +123,7 @@ public partial class GameClientSession
                 Success = false,
                 ResultItemId = 0,
                 TargetItemId = request.TargetItemId,
-                StoneCount = SummonStoneManager.EmptySnapshot.StoneCount,
+                StoneCount = SummonStoneSnapshot.Empty.StoneCount,
                 TargetOrdinal = -1
             }));
             TrySend(packet);
@@ -140,7 +141,7 @@ public partial class GameClientSession
                     Success = false,
                     ResultItemId = 0,
                     TargetItemId = request.TargetItemId,
-                    StoneCount = match.SummonStones.GetSnapshot(PlayerId.Value).StoneCount,
+                    StoneCount = PlayerOrbGrowthService.GetSummonStones(Player).StoneCount,
                     TargetOrdinal = -1
                 }));
                 TrySend(packet);
@@ -166,7 +167,7 @@ public partial class GameClientSession
                 Success = result.Success,
                 ResultItemId = result.ResultItemId,
                 TargetItemId = request.TargetItemId,
-                StoneCount = match.SummonStones.GetSnapshot(PlayerId.Value).StoneCount,
+                StoneCount = PlayerOrbGrowthService.GetSummonStones(Player).StoneCount,
                 TargetOrdinal = result.TargetOrdinal
             }));
             TrySend(resultPacket);
@@ -195,7 +196,7 @@ public partial class GameClientSession
         }
 
         var match = Volatile.Read(ref _match);
-        var state = match?.SummonStones.GetSnapshot(PlayerId.Value) ?? SummonStoneManager.EmptySnapshot;
+        var state = match != null && Player != null ? PlayerOrbGrowthService.GetSummonStones(Player) : SummonStoneSnapshot.Empty;
         using var packet = Packet.Create((int)Protocol.G_TO_C_SUMMON_STONE_STATE, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SUMMON_STONE_STATE
         {

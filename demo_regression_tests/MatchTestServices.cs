@@ -15,7 +15,6 @@ internal static class MatchTestServices
 {
     public static InGameInventoryManager Inventory(long matchingId = 1) => new(matchingId, NullLogger.Instance);
     public static GroundItemManager GroundItems(long matchingId = 1, TimeProvider? timeProvider = null) => new(matchingId, timeProvider);
-    public static SummonStoneManager SummonStones(long matchingId = 1) => new(matchingId);
     public static EncounterRevealManager Encounters() => new();
     public static MatchRuntime Runtime(long matchingId, ILogger logger) => TestGameSessionServices.CreateMatchRuntimeStore(logger).GetOrCreate(matchingId);
     public static AreaClosureManager Closures(long matchingId, ILogger logger, Func<DateTime>? utcNow = null) =>

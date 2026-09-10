@@ -65,6 +65,8 @@ public class Player
     public float OrbOrbitPhaseDegrees => _orbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(PlayerId);
 
     public int Health { get; set; } = Config.MAX_HEALTH;
+    /// <summary>소환석 잔액과 성공한 소환 횟수. 비용·후보·지급 규칙은 PlayerOrbGrowthService에 있다.</summary>
+    public SummonStoneState SummonStones { get; } = new();
 
     public PlayerState State
     {
@@ -343,6 +345,12 @@ public class Player
         _pendingDoor = null;
         _pending.Remove(id);
         return id;
+    }
+
+    public sealed class SummonStoneState
+    {
+        public int StoneCount { get; internal set; }
+        public int SuccessfulSummonCount { get; internal set; }
     }
 
     /// <summary>이동 구간에서 획득 반경에 닿은 바닥 아이템. 다음 자동 줍기 틱이 집는다.</summary>

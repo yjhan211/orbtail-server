@@ -130,6 +130,37 @@ internal static class TestGameSessionServices
             new GameEventLogManager(id => store.GetOrNull(id)?.EventLog));
     }
 
+    /// <summary>참가자·봇·미등록 순으로 플레이어를 찾고, 없으면 참가자로 등록한다.</summary>
+    public static Player GetOrRegisterPlayer(MatchRuntime match, long playerId)
+    {
+        var player = match.GetParticipant(playerId) ?? match.Bots.GetBot(match.MatchingId, playerId)?.Player;
+        if (player != null)
+            return player;
+        player = new Player { Profile = new PlayerInfo { PlayerId = playerId } };
+        match.RegisterParticipant(player);
+        return player;
+    }
+
+    public static SummonStoneSnapshot SummonStones(MatchRuntime match, long playerId)
+    {
+        var player = match.GetParticipant(playerId) ?? match.Bots.GetBot(match.MatchingId, playerId)?.Player;
+        return player == null ? SummonStoneSnapshot.Empty : PlayerOrbGrowthService.GetSummonStones(player);
+    }
+
+    public static SummonStoneSnapshot AddSummonStones(MatchRuntime match, long playerId, int amount)
+    {
+        var player = GetOrRegisterPlayer(match, playerId);
+        using (match.Enter())
+            return PlayerOrbGrowthService.AddSummonStones(match, player, amount);
+    }
+
+    public static bool SpendSummonStones(MatchRuntime match, long playerId, int amount)
+    {
+        var player = GetOrRegisterPlayer(match, playerId);
+        using (match.Enter())
+            return PlayerOrbGrowthService.TrySpendSummonStones(match, player, amount);
+    }
+
     public static PlayerEliminationService CreateEliminationService(
         MatchRuntimeStore store,
         GameEventLogManager logs,

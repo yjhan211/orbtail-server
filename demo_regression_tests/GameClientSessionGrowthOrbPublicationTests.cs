@@ -37,7 +37,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         fixture.Store.GetOrThrow(FirstMatchingId).StartGameplay();
         try
         {
-            runtime.SummonStones.AddStones(FirstPlayerId, 20);
+            TestGameSessionServices.AddSummonStones(runtime, FirstPlayerId, 20);
             connection.ThrowOnceOn = Protocol.G_TO_C_ORB_UPDATE;
             connection.BeforeSend = protocol =>
             {
@@ -68,11 +68,11 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         fixture.Store.GetOrThrow(FirstMatchingId).StartGameplay();
         try
         {
-            runtime.SummonStones.AddStones(FirstPlayerId, 20);
+            TestGameSessionServices.AddSummonStones(runtime, FirstPlayerId, 20);
             for (int index = 0; index < 2; index++)
             {
                 connection.ClearPackets();
-                var before = runtime.SummonStones.GetSnapshot(FirstPlayerId);
+                var before = TestGameSessionServices.SummonStones(runtime, FirstPlayerId);
                 session.SendSummonStoneState();
                 var state = connection.DeserializeSingle<G_TO_C_SUMMON_STONE_STATE>(Protocol.G_TO_C_SUMMON_STONE_STATE);
                 Assert.Equal(before.NextCost, state.State.NextCost);
@@ -124,7 +124,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         {
             using (runtime.Enter())
             {
-                runtime.SummonStones.AddStones(FirstPlayerId, 100);
+                TestGameSessionServices.AddSummonStones(runtime, FirstPlayerId, 100);
                 session.SendOrbUpgradeInfo(fixture.Server.GetOrbGrowth().GetOrbUpgradeInfo(fixture.Runtime(FirstMatchingId), session.Player));
             }
             var empty = connection.DeserializeSingle<G_TO_C_ORB_UPGRADE_INFO>(Protocol.G_TO_C_ORB_UPGRADE_INFO);
@@ -144,7 +144,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 _ => throw new InvalidOperationException("Unexpected orb color")
             };
             Assert.True(cost > 0);
-            int stonesBefore = runtime.SummonStones.GetSnapshot(FirstPlayerId).StoneCount;
+            int stonesBefore = TestGameSessionServices.SummonStones(runtime, FirstPlayerId).StoneCount;
             connection.ClearPackets();
 
             await SendAsync(session, Protocol.C_TO_G_UPGRADE_ORB,
@@ -170,13 +170,13 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         using (runtime.Enter())
         {
             runtime.Inventory.TryAddItemWithCapacity(FirstPlayerId, 107000010, Config.SWARM_ORB_CAPACITY, out _);
-            runtime.SummonStones.AddStones(FirstPlayerId, 20);
-            var before = runtime.SummonStones.GetSnapshot(FirstPlayerId);
+            TestGameSessionServices.AddSummonStones(runtime, FirstPlayerId, 20);
+            var before = TestGameSessionServices.SummonStones(runtime, FirstPlayerId);
             var info = fixture.Server.GetOrbGrowth().GetOrbUpgradeInfo(fixture.Runtime(FirstMatchingId), session.Player);
             Assert.True(info.SunCost > 0);
             Assert.Equal(0, info.WindCost);
             Assert.Equal(0, info.WaveCost);
-            Assert.Equal(before, runtime.SummonStones.GetSnapshot(FirstPlayerId));
+            Assert.Equal(before, TestGameSessionServices.SummonStones(runtime, FirstPlayerId));
             Assert.Equal(0, runtime.GetParticipant(FirstPlayerId)!.GetOrbUpgradeCount(10700001));
             Assert.Empty(fixture.ConnectionFor(session).DeliveredProtocols);
         }
@@ -340,7 +340,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Config.SWARM_ORB_CAPACITY,
             out InGameItemInfo? original));
         Assert.NotNull(original);
-        fixture.Store.GetOrThrow(FirstMatchingId).SummonStones.AddStones(FirstPlayerId, 20);
+        TestGameSessionServices.AddSummonStones(fixture.Store.GetOrThrow(FirstMatchingId), FirstPlayerId, 20);
 
         await SendAsync(
             session,
@@ -392,7 +392,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(upgradedItemId, upgraded.ItemId);
         Assert.Equal(
             20 - upgradeCost,
-            fixture.Store.GetOrThrow(FirstMatchingId).SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
+            TestGameSessionServices.SummonStones(fixture.Store.GetOrThrow(FirstMatchingId), FirstPlayerId).StoneCount);
         Assert.Equal(1, fixture.Runtime(FirstMatchingId).GetParticipant(FirstPlayerId)!.GetOrbUpgradeCount(orbGroupId));
 
         G_TO_C_UPGRADE_ORB_RESULT success =
@@ -459,7 +459,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Config.SWARM_ORB_CAPACITY,
             out InGameItemInfo? original));
         Assert.NotNull(original);
-        fixture.Store.GetOrThrow(FirstMatchingId).SummonStones.AddStones(FirstPlayerId, 20);
+        TestGameSessionServices.AddSummonStones(fixture.Store.GetOrThrow(FirstMatchingId), FirstPlayerId, 20);
         int upgradeCost = Math.Min(
             Config.SWARM_GROWTH_COST_CAP,
             Config.GetSwarmGrowthBaseCost(0));
@@ -495,7 +495,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(upgradedItemId, upgraded.ItemId);
         Assert.Equal(
             20 - upgradeCost,
-            fixture.Store.GetOrThrow(FirstMatchingId).SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
+            TestGameSessionServices.SummonStones(fixture.Store.GetOrThrow(FirstMatchingId), FirstPlayerId).StoneCount);
         Assert.Equal(1, fixture.Runtime(FirstMatchingId).GetParticipant(FirstPlayerId)!.GetOrbUpgradeCount(10700001));
         Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(FirstMatchingId)!.MatchLock));
 
@@ -513,14 +513,14 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var runtime = session.Match;
         Assert.True(runtime.Inventory.TryAddItemWithCapacity(FirstPlayerId, 107000010,
             Config.SWARM_ORB_CAPACITY, out var original));
-        runtime.SummonStones.AddStones(FirstPlayerId, 20);
+        TestGameSessionServices.AddSummonStones(runtime, FirstPlayerId, 20);
         int cost = Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(0));
         Assert.True(OrbData.TryGetItemId(OrbColor.Red, 2, out int upgradedItemId));
         var connection = fixture.ConnectionFor(session);
         connection.BeforeSend = _ =>
         {
             Assert.Equal(upgradedItemId, Assert.Single(runtime.Inventory.GetAllItems(FirstPlayerId)).ItemId);
-            Assert.Equal(20 - cost, runtime.SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
+            Assert.Equal(20 - cost, TestGameSessionServices.SummonStones(runtime, FirstPlayerId).StoneCount);
             Assert.Equal(1, runtime.GetParticipant(FirstPlayerId)!.GetOrbUpgradeCount(10700001));
         };
         await SendAsync(session, Protocol.C_TO_G_UPGRADE_ORB,
@@ -548,7 +548,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var runtime = session.Match;
         Assert.True(runtime.Inventory.TryAddItemWithCapacity(FirstPlayerId, 107000010,
             Config.SWARM_ORB_CAPACITY, out _));
-        runtime.SummonStones.AddStones(FirstPlayerId, 20);
+        TestGameSessionServices.AddSummonStones(runtime, FirstPlayerId, 20);
         await SendAsync(session, Protocol.C_TO_G_UPGRADE_ORB,
             new C_TO_G_UPGRADE_ORB { Action = Config.ORB_UPGRADE_GROUP, TargetItemId = 107000010 });
         Assert.True(logAttempted);
@@ -603,7 +603,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         {
             Assert.True(session.Match.Inventory.TryAddItemWithCapacity(session.PlayerId!.Value,
                 107000010, Config.SWARM_ORB_CAPACITY, out _));
-            session.Match.SummonStones.AddStones(session.PlayerId.Value, 20);
+            TestGameSessionServices.AddSummonStones(session.Match, session.PlayerId.Value, 20);
         }
         var firstRuntime = first.Match;
         var secondRuntime = second.Match;

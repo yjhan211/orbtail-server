@@ -1,4 +1,5 @@
 using game_server.items;
+using game_server.players;
 using network.common;
 
 namespace demo_regression_tests;
@@ -30,7 +31,7 @@ public sealed class SwarmGrowthBalanceTests
     [InlineData(121, 9)]
     public void FiveMinuteStoneIncomeProducesExpectedChoiceCount(int earnedStones, int expectedChoices)
     {
-        int budget = SummonStoneManager.InitialSummonStoneCount + earnedStones;
+        int budget = PlayerOrbGrowthService.InitialSummonStoneCount + earnedStones;
         int choices = 0;
         while (budget >= Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(choices)))
         {

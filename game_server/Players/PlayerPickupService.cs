@@ -182,7 +182,7 @@ internal sealed class PlayerPickupService(
         }
         else if (pickup.SummonStonePickup)
         {
-            var summonState = match.SummonStones.AddStones(player.PlayerId, 1);
+            var summonState = PlayerOrbGrowthService.AddSummonStones(match, player, 1);
             player.Session?.SendSummonStoneState(1, claimedItem.PositionX, claimedItem.PositionY);
             eventLogs.LogSummonStoneAward(match.MatchingId, player.PlayerId, monsterId: 0, amount: 1, summonState.StoneCount, player.CurrentArea.ToString(), isCore: false, isBot: player.PlayerId < 0);
         }

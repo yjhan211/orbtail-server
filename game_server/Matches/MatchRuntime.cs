@@ -63,7 +63,6 @@ internal sealed class MatchRuntime
         AutoAttack = new AutoAttackController(matchingId);
         Inventory = new InGameInventoryManager(matchingId, logger);
         GroundItems = new GroundItemManager(matchingId);
-        SummonStones = new SummonStoneManager(matchingId);
         Closures = new AreaClosureManager(matchingId, logger);
         Monsters = new SwarmMonsterDirector(matchingId, Closures, Inventory);
         CombatDamage = new MatchCombatDamageService(this, eventLogs, damageLogger);
@@ -86,7 +85,6 @@ internal sealed class MatchRuntime
     // 아이템과 재화
     public InGameInventoryManager Inventory { get; }
     public GroundItemManager GroundItems { get; }
-    public SummonStoneManager SummonStones { get; }
 
     // 맵과 진행 상태
     public DoorState Doors { get; } = new();
@@ -389,7 +387,6 @@ internal sealed class MatchRuntime
                 EventLog.Release();
                 Inventory.Release();
                 GroundItems.Release();
-                SummonStones.Release();
                 Encounters.Release();
                 _participants.Clear();
                 _aliveCount = 0;

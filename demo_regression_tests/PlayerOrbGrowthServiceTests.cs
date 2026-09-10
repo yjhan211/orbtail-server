@@ -24,7 +24,7 @@ public sealed class PlayerOrbGrowthServiceTests
         var runtime = store.GetOrCreate(984302);
         var player = new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 1 } };
         runtime.RegisterParticipant(player);
-        runtime.SummonStones.AddStones(1, 100);
+        TestGameSessionServices.AddSummonStones(runtime, 1, 100);
         var service = new PlayerOrbGrowthService(TestGameEventLogs.Create(), NullLogger<PlayerOrbGrowthService>.Instance);
         Assert.Throws<InvalidOperationException>(() => service.Summon(runtime, player));
         Assert.Throws<InvalidOperationException>(() => service.UpgradeOrb(runtime, player, Config.ORB_UPGRADE_GROUP, 107000010));
@@ -33,7 +33,7 @@ public sealed class PlayerOrbGrowthServiceTests
         Assert.Throws<InvalidOperationException>(() => service.GetOrbUpgradeInfo(runtime, player));
         Assert.Throws<InvalidOperationException>(() => service.GetNextOrbGrowthCost(runtime, player));
         Assert.Throws<InvalidOperationException>(() => service.GetTopOrbCount(runtime));
-        Assert.Equal(100, runtime.SummonStones.GetSnapshot(1).StoneCount);
+        Assert.Equal(100, TestGameSessionServices.SummonStones(runtime, 1).StoneCount);
         Assert.Empty(runtime.Inventory.GetAllItems(1));
         Assert.Equal(0, player.GetOrbUpgradeCount(107000010 / 10));
     }
@@ -47,8 +47,8 @@ public sealed class PlayerOrbGrowthServiceTests
         runtime.RegisterParticipant(player);
         using (MatchRuntimeStore.Enter(runtime))
         {
-            int cost = runtime.SummonStones.GetSnapshot(1).NextCost;
-            runtime.SummonStones.AddStones(1, cost);
+            int cost = TestGameSessionServices.SummonStones(runtime, 1).NextCost;
+            TestGameSessionServices.AddSummonStones(runtime, 1, cost);
             var service = new PlayerOrbGrowthService(TestGameEventLogs.Create(), NullLogger<PlayerOrbGrowthService>.Instance);
             var attempt = service.Summon(runtime, player);
             Assert.True(attempt.Success);

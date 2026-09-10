@@ -30,7 +30,6 @@ public partial class BotPlayerManager
         AreaClosureManager closures,
         InGameInventoryManager inventory,
         GroundItemManager groundItems,
-        SummonStoneManager summonStones,
         EncounterRevealManager encounters,
         GameEventLogManager gameEventLogManager,
         IReadOnlyList<Player> players,
@@ -58,8 +57,7 @@ public partial class BotPlayerManager
             inventory,
             groundItems,
             pveTargets,
-            directiveProvider,
-            summonStones);
+            directiveProvider);
 
         long preparationStartedAt = Stopwatch.GetTimestamp();
         SwarmBotMovementPlan plan = PrepareResult(

@@ -88,6 +88,24 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
+    internal void SendGroundItemSnapshot(AreaType area)
+    {
+        if (MatchingId <= 0 || area == AreaType.None)
+        {
+            return;
+        }
+
+        var match = Match;
+        if (!Monitor.IsEntered(match.MatchLock))
+        {
+            throw new InvalidOperationException("Ground item snapshots require the match lock.");
+        }
+
+        var items = match.GroundItems.GetSnapshot(area);
+        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, items);
+        TrySend(packet);
+    }
+
     private void SendAreaChange(AreaType oldArea, AreaType newArea)
     {
         try
@@ -177,7 +195,7 @@ public partial class GameClientSession
                 }
 
                 SendInteractableList(newArea);
-                GroundItemNotificationService.SendSnapshot(this, newArea);
+                SendGroundItemSnapshot(newArea);
             }
         }
         catch (Exception ex)

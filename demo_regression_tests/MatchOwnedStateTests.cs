@@ -34,23 +34,21 @@ public sealed class MatchOwnedStateTests
         var second = store.GetOrCreate(941002);
         Assert.NotSame(first.Inventory, second.Inventory);
         Assert.NotSame(first.GroundItems, second.GroundItems);
-        Assert.NotSame(first.SummonStones, second.SummonStones);
         Assert.NotSame(first, second);
         Assert.NotSame(first.Closures, second.Closures);
         Assert.NotSame(first.Encounters, second.Encounters);
         var inventory = first.Inventory;
-        var stones = first.SummonStones;
         var roster = first;
 
         inventory.AddItem(11, 107000010);
-        stones.AddStones(11, 9);
         roster.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11 } });
+        TestGameSessionServices.AddSummonStones(first, 11, 9);
 
         Assert.Same(inventory.GetPlayerInventory(11),
             store.GetOrThrow(first.MatchingId).Inventory.GetPlayerInventory(11));
         Assert.Empty(second.Inventory.GetAllItems(11));
-        Assert.Equal(9, store.GetOrThrow(first.MatchingId).SummonStones.GetSnapshot(11).StoneCount);
-        Assert.Equal(0, second.SummonStones.GetSnapshot(11).StoneCount);
+        Assert.Equal(9, TestGameSessionServices.SummonStones(store.GetOrThrow(first.MatchingId), 11).StoneCount);
+        Assert.Equal(0, TestGameSessionServices.SummonStones(second, 11).StoneCount);
         Assert.DoesNotContain(second.BuildGameResult(), row => row.playerId == 11);
         Assert.Equal((false, (long?)null), second.CheckGameOver());
     }
@@ -63,17 +61,16 @@ public sealed class MatchOwnedStateTests
         var sibling = store.GetOrCreate(941004);
         var inventory = runtime.Inventory;
         var ground = runtime.GroundItems;
-        var stones = runtime.SummonStones;
         var roster = runtime;
         var closures = runtime.Closures;
         var encounters = runtime.Encounters;
         AreaType area = GameMapData.GetAreas(Config.SWARM_MATCH_MAP).First().AreaType;
 
-        stones.AddStones(11, 5);
-        sibling.SummonStones.AddStones(11, 7);
+        TestGameSessionServices.AddSummonStones(sibling, 11, 7);
         inventory.AddItem(11, 107000010);
         ground.SpawnItems(area, 0, 0, [107000010]);
         roster.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11 } });
+        TestGameSessionServices.AddSummonStones(runtime, 11, 5);
         closures.InitializeMatching();
 
         using (MatchRuntimeStore.Enter(runtime))
@@ -83,14 +80,14 @@ public sealed class MatchOwnedStateTests
         Assert.Empty(ground.GetSnapshot(area));
         Assert.DoesNotContain(roster.BuildGameResult(), row => row.playerId == 11);
         Assert.Null(closures.GetMatchingState());
-        Assert.Equal(0, stones.GetSnapshot(11).StoneCount);
+        Assert.Equal(SummonStoneSnapshot.Empty, TestGameSessionServices.SummonStones(runtime, 11));
         Assert.False(encounters.ResolveCorridorEncounter(11, new(0, 0, 0),
             [(12L, new(0, 0, 0))]).HasEvent);
         Assert.Throws<InvalidOperationException>(() => inventory.AddItem(11, 107000010));
         Assert.Throws<InvalidOperationException>(() => ground.SpawnItems(area, 0, 0, [107000010]));
-        Assert.Throws<InvalidOperationException>(() => stones.AddStones(11, 1));
+        Assert.Throws<InvalidOperationException>(() => TestGameSessionServices.AddSummonStones(runtime, 11, 1));
         Assert.Throws<InvalidOperationException>(() => closures.InitializeMatching());
-        Assert.Equal(7, sibling.SummonStones.GetSnapshot(11).StoneCount);
+        Assert.Equal(7, TestGameSessionServices.SummonStones(sibling, 11).StoneCount);
         Assert.Single(store.ActiveIds());
     }
 
@@ -131,7 +128,7 @@ public sealed class MatchOwnedStateTests
     public void ServerAndSession_DoNotRetainMatchComponentFieldsOrConstructorArguments()
     {
         Type[] components = [typeof(InGameInventoryManager), typeof(GroundItemManager),
-            typeof(SummonStoneManager), typeof(AreaClosureManager),
+            typeof(AreaClosureManager),
             typeof(EncounterRevealManager)];
         foreach (Type owner in new[] { typeof(game_server.GameServer), typeof(game_server.sessions.GameClientSession) })
         {

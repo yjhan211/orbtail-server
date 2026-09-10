@@ -102,8 +102,7 @@ public partial class BotPlayerManager
         InGameInventoryManager inventoryManager,
         GroundItemManager groundItemManager,
         IReadOnlyCollection<MonsterCombatTarget>? pveTargets,
-        Func<long, long, SwarmBotDirective> spotArenaDirectiveProvider,
-        SummonStoneManager summonStoneManager)
+        Func<long, long, SwarmBotDirective> spotArenaDirectiveProvider)
     {
         var result = new BotWalkingTickResult();
         var bots = GetBots(matchingId);
@@ -120,7 +119,6 @@ public partial class BotPlayerManager
             closureManager,
             inventoryManager,
             groundItemManager,
-            summonStoneManager,
             playerAreas,
             pveTargets ?? [],
             spotArenaDirectiveProvider);
@@ -133,7 +131,6 @@ public partial class BotPlayerManager
         AreaClosureManager closureManager,
         InGameInventoryManager inventoryManager,
         GroundItemManager groundItemManager,
-        SummonStoneManager summonStoneManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
         IReadOnlyCollection<MonsterCombatTarget> pveTargets,
         Func<long, long, SwarmBotDirective> directiveProvider)
