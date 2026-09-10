@@ -77,7 +77,6 @@ internal sealed record SwarmBotPlayerInfoSnapshot(
 internal sealed record SwarmBotMovementPlan(
     long MatchingId,
     ImmutableArray<SwarmBotMovementDispatch> Movements,
-    ImmutableArray<SwarmBotGroundItemRemovalDispatch> GroundItemRemovals,
     double PlanningElapsedMilliseconds,
     double WalkingElapsedMilliseconds,
     double SnapshotElapsedMilliseconds,
@@ -106,9 +105,3 @@ internal sealed record SwarmBotEncounterDispatch(
     int EventType,
     int CooldownSeconds,
     int RevealDelayMs);
-
-internal sealed record SwarmBotGroundItemRemovalDispatch(
-    long GroundItemUid,
-    long BotPlayerId,
-    bool AutoUsed,
-    ImmutableArray<GameClientSession> Recipients);

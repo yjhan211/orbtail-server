@@ -7,7 +7,7 @@ namespace game_server.items;
 
 /// <summary>
 ///     매치 잠금 안에서 바닥 아이템의 획득 가능 여부와 자동 사용·인벤토리 추가를 확정한다.
-///     결과를 받은 세션이 회복·재화 통지와 삭제·획득 패킷을 기존 순서대로 발행한다.
+///     자동 획득 서비스가 결과를 받아 회복·재화를 적용하고 연결된 세션에 통지한다.
 /// </summary>
 internal static class GroundItemPickupService
 {

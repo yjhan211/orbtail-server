@@ -50,6 +50,41 @@ public sealed class GameClientSessionPublicationTests
         GameDataHelper.Initialize();
     }
 
+    [Theory]
+    [InlineData(Config.SUMMON_STONE_GROUND_ITEM_ID)]
+    [InlineData(Config.BOOTS_GROUND_ITEM_ID)]
+    public void BotPickupPreservesReactionDelayAndAppliesReward(int itemId)
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, -101, Config.SWARM_MATCH_GROUND_AREA);
+        var item = fixture.SpawnAtSession(session, itemId);
+        var match = session.Match;
+        var bot = new game_server.players.bots.BotPlayerState { PlayerId = -102 };
+        var player = bot.Player;
+        player.Position = session.Player.Position;
+        player.CurrentArea = session.Player.CurrentArea;
+        match.RegisterParticipant(player);
+        match.Bots.GetBots(match.MatchingId).Add(bot);
+        var pickup = new GroundItemAutoPickupService(fixture.EventLog, NullLogger<GroundItemAutoPickupService>.Instance);
+        using (match.Enter())
+        {
+            player.DetachSession(session);
+            pickup.Process(match, player);
+            Assert.NotNull(match.GroundItems.GetItem(item.GroundItemUid));
+            TestGroundItemLanding.Complete(match.GroundItems, ageSeconds: 3);
+            player.State = PlayerState.SLEEP;
+            pickup.Process(match, player);
+            Assert.NotNull(match.GroundItems.GetItem(item.GroundItemUid));
+            player.State = PlayerState.IDLE;
+            pickup.Process(match, player);
+        }
+        Assert.Null(match.GroundItems.GetItem(item.GroundItemUid));
+        if (itemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
+            Assert.Equal(1, match.SummonStones.GetSnapshot(player.PlayerId).StoneCount);
+        else
+            Assert.True(bot.BootsSpeedUntilUtc > DateTime.UtcNow);
+    }
+
     [Fact]
     public void MatchSessionsRemovePreservesReplacementAndSnapshot()
     {
@@ -870,11 +905,7 @@ public sealed class GameClientSessionPublicationTests
         string connection = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Combat", "MatchCombatService.cs");
         string bots = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotDecisionService.cs");
-        string botPickup = ReadNormalizedSource(
-            root,
-            "game_server",
-            "Players", "Bots",
-            "BotPlayerManager.ProximityAutoCombat.cs");
+        string botPickup = ReadNormalizedSource(root, "game_server", "Items", "GroundItemAutoPickupService.cs");
 
         Assert.DoesNotContain("AsyncLocal", session);
         Assert.DoesNotContain("IsMessageLifecycleActive", session);

@@ -2,6 +2,7 @@ using game_server.logging;
 using game_server.matches;
 using game_server.sessions;
 using game_server.players;
+using game_server.players.bots;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
@@ -59,6 +60,11 @@ internal sealed class GroundItemAutoPickupService(
             match.GroundItemPickupCandidates.Remove(player);
             return;
         }
+        if (player.PlayerId < 0 && player.IsSleeping)
+        {
+            match.GroundItemPickupCandidates.Remove(player);
+            return;
+        }
         var candidates = GetCandidates(match, player);
         candidates.Record(match.GroundItems, player.PlayerId, player.CurrentArea,
             player.Position, player.Position);
@@ -66,10 +72,16 @@ internal sealed class GroundItemAutoPickupService(
         foreach (var candidate in candidates.Take())
         {
             if (match.IsEnded) break;
+            var item = match.GroundItems.GetItem(candidate.GroundItemUid);
+            if (player.PlayerId < 0 && item != null &&
+                item.ItemId is Config.SUMMON_STONE_GROUND_ITEM_ID or Config.BOOTS_GROUND_ITEM_ID &&
+                match.GroundItems.IsYoungerThan(item.GroundItemUid, BotPlayerManager.SummonStoneBotReactionDelay))
+                continue;
             var pickup = GroundItemPickupService.TryPickup(match, player.PlayerId, candidate.Area,
                 candidate.Position, player.Health, candidate.GroundItemUid);
             if (pickup.Status != GroundItemClaimStatus.Success || pickup.ClaimedItem == null) continue;
             ApplyGroundItemPickup(match, player, pickup);
+            if (player.PlayerId < 0) break;
         }
     }
 
@@ -93,6 +105,8 @@ internal sealed class GroundItemAutoPickupService(
 
         if (pickup.BootsPickup)
         {
+            if (match.Bots.GetBot(match.MatchingId, player.PlayerId) is { } bot)
+                bot.BootsSpeedUntilUtc = DateTime.UtcNow.AddSeconds(Config.BOOTS_SPEED_DURATION_SECONDS);
             // 부츠 (#222 M4): 이속은 클라 이동이 소유한다 — 서버는 픽업 결과만 확정.
             // 클라가 픽업 결과(ItemId)로 10초 버프·HUD 타이머를 시작한다.
         }

@@ -399,7 +399,6 @@ public sealed class MatchGameplayServiceTests
             var result = match.Bots.ProcessBotMovementTick(match.MatchingId, match.Closures,
                 new Dictionary<long, network.common.AreaType>(), match.Inventory, match.GroundItems, [],
                 (_, _) => throw new InvalidOperationException("A sleeping bot must not request a movement plan."), match.SummonStones);
-            Assert.Empty(result.GroundItemPickups);
             Assert.Single(result.Movements);
             Assert.Equal(0, bot.Player.Velocity.X);
             Assert.Equal(0, bot.Player.Position!.X);

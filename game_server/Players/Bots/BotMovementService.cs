@@ -177,17 +177,6 @@ internal class BotMovementService(
             }
         }
 
-        foreach (SwarmBotGroundItemRemovalDispatch removal in plan.GroundItemRemovals)
-        {
-            using var packet = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(
-                removal.GroundItemUid,
-                removal.BotPlayerId,
-                removal.AutoUsed);
-            foreach (var session in removal.Recipients)
-                session.TrySend(packet);
-        }
-
-
     }
 
     public void DispatchExternalMovement(MatchRuntime runtime, BotMovementEvent movement)

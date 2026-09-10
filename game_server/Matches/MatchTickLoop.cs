@@ -99,8 +99,7 @@ internal sealed class MatchTickLoop(
         bool isGameplayActive = runtime.IsGameplayActive(utcNow);
         if (isGameplayActive)
         {
-            // 봇은 이동 틱의 기존 획득 경로를 유지한다.
-            groundItemAutoPickup.Process(runtime, runtime.GetAlivePlayers().Where(player => player.PlayerId > 0).ToList());
+            groundItemAutoPickup.Process(runtime, runtime.GetAlivePlayers());
             if (runtime.IsEnded)
             {
                 return;

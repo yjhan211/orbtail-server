@@ -17,6 +17,21 @@ namespace game_server.players.bots;
 /// </summary>
 public partial class BotPlayerManager
 {
+    /// <summary>소환석·부츠에 대한 봇 반응 지연. 사람이 먼저 반응할 여유를 둔다.</summary>
+    public static readonly TimeSpan SummonStoneBotReactionDelay = TimeSpan.FromSeconds(2.5);
+
+    private static float DistanceSquared(Vector3f position, float x, float y)
+    {
+        float dx = position.X - x;
+        float dy = position.Y - y;
+        return dx * dx + dy * dy;
+    }
+
+    private static Cell WorldToCell(Vector3f position) =>
+        new((int)MathF.Floor(position.X + 2f * position.Y),
+            (int)MathF.Floor(2f * position.Y - position.X));
+
+
     /// <summary>Bot movement speed matches the player fixed movement speed.</summary>
     private const float BotWalkSpeed = 5f;
 
@@ -71,7 +86,6 @@ public partial class BotPlayerManager
     public class BotWalkingTickResult
     {
         public List<BotMovementEvent> Movements { get; } = new();
-        public List<BotGroundItemPickup> GroundItemPickups { get; } = new();
         public long PlanningBotId { get; set; }
         public double PlanningElapsedMilliseconds { get; set; }
         public double WalkingElapsedMilliseconds { get; set; }
@@ -150,13 +164,6 @@ public partial class BotPlayerManager
                 continue;
             }
 
-
-            if (TryAutoPickupGroundItem(
-                    bot, matchingId, inventoryManager, groundItemManager, summonStoneManager, out var pickup) &&
-                pickup.HasValue)
-            {
-                result.GroundItemPickups.Add(pickup.Value);
-            }
 
             SwarmBotDirective currentDirective = directiveProvider(matchingId, bot.PlayerId);
             if (currentDirective.Mode == SwarmBotMode.None)

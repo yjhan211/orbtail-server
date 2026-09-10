@@ -68,7 +68,6 @@ public partial class BotPlayerManager
             gameEventLogManager,
             matchingId,
             movementResult.Movements,
-            movementResult.GroundItemPickups,
             players,
             observers,
             advanceOrbOrbit: true,
@@ -105,7 +104,6 @@ public partial class BotPlayerManager
             gameEventLogManager,
             matchingId,
             [movement],
-            [],
             players,
             observers,
             advanceOrbOrbit: false,
@@ -124,7 +122,6 @@ public partial class BotPlayerManager
         GameEventLogManager gameEventLogManager,
         long matchingId,
         IReadOnlyCollection<BotMovementEvent> movements,
-        IReadOnlyCollection<BotGroundItemPickup> pickups,
         IReadOnlyList<Player> players,
         IReadOnlyList<SwarmBotObserverSnapshot> observers,
         bool advanceOrbOrbit,
@@ -146,22 +143,9 @@ public partial class BotPlayerManager
                 movementDispatches.Add(dispatch);
         }
 
-        var removals = ImmutableArray.CreateBuilder<SwarmBotGroundItemRemovalDispatch>();
-        foreach (BotGroundItemPickup pickup in pickups)
-        {
-            LogGroundItemPickup(inventory, gameEventLogManager, matchingId, pickup);
-            var area = (AreaType)pickup.Item.AreaType;
-            removals.Add(new SwarmBotGroundItemRemovalDispatch(
-                pickup.Item.GroundItemUid,
-                pickup.BotPlayerId,
-                pickup.AutoUsed,
-                SelectRecipients(observers, observer => observer.Area == area)));
-        }
-
         return new SwarmBotMovementPlan(
             matchingId,
             movementDispatches.ToImmutable(),
-            removals.ToImmutable(),
             planningElapsedMilliseconds,
             walkingElapsedMilliseconds,
             SnapshotElapsedMilliseconds: 0d,
@@ -287,63 +271,6 @@ public partial class BotPlayerManager
             decision.EventType,
             decision.CooldownSeconds,
             decision.RevealDelayMs);
-    }
-
-    private void LogGroundItemPickup(InGameInventoryManager inventory, GameEventLogManager gameEventLogManager, long matchingId, BotGroundItemPickup pickup)
-    {
-        if (pickup.AutoUsed)
-        {
-            gameEventLogManager.LogRecoveryUse(
-                matchingId,
-                pickup.BotPlayerId,
-                pickup.Item.ItemId,
-                pickup.EffectiveRecovery,
-                source: "ground_auto_use",
-                isBot: true);
-            gameEventLogManager.LogPelletPickupOutcome(
-                matchingId,
-                pickup.BotPlayerId,
-                pickup.Item.ItemId,
-                pickup.RequestedRecovery,
-                pickup.EffectiveRecovery,
-                pickup.EffectiveRecovery == 0 ? "wasted" :
-                pickup.EffectiveRecovery == pickup.RequestedRecovery ? "effective" : "partial_waste",
-                isBot: true);
-        }
-
-        var area = (AreaType)pickup.Item.AreaType;
-        gameEventLogManager.LogGroundItemPickup(
-            matchingId,
-            pickup.BotPlayerId,
-            pickup.DiscovererPlayerId,
-            pickup.Item.GroundItemUid,
-            pickup.Item.ItemId,
-            area.ToString(),
-            pickup.AutoUsed,
-            isBot: true);
-        if (pickup.SummonStoneAmount > 0)
-        {
-            gameEventLogManager.LogSummonStoneAward(
-                matchingId,
-                pickup.BotPlayerId,
-                monsterId: 0,
-                pickup.SummonStoneAmount,
-                pickup.SummonStoneBalance,
-                area.ToString(),
-                isCore: false,
-                isBot: true);
-            return;
-        }
-
-        var boardAfterPickup = inventory.GetPlayerInventory(pickup.BotPlayerId);
-        gameEventLogManager.LogOrbBoardTransition(
-            matchingId,
-            pickup.BotPlayerId,
-            boardAfterPickup.GetAllItems(),
-            boardAfterPickup.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0,
-            area.ToString(),
-            "pickup",
-            isBot: true);
     }
 
     private static ImmutableArray<GameClientSession> SelectRecipients(
