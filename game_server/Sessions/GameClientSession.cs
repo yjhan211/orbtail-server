@@ -54,8 +54,6 @@ public partial class GameClientSession : SessionBase
     private bool _isGameEnded;
     private bool _disconnectedByServer;
 
-    internal static Action<long, long>? SwarmHeartPickupCallback { get; set; }
-
     internal GameClientSession(
         TcpConnection connection,
         ILogger logger,

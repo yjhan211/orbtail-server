@@ -655,6 +655,7 @@ public sealed class GameClientSessionPublicationTests
             ],
             fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.True(session.Player.Health > 20);
+        Assert.False(Monitor.IsEntered(session.Match.MatchLock));
     }
 
     [Theory]
@@ -861,14 +862,13 @@ public sealed class GameClientSessionPublicationTests
     }
 
     [Fact]
-    public async Task PreparationFailure_KeepsAlreadySentPrefixAndReleasesMatchLock()
+    public async Task HeartPickupSendFailure_KeepsRecoveryAndReleasesMatchLock()
     {
         using var fixture = new SessionFixture();
         RecordingSession session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
         fixture.SetHealth(session, 20);
         GroundItemInfo item = fixture.SpawnAtSession(session, Config.HEART_GROUND_ITEM_ID);
-        GameClientSession.SwarmHeartPickupCallback = static (_, _) =>
-            throw new InvalidOperationException("heart callback failed");
+        fixture.ConnectionFor(session).ThrowOnceOn = Protocol.G_TO_C_GROUND_ITEM_REMOVED;
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => RunPickupTickAsync(session, fixture.EventLog));
 
@@ -877,6 +877,7 @@ public sealed class GameClientSessionPublicationTests
             fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.Null(fixture.Store.GetOrThrow(70001).GroundItems.GetItem(item.GroundItemUid));
         Assert.True(session.Player.Health > 20);
+        Assert.False(Monitor.IsEntered(session.Match.MatchLock));
     }
 
     [Fact]
@@ -1335,7 +1336,6 @@ public sealed class GameClientSessionPublicationTests
                 NullLogger.Instance,
                 onRedisCleanup: _ => CleanupTimeline?.Enqueue("cleanup"));
 
-            GameClientSession.SwarmHeartPickupCallback = null;
         }
 
         public List<MatchTickLoop> TickLoops { get; } = [];
@@ -1412,7 +1412,6 @@ public sealed class GameClientSessionPublicationTests
         public void Dispose()
         {
             foreach (var loop in TickLoops) loop.Stop();
-            GameClientSession.SwarmHeartPickupCallback = null;
             foreach (long matchingId in _sessions.Select(session => session.MatchingId).Distinct())
 
             if (Directory.Exists(_summaryDirectory))
