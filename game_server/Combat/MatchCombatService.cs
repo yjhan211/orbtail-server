@@ -92,14 +92,14 @@ internal class MatchCombatService(
                               !session.IsGameEnded)
             .ToList();
         var bots = matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId).ToList();
-        // 봇 전용 매치(어드민 검증)에서도 스웜을 돌린다 — 생존·완주 계측의 기반.
-        if (sessions.Count == 0 && bots.Count == 0)
+        var players = matchRuntimes.GetOrThrow(matchingId).GetAlivePlayers();
+        if (players.Count == 0)
             return;
 
         if (!matchRuntimes.GetOrThrow(matchingId).Monsters.HasMatching(matchingId))
         {
-            long humanPlayerId = sessions.Count > 0 ? sessions[0].PlayerId!.Value : bots[0].PlayerId;
-            if (!matchRuntimes.GetOrThrow(matchingId).Monsters.InitializeMatching(matchingId, humanPlayerId, DateTime.UtcNow))
+            long initialPlayerId = players[0].PlayerId;
+            if (!matchRuntimes.GetOrThrow(matchingId).Monsters.InitializeMatching(matchingId, initialPlayerId, DateTime.UtcNow))
                 return;
 
             // 자기장 경계 스폰 규칙을 이 매치의 몬스터 처리기에 연결한다.
@@ -120,13 +120,12 @@ internal class MatchCombatService(
 
         var aliveSessions = sessions.Where(session => !session.Player.IsEliminated).ToList();
         var aliveBots = bots.Where(bot => !bot.Player.IsEliminated).ToList();
-        var participants = aliveSessions
-            .Where(session => session.Player.Position != null)
-            .Select(session => new SwarmParticipantSpatial(
-                session.PlayerId!.Value, session.Player.CurrentArea, session.Player.Position!))
-            .Concat(aliveBots.Select(bot =>
-                new SwarmParticipantSpatial(bot.PlayerId, bot.Player.CurrentArea, bot.Player.Position!)))
-            .ToList();
+        var participants = new List<SwarmParticipantSpatial>();
+        foreach (var player in players)
+        {
+            if (player.Position == null) continue;
+            participants.Add(new SwarmParticipantSpatial(player.PlayerId, player.CurrentArea, player.Position));
+        }
 
         var tick = matchRuntimes.GetOrThrow(matchingId).Monsters.Tick(matchingId, participants, matchRuntimes.GetOrThrow(matchingId).IsGameplayActive(), nowUtc);
 
@@ -207,7 +206,8 @@ internal class MatchCombatService(
         ProcessPeriodicBuffs(matchingId, aliveSessions, nowUtc);
         if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
             return;
-        ProcessSleepRecovery(matchingId, aliveSessions.Select(session => session.Player).Concat(aliveBots.Select(bot => bot.Player)), nowUtc, eventLogs, logger);
+        players.RemoveAll(player => player.IsEliminated);
+        ProcessSleepRecovery(matchingId, players, nowUtc, eventLogs, logger);
 
         // 봇도 사람과 같은 문 게이지 규칙으로 잠긴 문을 연다.
 
@@ -216,8 +216,8 @@ internal class MatchCombatService(
         if (MonsterSnapshotPublisher.TryConsumeBroadcastSlot(matchRuntimes.GetOrThrow(matchingId), nowUtc))
             MonsterSnapshotPublisher.Broadcast(matchRuntimes.GetOrThrow(matchingId), sessions, matchRuntimes.GetOrThrow(matchingId).Monsters.GetVisualStates(matchingId));
 
-        var actors = BuildSwarmArenaCombatActors(matchingId, aliveSessions, aliveBots, nowUtc);
-        orbRecovery.Process(matchingId, actors, aliveSessions.Select(session => session.Player).Concat(aliveBots.Select(bot => bot.Player)).ToList(), nowUtc);
+        var actors = BuildSwarmArenaCombatActors(matchingId, players, nowUtc);
+        orbRecovery.Process(matchingId, actors, players, nowUtc);
         orbVisuals.Publish(matchingId, actors, sessions);
         BroadcastSwarmOrbRankings(matchingId, sessions, bots);
         // 성장 카드 (#226 단계 C): 소환석이 비용에 닿는 즉시 3택 오퍼 — 상자 트리거 퇴역.
@@ -1558,33 +1558,18 @@ internal class MatchCombatService(
         return OrbData.TryGetRecoveryTier(itemId, out int recoveryTier) ? recoveryTier : 0;
     }
 
-    private List<ProximityCombatActor> BuildSwarmArenaCombatActors(
+    internal List<ProximityCombatActor> BuildSwarmArenaCombatActors(
         long matchingId,
-        List<GameClientSession> aliveSessions,
-        List<BotPlayerState> aliveBots,
+        IReadOnlyList<Player> players,
         DateTime nowUtc)
     {
         var actors = new List<ProximityCombatActor>();
-        foreach (var session in aliveSessions)
+        foreach (var player in players)
         {
-            if (session.PlayerId.HasValue &&
-                session.Player.Position != null &&
-                CombatActorFactory.TryCreateSpatialActor(
-                    session.PlayerId.Value,
-                    Config.SWARM_MATCH_MAP,
-                    session.Player.CurrentArea,
-                    session.Player.Position,
-                    out var spatial))
-            {
+            if (player.IsEliminated || player.Position == null) continue;
+            if (CombatActorFactory.TryCreateSpatialActor(player.PlayerId, Config.SWARM_MATCH_MAP,
+                    player.CurrentArea, player.Position, out var spatial))
                 AddSwarmParticipantCombatActors(actors, matchingId, spatial, nowUtc);
-            }
-        }
-
-        MapId botMapId = matchRuntimes.GetOrThrow(matchingId).Bots.GetMatchingMapId(matchingId);
-        foreach (var bot in aliveBots)
-        {
-            if (CombatActorFactory.TryCreateSpatialActor(bot.PlayerId, botMapId, bot.Player.CurrentArea, bot.Player.Position!, out var botSpatial))
-                AddSwarmParticipantCombatActors(actors, matchingId, botSpatial, nowUtc);
         }
 
         foreach (var target in matchRuntimes.GetOrThrow(matchingId).Monsters.GetCombatTargets(matchingId))

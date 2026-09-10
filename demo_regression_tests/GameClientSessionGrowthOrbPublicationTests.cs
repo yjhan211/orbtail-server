@@ -229,6 +229,45 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
     }
 
     [Fact]
+    public void CombatActorsUsePlayerStateWithoutRequiringSessionsOrBotManagerEntries()
+    {
+        using var fixture = new SessionFixture();
+        var runtime = fixture.Store.GetOrCreate(FirstMatchingId);
+        var cell = GameMapData.GetMapInfo(Config.SWARM_MATCH_MAP)!.GetInitialPosition().Item1;
+        var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
+        var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
+        var human = new game_server.players.Player
+        {
+            Profile = new PlayerInfo { PlayerId = FirstPlayerId },
+            Position = position, CurrentArea = area
+        };
+        var bot = new game_server.players.Player
+        {
+            Profile = new PlayerInfo { PlayerId = -1 },
+            Position = position, CurrentArea = area
+        };
+        using var scope = runtime.Enter();
+        runtime.RegisterParticipant(human);
+        runtime.RegisterParticipant(bot);
+        foreach (var player in new[] { human, bot })
+            Assert.True(runtime.Inventory.TryAddItemWithCapacity(player.PlayerId, 107000010, Config.SWARM_ORB_CAPACITY, out _));
+        var combat = fixture.Server.GetCombat(FirstMatchingId);
+        var actors = combat.BuildSwarmArenaCombatActors(FirstMatchingId, runtime.GetAlivePlayers(), DateTime.UtcNow);
+        var humanActors = actors.Where(actor => actor.PlayerId == human.PlayerId).ToList();
+        var botActors = actors.Where(actor => actor.PlayerId == bot.PlayerId).ToList();
+        Assert.NotEmpty(humanActors);
+        Assert.Equal(humanActors.Select(actor => (actor.WeaponItemId, actor.Damage)),
+            botActors.Select(actor => (actor.WeaponItemId, actor.Damage)));
+        Assert.Null(human.Session);
+        Assert.Null(bot.Session);
+
+        var snapshot = runtime.GetAlivePlayers();
+        runtime.TryEliminatePlayer(bot.PlayerId, EliminationReason.HEALTH_ZERO);
+        actors = combat.BuildSwarmArenaCombatActors(FirstMatchingId, snapshot, DateTime.UtcNow);
+        Assert.DoesNotContain(actors, actor => actor.PlayerId == bot.PlayerId);
+    }
+
+    [Fact]
     public void SleepingPlayer_KeepsAutomaticAttackActors()
     {
         using var fixture = new SessionFixture();
@@ -242,12 +281,9 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.True(runtime.Inventory.TryAddItemWithCapacity(
             FirstPlayerId, 107000010, Config.SWARM_ORB_CAPACITY, out _));
         var condition = session.Player;
-        var buildActors = typeof(MatchCombatService).GetMethod(
-            "BuildSwarmArenaCombatActors", BindingFlags.Instance | BindingFlags.NonPublic)!;
         var now = DateTime.UtcNow;
-        List<ProximityCombatActor> Build() => (List<ProximityCombatActor>)buildActors.Invoke(
-            fixture.Server.GetCombat(FirstMatchingId),
-            [FirstMatchingId, new List<GameClientSession> { session }, new List<BotPlayerState>(), now])!;
+        List<ProximityCombatActor> Build() => fixture.Server.GetCombat(FirstMatchingId)
+            .BuildSwarmArenaCombatActors(FirstMatchingId, [session.Player], now);
 
         var awake = Build();
         Assert.Contains(awake, actor => actor.WeaponItemId != 0 && actor.Damage > 0);
