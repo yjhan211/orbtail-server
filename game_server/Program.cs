@@ -1,8 +1,8 @@
+using game_server.players;
 using game_server.players.bots;
 using game_server.items;
 using game_server.logging;
 using game_server.orbs;
-using game_server.players;
 using game_server.combat;
 using game_server.matches.entry;
 using game_server.field;
@@ -139,7 +139,7 @@ internal static class Program
             sp.GetRequiredService<ILogger<PlayerEliminationService>>()));
         services.AddSingleton<MatchEnvironmentService>();
         services.AddSingleton<OrbUpgradeService>();
-        services.AddSingleton<MatchGrowthService>();
+        services.AddSingleton<GrowthService>();
         services.AddSingleton<OrbRecoveryService>();
         services.AddSingleton<GroundItemAutoPickupService>();
         services.AddSingleton<OrbVisualStatePublisher>();

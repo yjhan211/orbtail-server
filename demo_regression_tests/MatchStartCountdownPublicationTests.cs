@@ -383,7 +383,7 @@ public sealed class MatchStartCountdownPublicationTests
                 static (_, _) => null,
                 null!,
                 null!,
-                TestGameSessionServices.CreateGrowthService(TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance), TestGameEventLogs.Create()),
+                TestGameSessionServices.CreateOrbUpgradeService(TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance), TestGameEventLogs.Create()),
                 new FakeGameSessionLifecycle(),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),

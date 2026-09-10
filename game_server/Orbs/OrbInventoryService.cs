@@ -25,13 +25,13 @@ internal sealed class OrbInventoryService(GameEventLogManager eventLog)
             var inventory = runtime.Inventory.GetPlayerInventory(playerId);
             eventLog.LogOrbBoardTransition(runtime.MatchingId, playerId,
                 inventory.GetAllItems(), inventory.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0,
-                area.ToString(), "summon", isBot: false);
+                area.ToString(), "summon", isBot: playerId < 0);
         }
 
         eventLog.LogOrbSummonAttempt(runtime.MatchingId, playerId,
             attempt.Success, attempt.ErrorCode, attempt.ItemId,
             attempt.State.StoneCount, attempt.State.NextCost, attempt.State.SuccessfulSummonCount,
-            area.ToString(), isBot: false);
+            area.ToString(), isBot: playerId < 0);
         return attempt;
     }
 

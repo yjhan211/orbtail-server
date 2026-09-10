@@ -1,3 +1,4 @@
+using game_server.players;
 using game_server.players.bots;
 using game_server.combat;
 using game_server.matches;
@@ -253,11 +254,11 @@ public sealed class MatchGameplayServiceTests
     }
 
     [Fact]
-    public void GrowthUsesPlayerRosterWithoutConnectionsAndIgnoresEliminatedPrey()
+    public void GrowthRankingUsesAlivePlayersWithoutConnections()
     {
         TestGameData.EnsureBattleItemCombatLoaded();
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var growth = provider.GetRequiredService<MatchGrowthService>();
+        var growth = provider.GetRequiredService<GrowthService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947798);
         var hunter = new game_server.players.Player
         {
@@ -273,10 +274,7 @@ public sealed class MatchGameplayServiceTests
             match.RegisterParticipant(prey);
             Assert.True(match.Inventory.TryAddItemWithCapacity(hunter.PlayerId, 107000010, 6, out _));
             Assert.Equal(1, growth.GetTopOrbCount(match.MatchingId));
-            Assert.False(growth.HasSwarmPreyInArea(match.MatchingId, hunter, [hunter]));
-            Assert.True(growth.HasSwarmPreyInArea(match.MatchingId, hunter, [hunter, prey]));
             match.TryEliminatePlayer(prey.PlayerId, network.common.EliminationReason.HEALTH_ZERO);
-            Assert.False(growth.HasSwarmPreyInArea(match.MatchingId, hunter, [hunter, prey]));
             match.TryEliminatePlayer(hunter.PlayerId, network.common.EliminationReason.HEALTH_ZERO);
             Assert.Equal(0, growth.GetTopOrbCount(match.MatchingId));
         }

@@ -23,7 +23,7 @@ namespace game_server.players.bots;
 internal sealed class BotDecisionService(
     MatchRuntimeStore matchRuntimes,
     GameEventLogManager eventLogs,
-    MatchGrowthService growth,
+    GrowthService growth,
     OrbTrailService orbTrails,
     ILogger<BotDecisionService> logger)
 {
@@ -528,7 +528,7 @@ internal sealed class BotDecisionService(
         //      찾아가는 공유 자원이고, 미니맵 스냅샷으로 사람에게도 같은 정보가 보인다.
 
         if (matchRuntimes.GetOrThrow(matchingId).SummonStones.GetSnapshot(botPlayerId).StoneCount <
-            growth.GetCostBreakdown(matchingId, botPlayerId).FinalCost &&
+            growth.GetNextGrowthCost(matchingId, botPlayerId) &&
             hasSquadOrbs)
         {
             if (TryFindNearestSwarmSupplyMonster(matchingId, bot, out var supplyArea,
@@ -611,7 +611,7 @@ internal sealed class BotDecisionService(
     /// <summary>이 봇의 스쿼드 오브 총 개수 — 저성장(파밍 부족) 판정용.</summary>
 
     // 추격 우위 임계: 내 전력이 상대의 이 배수 이상일 때만 붙는다.
-    private const float SwarmBotChasePowerAdvantage = MatchGrowthService.BotPreyPowerAdvantage;
+    private const float SwarmBotChasePowerAdvantage = 1.25f;
 
     // 도주 임계: 상대 전력이 내 전력의 이 배수 이상일 때만 피한다. 그 사이(동수·소폭 열세, 1/1.5 ~ 1.25배)는
     // 중립 — 피하지도 붙지도 않고 하던 일을 한다. 오브 손실이 절단 전용이 된 뒤로 동수 대치는 서로의 꼬리 주위를

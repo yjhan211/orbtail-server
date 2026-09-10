@@ -1,10 +1,10 @@
+using game_server.players;
 using game_server.players.bots;
 using game_server.logging;
 using game_server.orbs;
 using game_server.combat;
 using game_server.matches.entry;
 using game_server.matches.results;
-using game_server.players;
 using game_server.matches;
 using System.Collections.Concurrent;
 using System.Reflection;
@@ -125,7 +125,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             using (runtime.Enter())
             {
                 runtime.SummonStones.AddStones(FirstPlayerId, 100);
-                session.SendOrbUpgradeInfo(fixture.Server.GetGrowth().GetOrbUpgradeInfo(FirstMatchingId, FirstPlayerId));
+                session.SendOrbUpgradeInfo(fixture.Server.GetOrbUpgrades().GetOrbUpgradeInfo(FirstMatchingId, FirstPlayerId));
             }
             var empty = connection.DeserializeSingle<G_TO_C_ORB_UPGRADE_INFO>(Protocol.G_TO_C_ORB_UPGRADE_INFO);
             Assert.Equal(0, empty.SunCost + empty.WindCost + empty.WaveCost);
@@ -172,7 +172,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             runtime.Inventory.TryAddItemWithCapacity(FirstPlayerId, 107000010, Config.SWARM_ORB_CAPACITY, out _);
             runtime.SummonStones.AddStones(FirstPlayerId, 20);
             var before = runtime.SummonStones.GetSnapshot(FirstPlayerId);
-            var info = fixture.Server.GetGrowth().GetOrbUpgradeInfo(FirstMatchingId, FirstPlayerId);
+            var info = fixture.Server.GetOrbUpgrades().GetOrbUpgradeInfo(FirstMatchingId, FirstPlayerId);
             Assert.True(info.SunCost > 0);
             Assert.Equal(0, info.WindCost);
             Assert.Equal(0, info.WaveCost);
@@ -310,33 +310,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.NotEmpty(locks);
         Assert.All(locks, held => Assert.True(held));
     }
-    [Fact]
-    public void GrowthCost_IsReadOnlyAndUsesRequestedMatch()
-    {
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
-        var server = GameServerTestAccess.Create(store);
-        var first = store.GetOrCreate(947201);
-        var second = store.GetOrCreate(947202);
-        using (MatchRuntimeStore.Enter(first))
-        {
-            first.Inventory.TryAddItemWithCapacity(101, 107000010, Config.SWARM_ORB_CAPACITY, out _);
-            first.SummonStones.RecordGrowthSuccess(101, SwarmGrowthOfferState.CardMultiply);
-            var before = first.SummonStones.GetGrowthSuccessCount(101);
-            var cost = server.GetGrowth().GetCostBreakdown(first.MatchingId, 101);
-            Assert.Equal(1, cost.OrbCount);
-            Assert.Equal(Config.GetSwarmGrowthCardCost(1, 1), cost.CostSummon);
-            Assert.Equal(before, first.SummonStones.GetGrowthSuccessCount(101));
-            first.TryMarkEnded();
-        }
-        using (MatchRuntimeStore.Enter(second))
-        {
-            var cost = server.GetGrowth().GetCostBreakdown(second.MatchingId, 101);
-            Assert.Equal(0, cost.OrbCount);
-            Assert.Equal(Config.GetSwarmGrowthCardCost(0, 0), cost.CostSummon);
-            second.TryMarkEnded();
-        }
-    }
-
     private const long FirstMatchingId = 71001;
     private const long SecondMatchingId = 71002;
     private const long FirstPlayerId = 101;
@@ -677,8 +650,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         string combat = ReadNormalizedSource(root, "game_server", "Combat", "MatchCombatService.cs");
         string orbBoard = ReadNormalizedSource(root, "game_server", "Orbs", "OrbUpgradeService.cs");
 
-        Assert.Contains("MatchGrowthService _growth", session);
-        Assert.Contains("_growth.HandleUpgradeOrb(", orbSummon);
+        Assert.Contains("OrbUpgradeService _orbUpgrades", session);
+        Assert.Contains("_orbUpgrades.HandleUpgradeOrb(", orbSummon);
         Assert.DoesNotContain("SwarmGrowthPickCallback", session);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
         Assert.DoesNotContain("SwarmGrowthPickCallback", combat);
@@ -798,7 +771,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 EventLog,
                 TestGameSessionServices.CreateEliminationService(Store, EventLog, new MatchSummaryFileStore(_summaryDirectory),
                     NullLogger.Instance),
-                growthEventLog == null ? Server.GetGrowth() : TestGameSessionServices.CreateGrowthService(Store, growthEventLog),
+                growthEventLog == null ? Server.GetOrbUpgrades() : TestGameSessionServices.CreateOrbUpgradeService(Store, growthEventLog),
 
                 new FakeGameSessionLifecycle(),
                 static () => false,

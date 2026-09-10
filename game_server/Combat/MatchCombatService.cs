@@ -30,7 +30,7 @@ internal class MatchCombatService(
     MatchCleanupService matchCleanup,
     PlayerEliminationService playerEliminations,
     MatchResultService matchResults,
-    MatchGrowthService growth,
+    GrowthService growth,
     OrbRecoveryService orbRecovery,
     OrbVisualStatePublisher orbVisuals,
     OrbTrailService orbTrails,
@@ -213,8 +213,8 @@ internal class MatchCombatService(
         orbRecovery.Process(matchingId, actors, players, nowUtc);
         orbVisuals.Publish(matchingId, actors, sessions);
         BroadcastSwarmOrbRankings(matchingId, sessions);
-        // 성장 카드 (#226 단계 C): 소환석이 비용에 닿는 즉시 3택 오퍼 — 상자 트리거 퇴역.
-        growth.ProcessOffers(matchingId, players, aliveBots);
+        // 봇은 현재 소환·계열 강화 중 하나에 소환석을 투자한다.
+        growth.ProcessBotGrowth(matchingId, aliveBots);
         if (ProcessSwarmScoreTimeout(matchingId, nowUtc))
             return;
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.
@@ -1002,11 +1002,6 @@ internal class MatchCombatService(
         int orbsAfter = orbTrails.CountSwarmSquadOrbs(matchingId, bestOwnerId);
         int attackOrbsAfter = CountSwarmAttackOrbs(GetSwarmOrbItemIdsInOrder(matchingId, bestOwnerId));
         int rankAfter = GetSwarmPlayerRank(matchingId, bestOwnerId);
-
-        // 잃은 만큼 소환 비용을 되돌린다 (#229): 오브 수가 곧 소환 카운터라, 잘려 나간 몫이
-        // 값에 남으면 절단당한 쪽이 재건 비용까지 떠안아 격차가 한 방향으로만 벌어진다.
-        matchRuntimes.GetOrThrow(matchingId).SummonStones.RefundGrowthSuccess(
-            bestOwnerId, SwarmGrowthOfferState.CardMultiply, destroyedItems.Count);
 
         eventLogs.LogSwarmTrailCut(
             matchingId, creditPlayerId, bestOwnerId, bestTailOrdinal, destroyedItems.Count,

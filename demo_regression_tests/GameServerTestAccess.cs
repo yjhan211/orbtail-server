@@ -1,8 +1,8 @@
+using game_server.players;
 using game_server.players.bots;
 using game_server.items;
 using game_server.logging;
 using game_server.orbs;
-using game_server.players;
 using game_server.combat;
 using game_server.matches.entry;
 using game_server.field;
@@ -31,7 +31,7 @@ internal static class GameServerTestAccess
         var factory = Read<Func<MatchRuntime, TimeProvider, MatchTickLoop>>(ticks);
         return runtime.TickLoop ??= factory(runtime, TimeProvider.System);
     }
-    internal static MatchGrowthService GetGrowth(this GameServer server) => Read<MatchGrowthService>(server);
+    internal static OrbUpgradeService GetOrbUpgrades(this GameServer server) => Read<OrbUpgradeService>(server);
 
     internal static GameEventLogManager GetEventLogs(this GameServer server) =>
         Read<GameEventLogManager>(server);
@@ -67,8 +67,7 @@ internal static class GameServerTestAccess
         var matchEliminations = TestGameSessionServices.CreateEliminationService(
             runtimes, logs, summaries, logger);
         var results = new MatchResultService(runtimes, logs, summaries, logger);
-        var growth = new MatchGrowthService(runtimes, logs, orbUpgrades,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchGrowthService>.Instance);
+        var growth = new GrowthService(runtimes, logs, orbUpgrades);
         var movement = new BotMovementService( logs,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotMovementService>.Instance);
         var decisions = new BotDecisionService(runtimes, logs, growth, orbTrails,
@@ -113,7 +112,7 @@ internal static class GameServerTestAccess
             orbInventory: new OrbInventoryService(logs),
             entryFailureHandler: entryFailure,
             matchCleanup: cleanup,
-            growth: growth,
+            orbUpgrades: orbUpgrades,
             tickService: new MatchTickService(runtimes, createLoop, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchTickService>.Instance));
     }
 }

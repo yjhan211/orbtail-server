@@ -68,63 +68,7 @@ public sealed class SummonStoneManager
             return CreateSnapshot(state);
     }
 
-    /// <summary>성장 성공 카운트 N 조회 (#226 C 잔여) — 비용 곡선·HUD 표시의 단일 출처.</summary>
-    public int GetGrowthSuccessCount(long playerId)
-    {
-        var state = GetOrCreatePlayerState(playerId);
-        lock (state.SyncRoot)
-            return state.GrowthSuccessCount;
-    }
-
-    /// <summary>
-    ///     카드별 성장 성공 카운트 (#229): 소환·공격 강화·방어 강화가 각자 자기 곡선을 탄다.
-    ///     하나로 묶으면 오브를 늘릴수록 강화가 비싸지고 강화할수록 소환이 비싸져,
-    ///     세 선택이 서로의 값을 밀어 올리는 경제가 된다.
-    /// </summary>
-    public int GetGrowthSuccessCount(long playerId, int cardIndex)
-    {
-        var state = GetOrCreatePlayerState(playerId);
-        lock (state.SyncRoot)
-            return state.GrowthSuccessByCard.GetValueOrDefault(cardIndex);
-    }
-
-    /// <summary>성장 카드 성공 적용 시 1회 호출 — 전체 N과 카드별 N을 함께 누적한다.</summary>
-    public void RecordGrowthSuccess(long playerId, int cardIndex = -1)
-    {
-        var state = GetOrCreatePlayerState(playerId);
-        lock (state.SyncRoot)
-        {
-            state.GrowthSuccessCount++;
-            if (cardIndex >= 0)
-                state.GrowthSuccessByCard[cardIndex] =
-                    state.GrowthSuccessByCard.GetValueOrDefault(cardIndex) + 1;
-        }
-    }
-
-    /// <summary>
-    ///     오브를 잃은 만큼 소환 카운터를 되돌린다 (#229). 소환 비용은 "내가 몇 개 샀는가"를
-    ///     따라가는 값이라, 잘려 나간 오브가 값에 그대로 남으면 뒤처진 사람이 재건조차 못 한다.
-    ///     잃은 개수만큼만 내린다 — 한 개만 잃어도 곡선이 0으로 리셋되면 싼 오브를 일부러
-    ///     내주고 값을 초기화하는 수가 최적해가 된다.
-    /// </summary>
-    public void RefundGrowthSuccess(long playerId, int cardIndex, int count)
-    {
-        if (count <= 0)
-            return;
-
-        var state = GetOrCreatePlayerState(playerId);
-        lock (state.SyncRoot)
-        {
-            int current = state.GrowthSuccessByCard.GetValueOrDefault(cardIndex);
-            state.GrowthSuccessByCard[cardIndex] = Math.Max(0, current - count);
-            state.GrowthSuccessCount = Math.Max(0, state.GrowthSuccessCount - Math.Min(count, current));
-        }
-    }
-
-    /// <summary>
-    ///     소환 없이 소환석만 차감 (#226 단계 C): 성장 카드(강화·철갑)와 상자 개봉이 쓴다.
-    ///     잔액 부족이면 아무것도 바꾸지 않는다.
-    /// </summary>
+    /// <summary>오브 강화 비용을 차감한다. 잔액이 부족하면 변경하지 않는다.</summary>
     public bool TrySpendStones(long playerId, int amount, out SummonStoneSnapshot snapshot)
     {
         var state = GetOrCreatePlayerState(playerId);
@@ -244,12 +188,6 @@ public sealed class SummonStoneManager
         public int StoneCount { get; set; }
         public int SuccessfulSummonCount { get; set; }
 
-        // 성장 카드 성공 선택 횟수 N (#226 C 잔여): 비용 곡선 3+floor(N/3)의 단일 출처.
-        // 오브가 잘려도 줄지 않는다 — 절단이 성장 시간을 초기화하지 못하게.
-        public int GrowthSuccessCount { get; set; }
-
-        // 카드별 성장 성공 수 (#229): 0 소환 · 1 공격 강화 · 2 방어 강화.
-        public Dictionary<int, int> GrowthSuccessByCard { get; } = new();
     }
 }
 

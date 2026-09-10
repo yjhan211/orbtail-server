@@ -163,7 +163,7 @@ public sealed class SwarmArenaTickOrderTests
             "orbRecovery.Process(",
             "orbVisuals.Publish(",
             "BroadcastSwarmOrbRankings(",
-            "growth.ProcessOffers(",
+            "growth.ProcessBotGrowth(",
             "ProcessSwarmScoreTimeout(",
             "ProcessPendingMonsterHits(",
             "ProcessSwarmCrossfires(",
@@ -249,21 +249,21 @@ public sealed class SwarmArenaTickOrderTests
     }
 
     [Fact]
-    public void GrowthOfferFlow_OnlyBotsGenerateOffers()
+    public void GrowthFlow_OnlyBotsChooseSummonOrUpgrade()
     {
         string root = FindRepositoryRoot();
-        string source = ReadNormalizedSource(root, "game_server", "Combat", "MatchGrowthService.cs");
+        string source = ReadNormalizedSource(root, "game_server", "Players", "GrowthService.cs");
         string tickBody = ReadMethodSlice(
             source,
-            "public void ProcessOffers(",
+            "public void ProcessBotGrowth(",
             "public int GetTopOrbCount(");
         Assert.DoesNotContain("public void HandlePick(", source);
 
         AssertInOrder(
             tickBody,
             "foreach (var bot in aliveBots)",
-            "GenerateSwarmGrowthOffer(",
-            "ChooseSwarmBotGrowthCard(");
+            "_orbInventory.Summon(",
+            "orbUpgrades.TryUpgradeForBot(");
         Assert.DoesNotContain("foreach (var session in aliveSessions)", tickBody);
         Assert.DoesNotContain("SendSwarmGrowthOffer", tickBody);
         Assert.DoesNotContain("OfferId", tickBody);

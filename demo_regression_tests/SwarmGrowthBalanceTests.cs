@@ -18,24 +18,7 @@ public sealed class SwarmGrowthBalanceTests
     [InlineData(20, 21)]
     public void GrowthCostUsesFivePlusTwoNWithTwentyOneCap(int successCount, int expectedCost)
     {
-        Assert.Equal(expectedCost, Config.GetSwarmGrowthCardCost(successCount, orbCount: 3));
-    }
-
-    [Theory]
-    [InlineData(1)]
-    [InlineData(6)]
-    [InlineData(12)]
-    [InlineData(30)]
-    public void OrbCountDoesNotAddGrowthCost(int orbCount)
-    {
-        Assert.Equal(0, Config.GetSwarmGrowthScoreSurcharge(orbCount));
-        Assert.Equal(11, Config.GetSwarmGrowthCardCost(growthSuccessCount: 3, orbCount));
-    }
-
-    [Fact]
-    public void EmptyBoardKeepsThreeStoneRebuildPath()
-    {
-        Assert.Equal(3, Config.GetSwarmGrowthCardCost(growthSuccessCount: 20, orbCount: 0));
+        Assert.Equal(expectedCost, Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(successCount)));
     }
 
     [Theory]
@@ -49,9 +32,9 @@ public sealed class SwarmGrowthBalanceTests
     {
         int budget = SummonStoneManager.InitialSummonStoneCount + earnedStones;
         int choices = 0;
-        while (budget >= Config.GetSwarmGrowthCardCost(choices, orbCount: 3))
+        while (budget >= Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(choices)))
         {
-            budget -= Config.GetSwarmGrowthCardCost(choices, orbCount: 3);
+            budget -= Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(choices));
             choices++;
         }
 

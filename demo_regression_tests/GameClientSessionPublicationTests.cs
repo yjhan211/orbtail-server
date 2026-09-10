@@ -1470,7 +1470,7 @@ public sealed class GameClientSessionPublicationTests
 
                 eventLog,
                 TestGameSessionServices.CreateEliminationService(matchRuntimes, eventLog, summaries, NullLogger.Instance),
-                TestGameSessionServices.CreateGrowthService(matchRuntimes, eventLog),
+                TestGameSessionServices.CreateOrbUpgradeService(matchRuntimes, eventLog),
                 new FakeGameSessionLifecycle(),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),

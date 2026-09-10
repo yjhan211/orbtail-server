@@ -20,14 +20,7 @@ internal sealed class OrbUpgradeService(
     GameEventLogManager eventLogs,
     ILogger<OrbUpgradeService> logger)
 {
-    internal static int[] CreateStartingOrbPool()
-    {
-        var pool = new List<int>();
-        if (Config.SWARM_SUN_ORB_ENABLED) pool.Add(107000010);
-        if (Config.SWARM_WIND_ORB_ENABLED) pool.Add(107000020);
-        if (Config.SWARM_WAVE_ORB_ENABLED) pool.Add(107000030);
-        return pool.ToArray();
-    }
+
 
     private static readonly OrbColor[] FamilyColors =
         [OrbColor.Red, OrbColor.Green, OrbColor.Blue];

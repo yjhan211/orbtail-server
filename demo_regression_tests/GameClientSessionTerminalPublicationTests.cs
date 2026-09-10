@@ -458,7 +458,7 @@ public sealed class GameClientSessionTerminalPublicationTests
 
                 eventLog,
                 TestGameSessionServices.CreateEliminationService(matchRuntimes, eventLog, summaries, logger),
-                TestGameSessionServices.CreateGrowthService(matchRuntimes, eventLog),
+                TestGameSessionServices.CreateOrbUpgradeService(matchRuntimes, eventLog),
                 new FakeGameSessionLifecycle(prepareGameCompletion),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),

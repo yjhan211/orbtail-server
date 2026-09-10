@@ -1,3 +1,4 @@
+using game_server.players;
 using game_server.items;
 using game_server.logging;
 using game_server.orbs;
@@ -5,7 +6,6 @@ using game_server.combat;
 using game_server.matches.entry;
 using game_server.matches;
 using game_server.matches.results;
-using game_server.players;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -38,7 +38,7 @@ public partial class GameClientSession : SessionBase
     private readonly MatchCleanupService _matchCleanup;
 
     internal readonly PlayerMovementService PlayerMovement;
-    private readonly MatchGrowthService _growth;
+    private readonly OrbUpgradeService _orbUpgrades;
     private readonly OrbInventoryService _orbInventory;
     private readonly GameEventLogManager _gameEventLogManager;
 
@@ -63,7 +63,7 @@ public partial class GameClientSession : SessionBase
         Func<long, GameClientSession, GameClientSession?> registerSessionCallback,
         GameEventLogManager gameEventLogManager,
         PlayerEliminationService matchEliminations,
-        MatchGrowthService growth,
+        OrbUpgradeService orbUpgrades,
         IMatchSessionCleanup matchSessionCleanup,
         Func<bool> isServerStopping,
         IMatchEntryFailureHandler entryFailureHandler,
@@ -79,7 +79,7 @@ public partial class GameClientSession : SessionBase
 
         _gameEventLogManager = gameEventLogManager;
         HealthChanges = new PlayerHealthChangeService(gameEventLogManager, matchEliminations, logger);
-        _growth = growth;
+        _orbUpgrades = orbUpgrades;
 
         _matchEntry = matchEntry;
         PlayerMovement = new PlayerMovementService(movementValidation, gameEventLogManager, logger);
@@ -287,7 +287,7 @@ public partial class GameClientSession : SessionBase
 
                 GroundItemNotificationService.SendSnapshot(this, Player.CurrentArea);
                 SendOrbList();
-                SendOrbUpgradeInfo(_growth.GetOrbUpgradeInfo(matchingId, PlayerId.Value));
+                SendOrbUpgradeInfo(_orbUpgrades.GetOrbUpgradeInfo(matchingId, PlayerId.Value));
                 SendSummonStoneState();
                 SendDoorStateList();
                 SendPressureFieldState();

@@ -261,27 +261,15 @@ namespace network.common
         public static int SWARM_BOX_OPEN_COST => SwarmConfigData.GetInt("SWARM_BOX_OPEN_COST", 1);
 
         /// <summary>
-        ///     성장 카드 기본 비용 (#229): 이번 판 성공한 성장 선택 횟수 N 기반 5+2N.
+        ///     오브 계열 강화 기본 비용: 해당 계열의 강화 성공 횟수 N 기반 5+2N.
         ///     오브가 잘려도 N은 줄지 않아 절단이 성장 시간을 초기화하지 못한다.
         /// </summary>
         public static int GetSwarmGrowthBaseCost(int growthSuccessCount) =>
             SwarmConfigData.GetInt("SWARM_GROWTH_BASE_COST", 5) +
             SwarmConfigData.GetInt("SWARM_GROWTH_COST_PER_SUCCESS", 2) * Math.Max(0, growthSuccessCount);
 
-        /// <summary>#229에서는 보유 오브 수 할증을 쓰지 않는다. 로그 호환을 위해 0을 남긴다.</summary>
-        public static int GetSwarmGrowthScoreSurcharge(int orbCount) => 0;
-
-        /// <summary>5분 매치에서 후반 성장을 제한하는 성장 카드 상한 비용 (#229).</summary>
+        /// <summary>오브 계열 강화의 상한 비용.</summary>
         public static int SWARM_GROWTH_COST_CAP => SwarmConfigData.GetInt("SWARM_GROWTH_COST_CAP", 21);
-
-        /// <summary>
-        ///     성장 카드 최종 비용 = min(21, 5+2N). 0오브는 비용 3의 T1 생성 보장(재건 경로).
-        ///     보유 오브 수는 가격에 영향을 주지 않는다.
-        /// </summary>
-        public static int GetSwarmGrowthCardCost(int growthSuccessCount, int orbCount) =>
-            orbCount <= 0
-                ? SwarmConfigData.GetInt("SWARM_GROWTH_REBUILD_COST", 3)
-                : Math.Min(SWARM_GROWTH_COST_CAP, GetSwarmGrowthBaseCost(growthSuccessCount));
 
         /// <summary>궤도 오브 1개당 개봉 비용 가산 — SB "스쿼드 인원수 비례 상자 코인".</summary>
         public static int SWARM_EXPLORE_COST_PER_ORB => SwarmConfigData.GetInt("SWARM_EXPLORE_COST_PER_ORB", 2);

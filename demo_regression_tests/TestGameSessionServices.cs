@@ -1,8 +1,8 @@
+using game_server.players;
 using game_server.orbs;
 using game_server;
 using game_server.items;
 using game_server.logging;
-using game_server.players;
 using game_server.combat;
 using game_server.matches.entry;
 using game_server.matches;
@@ -17,9 +17,8 @@ namespace demo_regression_tests;
 
 internal static class TestGameSessionServices
 {
-    public static MatchGrowthService CreateGrowthService(MatchRuntimeStore store, GameEventLogManager logs) =>
-        new(store, logs, new OrbUpgradeService(store, logs, NullLogger<OrbUpgradeService>.Instance),
-            NullLogger<MatchGrowthService>.Instance);
+    public static OrbUpgradeService CreateOrbUpgradeService(MatchRuntimeStore store, GameEventLogManager logs) =>
+        new(store, logs, NullLogger<OrbUpgradeService>.Instance);
     internal static void StartGameplay(this MatchRuntime runtime)
     {
         typeof(MatchRuntime).GetField("_startsAtUtc", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
@@ -45,7 +44,7 @@ internal static class TestGameSessionServices
             new network.core.TcpConnection(), NullLogger.Instance, new InMemoryRedisOperations(),
             static _ => false, CreateMatchCleanupService(), static (_, _) => null,
             logs, CreateEliminationService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance),
-            CreateGrowthService(store, logs), new FakeGameSessionLifecycle(), static () => false,
+            CreateOrbUpgradeService(store, logs), new FakeGameSessionLifecycle(), static () => false,
             new FakeMatchEntryFailureHandler(),
             matchEntry: CreateEntryService(null, store, NullLogger.Instance),
             movementValidation: new MovementValidationService(NullLogger<MovementValidationService>.Instance),

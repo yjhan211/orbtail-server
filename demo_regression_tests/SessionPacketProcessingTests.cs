@@ -111,7 +111,7 @@ public sealed class SessionPacketProcessingTests
             TestGameSessionServices.CreateEliminationService(store, logs,
                 new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
                 NullLogger.Instance),
-            TestGameSessionServices.CreateGrowthService(store, logs),
+            TestGameSessionServices.CreateOrbUpgradeService(store, logs),
 
             new FakeGameSessionLifecycle(),
             static () => false,
