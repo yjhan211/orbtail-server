@@ -672,13 +672,12 @@ public sealed class GameClientSessionConnectPublicationTests
                 static (_, _) => null,
 
                 TestGameEventLogs.Create(),
-                TestGameSessionServices.CreateOrbUpgradeService(Store, TestGameEventLogs.Create()),
+                TestGameSessionServices.CreatePlayerOrbGrowthService(Store, TestGameEventLogs.Create()),
 
                 new FakeGameSessionLifecycle(),
                 static () => false,
                 new FakeMatchEntryFailureHandler(recordEntryFailure),
                 TestGameSessionServices.CreateEntryService(Redis, Store, NullLogger.Instance),
-                orbInventory: new OrbInventoryService(TestGameEventLogs.Create()),
                 trySendConnectSuccessResponse: sender);
             Connection.SetSession(session);
             SetIdentity(session, matchingId, playerId);

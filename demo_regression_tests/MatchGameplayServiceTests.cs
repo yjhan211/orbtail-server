@@ -258,7 +258,7 @@ public sealed class MatchGameplayServiceTests
     {
         TestGameData.EnsureBattleItemCombatLoaded();
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var growth = provider.GetRequiredService<GrowthService>();
+        var growth = provider.GetRequiredService<PlayerOrbGrowthService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947798);
         var hunter = new game_server.players.Player
         {

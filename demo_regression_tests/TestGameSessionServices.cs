@@ -22,8 +22,8 @@ internal static class TestGameSessionServices
         new(logs, CreateEliminationService(store, logs, summaries ?? new MatchSummaryFileStore(), logger ?? NullLogger.Instance),
             NullLogger<PlayerHealthService>.Instance);
 
-    public static OrbUpgradeService CreateOrbUpgradeService(MatchRuntimeStore store, GameEventLogManager logs) =>
-        new(store, logs, NullLogger<OrbUpgradeService>.Instance);
+    public static PlayerOrbGrowthService CreatePlayerOrbGrowthService(MatchRuntimeStore store, GameEventLogManager logs) =>
+        new(store, logs, NullLogger<PlayerOrbGrowthService>.Instance);
     internal static void StartGameplay(this MatchRuntime runtime)
     {
         typeof(MatchRuntime).GetField("_startsAtUtc", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
@@ -49,10 +49,9 @@ internal static class TestGameSessionServices
             new network.core.TcpConnection(), NullLogger.Instance, new InMemoryRedisOperations(),
             static _ => false, CreateMatchCleanupService(), static (_, _) => null,
             logs,
-            CreateOrbUpgradeService(store, logs), new FakeGameSessionLifecycle(), static () => false,
+            CreatePlayerOrbGrowthService(store, logs), new FakeGameSessionLifecycle(), static () => false,
             new FakeMatchEntryFailureHandler(),
-            matchEntry: CreateEntryService(null, store, NullLogger.Instance),
-            orbInventory: new OrbInventoryService(logs));
+            matchEntry: CreateEntryService(null, store, NullLogger.Instance));
     }
 
     // 실제 Loop의 첫 처리 단계만 바꿔 틱 지연·예외·종료를 재현한다.

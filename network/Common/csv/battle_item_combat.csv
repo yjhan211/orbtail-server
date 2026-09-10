@@ -14,4 +14,3 @@ item_id,family,color,tier,attack_range,damage,attack_interval_seconds,projectile
 107000040,recovery,4,1,0,0,0,0,0,24,1,1,5
 107000041,recovery,4,2,0,0,0,0,0,56,1.35,1.75,10
 107000042,recovery,4,3,0,0,0,0,0,120,1.7,4,20
-107000015,compass,0,1,1.8,8,1.2,0,0,0,1,1,0

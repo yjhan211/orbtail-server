@@ -130,7 +130,7 @@ internal sealed class MatchRuntime
         {
             var participant = Bots.GetBot(MatchingId, player.PlayerId)?.Player ?? new Player { Profile = player };
             RegisterParticipant(participant);
-            OrbUpgradeService.GrantStartingResources(this, player.PlayerId);
+            PlayerOrbGrowthService.GrantStartingResources(this, player.PlayerId);
         }
 
         if (playerRoster.Count > 0 && playerRoster.All(player => player.PlayerId < 0))

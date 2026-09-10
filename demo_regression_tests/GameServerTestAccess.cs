@@ -31,7 +31,7 @@ internal static class GameServerTestAccess
         var factory = Read<Func<MatchRuntime, TimeProvider, MatchTickLoop>>(ticks);
         return runtime.TickLoop ??= factory(runtime, TimeProvider.System);
     }
-    internal static OrbUpgradeService GetOrbUpgrades(this GameServer server) => Read<OrbUpgradeService>(server);
+    internal static PlayerOrbGrowthService GetOrbGrowth(this GameServer server) => Read<PlayerOrbGrowthService>(server);
 
     internal static GameEventLogManager GetEventLogs(this GameServer server) =>
         Read<GameEventLogManager>(server);
@@ -60,15 +60,14 @@ internal static class GameServerTestAccess
         var logs = runtimes.EventLogs;
         var summaries = new MatchSummaryFileStore();
         var entryFailure = new MatchEntryFailureHandler(runtimes, sessions, lifecycle, logger);
-        var orbUpgrades = new OrbUpgradeService(runtimes, logs,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbUpgradeService>.Instance);
+        var growth = new PlayerOrbGrowthService(runtimes, logs,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<PlayerOrbGrowthService>.Instance);
         var orbTrails = new OrbTrailService(runtimes);
         var cleanup = new MatchCleanupService(runtimes, logs, summaries, logger);
         var matchEliminations = TestGameSessionServices.CreateEliminationService(
             runtimes, logs, summaries, logger);
         var health = TestGameSessionServices.CreateHealthService(runtimes, logs, summaries, logger);
         var results = new MatchResultService(runtimes, logs, summaries, logger);
-        var growth = new GrowthService(runtimes, logs, orbUpgrades);
         var movement = new BotMovementService( logs,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotMovementService>.Instance);
         var decisions = new BotDecisionService(runtimes, logs, growth, orbTrails,
@@ -109,10 +108,9 @@ internal static class GameServerTestAccess
             },
             sessions: sessions, matchRuntimes: runtimes, eventLogs: logs,
             matchEntry: TestGameSessionServices.CreateEntryService(new InMemoryRedisOperations(), runtimes, logger),
-            orbInventory: new OrbInventoryService(logs),
             entryFailureHandler: entryFailure,
             matchCleanup: cleanup,
-            orbUpgrades: orbUpgrades,
+            orbGrowth: growth,
             tickService: new MatchTickService(runtimes, createLoop, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchTickService>.Instance));
     }
 }

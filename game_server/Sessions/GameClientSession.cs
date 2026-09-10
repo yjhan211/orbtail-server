@@ -38,8 +38,7 @@ public partial class GameClientSession : SessionBase
     private readonly MatchCleanupService _matchCleanup;
 
     internal readonly PlayerMovementService PlayerMovement;
-    private readonly OrbUpgradeService _orbUpgrades;
-    private readonly OrbInventoryService _orbInventory;
+    private readonly PlayerOrbGrowthService _orbGrowth;
     private readonly GameEventLogManager _gameEventLogManager;
 
     private MatchRuntime? _match;
@@ -62,12 +61,11 @@ public partial class GameClientSession : SessionBase
         MatchCleanupService matchCleanup,
         Func<long, GameClientSession, GameClientSession?> registerSessionCallback,
         GameEventLogManager gameEventLogManager,
-        OrbUpgradeService orbUpgrades,
+        PlayerOrbGrowthService orbGrowth,
         IMatchSessionCleanup matchSessionCleanup,
         Func<bool> isServerStopping,
         IMatchEntryFailureHandler entryFailureHandler,
         GameMatchEntryService matchEntry,
-        OrbInventoryService orbInventory,
         Func<Packet, bool>? trySendConnectSuccessResponse = null)
         : base(connection, logger, redisOperations)
     {
@@ -76,11 +74,10 @@ public partial class GameClientSession : SessionBase
         _registerSessionCallback = registerSessionCallback;
 
         _gameEventLogManager = gameEventLogManager;
-        _orbUpgrades = orbUpgrades;
+        _orbGrowth = orbGrowth;
 
         _matchEntry = matchEntry;
         PlayerMovement = new PlayerMovementService(gameEventLogManager, logger);
-        _orbInventory = orbInventory;
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Connection.TrySend;
         _matchSessionCleanup = matchSessionCleanup;
         _isServerStopping = isServerStopping;
@@ -283,7 +280,7 @@ public partial class GameClientSession : SessionBase
 
                 GroundItemNotificationService.SendSnapshot(this, Player.CurrentArea);
                 SendOrbList();
-                SendOrbUpgradeInfo(_orbUpgrades.GetOrbUpgradeInfo(matchingId, PlayerId.Value));
+                SendOrbUpgradeInfo(_orbGrowth.GetOrbUpgradeInfo(matchingId, PlayerId.Value));
                 SendSummonStoneState();
                 SendDoorStateList();
                 SendPressureFieldState();

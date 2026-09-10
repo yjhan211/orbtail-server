@@ -1,13 +1,14 @@
 using game_server.orbs;
 using game_server.matches;
+using game_server.players;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data.helpers;
 namespace demo_regression_tests;
 
-public sealed class OrbInventoryServiceTests
+public sealed class PlayerOrbGrowthServiceTests
 {
-    public OrbInventoryServiceTests()
+    public PlayerOrbGrowthServiceTests()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory != null && !File.Exists(Path.Combine(directory.FullName, "server.sln")))
@@ -26,7 +27,7 @@ public sealed class OrbInventoryServiceTests
         {
             int cost = runtime.SummonStones.GetSnapshot(1).NextCost;
             runtime.SummonStones.AddStones(1, cost);
-            var service = new OrbInventoryService(TestGameEventLogs.Create());
+            var service = new PlayerOrbGrowthService(store, TestGameEventLogs.Create(), NullLogger<PlayerOrbGrowthService>.Instance);
             var attempt = service.Summon(runtime, 1, AreaType.None);
             Assert.True(attempt.Success);
             Assert.Equal(0, attempt.State.StoneCount);
@@ -46,7 +47,7 @@ public sealed class OrbInventoryServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984302);
-        var service = new OrbInventoryService(TestGameEventLogs.Create());
+        var service = new PlayerOrbGrowthService(store, TestGameEventLogs.Create(), NullLogger<PlayerOrbGrowthService>.Instance);
         Assert.Throws<InvalidOperationException>(() => service.Grant(runtime, 1, 107000010));
         using (MatchRuntimeStore.Enter(runtime))
         {

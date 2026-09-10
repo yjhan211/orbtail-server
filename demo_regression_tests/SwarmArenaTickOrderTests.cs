@@ -163,7 +163,7 @@ public sealed class SwarmArenaTickOrderTests
             "orbRecovery.Process(",
             "orbVisuals.Publish(",
             "BroadcastSwarmOrbRankings(",
-            "growth.ProcessBotGrowth(",
+            "growth.ProcessBotOrbGrowth(",
             "ProcessSwarmScoreTimeout(",
             "ProcessPendingMonsterHits(",
             "ProcessSwarmCrossfires(",
@@ -252,18 +252,18 @@ public sealed class SwarmArenaTickOrderTests
     public void GrowthFlow_OnlyBotsChooseSummonOrUpgrade()
     {
         string root = FindRepositoryRoot();
-        string source = ReadNormalizedSource(root, "game_server", "Players", "GrowthService.cs");
+        string source = ReadNormalizedSource(root, "game_server", "Players", "PlayerOrbGrowthService.cs");
         string tickBody = ReadMethodSlice(
             source,
-            "public void ProcessBotGrowth(",
+            "public void ProcessBotOrbGrowth(",
             "public int GetTopOrbCount(");
         Assert.DoesNotContain("public void HandlePick(", source);
 
         AssertInOrder(
             tickBody,
             "foreach (var bot in aliveBots)",
-            "_orbInventory.Summon(",
-            "orbUpgrades.TryUpgradeForBot(");
+            "Summon(",
+            "TryUpgradeForBot(");
         Assert.DoesNotContain("foreach (var session in aliveSessions)", tickBody);
         Assert.DoesNotContain("SendSwarmGrowthOffer", tickBody);
         Assert.DoesNotContain("OfferId", tickBody);
@@ -375,7 +375,7 @@ public sealed class SwarmArenaTickOrderTests
         string root = FindRepositoryRoot();
         string windBlade = ReadNormalizedSource(root, "game_server", "Orbs", "WindOrbAttackService.cs");
         string crossfire = ReadNormalizedSource(root, "game_server", "Orbs", "SunOrbAttackService.cs");
-        string orbBoard = ReadNormalizedSource(root, "game_server", "Orbs", "OrbUpgradeService.cs");
+        string orbBoard = ReadNormalizedSource(root, "game_server", "Players", "PlayerOrbGrowthService.cs");
 
         Assert.DoesNotContain("_swarmWindBladeNextTickAtUtc", windBlade);
         Assert.DoesNotContain("_swarmWindBladeEngagedAtUtc", windBlade);

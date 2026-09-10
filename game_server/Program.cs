@@ -118,7 +118,6 @@ internal static class Program
             sp.GetRequiredService<MatchRuntimeStore>(),
             sp.GetRequiredService<GameEventLogManager>(), sp.GetRequiredService<MatchSummaryFileStore>(),
             sp.GetRequiredService<ILogger<MatchCleanupService>>()));
-        services.AddSingleton<OrbInventoryService>();
         services.AddSingleton<GameMatchEntryService>(sp => new GameMatchEntryService(
             sp.GetRequiredService<IRedisOperations>(),
             sp.GetRequiredService<MatchRuntimeStore>(),
@@ -137,8 +136,7 @@ internal static class Program
             sp.GetRequiredService<ILogger<PlayerEliminationService>>()));
         services.AddSingleton<PlayerHealthService>();
         services.AddSingleton<MatchEnvironmentService>();
-        services.AddSingleton<OrbUpgradeService>();
-        services.AddSingleton<GrowthService>();
+        services.AddSingleton<PlayerOrbGrowthService>();
         services.AddSingleton<OrbRecoveryService>();
         services.AddSingleton<GroundItemAutoPickupService>();
         services.AddSingleton<OrbVisualStatePublisher>();

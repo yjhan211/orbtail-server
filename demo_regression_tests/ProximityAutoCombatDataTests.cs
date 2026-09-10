@@ -63,25 +63,6 @@ public class ProximityAutoCombatDataTests
     }
 
     [Fact]
-    public void CompassCombatDataDefinesTheRiggedMeleeWeapon()
-    {
-        string csvRoot = Path.Combine(FindRepositoryRoot(), "network", "Common", "csv");
-        BattleItemCombatData.Initialize(
-            CsvHelper.LoadCsv(Path.Combine(csvRoot, "battle_item_combat.csv")));
-
-        var definition = Assert.Single(
-            BattleItemCombatData.GetAll(), candidate => candidate.ItemId == 107000015);
-
-        Assert.Equal("compass", definition.Family);
-        Assert.Equal(1, definition.Tier);
-        Assert.Equal(1.8f, definition.AttackRange);
-        Assert.Equal(8, definition.Damage);
-        Assert.Equal(1.2f, definition.AttackIntervalSeconds);
-        Assert.Equal(0f, definition.ProjectileWidth);
-        Assert.Equal(0f, definition.EffectDurationSeconds);
-    }
-
-    [Fact]
     public void GuardianCombatDataMatchesBothUnityMirrors()
     {
         string repoRoot = FindRepositoryRoot();

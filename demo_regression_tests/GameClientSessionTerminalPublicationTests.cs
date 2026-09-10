@@ -457,12 +457,11 @@ public sealed class GameClientSessionTerminalPublicationTests
                 static (_, _) => null,
 
                 eventLog,
-                TestGameSessionServices.CreateOrbUpgradeService(matchRuntimes, eventLog),
+                TestGameSessionServices.CreatePlayerOrbGrowthService(matchRuntimes, eventLog),
                 new FakeGameSessionLifecycle(prepareGameCompletion),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
-                TestGameSessionServices.CreateEntryService(null!, matchRuntimes, NullLogger.Instance),
-                orbInventory: new OrbInventoryService(eventLog))
+                TestGameSessionServices.CreateEntryService(null!, matchRuntimes, NullLogger.Instance))
         {
         }
     }

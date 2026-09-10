@@ -23,7 +23,7 @@ namespace game_server.players.bots;
 internal sealed class BotDecisionService(
     MatchRuntimeStore matchRuntimes,
     GameEventLogManager eventLogs,
-    GrowthService growth,
+    PlayerOrbGrowthService growth,
     OrbTrailService orbTrails,
     ILogger<BotDecisionService> logger)
 {
@@ -528,7 +528,7 @@ internal sealed class BotDecisionService(
         //      찾아가는 공유 자원이고, 미니맵 스냅샷으로 사람에게도 같은 정보가 보인다.
 
         if (matchRuntimes.GetOrThrow(matchingId).SummonStones.GetSnapshot(botPlayerId).StoneCount <
-            growth.GetNextGrowthCost(matchingId, botPlayerId) &&
+            growth.GetNextOrbGrowthCost(matchingId, botPlayerId) &&
             hasSquadOrbs)
         {
             if (TryFindNearestSwarmSupplyMonster(matchingId, bot, out var supplyArea,

@@ -108,13 +108,12 @@ public sealed class SessionPacketProcessingTests
             static (_, _) => null,
 
             logs,
-            TestGameSessionServices.CreateOrbUpgradeService(store, logs),
+            TestGameSessionServices.CreatePlayerOrbGrowthService(store, logs),
 
             new FakeGameSessionLifecycle(),
             static () => false,
             new FakeMatchEntryFailureHandler(),
-            matchEntry: TestGameSessionServices.CreateEntryService(null!, store, NullLogger.Instance),
-                orbInventory: new OrbInventoryService(logs));
+            matchEntry: TestGameSessionServices.CreateEntryService(null!, store, NullLogger.Instance));
         connection.SetSession(session);
         return session;
     }

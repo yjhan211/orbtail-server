@@ -16,9 +16,7 @@ public sealed class BotGrowthTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(949101);
         var logs = TestGameEventLogs.Create();
-        var upgrades = new OrbUpgradeService(store, logs, NullLogger<OrbUpgradeService>.Instance);
-        var growth = new GrowthService(store, logs, upgrades);
-        var summon = new OrbInventoryService(logs);
+        var growth = new PlayerOrbGrowthService(store, logs, NullLogger<PlayerOrbGrowthService>.Instance);
         var bot = new BotPlayerState { PlayerId = -1 };
         using (match.Enter())
         {
@@ -26,8 +24,8 @@ public sealed class BotGrowthTests
             match.SummonStones.AddStones(1, 100);
             for (int i = 0; i < 3; i++)
             {
-                growth.ProcessBotGrowth(match.MatchingId, [bot]);
-                Assert.True(summon.Summon(match, 1, AreaType.None).Success);
+                growth.ProcessBotOrbGrowth(match.MatchingId, [bot]);
+                Assert.True(growth.Summon(match, 1, AreaType.None).Success);
                 Assert.Equal(match.SummonStones.GetSnapshot(1), match.SummonStones.GetSnapshot(-1));
             }
             Assert.Equal(3, match.Inventory.GetOrbScore(-1).OrbCount);
@@ -45,16 +43,15 @@ public sealed class BotGrowthTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(949102);
         var logs = TestGameEventLogs.Create();
-        var upgrades = new OrbUpgradeService(store, logs, NullLogger<OrbUpgradeService>.Instance);
-        var growth = new GrowthService(store, logs, upgrades);
+        var growth = new PlayerOrbGrowthService(store, logs, NullLogger<PlayerOrbGrowthService>.Instance);
         var bot = new BotPlayerState { PlayerId = -1 };
         using (match.Enter())
         {
             for (int i = 0; i < Config.SWARM_ORB_CAPACITY; i++)
                 Assert.True(match.Inventory.TryAddItemWithCapacity(-1, itemId, Config.SWARM_ORB_CAPACITY, out _));
-            int cost = growth.GetNextGrowthCost(match.MatchingId, -1);
+            int cost = growth.GetNextOrbGrowthCost(match.MatchingId, -1);
             match.SummonStones.AddStones(-1, cost);
-            growth.ProcessBotGrowth(match.MatchingId, [bot]);
+            growth.ProcessBotOrbGrowth(match.MatchingId, [bot]);
             Assert.Equal(0, match.SummonStones.GetSnapshot(-1).StoneCount);
             Assert.Single(match.Inventory.GetAllItems(-1), item => item.ItemId == upgradedItemId);
             Assert.Equal(Config.SWARM_ORB_CAPACITY, match.Inventory.GetOrbScore(-1).OrbCount);
@@ -69,16 +66,15 @@ public sealed class BotGrowthTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(949103);
         var logs = TestGameEventLogs.Create();
-        var growth = new GrowthService(store, logs,
-            new OrbUpgradeService(store, logs, NullLogger<OrbUpgradeService>.Instance));
+        var growth = new PlayerOrbGrowthService(store, logs, NullLogger<PlayerOrbGrowthService>.Instance);
         var bot = new BotPlayerState { PlayerId = -1 };
         using (match.Enter())
         {
-            growth.ProcessBotGrowth(match.MatchingId, [bot]);
+            growth.ProcessBotOrbGrowth(match.MatchingId, [bot]);
             Assert.Empty(match.Inventory.GetAllItems(-1));
             match.SummonStones.AddStones(-1, 100);
             bot.Player.Status = PlayerMatchStatus.ELIMINATED;
-            growth.ProcessBotGrowth(match.MatchingId, [bot]);
+            growth.ProcessBotOrbGrowth(match.MatchingId, [bot]);
             Assert.Empty(match.Inventory.GetAllItems(-1));
             Assert.Equal(100, match.SummonStones.GetSnapshot(-1).StoneCount);
         }

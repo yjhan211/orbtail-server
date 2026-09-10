@@ -30,7 +30,7 @@ internal class MatchCombatService(
     MatchCleanupService matchCleanup,
     PlayerHealthService healthService,
     MatchResultService matchResults,
-    GrowthService growth,
+    PlayerOrbGrowthService growth,
     OrbRecoveryService orbRecovery,
     OrbVisualStatePublisher orbVisuals,
     OrbTrailService orbTrails,
@@ -213,7 +213,7 @@ internal class MatchCombatService(
         orbVisuals.Publish(matchingId, actors, sessions);
         BroadcastSwarmOrbRankings(matchingId, sessions);
         // 봇은 현재 소환·계열 강화 중 하나에 소환석을 투자한다.
-        growth.ProcessBotGrowth(matchingId, aliveBots);
+        growth.ProcessBotOrbGrowth(matchingId, aliveBots);
         if (ProcessSwarmScoreTimeout(matchingId, nowUtc))
             return;
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.
