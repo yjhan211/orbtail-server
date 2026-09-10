@@ -97,7 +97,6 @@ public partial class BotPlayerManager
                 Cell = startCell,
                 Position = startPosition,
                 Rotation = 0f,
-                PlayerMatchStatus = PlayerMatchStatus.ACTIVE,
                 GameStartTime = now,
                 LoopWaitUntil = now.AddSeconds(RandomRange(
                     BotInitialDecisionDelayMinSeconds,
@@ -231,8 +230,6 @@ public class BotPlayerState
 
     public AreaType CurrentArea { get; set; }
     public long LastProximityAttackerPlayerId { get; set; }
-    public bool IsEliminated { get; set; }
-    public PlayerMatchStatus PlayerMatchStatus { get; set; } = PlayerMatchStatus.ACTIVE;
     public List<int> ActiveBuffIds { get; set; } = new();
 
     public string Name { get; set; } = "";

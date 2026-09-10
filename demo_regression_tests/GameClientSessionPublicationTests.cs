@@ -1105,7 +1105,7 @@ public sealed class GameClientSessionPublicationTests
     }
 
     [Fact]
-    public void GroundItemDropServiceClearsInventoryAndPublishesOnlyOnce()
+    public void EliminationClearsInventoryAndPublishesOnlyOnce()
     {
         using var fixture = new SessionFixture();
         var eliminated = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
@@ -1114,16 +1114,16 @@ public sealed class GameClientSessionPublicationTests
         using (match.Enter())
         {
             Assert.True(match.Inventory.TryAddItemWithCapacity(101, 107000010, Config.GetOrbCapacity(), out _));
-            eliminated.Player.Status = PlayerMatchStatus.ELIMINATED;
-            var drops = new GroundItemDropService(fixture.EventLog);
-            drops.DropAll(eliminated);
-            drops.DropAll(eliminated);
+            var eliminations = TestGameSessionServices.CreateEliminationService(
+                fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance);
+            eliminations.EliminatePlayer(70001, 101, EliminationReason.HEALTH_ZERO, deferGameOver: true);
+            eliminations.EliminatePlayer(70001, 101, EliminationReason.HEALTH_ZERO, deferGameOver: true);
 
             Assert.Empty(match.Inventory.GetAllItems(101));
             Assert.Single(match.GroundItems.GetSnapshot(eliminated.Player.CurrentArea));
         }
-        Assert.Equal([Protocol.G_TO_C_ORB_UPDATE], fixture.ConnectionFor(eliminated).DeliveredProtocols);
-        Assert.Equal([Protocol.G_TO_C_GROUND_ITEM_SPAWN], fixture.ConnectionFor(observer).DeliveredProtocols);
+        Assert.Equal([Protocol.G_TO_C_ORB_UPDATE, Protocol.G_TO_C_PLAYER_ELIMINATED, Protocol.G_TO_C_AREA_PLAYER_LEAVE], fixture.ConnectionFor(eliminated).DeliveredProtocols);
+        Assert.Equal([Protocol.G_TO_C_GROUND_ITEM_SPAWN, Protocol.G_TO_C_PLAYER_ELIMINATED, Protocol.G_TO_C_AREA_PLAYER_LEAVE], fixture.ConnectionFor(observer).DeliveredProtocols);
     }
 
     [Fact]

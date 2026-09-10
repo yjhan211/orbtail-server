@@ -194,7 +194,7 @@ internal sealed class PlayerMovementService(
 
                 // #79: 나에게 이전 Area의 봇들 삭제 알림 (봇은 TCP 세션이 없어 별도 처리)
                 var oldAreaBots = player.Match.Bots.GetBots(player.MatchingId)
-                    .Where(b => !b.IsEliminated && b.CurrentArea == oldArea)
+                    .Where(b => !b.Player.IsEliminated && b.CurrentArea == oldArea)
                     .ToList();
                 foreach (var bot in oldAreaBots)
                 {
@@ -234,7 +234,7 @@ internal sealed class PlayerMovementService(
 
                 // 4. #125: 새 Area의 봇들 ENTER도 나에게 전송 (실제 플레이어 동등)
                 var newAreaBots = player.Match.Bots.GetBots(player.MatchingId)
-                    .Where(b => !b.IsEliminated && b.CurrentArea == newArea)
+                    .Where(b => !b.Player.IsEliminated && b.CurrentArea == newArea)
                     .ToList();
                 foreach (var bot in newAreaBots)
                 {

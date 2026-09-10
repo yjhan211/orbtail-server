@@ -25,7 +25,7 @@ public partial class BotPlayerManager
         out BotGroundItemPickup? pickup)
     {
         pickup = null;
-        if (bot.IsEliminated || bot.CurrentArea == AreaType.None)
+        if (bot.Player.IsEliminated || bot.CurrentArea == AreaType.None)
             return false;
 
         var inventory = inventoryManager.GetPlayerInventory(bot.PlayerId);
@@ -139,7 +139,7 @@ public partial class BotPlayerManager
             (int)MathF.Floor(2f * position.Y - position.X));
     public void ApplyProximityAutoCombatDamage(BotPlayerState bot, int damage, long attackerPlayerId = 0)
     {
-        if (bot.IsEliminated || damage <= 0)
+        if (bot.Player.IsEliminated || damage <= 0)
             return;
 
         int previousHealth = bot.Player.Health;
@@ -149,24 +149,7 @@ public partial class BotPlayerManager
             bot.LastProximityAttackerPlayerId = attackerPlayerId;
     }
 
-    public bool TryFinalizeProximityAutoCombatElimination(BotPlayerState bot, long matchingId)
-    {
-        if (bot.IsEliminated || bot.Player.Health > 0)
-            return false;
 
-        bot.IsEliminated = true;
-        bot.Path.Clear();
-        bot.PathIndex = 0;
-        bot.PendingRngInteractId = 0;
-        bot.LoopWaitUntil = DateTime.MinValue;
-
-        _logger.LogInformation(
-            "Bot eliminated by proximity auto combat: MatchingId={MatchingId}, BotId={BotId}, Health={Health}",
-            matchingId,
-            bot.PlayerId,
-            bot.Player.Health);
-        return true;
-    }
 }
 public readonly record struct BotGroundItemPickup(
     long BotPlayerId,

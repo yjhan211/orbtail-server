@@ -135,7 +135,7 @@ internal static class TestGameSessionServices
         Microsoft.Extensions.Logging.ILogger logger)
     {
         var results = new MatchResultService(store, logs, summaries, logger);
-        return new PlayerEliminationService(store, logs, results, new GroundItemDropService(logs), logger);
+        return new PlayerEliminationService(store, logs, results, logger);
     }
     public static MatchCleanupService CreateMatchCleanupService()
     {

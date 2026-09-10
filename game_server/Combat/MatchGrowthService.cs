@@ -165,7 +165,7 @@ internal sealed class MatchGrowthService(
 
         foreach (var bot in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
         {
-            if (!bot.IsEliminated)
+            if (!bot.Player.IsEliminated)
                 top = Math.Max(top, matchRuntimes.GetOrThrow(matchingId).Inventory.GetOrbScore(bot.PlayerId).OrbCount);
         }
 

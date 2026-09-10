@@ -96,7 +96,6 @@ public sealed class SwarmArenaTickOrderTests
             "var eliminatedTargets = targets",
             "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
             "matchEliminations.EliminatePlayer(",
-            "botEliminations.Process(",
             "CheckGameOver()",
             "matchResults.FinalizeMatch(matchingId, winnerId.Value, MatchEndReason.PressureFieldSettlement, resolution.DecisiveCriterion);");
         Assert.DoesNotContain("Enter(", matchingSettlement);
@@ -171,8 +170,8 @@ public sealed class SwarmArenaTickOrderTests
             "TryScheduleSwarmCrossfire(",
             "matchRuntimes.GetOrThrow(matchingId).CombatDamage.SendMonsterHitNotification(attackerSession,",
             "BroadcastSwarmAttackVfxToTargetAndObservers(",
-            "matchRuntimes.GetOrThrow(matchingId).Bots.TryFinalizeProximityAutoCombatElimination(",
-            "botEliminations.Process(");
+            "if (bot.Player.IsEliminated || bot.Player.Health > 0)",
+            "playerEliminations.EliminatePlayer(");
     }
 
     [Fact]
@@ -223,27 +222,24 @@ public sealed class SwarmArenaTickOrderTests
             "publication.Recipient!.TrySend(packet);");
         Assert.False(ContainsCodeToken(orbPublicationSteps, "catch"));
 
-        string botElimination = ReadMethodSlice(
-            ReadNormalizedSource(root, "game_server", "Bots", "BotEliminationService.cs"),
-            "public void Process(",
-            "private void DropBotInventoryAtCurrentPosition(");
-        AssertInOrder(
-            botElimination,
-            "try",
-            "TryEliminatePlayer(",
-            "DropBotInventoryAtCurrentPosition(",
-            "foreach (var s in matchingSessions) s.TrySend(eliminatedPacket);",
-            "catch (Exception ex)");
-        Assert.DoesNotContain("BestEffortGroup", botElimination);
-
-        string humanElimination = ReadMethodSlice(
+        string elimination = ReadBracedBlockAfterMarker(
             sessionMatchEnd,
-            "public void EliminatePlayer(",
-            "private void DropBotInventoryAtCurrentPosition(");
+            "public void EliminatePlayer(");
+        AssertInOrder(
+            elimination,
+            "TryEliminatePlayer(",
+            "eliminatedBot.Path.Clear();",
+            "EliminationInventoryDropper.DropBotInventoryWithLogs(",
+            "session.TrySend(eliminatedPacket);",
+            "CheckGameOver()");
+
+        string humanElimination = ReadBracedBlockAfterMarker(
+            sessionMatchEnd,
+            "public void EliminatePlayer(");
         AssertInOrder(
             humanElimination,
             "TryEliminatePlayer(",
-            "groundItemDrop.DropAll(eliminatedSession);",
+            "EliminationInventoryDropper.DropAll(",
             "session.TrySend(eliminatedPacket);",
             "CheckGameOver(",
             "FinalizeMatch(");

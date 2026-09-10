@@ -88,7 +88,7 @@ public sealed class MatchEnvironmentServiceTests
             CreateService().ProcessTick(match, []);
 
         Assert.Equal(healthBefore, bots.Select(bot => bot.Player.Health).ToArray());
-        Assert.All(bots, bot => Assert.False(bot.IsEliminated));
+        Assert.All(bots, bot => Assert.False(bot.Player.IsEliminated));
     }
 
     private static MatchEnvironmentService CreateService()
@@ -101,7 +101,6 @@ public sealed class MatchEnvironmentServiceTests
         var results = new MatchResultService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance);
         return new MatchEnvironmentService(logs,
             new MatchCleanupService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance),
-            new BotEliminationService(logs, results, NullLogger.Instance),
             eliminations, results,
             NullLogger<MatchEnvironmentService>.Instance);
     }

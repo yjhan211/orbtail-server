@@ -28,7 +28,7 @@ internal class MatchCombatService(
     MatchRuntimeStore matchRuntimes,
     GameEventLogManager eventLogs,
     MatchCleanupService matchCleanup,
-    BotEliminationService botEliminations,
+    PlayerEliminationService playerEliminations,
     MatchResultService matchResults,
     MatchGrowthService growth,
     OrbRecoveryService orbRecovery,
@@ -121,7 +121,7 @@ internal class MatchCombatService(
         DateTime nowUtc = DateTime.UtcNow;
 
         var aliveSessions = sessions.Where(session => !session.Player.IsEliminated).ToList();
-        var aliveBots = bots.Where(bot => !bot.IsEliminated).ToList();
+        var aliveBots = bots.Where(bot => !bot.Player.IsEliminated).ToList();
         var participants = aliveSessions
             .Where(session => session.Player.LastValidatedPosition != null)
             .Select(session => new SwarmParticipantSpatial(
@@ -433,13 +433,13 @@ internal class MatchCombatService(
                 return;
         }
 
-        // 봇 탈락 확정은 기존 근접전투 파이프라인과 동일한 경로를 쓴다.
+        // 봇 피해 처리가 끝난 뒤 사람과 같은 서비스에서 탈락을 확정한다.
         foreach (var bot in aliveBots)
         {
-            if (!matchRuntimes.GetOrThrow(matchingId).Bots.TryFinalizeProximityAutoCombatElimination(bot, matchingId))
+            if (bot.Player.IsEliminated || bot.Player.Health > 0)
                 continue;
 
-            botEliminations.Process(matchRuntimes.GetOrThrow(matchingId), bot.PlayerId, EliminationReason.HEALTH_ZERO,
+            playerEliminations.EliminatePlayer(matchingId, bot.PlayerId, EliminationReason.HEALTH_ZERO,
                 attackerPlayerId: bot.LastProximityAttackerPlayerId);
             if (IsMatchTerminal(matchingId) ||
                 activeSessions.Any(session => session.IsGameEnded))
@@ -1536,7 +1536,7 @@ internal class MatchCombatService(
             .Where(session => session.PlayerId.HasValue)
             .Select(session => (PlayerId: session.PlayerId!.Value,
                 Eliminated: session.Player.IsEliminated))
-            .Concat(bots.Select(bot => (bot.PlayerId, Eliminated: bot.IsEliminated)))
+            .Concat(bots.Select(bot => (bot.PlayerId, Eliminated: bot.Player.IsEliminated)))
             .Select(entry =>
             {
                 var (orbCount, tierSum) = GetSwarmOrbScore(matchingId, entry.PlayerId);

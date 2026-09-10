@@ -18,7 +18,6 @@ namespace game_server.field;
 internal class MatchEnvironmentService(
     GameEventLogManager eventLogs,
     MatchCleanupService matchCleanup,
-    BotEliminationService botEliminations,
     PlayerEliminationService matchEliminations,
     MatchResultService matchResults,
     ILogger<MatchEnvironmentService> logger)
@@ -42,7 +41,7 @@ internal class MatchEnvironmentService(
                 !session.IsGameEnded)
             .ToList();
         var bots = match.Bots.GetBots(matchingId)
-            .Where(bot => !bot.IsEliminated)
+            .Where(bot => !bot.Player.IsEliminated)
             .ToList();
 
         int aliveCount = humans.Count + bots.Count;
@@ -143,22 +142,10 @@ internal class MatchEnvironmentService(
         {
             var target = eliminatedTargets.First(entry => entry.PlayerId == candidate.PlayerId);
 
-            if (target.Session != null)
-            {
-                matchEliminations.EliminatePlayer(
-                    matchingId, target.PlayerId, EliminationReason.PRESSURE_FIELD,
-                    deferGameOver: true,
-                    forcedRank: rank);
-            }
-            else if (target.Bot != null)
-            {
-                botEliminations.Process(
-                    match,
-                    target.PlayerId,
-                    EliminationReason.PRESSURE_FIELD,
-                    deferGameOver: true,
-                    forcedRank: rank);
-            }
+            matchEliminations.EliminatePlayer(
+                matchingId, target.PlayerId, EliminationReason.PRESSURE_FIELD,
+                deferGameOver: true,
+                forcedRank: rank);
 
             rank--;
         }

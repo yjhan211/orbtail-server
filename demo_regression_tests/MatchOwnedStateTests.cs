@@ -157,34 +157,101 @@ public sealed class MatchOwnedStateTests
         {
             runtime.Bots.RegisterBots(runtime.MatchingId, Config.SWARM_MATCH_MAP,
                 [botId], new Dictionary<long, Cell> { [botId] = new(0, 0) });
-            runtime.RegisterParticipant(new MatchPlayer { Profile = new network.common.data.models.PlayerInfo { PlayerId = botId  }});
+            runtime.RegisterParticipant(runtime.Bots.GetBot(runtime.MatchingId, botId)!.Player);
             runtime.RegisterParticipant(new MatchPlayer { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11  }});
             runtime.Inventory.AddItem(botId, 107000010);
         }
         var bot = match.Bots.GetBot(match.MatchingId, botId)!;
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = new BotEliminationService(logs,
-            new game_server.matches.results.MatchResultService(
-                store, logs, new MatchSummaryFileStore(), NullLogger.Instance),
-            NullLogger.Instance);
+        var service = TestGameSessionServices.CreateEliminationService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance);
+        bot.PathIndex = 3;
+        bot.PendingRngInteractId = 10;
+        bot.LoopWaitUntil = DateTime.UtcNow.AddMinutes(1);
         using (MatchRuntimeStore.Enter(match))
         {
-            service.Process(match, botId, EliminationReason.HEALTH_ZERO, attackerPlayerId: 11);
+            service.EliminatePlayer(match.MatchingId, botId, EliminationReason.HEALTH_ZERO, attackerPlayerId: 11);
             var entry = match.BuildGameResult().Single(row => row.playerId == botId);
             Assert.Equal(PlayerMatchStatus.ELIMINATED, entry.finalStatus);
-            Assert.True(bot.IsEliminated);
+            Assert.True(bot.Player.IsEliminated);
+            Assert.Same(bot.Player, match.GetParticipant(botId));
+            Assert.Equal(0, bot.PathIndex);
+            Assert.Equal(0, bot.PendingRngInteractId);
+            Assert.Equal(DateTime.MinValue, bot.LoopWaitUntil);
             Assert.Empty(match.Inventory.GetPlayerInventory(botId).GetAllItems());
             int drops = match.GroundItems.GetSnapshot(bot.CurrentArea).Count;
             var eliminatedAt = entry.eliminatedAt;
 
-            service.Process(match, botId, EliminationReason.HEALTH_ZERO, attackerPlayerId: 99);
+            service.EliminatePlayer(match.MatchingId, botId, EliminationReason.HEALTH_ZERO, attackerPlayerId: 99);
             Assert.Equal(drops, match.GroundItems.GetSnapshot(bot.CurrentArea).Count);
             Assert.Equal(eliminatedAt, match.BuildGameResult().Single(row => row.playerId == botId).eliminatedAt);
             Assert.Equal(11, match.BuildGameResult().Single(row => row.playerId == botId).attackerPlayerId);
         }
-        Assert.False(sibling.Bots.GetBot(sibling.MatchingId, botId)!.IsEliminated);
+        Assert.False(sibling.Bots.GetBot(sibling.MatchingId, botId)!.Player.IsEliminated);
         Assert.NotEmpty(sibling.Inventory.GetPlayerInventory(botId).GetAllItems());
         Assert.NotEqual(PlayerMatchStatus.ELIMINATED, sibling.BuildGameResult().Single(row => row.playerId == botId).finalStatus);
+    }
+    [Theory]
+    [InlineData(42)]
+    [InlineData(-42)]
+    public void Elimination_UsesSharedStateAndRecordsRankOnceWithoutSession(long playerId)
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(941103);
+        var player = new MatchPlayer { Profile = new PlayerInfo { PlayerId = playerId } };
+        if (playerId < 0)
+        {
+            match.Bots.RegisterBots(match.MatchingId, Config.SWARM_MATCH_MAP,
+                [playerId], new Dictionary<long, Cell> { [playerId] = new(0, 0) });
+            player = match.Bots.GetBot(match.MatchingId, playerId)!.Player;
+        }
+        match.RegisterParticipant(player);
+        match.RegisterParticipant(new MatchPlayer { Profile = new PlayerInfo { PlayerId = 11 } });
+        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
+        var service = TestGameSessionServices.CreateEliminationService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance);
+        using (match.Enter())
+        {
+            service.EliminatePlayer(match.MatchingId, playerId, EliminationReason.PRESSURE_FIELD,
+                deferGameOver: true, attackerPlayerId: 11, forcedRank: 5);
+            var eliminatedAt = player.EliminatedAt;
+            service.EliminatePlayer(match.MatchingId, playerId, EliminationReason.HEALTH_ZERO,
+                deferGameOver: true, attackerPlayerId: 99, forcedRank: 9);
+            Assert.Null(player.Session);
+            Assert.True(player.IsEliminated);
+            Assert.Equal(PlayerMatchStatus.ELIMINATED, player.Status);
+            Assert.Equal(EliminationReason.PRESSURE_FIELD, player.EliminationReason);
+            Assert.Equal(5, player.EliminationRank);
+            Assert.Equal(11, player.AttackerPlayerId);
+            Assert.Equal(eliminatedAt, player.EliminatedAt);
+            Assert.Single(logs.GetRecent(match.MatchingId).Where(entry => entry.Type == GameEventType.Eliminate));
+            Assert.Equal((true, (long?)11), match.CheckGameOver());
+            Assert.False(match.IsEnded);
+        }
+    }
+    [Fact]
+    public void HumanEliminationWithoutSessionDropsInventoryAtStoredPosition()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(941104);
+        var player = new MatchPlayer
+        {
+            Profile = new PlayerInfo { PlayerId = 42 },
+            CurrentArea = Config.SWARM_MATCH_GROUND_AREA,
+            LastValidatedPosition = new Vector3f(0, 0, 0)
+        };
+        match.RegisterParticipant(player);
+        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
+        var service = TestGameSessionServices.CreateEliminationService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance);
+        using (match.Enter())
+        {
+            match.Inventory.AddItem(player.PlayerId, 107000010);
+            service.EliminatePlayer(match.MatchingId, player.PlayerId, EliminationReason.HEALTH_ZERO, deferGameOver: true);
+            service.EliminatePlayer(match.MatchingId, player.PlayerId, EliminationReason.HEALTH_ZERO, deferGameOver: true);
+            Assert.Null(player.Session);
+            Assert.Equal(player.CurrentArea, player.EliminatedArea);
+            Assert.Empty(match.Inventory.GetAllItems(player.PlayerId));
+            Assert.Single(match.GroundItems.GetSnapshot(player.CurrentArea));
+            Assert.Single(logs.GetRecent(match.MatchingId).Where(entry => entry.Type == GameEventType.EliminationDrop));
+        }
     }
     [Fact]
     public void InteractableSnapshots_AreIndependentCopiesOfSharedDefinitions()

@@ -94,7 +94,7 @@ public partial class BotPlayerManager
         var result = new BotWalkingTickResult();
         var bots = GetBots(matchingId);
 
-        var activeBots = bots.Where(bot => !bot.IsEliminated).ToList();
+        var activeBots = bots.Where(bot => !bot.Player.IsEliminated).ToList();
         if (activeBots.Count == 0) return result;
 
         result.PlanningBotId = SelectMovementPlanningBot(matchingId, activeBots);
@@ -296,7 +296,7 @@ public partial class BotPlayerManager
     {
         return GetBots(matchingId).Count(other =>
             {
-                if (other.IsEliminated || (excludeBotPlayerId != 0 && other.PlayerId == excludeBotPlayerId))
+                if (other.Player.IsEliminated || (excludeBotPlayerId != 0 && other.PlayerId == excludeBotPlayerId))
                     return false;
 
                 // Travelling bots occupy their committed destination; idle bots occupy their current room.
@@ -1015,7 +1015,7 @@ public partial class BotPlayerManager
     private bool TryStartBotInteractPath(BotPlayerState bot, long matchingId, AreaType area, int interactId,
         AreaClosureManager closureManager)
     {
-        if (bot.IsEliminated) return false;
+        if (bot.Player.IsEliminated) return false;
         if (IsAreaClosingOrClosed(closureManager, matchingId, area)) return false;
 
         var info = GameInteractableData.Get(interactId);

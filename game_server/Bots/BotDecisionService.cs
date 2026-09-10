@@ -194,7 +194,7 @@ internal sealed class BotDecisionService(
         var directive = DecideMovementCore(matchingId, botPlayerId);
         var bot = matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId)
             .FirstOrDefault(candidate => candidate.PlayerId == botPlayerId);
-        if (bot == null || bot.IsEliminated || bot.CurrentArea == AreaType.None)
+        if (bot == null || bot.Player.IsEliminated || bot.CurrentArea == AreaType.None)
             return directive;
 
         var key = (matchingId, botPlayerId);
@@ -239,7 +239,7 @@ internal sealed class BotDecisionService(
 
         var bot = matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId)
             .FirstOrDefault(candidate => candidate.PlayerId == botPlayerId);
-        if (bot == null || bot.IsEliminated)
+        if (bot == null || bot.Player.IsEliminated)
             return directive;
 
         // 폐쇄·경계 탈출은 위협 판정보다 위다 (#229 8단계). GetBotDirective는 내 구역에 깨어난
@@ -750,7 +750,7 @@ internal sealed class BotDecisionService(
 
         foreach (var other in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
         {
-            if (other.PlayerId == bot.PlayerId || other.IsEliminated) continue;
+            if (other.PlayerId == bot.PlayerId || other.Player.IsEliminated) continue;
             Consider(other.PlayerId, other.Position, other.CurrentArea);
         }
 
@@ -863,7 +863,7 @@ internal sealed class BotDecisionService(
         position = null!;
         foreach (var other in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
         {
-            if (other.PlayerId != playerId || other.IsEliminated) continue;
+            if (other.PlayerId != playerId || other.Player.IsEliminated) continue;
             position = other.Position;
             return true;
         }
