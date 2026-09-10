@@ -52,7 +52,6 @@ internal static class TestGameSessionServices
             CreateOrbUpgradeService(store, logs), new FakeGameSessionLifecycle(), static () => false,
             new FakeMatchEntryFailureHandler(),
             matchEntry: CreateEntryService(null, store, NullLogger.Instance),
-            movementValidation: new MovementValidationService(NullLogger<MovementValidationService>.Instance),
             orbInventory: new OrbInventoryService(logs));
     }
 

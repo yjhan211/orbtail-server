@@ -65,7 +65,7 @@ public sealed class SessionPacketProcessingTests
         string move = File.ReadAllText(Path.Combine(root, "game_server", "Sessions", "GameClientSession.Movement.cs"));
         Assert.DoesNotContain("ScheduleMessageAsync", main);
         Assert.DoesNotContain("ScheduleMessageAsync", move);
-        int check = move.IndexOf("!MovementValidationPolicy.IsFinite(msg.Position)", StringComparison.Ordinal);
+        int check = move.IndexOf("!PlayerMovementService.IsFinite(msg.Position)", StringComparison.Ordinal);
         int apply = move.IndexOf("PlayerMovement.ProcessMovement(match, Player, msg, deltaTime)", StringComparison.Ordinal);
         Assert.True(check >= 0 && check < apply);
     }
@@ -114,7 +114,6 @@ public sealed class SessionPacketProcessingTests
             static () => false,
             new FakeMatchEntryFailureHandler(),
             matchEntry: TestGameSessionServices.CreateEntryService(null!, store, NullLogger.Instance),
-            movementValidation: new MovementValidationService(NullLogger<MovementValidationService>.Instance),
                 orbInventory: new OrbInventoryService(logs));
         connection.SetSession(session);
         return session;

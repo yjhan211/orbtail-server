@@ -110,12 +110,12 @@ public class Player
         if (_lastMoveProcessedTimestamp == 0)
         {
             _lastMoveProcessedTimestamp = timestamp;
-            return MovementValidationPolicy.InitialReceiptDeltaSeconds;
+            return PlayerMovementService.InitialReceiptDeltaSeconds;
         }
 
         double elapsedSeconds = (timestamp - _lastMoveProcessedTimestamp) / (double)Stopwatch.Frequency;
         _lastMoveProcessedTimestamp = timestamp;
-        return MovementValidationPolicy.ClampReceiptDeltaSeconds(elapsedSeconds);
+        return PlayerMovementService.ClampMoveDeltaTime(elapsedSeconds);
     }
 
     /// <summary>첫 이동 응답이거나, 마지막 응답 이후 전송 간격이 지났는지 확인한다.</summary>
@@ -125,7 +125,7 @@ public class Player
             return true;
 
         double elapsedSeconds = (timestamp - _lastMoveResponseTimestamp) / (double)Stopwatch.Frequency;
-        return elapsedSeconds >= MovementValidationPolicy.MovementAcknowledgementIntervalSeconds;
+        return elapsedSeconds >= PlayerMovementService.MovementAcknowledgementIntervalSeconds;
     }
 
     /// <summary>이동 응답을 전송한 시각을 기록한다. 즉시 보정 응답도 같은 간격에 반영한다.</summary>
@@ -143,7 +143,7 @@ public class Player
     }
 
     /// <summary>검증된 이동 값을 함께 반영한다. 호출자는 매치 잠금을 잡아야 한다.</summary>
-    internal void ApplyValidatedMovement(ValidatedMovement movement, float rotation)
+    internal void ApplyValidatedMovement(PlayerMovementService.ValidatedMovement movement, float rotation)
     {
         Cell = movement.ValidCell;
         Position = movement.Position;

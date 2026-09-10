@@ -38,7 +38,7 @@ public partial class GameClientSession
 
             try
             {
-                if (!MovementValidationPolicy.IsFinite(msg.Position) || !MovementValidationPolicy.IsFinite(msg.Velocity) || !float.IsFinite(msg.Rotation))
+                if (!PlayerMovementService.IsFinite(msg.Position) || !PlayerMovementService.IsFinite(msg.Velocity) || !float.IsFinite(msg.Rotation))
                 {
                     Logger.LogWarning("Player {PlayerId} sent invalid movement values", PlayerId);
                     return Task.CompletedTask;

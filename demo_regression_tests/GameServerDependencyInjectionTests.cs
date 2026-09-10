@@ -127,7 +127,6 @@ public sealed class GameServerDependencyInjectionTests
             typeof(game_server.matches.MatchRuntimeStore),
             typeof(game_server.logging.GameEventLogManager),
             typeof(game_server.matches.entry.GameMatchEntryService),
-            typeof(game_server.players.MovementValidationService),
             typeof(game_server.matches.entry.MatchEntryFailureHandler),
             typeof(game_server.matches.MatchTickService)
         ];

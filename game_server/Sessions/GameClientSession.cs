@@ -67,7 +67,6 @@ public partial class GameClientSession : SessionBase
         Func<bool> isServerStopping,
         IMatchEntryFailureHandler entryFailureHandler,
         GameMatchEntryService matchEntry,
-        MovementValidationService movementValidation,
         OrbInventoryService orbInventory,
         Func<Packet, bool>? trySendConnectSuccessResponse = null)
         : base(connection, logger, redisOperations)
@@ -80,7 +79,7 @@ public partial class GameClientSession : SessionBase
         _orbUpgrades = orbUpgrades;
 
         _matchEntry = matchEntry;
-        PlayerMovement = new PlayerMovementService(movementValidation, gameEventLogManager, logger);
+        PlayerMovement = new PlayerMovementService(gameEventLogManager, logger);
         _orbInventory = orbInventory;
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Connection.TrySend;
         _matchSessionCleanup = matchSessionCleanup;

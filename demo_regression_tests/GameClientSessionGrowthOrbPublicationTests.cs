@@ -775,7 +775,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
                 TestGameSessionServices.CreateEntryService(null!, Store, NullLogger.Instance),
-                new MovementValidationService(NullLogger<MovementValidationService>.Instance),
                 orbInventory: new OrbInventoryService(EventLog));
             connection.SetSession(session);
             SetIdentity(session, matchingId, playerId);

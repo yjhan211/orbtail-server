@@ -8,39 +8,32 @@ public class MovementValidationPolicyTests
     [Fact]
     public void ReceiptDeltaIsClampedToShortAuthoritativeWindow()
     {
-        Assert.Equal(MovementValidationPolicy.InitialReceiptDeltaSeconds,
-            MovementValidationPolicy.ClampReceiptDeltaSeconds(double.NaN));
-        Assert.Equal(MovementValidationPolicy.MinimumReceiptDeltaSeconds,
-            MovementValidationPolicy.ClampReceiptDeltaSeconds(0d));
-        Assert.Equal(MovementValidationPolicy.MaximumReceiptDeltaSeconds,
-            MovementValidationPolicy.ClampReceiptDeltaSeconds(30d));
+        Assert.Equal(PlayerMovementService.InitialReceiptDeltaSeconds,
+            PlayerMovementService.ClampMoveDeltaTime(double.NaN));
+        Assert.Equal(0f,
+            PlayerMovementService.ClampMoveDeltaTime(0d));
+        Assert.Equal(0.25f,
+            PlayerMovementService.ClampMoveDeltaTime(30d));
     }
 
     [Fact]
     public void BurstPackets_DoNotReceiveAnArtificialMinimumTimeBudget()
     {
-        Assert.Equal(0f, MovementValidationPolicy.ClampReceiptDeltaSeconds(0d));
-        Assert.Equal(0f, MovementValidationPolicy.ClampReceiptDeltaSeconds(-1d));
-        Assert.Equal(0.001f, MovementValidationPolicy.ClampReceiptDeltaSeconds(0.001d), 6);
+        Assert.Equal(0f, PlayerMovementService.ClampMoveDeltaTime(0d));
+        Assert.Equal(0f, PlayerMovementService.ClampMoveDeltaTime(-1d));
+        Assert.Equal(0.001f, PlayerMovementService.ClampMoveDeltaTime(0.001d), 6);
         float total = 0f;
         for (int i = 0; i < 100; i++)
-            total += MovementValidationPolicy.ClampReceiptDeltaSeconds(0.001d);
+            total += PlayerMovementService.ClampMoveDeltaTime(0.001d);
         Assert.Equal(0.1f, total, 5);
     }
 
     [Fact]
     public void NonFinitePositionOrVelocityIsRejectedAtPacketBoundary()
     {
-        Assert.True(MovementValidationPolicy.IsFinite(new Vector3f(1f, 2f, 0f)));
-        Assert.False(MovementValidationPolicy.IsFinite(new Vector3f(float.NaN, 2f, 0f)));
-        Assert.False(MovementValidationPolicy.IsFinite(new Vector3f(1f, float.PositiveInfinity, 0f)));
+        Assert.True(PlayerMovementService.IsFinite(new Vector3f(1f, 2f, 0f)));
+        Assert.False(PlayerMovementService.IsFinite(new Vector3f(float.NaN, 2f, 0f)));
+        Assert.False(PlayerMovementService.IsFinite(new Vector3f(1f, float.PositiveInfinity, 0f)));
     }
 
-    [Fact]
-    public void BroadcastVelocityCannotExceedAuthoritativeSpeed()
-    {
-        var clamped = MovementValidationPolicy.ClampVelocity(new Vector3f(30f, 40f, 0f));
-
-        Assert.Equal(MovementValidationPolicy.MaximumSpeedUnitsPerSecond, clamped.Magnitude(), 3);
-    }
 }

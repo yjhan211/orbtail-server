@@ -9,7 +9,7 @@ namespace demo_regression_tests;
 
 public sealed class MovementValidationServiceTests
 {
-    private readonly MovementValidationService _service = new(NullLogger<MovementValidationService>.Instance);
+    private readonly PlayerMovementService _service = new(new game_server.logging.GameEventLogManager(_ => null), NullLogger.Instance);
 
     public MovementValidationServiceTests()
     {
@@ -24,7 +24,7 @@ public sealed class MovementValidationServiceTests
         var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
         var input = new Vector3f(position.X, position.Y, 5f);
 
-        var result = _service.ValidatePosition(1, Config.SWARM_MATCH_MAP, position, cell, input, new Vector3f(0, 0, 0), 0.05f);
+        var result = ProcessMovement(position, cell, input, new Vector3f(0, 0, 0), 0.05f);
 
         Assert.False(result.RequiresCorrection);
         Assert.Equal(0f, result.Position.Z);
@@ -40,11 +40,11 @@ public sealed class MovementValidationServiceTests
         var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
         var input = new Vector3f(position.X + 100f, position.Y, 0f);
 
-        var result = _service.ValidatePosition(1, Config.SWARM_MATCH_MAP, position, cell, input, new Vector3f(0, 0, 0), 0.05f);
+        var result = ProcessMovement(position, cell, input, new Vector3f(0, 0, 0), 0.05f);
 
         Assert.True(result.RequiresCorrection);
-        Assert.True((result.Position - position).Magnitude() <= MovementValidationPolicy.MaximumSpeedUnitsPerSecond * 0.05f + 0.001f);
-        Assert.True(result.Velocity.Magnitude() <= MovementValidationPolicy.MaximumSpeedUnitsPerSecond + 0.001f);
+        Assert.True((result.Position - position).Magnitude() <= PlayerMovementService.MaximumSpeedUnitsPerSecond * 0.05f + 0.001f);
+        Assert.True(result.Velocity.Magnitude() <= PlayerMovementService.MaximumSpeedUnitsPerSecond + 0.001f);
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public sealed class MovementValidationServiceTests
         var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, MatchSpawnData.GetPhaseRoomCandidates()[0]);
         var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
         var input = new Vector3f(position.X + 1f, position.Y, 0f);
-        var result = _service.ValidatePosition(1, Config.SWARM_MATCH_MAP, position, cell,
+        var result = ProcessMovement(position, cell,
             input, new Vector3f(1f, 0f, 0f), 0f);
         Assert.Equal(position.X, result.Position.X);
         Assert.Equal(position.Y, result.Position.Y);
@@ -68,7 +68,7 @@ public sealed class MovementValidationServiceTests
         var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
         var input = new Vector3f(100000f, 100000f, 0f);
 
-        var result = _service.ValidatePosition(1, Config.SWARM_MATCH_MAP, position, cell, input, new Vector3f(0, 0, 0), 100000f);
+        var result = ProcessMovement(position, cell, input, new Vector3f(0, 0, 0), 100000f);
 
         Assert.True(result.RequiresCorrection);
         Assert.Same(position, result.Position);
@@ -80,7 +80,7 @@ public sealed class MovementValidationServiceTests
     public void SessionCommitsCellOnlyAfterDoorRejectionPath()
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "game_server", "Players", "PlayerMovementService.cs"));
-        int check = source.IndexOf("validationService.GetBlockedTransitionCell(", StringComparison.Ordinal);
+        int check = source.IndexOf("GameDoorData.GetDoorForTransition(", StringComparison.Ordinal);
         int reject = source.IndexOf("if (blockedCell != null)", check, StringComparison.Ordinal);
         int stop = source.IndexOf("return new MovementResult(", reject, StringComparison.Ordinal);
         int commit = source.IndexOf("player.ApplyValidatedMovement(validation, msg.Rotation);", StringComparison.Ordinal);
@@ -88,6 +88,41 @@ public sealed class MovementValidationServiceTests
         Assert.Contains("WorldToCell(Config.SWARM_MATCH_MAP, player.Position)", source);
         Assert.DoesNotContain("player.Session", source);
         Assert.DoesNotContain("PacketMaker", source);
+    }
+
+    [Fact]
+    public void BroadcastVelocityCannotExceedAuthoritativeSpeed()
+    {
+        var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, MatchSpawnData.GetPhaseRoomCandidates()[0]);
+        var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
+        var velocity = new Vector3f(30f, 40f, 0f);
+
+        var result = ProcessMovement(position, cell, position, velocity, 0.05f);
+
+        Assert.True(result.RequiresCorrection);
+        Assert.InRange(result.Velocity.Magnitude(), 0f, PlayerMovementService.MaximumSpeedUnitsPerSecond + 0.001f);
+        Assert.True((result.Position - position).Magnitude() <= PlayerMovementService.MaximumSpeedUnitsPerSecond * 0.05f + 0.001f);
+        Assert.Equal(30f, velocity.X);
+        Assert.Equal(40f, velocity.Y);
+    }
+
+    private PlayerMovementService.ValidatedMovement ProcessMovement(Vector3f position, Cell cell, Vector3f input, Vector3f velocity, float deltaTime)
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(948012);
+        var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
+        using (match.Enter())
+        {
+            player.InitializeSpawn(cell);
+            player.Position = position;
+            player.Cell = cell;
+            match.RegisterParticipant(player);
+            return _service.ProcessMovement(match, player, new C_TO_G_MOVE
+            {
+                Position = input,
+                Velocity = velocity
+            }, deltaTime).Movement;
+        }
     }
 
     private static string FindRoot()

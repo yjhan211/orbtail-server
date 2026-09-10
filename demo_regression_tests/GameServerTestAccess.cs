@@ -109,7 +109,6 @@ internal static class GameServerTestAccess
             },
             sessions: sessions, matchRuntimes: runtimes, eventLogs: logs,
             matchEntry: TestGameSessionServices.CreateEntryService(new InMemoryRedisOperations(), runtimes, logger),
-            movementValidation: new MovementValidationService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MovementValidationService>.Instance),
             orbInventory: new OrbInventoryService(logs),
             entryFailureHandler: entryFailure,
             matchCleanup: cleanup,

@@ -118,7 +118,6 @@ internal static class Program
             sp.GetRequiredService<MatchRuntimeStore>(),
             sp.GetRequiredService<GameEventLogManager>(), sp.GetRequiredService<MatchSummaryFileStore>(),
             sp.GetRequiredService<ILogger<MatchCleanupService>>()));
-        services.AddSingleton<MovementValidationService>();
         services.AddSingleton<OrbInventoryService>();
         services.AddSingleton<GameMatchEntryService>(sp => new GameMatchEntryService(
             sp.GetRequiredService<IRedisOperations>(),

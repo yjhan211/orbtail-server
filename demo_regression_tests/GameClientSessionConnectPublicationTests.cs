@@ -188,7 +188,7 @@ public sealed class GameClientSessionConnectPublicationTests
     {
         using var fixture = new ConnectFixture();
         var session = fixture.CreateSession(74016, 8115, _ => true);
-        var movement = new ValidatedMovement(
+        var movement = new PlayerMovementService.ValidatedMovement(
             new Vector3f(10.25f, 20.75f, 0f), new Vector3f(2f, 3f, 0f),
             new Cell(10, 20), false);
 
@@ -678,7 +678,6 @@ public sealed class GameClientSessionConnectPublicationTests
                 static () => false,
                 new FakeMatchEntryFailureHandler(recordEntryFailure),
                 TestGameSessionServices.CreateEntryService(Redis, Store, NullLogger.Instance),
-                new MovementValidationService(NullLogger<MovementValidationService>.Instance),
                 orbInventory: new OrbInventoryService(TestGameEventLogs.Create()),
                 trySendConnectSuccessResponse: sender);
             Connection.SetSession(session);
