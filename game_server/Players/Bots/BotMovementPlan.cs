@@ -42,7 +42,7 @@ internal sealed record SwarmBotPlayerInfoSnapshot(
         info.PlayerId,
         info.Name,
         info.WearItemIdList.ToImmutableArray(),
-        info.State,
+        objectInfo.State,
         info.Gold,
         info.Hp,
         objectInfo.MapId,

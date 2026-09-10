@@ -92,9 +92,9 @@ public partial class BotPlayerManager
             return new BotPlayerState
             {
                 PlayerId = botPlayerId,
-                Name = $"Player{Math.Abs(botPlayerId)}",
                 Player =
                 {
+                    Profile = { Name = $"Player{Math.Abs(botPlayerId)}", Hp = 5000, State = PlayerState.IDLE, WearItemIdList = BuildBotWearItems(botPlayerId) },
                     CurrentArea = startArea,
                     Cell = startCell,
                     Position = startPosition,
@@ -156,29 +156,18 @@ public partial class BotPlayerManager
         103000006
     };
 
-    internal static List<int> BuildBotWearItems(BotPlayerState bot)
+    internal static List<int> BuildBotWearItems(long playerId)
     {
         var list = new List<int>(BotDefaultWearItemIds);
-        int idx = (int)(Math.Abs(bot.PlayerId) % BotCustomizationItems.Length);
+        int idx = (int)(Math.Abs(playerId) % BotCustomizationItems.Length);
         list.Add(BotCustomizationItems[idx]);
 
         return list;
     }
 
-    public PlayerInfo? CreatePlayerInfo(long matchingId, long botPlayerId)
-    {
-        var bot = GetBot(matchingId, botPlayerId);
-        if (bot == null) return null;
-
-        var mapId = GetMatchingMapId(matchingId);
-        var state = bot.Player.State;
-        var info = bot.Player.Profile;
-        info.Name = bot.Name;
-        info.State = state;
-        info.Hp = 5000;
-        info.WearItemIdList = BuildBotWearItems(bot);
-        return info;
-    }
+    /// <summary>생성 시 초기화한 봇 프로필을 변경 없이 조회한다.</summary>
+    public PlayerInfo? GetPlayerProfile(long matchingId, long botPlayerId) =>
+        GetBot(matchingId, botPlayerId)?.Player.Profile;
 
     public GameObjectInfo? SynthesizeGameObjectInfo(long matchingId, long botPlayerId)
     {

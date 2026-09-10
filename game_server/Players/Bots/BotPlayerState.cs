@@ -20,7 +20,6 @@ public class BotPlayerState
 
     public long LastProximityAttackerPlayerId { get; set; }
 
-    public string Name { get; set; } = "";
 
     // === #127 walking pathfinding ===
     public List<BotPathfinder.Step> Path { get; set; } = new();

@@ -126,7 +126,7 @@ public sealed class GameMatchEntryRosterTests
         Assert.Equal("Human", human.Name);
         Assert.Equal(new[] { 123 }, human.WearItemIdList);
         var bot = Assert.Single(runtime.GetPlayerProfiles(), player => player.PlayerId < 0);
-        var expectedBot = runtime.Bots.CreatePlayerInfo(runtime.MatchingId, bot.PlayerId)!;
+        var expectedBot = runtime.Bots.GetPlayerProfile(runtime.MatchingId, bot.PlayerId)!;
         Assert.Equal(expectedBot.Name, bot.Name);
         Assert.Equal(expectedBot.WearItemIdList, bot.WearItemIdList);
     }

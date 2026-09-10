@@ -10,6 +10,34 @@ namespace demo_regression_tests;
 public sealed class MatchOwnedBotsTests
 {
     [Fact]
+    public void ProfileLookupDoesNotReinitializeBotProfile()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(948022);
+        using (match.Enter())
+        {
+            var cells = network.common.data.MatchSpawnData.CreatePhaseRoomAssignments(match.MatchingId, [1L, -1L]);
+            match.Bots.RegisterBots(match.MatchingId, Config.SWARM_MATCH_MAP, [-1L], cells);
+            var bot = match.Bots.GetBot(match.MatchingId, -1)!;
+            var profile = bot.Player.Profile;
+            Assert.Equal("Player1", profile.Name);
+            Assert.NotEmpty(profile.WearItemIdList);
+            var wearItems = profile.WearItemIdList;
+            profile.Name = "Updated";
+            profile.Hp = 17;
+            bot.Player.State = PlayerState.SLEEP;
+            Assert.Same(profile, match.Bots.GetPlayerProfile(match.MatchingId, -1));
+            Assert.Same(wearItems, profile.WearItemIdList);
+            Assert.Equal("Updated", profile.Name);
+            Assert.Equal(17, profile.Hp);
+            Assert.Equal(PlayerState.IDLE, profile.State);
+            var spatial = match.Bots.SynthesizeGameObjectInfo(match.MatchingId, -1)!;
+            var snapshot = SwarmBotPlayerInfoSnapshot.Capture(profile, spatial);
+            Assert.Equal(PlayerState.SLEEP, snapshot.ToGameObjectInfo().State);
+        }
+    }
+    [Fact]
     public void BotMovementPlanIsBoundToItsMatchAndRejectsReleasedWork()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
@@ -59,7 +87,7 @@ public sealed class MatchOwnedBotsTests
             var cells = network.common.data.MatchSpawnData.CreatePhaseRoomAssignments(match.MatchingId, [1L, -1L]);
             match.Bots.RegisterBots(match.MatchingId, Config.SWARM_MATCH_MAP, [-1L], cells);
             var bot = Assert.IsType<BotPlayerState>(match.Bots.GetBot(match.MatchingId, -1));
-            var profile = match.Bots.CreatePlayerInfo(match.MatchingId, -1)!;
+            var profile = match.Bots.GetPlayerProfile(match.MatchingId, -1)!;
             bot.Player.ApplyDamage(20);
             match.InitializeMatch(MatchMode.Normal, cells, [new PlayerInfo { PlayerId = 1 }, profile]);
             Assert.Same(bot.Player, match.GetParticipant(-1));
@@ -83,7 +111,7 @@ public sealed class MatchOwnedBotsTests
             var cells = network.common.data.MatchSpawnData.CreatePhaseRoomAssignments(match.MatchingId, [1L, -1L]);
             match.Bots.RegisterBots(match.MatchingId, Config.SWARM_MATCH_MAP, [-1L], cells);
             var bot = match.Bots.GetBot(match.MatchingId, -1)!;
-            var profile = match.Bots.CreatePlayerInfo(match.MatchingId, -1)!;
+            var profile = match.Bots.GetPlayerProfile(match.MatchingId, -1)!;
             match.InitializeMatch(MatchMode.Normal, cells, [new PlayerInfo { PlayerId = 1 }, profile]);
             var player = match.GetParticipant(-1)!;
             Assert.Same(bot.Player, player);

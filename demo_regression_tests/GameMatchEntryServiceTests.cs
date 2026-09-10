@@ -76,7 +76,7 @@ public sealed class GameMatchEntryServiceTests
         var bot = Assert.Single(runtime.GetPlayerProfiles(), profile => profile.PlayerId == botId);
         Assert.False(string.IsNullOrWhiteSpace(bot.Name));
         Assert.NotEmpty(bot.WearItemIdList);
-        Assert.Equal(runtime.Bots.CreatePlayerInfo(runtime.MatchingId, botId)!.WearItemIdList, bot.WearItemIdList);
+        Assert.Equal(runtime.Bots.GetPlayerProfile(runtime.MatchingId, botId)!.WearItemIdList, bot.WearItemIdList);
 
         var restored = MessagePackSerializer.Deserialize<G_TO_C_MATCH_ROSTER>(
             MessagePackSerializer.Serialize(new G_TO_C_MATCH_ROSTER

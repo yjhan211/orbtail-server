@@ -430,7 +430,7 @@ public sealed class MatchGameplayServiceTests
             Assert.Equal(0, bot.Player.Position!.X);
             Assert.True(bot.Player.IsSleeping);
             Assert.Equal(network.common.PlayerState.SLEEP, match.Bots.SynthesizeGameObjectInfo(match.MatchingId, bot.PlayerId)!.State);
-            Assert.Equal(network.common.PlayerState.SLEEP, match.Bots.CreatePlayerInfo(match.MatchingId, bot.PlayerId)!.State);
+            Assert.Equal(network.common.PlayerState.NONE, match.Bots.GetPlayerProfile(match.MatchingId, bot.PlayerId)!.State);
         }
     }
     [Fact]

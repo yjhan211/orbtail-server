@@ -132,7 +132,7 @@ internal sealed class GameMatchEntryService(
                 }
                 foreach (long botPlayerId in botPlayerIds)
                 {
-                    var botProfile = runtime.Bots.CreatePlayerInfo(matchingId, botPlayerId);
+                    var botProfile = runtime.Bots.GetPlayerProfile(matchingId, botPlayerId);
                     if (botProfile == null)
                     {
                         throw new InvalidOperationException($"Bot {botPlayerId} was not initialized.");
