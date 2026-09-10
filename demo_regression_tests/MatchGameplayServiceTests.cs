@@ -10,6 +10,40 @@ namespace demo_regression_tests;
 
 public sealed class MatchGameplayServiceTests
 {
+    [Theory]
+    [InlineData(12)]
+    [InlineData(-12)]
+    public void BotSleepChecksParticipantsWithoutSessionsAndIgnoresEliminatedPlayers(long enemyId)
+    {
+        using var provider = GameServerDependencyInjectionTests.CreateProvider();
+        var service = provider.GetRequiredService<BotDecisionService>();
+        var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947799);
+        var bot = new BotPlayerState
+        {
+            PlayerId = -11,
+            Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA }
+        };
+        var enemy = new game_server.players.Player
+        {
+            Profile = new PlayerInfo { PlayerId = enemyId },
+            Position = new Vector3f(0, 0, 0),
+            CurrentArea = bot.Player.CurrentArea
+        };
+        using (match.Enter())
+        {
+            match.RegisterParticipant(bot.Player);
+            match.RegisterParticipant(enemy);
+            Assert.Empty(match.GetSessions());
+            var now = DateTime.UtcNow;
+            service.UpdateSleep(match, [bot], now);
+            Assert.False(bot.Player.IsSleeping);
+
+            enemy.Status = network.common.PlayerMatchStatus.ELIMINATED;
+            service.UpdateSleep(match, [bot], now);
+            Assert.True(bot.Player.IsSleeping);
+        }
+    }
+
     [Fact]
     public void GrowthUsesPlayerRosterWithoutConnectionsAndIgnoresEliminatedPrey()
     {
@@ -147,13 +181,16 @@ public sealed class MatchGameplayServiceTests
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947704);
         var bot = new BotPlayerState { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA } };
         var enemy = new BotPlayerState { PlayerId = -12 };
+        match.RegisterParticipant(bot.Player);
         var now = DateTime.UtcNow;
         using (match.Enter())
         {
             service.UpdateSleep(match, [bot], now);
             Assert.True(bot.Player.IsSleeping);
-            service.UpdateSleep(match, [bot, enemy], now);
+            match.RegisterParticipant(enemy.Player);
+            service.UpdateSleep(match, [bot], now);
             Assert.False(bot.Player.IsSleeping);
+            enemy.Player.Position = new Vector3f(1000, 1000, 0);
             bot.Player.BlockHealingUntil(now.AddSeconds(8));
             service.UpdateSleep(match, [bot], now.AddSeconds(7));
             Assert.False(bot.Player.IsSleeping);

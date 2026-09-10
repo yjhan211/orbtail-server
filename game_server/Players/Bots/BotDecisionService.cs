@@ -742,18 +742,10 @@ internal sealed class BotDecisionService(
             }
         }
 
-        foreach (var other in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
+        foreach (var player in matchRuntimes.GetOrThrow(matchingId).GetAlivePlayers())
         {
-            if (other.PlayerId == bot.PlayerId || other.Player.IsEliminated) continue;
-            Consider(other.PlayerId, other.Player.Position!, other.Player.CurrentArea);
-        }
-
-        foreach (var session in matchRuntimes.GetOrThrow(matchingId).GetSessions())
-        {
-            if (!session.PlayerId.HasValue || session.Player.IsEliminated ||
-                session.Player.Position == null)
-                continue;
-            Consider(session.PlayerId.Value, session.Player.Position, session.Player.CurrentArea);
+            if (player.PlayerId == bot.PlayerId || player.Position == null) continue;
+            Consider(player.PlayerId, player.Position, player.CurrentArea);
         }
 
         if (includeMonstersAsStronger)
@@ -794,7 +786,7 @@ internal sealed class BotDecisionService(
     public void UpdateSleep(MatchRuntime match, IReadOnlyList<BotPlayerState> bots, DateTime nowUtc)
     {
         var sessions = match.GetSessions();
-        var players = sessions.Select(session => session.Player).Concat(bots.Select(bot => bot.Player)).ToList();
+        var players = match.GetAlivePlayers();
         var monsters = match.Monsters.GetCombatTargets(match.MatchingId);
         float safeRadiusSquared = Config.SWARM_ORB_ATTACK_RANGE * Config.SWARM_ORB_ATTACK_RANGE;
         foreach (var bot in bots)
@@ -875,22 +867,12 @@ internal sealed class BotDecisionService(
     private bool TryGetSwarmParticipantPosition(long matchingId, long playerId, out Vector3f position)
     {
         position = null!;
-        foreach (var other in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
-        {
-            if (other.PlayerId != playerId || other.Player.IsEliminated) continue;
-            position = other.Player.Position!;
-            return true;
-        }
+        var player = matchRuntimes.GetOrThrow(matchingId).GetParticipant(playerId);
+        if (player == null || player.IsEliminated || player.Position == null)
+            return false;
 
-        foreach (var session in matchRuntimes.GetOrThrow(matchingId).GetSessions())
-        {
-            if (session.PlayerId != playerId || session.Player.IsEliminated ||
-                session.Player.Position == null) continue;
-            position = session.Player.Position;
-            return true;
-        }
-
-        return false;
+        position = player.Position;
+        return true;
     }
 
     private void LogSwarmChaseIssued(long matchingId, long chaserId, long targetId, Vector3f aimPoint)
