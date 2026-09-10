@@ -51,6 +51,34 @@ public sealed class GameClientSessionPublicationTests
     }
 
     [Fact]
+    public void MovementServiceReturnsStateChangesWithoutSendingPackets()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
+        var connection = fixture.ConnectionFor(session);
+        using (session.Match.Enter())
+        {
+            var spawn = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, MatchSpawnData.GetPhaseRoomCandidates()[0]);
+            session.Player.InitializeSpawn(spawn);
+            session.Player.State = PlayerState.SLEEP;
+            int sentBefore = connection.DeliveredProtocols.Count;
+            var result = session.PlayerMovement.ProcessMovement(session.Match, session.Player, new C_TO_G_MOVE
+            {
+                Position = session.Player.Position!,
+                Velocity = new Vector3f(),
+                Rotation = 45f
+            }, 0.05f);
+
+            Assert.Null(result.BlockedCell);
+            Assert.True(result.SleepStopped);
+            Assert.Equal(result.OldArea, result.NewArea);
+            Assert.Equal(PlayerState.IDLE, session.Player.State);
+            Assert.Equal(45f, session.Player.Rotation);
+            Assert.Equal(sentBefore, connection.DeliveredProtocols.Count);
+        }
+    }
+
+    [Fact]
     public void HealthNotificationFailureDoesNotLoseRecoveryRecord()
     {
         using var fixture = new SessionFixture();

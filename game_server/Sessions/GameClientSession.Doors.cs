@@ -184,4 +184,34 @@ public partial class GameClientSession
             TrySend(packet);
         }
     }
+
+    private void SendInteractableList( AreaType areaType)
+    {
+        if (areaType == AreaType.None)
+        {
+            return;
+        }
+
+        var match = Match;
+        using (match.Enter())
+        {
+            if (match.IsEnded) return;
+
+            var objects = InteractableStateManager.GetAreaObjectStates(areaType);
+            if (Config.IsSwarmExploreDisabled())
+            {
+                objects = objects.Where(state => GameInteractableData.Get(state.InteractId) is { DoorId: > 0 }).ToList();
+            }
+
+            objects = objects.Where(state => GameInteractableData.Get(state.InteractId) is not { DoorId: > 0 } info || !match.Doors.IsDoorOpen(info.DoorId)).ToList();
+            if (objects.Count == 0)
+            {
+                return;
+            }
+
+            using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(areaType, objects);
+            TrySend(packet);
+        }
+    }
+
 }

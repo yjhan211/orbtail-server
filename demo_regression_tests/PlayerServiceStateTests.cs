@@ -32,15 +32,16 @@ public sealed class PlayerServiceStateTests
         var spawn = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, MatchSpawnData.GetPhaseRoomCandidates()[0]);
         using (match.Enter())
         {
-            service.InitializeSpawn(player, spawn);
+            player.InitializeSpawn(spawn);
             player.State = PlayerState.SLEEP;
-            var result = service.Apply(match, player, new C_TO_G_MOVE
+            var result = service.ProcessMovement(match, player, new C_TO_G_MOVE
             {
                 Position = player.Position!,
                 Velocity = new Vector3f(),
                 Rotation = 45f
             }, 0.05f);
-            Assert.NotNull(result);
+            Assert.Null(result.BlockedCell);
+            Assert.True(result.SleepStopped);
             Assert.Null(player.Session);
             Assert.False(player.IsSleeping);
             Assert.Equal(45f, player.Rotation);

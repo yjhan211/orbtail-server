@@ -81,10 +81,13 @@ public sealed class MovementValidationServiceTests
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "game_server", "Players", "PlayerMovementService.cs"));
         int check = source.IndexOf("validationService.GetBlockedTransitionCell(", StringComparison.Ordinal);
-        int reject = source.IndexOf("PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(newArea, blockedCell);", check, StringComparison.Ordinal);
-        int stop = source.IndexOf("return null;", reject, StringComparison.Ordinal);
-        int commit = source.IndexOf("ApplyValidatedMovement(player, validation, msg.Rotation);", StringComparison.Ordinal);
+        int reject = source.IndexOf("if (blockedCell != null)", check, StringComparison.Ordinal);
+        int stop = source.IndexOf("return new MovementResult(", reject, StringComparison.Ordinal);
+        int commit = source.IndexOf("player.ApplyValidatedMovement(validation, msg.Rotation);", StringComparison.Ordinal);
         Assert.True(check >= 0 && reject > check && stop > reject && commit > stop);
+        Assert.Contains("WorldToCell(Config.SWARM_MATCH_MAP, player.Position)", source);
+        Assert.DoesNotContain("player.Session", source);
+        Assert.DoesNotContain("PacketMaker", source);
     }
 
     private static string FindRoot()

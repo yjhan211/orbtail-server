@@ -271,7 +271,7 @@ public partial class GameClientSession : SessionBase
 
                 runtime.BeginEntry(PlayerId.Value);
 
-                PlayerMovement.InitializeSpawn(Player, matchingSpawnCell);
+                Player.InitializeSpawn(matchingSpawnCell);
 
                 Logger.LogInformation(
                     "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
@@ -280,7 +280,7 @@ public partial class GameClientSession : SessionBase
 
 
 
-                PlayerMovement.SendInteractableList(this, Player.CurrentArea);
+                SendInteractableList(Player.CurrentArea);
 
                 GroundItemNotificationService.SendSnapshot(this, Player.CurrentArea);
                 SendOrbList();

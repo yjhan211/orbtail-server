@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using game_server.sessions;
 using network.common;
 using network.common.data;
@@ -22,8 +23,8 @@ public class Player
     private float? _orbOrbitPhaseDegrees;
     private Vector3f? _orbOrbitLastPosition;
 
-    internal long LastMoveProcessedTimestamp;
-    internal long LastMoveResponseTimestamp;
+    private long _lastMoveProcessedTimestamp;
+    private long _lastMoveResponseTimestamp;
 
     private int _swarmSleepGrantedTicks;
     private readonly List<PeriodicBuffEntry> _periodicBuffs = [];
@@ -103,6 +104,53 @@ public class Player
         }
         _orbOrbitLastPosition = new Vector3f(position.X, position.Y, position.Z);
     }
+    /// <summary>이전 이동 요청과의 처리 간격을 초 단위로 계산하고, 마지막 처리 시각을 갱신한다.</summary>
+    public float CalculateMoveDeltaTime(long timestamp)
+    {
+        if (_lastMoveProcessedTimestamp == 0)
+        {
+            _lastMoveProcessedTimestamp = timestamp;
+            return MovementValidationPolicy.InitialReceiptDeltaSeconds;
+        }
+
+        double elapsedSeconds = (timestamp - _lastMoveProcessedTimestamp) / (double)Stopwatch.Frequency;
+        _lastMoveProcessedTimestamp = timestamp;
+        return MovementValidationPolicy.ClampReceiptDeltaSeconds(elapsedSeconds);
+    }
+
+    /// <summary>첫 이동 응답이거나, 마지막 응답 이후 전송 간격이 지났는지 확인한다.</summary>
+    public bool ShouldSendMoveResponse(long timestamp)
+    {
+        if (_lastMoveResponseTimestamp == 0)
+            return true;
+
+        double elapsedSeconds = (timestamp - _lastMoveResponseTimestamp) / (double)Stopwatch.Frequency;
+        return elapsedSeconds >= MovementValidationPolicy.MovementAcknowledgementIntervalSeconds;
+    }
+
+    /// <summary>이동 응답을 전송한 시각을 기록한다. 즉시 보정 응답도 같은 간격에 반영한다.</summary>
+    public void RecordMoveResponse(long timestamp) => _lastMoveResponseTimestamp = timestamp;
+
+    /// <summary>입장 시 서버가 지정한 스폰으로 이동 상태를 초기화한다.</summary>
+    public void InitializeSpawn(Cell spawnCell)
+    {
+        Cell = Cell.Clone(spawnCell);
+        Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, spawnCell);
+        Velocity = new Vector3f();
+        Rotation = 0f;
+        CurrentArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, spawnCell);
+        ResetOrbOrbit(Position);
+    }
+
+    /// <summary>검증된 이동 값을 함께 반영한다. 호출자는 매치 잠금을 잡아야 한다.</summary>
+    internal void ApplyValidatedMovement(ValidatedMovement movement, float rotation)
+    {
+        Cell = movement.ValidCell;
+        Position = movement.Position;
+        Velocity = movement.Velocity;
+        Rotation = rotation;
+    }
+
     public HealthChange ApplyDamage(int damage)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(damage);

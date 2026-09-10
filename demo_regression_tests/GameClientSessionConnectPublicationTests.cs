@@ -169,7 +169,7 @@ public sealed class GameClientSessionConnectPublicationTests
         var spawn = new Cell(10, 20);
         using (first.Match.Enter())
         {
-            movement.InitializeSpawn(first.Player, spawn);
+            first.Player.InitializeSpawn(spawn);
             spawn.X = 999;
             Assert.Equal(10, first.Player.Cell!.X);
             Assert.Equal(0f, first.Player.Velocity.Magnitude());
@@ -194,7 +194,7 @@ public sealed class GameClientSessionConnectPublicationTests
 
         using (session.Match.Enter())
         {
-            TestGameSessionServices.GetMovement(session).ApplyValidatedMovement(session.Player, movement, 45f);
+            session.Player.ApplyValidatedMovement(movement, 45f);
             var snapshot = session.PlayerMovement.CaptureGameObjectInfo(session.Match, session.Player, session.Player.State);
             Assert.Equal(10.25f, snapshot.Position.X);
             Assert.Equal(20.75f, snapshot.Position.Y);
@@ -214,6 +214,7 @@ public sealed class GameClientSessionConnectPublicationTests
         var position = new Vector3f(10.25f, 20.75f, 0f);
         var velocity = new Vector3f(2f, 3f, 0f);
         var cell = new Cell(10, 20);
+        using var scope = session.Match.Enter();
         TestGameSessionServices.SetMovementProperty(session, "Position", position);
         TestGameSessionServices.SetMovementProperty(session, "Velocity", velocity);
         TestGameSessionServices.SetMovementProperty(session, "Cell", cell);
