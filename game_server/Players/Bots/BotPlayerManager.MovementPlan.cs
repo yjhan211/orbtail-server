@@ -33,6 +33,7 @@ public partial class BotPlayerManager
         SummonStoneManager summonStones,
         EncounterRevealManager encounters,
         GameEventLogManager gameEventLogManager,
+        IReadOnlyList<Player> players,
         IReadOnlyList<SwarmBotObserverSnapshot> observers,
         Func<long, long, SwarmBotDirective> directiveProvider)
     {
@@ -41,14 +42,19 @@ public partial class BotPlayerManager
 
         long matchingId = GetActiveMatchingId();
         long snapshotStartedAt = Stopwatch.GetTimestamp();
-        var humanAreas = observers.ToDictionary(observer => observer.PlayerId, observer => observer.Area);
+        var playerAreas = new Dictionary<long, AreaType>();
+        foreach (var player in players)
+        {
+            if (!player.IsEliminated)
+                playerAreas.Add(player.PlayerId, player.CurrentArea);
+        }
         double snapshotElapsedMilliseconds =
             Stopwatch.GetElapsedTime(snapshotStartedAt).TotalMilliseconds;
         IReadOnlyCollection<MonsterCombatTarget> pveTargets = [];
         BotPlayerManager.BotWalkingTickResult movementResult = ProcessBotMovementTick(
             matchingId,
             closures,
-            humanAreas,
+            playerAreas,
             inventory,
             groundItems,
             pveTargets,
@@ -63,6 +69,7 @@ public partial class BotPlayerManager
             matchingId,
             movementResult.Movements,
             movementResult.GroundItemPickups,
+            players,
             observers,
             advanceOrbOrbit: true,
             movementResult.PlanningElapsedMilliseconds,
@@ -84,6 +91,7 @@ public partial class BotPlayerManager
         EncounterRevealManager encounters,
         GameEventLogManager gameEventLogManager,
         BotMovementEvent movement,
+        IReadOnlyList<Player> players,
         IReadOnlyList<SwarmBotObserverSnapshot> observers)
     {
         ArgumentNullException.ThrowIfNull(movement);
@@ -98,6 +106,7 @@ public partial class BotPlayerManager
             matchingId,
             [movement],
             [],
+            players,
             observers,
             advanceOrbOrbit: false,
             planningElapsedMilliseconds: 0d,
@@ -116,6 +125,7 @@ public partial class BotPlayerManager
         long matchingId,
         IReadOnlyCollection<BotMovementEvent> movements,
         IReadOnlyCollection<BotGroundItemPickup> pickups,
+        IReadOnlyList<Player> players,
         IReadOnlyList<SwarmBotObserverSnapshot> observers,
         bool advanceOrbOrbit,
         double planningElapsedMilliseconds,
@@ -129,6 +139,7 @@ public partial class BotPlayerManager
                 gameEventLogManager,
                 matchingId,
                 movement,
+                players,
                 observers,
                 advanceOrbOrbit);
             if (dispatch != null)
@@ -162,6 +173,7 @@ public partial class BotPlayerManager
         GameEventLogManager gameEventLogManager,
         long matchingId,
         BotMovementEvent movement,
+        IReadOnlyList<Player> players,
         IReadOnlyList<SwarmBotObserverSnapshot> observers,
         bool advanceOrbOrbit)
     {
@@ -179,11 +191,6 @@ public partial class BotPlayerManager
                 movement.ToArea.ToString(),
                 isBot: true);
         }
-
-        // Existing behavior records a transition even when no human can observe it, but performs no
-        // packet preparation or encounter roll in that case.
-        if (observers.Count == 0)
-            return null;
 
         ImmutableArray<GameClientSession> leaveRecipients = movement.IsAreaTransition
             ? SelectRecipients(observers, observer => observer.Area == movement.FromArea)
@@ -207,6 +214,7 @@ public partial class BotPlayerManager
             encounters,
             matchingId,
             movement,
+            players,
             observers,
             bot);
 
@@ -230,19 +238,21 @@ public partial class BotPlayerManager
         EncounterRevealManager encounters,
         long matchingId,
         BotMovementEvent movement,
+        IReadOnlyList<Player> players,
         IReadOnlyList<SwarmBotObserverSnapshot> observers,
         BotPlayerState? bot)
     {
         if (!movement.ToArea.IsCorridor())
             return null;
 
-        var candidates = observers
-            .Where(observer =>
-                !observer.IsEliminated &&
-                observer.Area == movement.ToArea &&
-                observer.Position.HasValue)
-            .Select(observer => (observer.PlayerId, observer.Position!.Value.ToVector3f()))
-            .ToList();
+        var candidates = new List<(long PlayerId, Vector3f Position)>();
+        foreach (var player in players)
+        {
+            if (player.PlayerId == movement.BotPlayerId || player.IsEliminated ||
+                player.CurrentArea != movement.ToArea || player.Position == null)
+                continue;
+            candidates.Add((player.PlayerId, player.Position));
+        }
         if (candidates.Count == 0)
             return null;
 
@@ -268,8 +278,6 @@ public partial class BotPlayerManager
                 break;
             }
         }
-        if (targetSession == null)
-            return null;
 
         return new SwarmBotEncounterDispatch(
             targetSession,

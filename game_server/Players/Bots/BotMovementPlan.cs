@@ -20,9 +20,7 @@ internal readonly record struct SwarmCellSnapshot(int X, int Y)
 internal readonly record struct SwarmBotObserverSnapshot(
     GameClientSession Session,
     long PlayerId,
-    AreaType Area,
-    bool IsEliminated,
-    SwarmVectorSnapshot? Position);
+    AreaType Area);
 
 internal sealed record SwarmBotPlayerInfoSnapshot(
     long PlayerId,
@@ -101,7 +99,7 @@ internal sealed record SwarmBotMovementDispatch(
     SwarmBotEncounterDispatch? Encounter);
 
 internal sealed record SwarmBotEncounterDispatch(
-    GameClientSession TargetSession,
+    GameClientSession? TargetSession,
     long TargetPlayerId,
     long BotPlayerId,
     AreaType Area,

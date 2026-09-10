@@ -18,18 +18,18 @@ public sealed class MatchOwnedBotsTests
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         Assert.NotSame(first.Bots, second.Bots);
         using (MatchRuntimeStore.Enter(first))
-            Assert.Equal(1L, first.Bots.PrepareMovementTick(first.Closures, first.Inventory, first.GroundItems, first.SummonStones, first.Encounters, logs, [], (_, _) => default).MatchingId);
+            Assert.Equal(1L, first.Bots.PrepareMovementTick(first.Closures, first.Inventory, first.GroundItems, first.SummonStones, first.Encounters, logs, [], [], (_, _) => default).MatchingId);
         using (MatchRuntimeStore.Enter(second))
-            Assert.Equal(2L, second.Bots.PrepareMovementTick(second.Closures, second.Inventory, second.GroundItems, second.SummonStones, second.Encounters, logs, [], (_, _) => default).MatchingId);
+            Assert.Equal(2L, second.Bots.PrepareMovementTick(second.Closures, second.Inventory, second.GroundItems, second.SummonStones, second.Encounters, logs, [], [], (_, _) => default).MatchingId);
         using (MatchRuntimeStore.Enter(first))
         {
             first.TryMarkEnded();
             var movementService = new BotMovementService(logs, NullLogger<BotMovementService>.Instance);
             Assert.Throws<InvalidOperationException>(() => movementService.ProcessTick(first, (_, _) => default));
         }
-        Assert.Throws<InvalidOperationException>(() => first.Bots.PrepareMovementTick(first.Closures, first.Inventory, first.GroundItems, first.SummonStones, first.Encounters, logs, [], (_, _) => default));
+        Assert.Throws<InvalidOperationException>(() => first.Bots.PrepareMovementTick(first.Closures, first.Inventory, first.GroundItems, first.SummonStones, first.Encounters, logs, [], [], (_, _) => default));
         using (MatchRuntimeStore.Enter(second))
-            Assert.Equal(2L, second.Bots.PrepareMovementTick(second.Closures, second.Inventory, second.GroundItems, second.SummonStones, second.Encounters, logs, [], (_, _) => default).MatchingId);
+            Assert.Equal(2L, second.Bots.PrepareMovementTick(second.Closures, second.Inventory, second.GroundItems, second.SummonStones, second.Encounters, logs, [], [], (_, _) => default).MatchingId);
     }
 
     [Fact]

@@ -40,6 +40,7 @@ internal class BotMovementService(
         SwarmBotMovementPlan plan = runtime.Bots.PrepareMovementTick(
             runtime.Closures, runtime.Inventory, runtime.GroundItems, runtime.SummonStones, runtime.Encounters,
             eventLogs,
+            runtime.GetAlivePlayers(),
             observers,
             resolveDirective);
 
@@ -114,15 +115,10 @@ internal class BotMovementService(
                 session.MatchingId != matchingId)
                 continue;
 
-            SwarmVectorSnapshot? position = session.Player.Position == null
-                ? null
-                : SwarmVectorSnapshot.Capture(session.Player.Position);
             observers.Add(new SwarmBotObserverSnapshot(
                 session,
                 session.PlayerId.Value,
-                session.Player.CurrentArea,
-                session.Player.IsEliminated,
-                position));
+                session.Player.CurrentArea));
         }
 
         return observers.ToImmutable();
@@ -169,7 +165,7 @@ internal class BotMovementService(
                     encounter.EventType,
                     encounter.CooldownSeconds,
                     encounter.RevealDelayMs);
-                encounter.TargetSession.TrySend(encounterPacket);
+                encounter.TargetSession?.TrySend(encounterPacket);
                 logger.LogInformation(
                     "Bot corridor encounter event: Matching={MatchingId}, Bot={Bot}, Target={Target}, " +
                     "Area={Area}, EventType={EventType}",
@@ -210,6 +206,7 @@ internal class BotMovementService(
             runtime.Inventory, runtime.Encounters,
             eventLogs,
             movement,
+            runtime.GetAlivePlayers(),
             observers);
         DispatchSwarmBotMovementPlan(plan);
     }

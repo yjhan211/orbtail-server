@@ -12,6 +12,73 @@ namespace demo_regression_tests;
 
 public sealed class SwarmBotMovementPlanTests
 {
+    [Theory]
+    [InlineData(101)]
+    [InlineData(-101)]
+    public void EncounterUsesParticipantsEvenWithoutObservers(long targetId)
+    {
+        var match = CreateMatch();
+        var target = new game_server.players.Player
+        {
+            Profile = new PlayerInfo { PlayerId = targetId },
+            Position = new Vector3f(0, 0, 0),
+            CurrentArea = AreaType.S2Corridor1
+        };
+        var movement = new BotMovementEvent
+        {
+            BotPlayerId = -10, FromArea = AreaType.S2Corridor1, ToArea = AreaType.S2Corridor1,
+            FromCell = new Cell(0, 0), ToCell = new Cell(0, 0),
+            Position = new Vector3f(0, 0, 0), Velocity = new Vector3f(0, 0, 0)
+        };
+        using (match.Enter())
+        {
+            match.RegisterParticipant(target);
+            var plan = match.Bots.PrepareExternalMovement(match.Inventory, match.Encounters,
+                TestGameEventLogs.Create(), movement, match.GetAlivePlayers(), []);
+            var dispatch = Assert.Single(plan.Movements);
+            var encounter = Assert.IsType<SwarmBotEncounterDispatch>(dispatch.Encounter);
+            Assert.Equal(targetId, encounter.TargetPlayerId);
+            Assert.Null(encounter.TargetSession);
+            Assert.Equal(game_server.field.EncounterRevealManager.CorridorRevealEventType, encounter.EventType);
+            Assert.Empty(dispatch.DestinationRecipients);
+
+            // 연결 없는 대상과의 조우도 쌍별 쿨다운을 기록한다.
+            var next = match.Encounters.ResolveCorridorEncounter(-10, movement.Position,
+                [(targetId, target.Position!)]);
+            Assert.NotEqual(game_server.field.EncounterRevealManager.CorridorRevealEventType, next.EventType);
+        }
+    }
+
+    [Fact]
+    public void EncounterIgnoresSelfEliminatedOtherAreaAndMissingPosition()
+    {
+        var match = CreateMatch();
+        var movement = new BotMovementEvent
+        {
+            BotPlayerId = -10, FromArea = AreaType.S2Corridor1, ToArea = AreaType.S2Corridor1,
+            FromCell = new Cell(0, 0), ToCell = new Cell(0, 0),
+            Position = new Vector3f(0, 0, 0), Velocity = new Vector3f(0, 0, 0)
+        };
+        var players = new List<game_server.players.Player>();
+        foreach (long id in new long[] { -10, 101, 102, 103 })
+        {
+            players.Add(new game_server.players.Player
+            {
+                Profile = new PlayerInfo { PlayerId = id },
+                Position = new Vector3f(0, 0, 0), CurrentArea = AreaType.S2Corridor1
+            });
+        }
+        players[1].Status = PlayerMatchStatus.ELIMINATED;
+        players[2].CurrentArea = AreaType.S2Corridor2;
+        players[3].Position = null;
+        using (match.Enter())
+        {
+            var plan = match.Bots.PrepareExternalMovement(match.Inventory, match.Encounters,
+                TestGameEventLogs.Create(), movement, players, []);
+            Assert.Null(Assert.Single(plan.Movements).Encounter);
+        }
+    }
+
     [Fact]
     public void PrepareExternalMovement_FreezesMutableMovementAndRecipientOrder()
     {
@@ -35,10 +102,10 @@ public sealed class SwarmBotMovementPlanTests
         GameClientSession[] recipients = Enumerable.Range(0, 4).Select(_ => TestGameSessionServices.CreateRecipientSession()).ToArray();
         var observers = new List<SwarmBotObserverSnapshot>
         {
-            new(recipients[0], 101, AreaType.S2Gym1, false, null),
-            new(recipients[1], 201, AreaType.S2Ground, false, null),
-            new(recipients[2], 102, AreaType.S2Gym1, false, null),
-            new(recipients[3], 202, AreaType.S2Ground, false, null)
+            new(recipients[0], 101, AreaType.S2Gym1),
+            new(recipients[1], 201, AreaType.S2Ground),
+            new(recipients[2], 102, AreaType.S2Gym1),
+            new(recipients[3], 202, AreaType.S2Ground)
         };
 
         var match = CreateMatch();
@@ -46,6 +113,7 @@ public sealed class SwarmBotMovementPlanTests
             match.Inventory, match.Encounters,
             TestGameEventLogs.Create(),
             movement,
+            [],
             observers);
 
         position.X = 999f;

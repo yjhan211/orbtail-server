@@ -84,7 +84,7 @@ public partial class BotPlayerManager
     ///     Uses the same fixed movement speed 6.0 as the player and emits an equivalent G_TO_C_MOVE event each tick.
     /// </summary>
     public BotWalkingTickResult ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager,
-        IReadOnlyDictionary<long, AreaType> humanAreas,
+        IReadOnlyDictionary<long, AreaType> playerAreas,
         InGameInventoryManager inventoryManager,
         GroundItemManager groundItemManager,
         IReadOnlyCollection<MonsterCombatTarget>? pveTargets,
@@ -98,11 +98,6 @@ public partial class BotPlayerManager
         if (activeBots.Count == 0) return result;
 
         result.PlanningBotId = SelectMovementPlanningBot(matchingId, activeBots);
-
-        // 전체 플레이어(인간 + 봇) 현재 영역 맵 — 봇 타겟 추적/떠보기 인원수 계산용.
-        var playerAreas = new Dictionary<long, AreaType>(humanAreas);
-        foreach (var b in activeBots)
-            playerAreas[b.PlayerId] = b.Player.CurrentArea;
 
         return ProcessSwarmBotMovement(
             matchingId,
