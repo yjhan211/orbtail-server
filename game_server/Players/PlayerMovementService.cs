@@ -14,7 +14,7 @@ namespace game_server.players;
 /// </summary>
 internal sealed class PlayerMovementService(
     GameEventLogManager eventLog,
-    ILogger logger)
+    ILogger<PlayerMovementService> logger)
 {
     private const float MinimumReceiptDeltaSeconds = 0f;
     private const float MaximumReceiptDeltaSeconds = 0.25f;

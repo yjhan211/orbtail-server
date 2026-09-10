@@ -213,7 +213,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         {
             session.Player.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 2, 1, 10);
             Assert.True(session.Player.TryStartSleep(DateTime.UtcNow));
-            Assert.Equal(PlayerState.SLEEP, session.PlayerMovement.CreateGameObjectInfo(session.Match, session.Player, session.Player.State).State);
+            Assert.Equal(PlayerState.SLEEP, TestGameSessionServices.GetMovement(session).CreateGameObjectInfo(session.Match, session.Player, session.Player.State).State);
 
             Assert.True(session.Player.TryStopSleep());
             session.SendPlayerState();
@@ -221,10 +221,10 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Assert.Equal(PlayerState.IDLE, session.Player.State);
             Assert.False(session.Player.IsSleeping);
             Assert.True(TestGameSessionServices.GetPeriodicBuffCount(session.Player) > 0);
-            Assert.Equal(PlayerState.IDLE, session.PlayerMovement.CreateGameObjectInfo(session.Match, session.Player, session.Player.State).State);
+            Assert.Equal(PlayerState.IDLE, TestGameSessionServices.GetMovement(session).CreateGameObjectInfo(session.Match, session.Player, session.Player.State).State);
 
             session.Player.State = PlayerState.EXPLORE_1;
-            Assert.Equal(PlayerState.EXPLORE_1, session.PlayerMovement.CreateGameObjectInfo(session.Match, session.Player, session.Player.State).State);
+            Assert.Equal(PlayerState.EXPLORE_1, TestGameSessionServices.GetMovement(session).CreateGameObjectInfo(session.Match, session.Player, session.Player.State).State);
         }
     }
 
@@ -757,6 +757,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
                 EventLog,
                 growthEventLog == null ? Server.GetOrbGrowth() : TestGameSessionServices.CreatePlayerOrbGrowthService(Store, growthEventLog),
+                TestGameSessionServices.CreateMovementService(EventLog),
+                new PlayerInteractionService(),
 
                 new FakeGameSessionLifecycle(),
                 static () => false,

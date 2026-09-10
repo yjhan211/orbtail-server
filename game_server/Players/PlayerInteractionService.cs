@@ -7,9 +7,9 @@ namespace game_server.players;
 /// <summary>
 ///     매치 잠금 안에서 플레이어의 상호작용 상태를 시작·취소·완료한다.
 /// </summary>
-internal static class PlayerInteractionService
+internal sealed class PlayerInteractionService
 {
-    public static int[] CancelPendingInteractions(MatchRuntime runtime, Player state)
+    public int[] CancelPendingInteractions(MatchRuntime runtime, Player state)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -20,7 +20,7 @@ internal static class PlayerInteractionService
         return canceledIds;
     }
 
-    public static ErrorCode CheckDoorGauge(MatchRuntime runtime, AreaType area, int doorId)
+    public ErrorCode CheckDoorGauge(MatchRuntime runtime, AreaType area, int doorId)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -44,7 +44,7 @@ internal static class PlayerInteractionService
         return ErrorCode.SUCCESS;
     }
 
-    public static ErrorCode StartDoor(MatchRuntime runtime, Player player, int interactId, int doorId, long now)
+    public ErrorCode StartDoor(MatchRuntime runtime, Player player, int interactId, int doorId, long now)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -63,7 +63,7 @@ internal static class PlayerInteractionService
         return error;
     }
 
-    public static bool TryFinishDoor(MatchRuntime runtime, Player player, int interactId, int doorId, long now, out ErrorCode error)
+    public bool TryFinishDoor(MatchRuntime runtime, Player player, int interactId, int doorId, long now, out ErrorCode error)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {

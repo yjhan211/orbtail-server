@@ -1,10 +1,8 @@
 using System.Net;
-using game_server.combat;
 using game_server.logging;
 using game_server.matches;
 using game_server.matches.entry;
 using game_server.matches.results;
-using game_server.orbs;
 using game_server.players;
 using game_server.sessions;
 using Microsoft.Extensions.Configuration;
@@ -46,6 +44,8 @@ internal sealed class GameServer(
     MatchEntryFailureHandler entryFailureHandler,
     MatchCleanupService matchCleanup,
     PlayerOrbGrowthService orbGrowth,
+    PlayerMovementService movement,
+    PlayerInteractionService interactions,
     MatchTickService tickService)
     : IHostedService
 {
@@ -203,6 +203,8 @@ internal sealed class GameServer(
                 sessions.Register,
                 eventLogs,
                 orbGrowth,
+                movement,
+                interactions,
                 matchSessionCleanup,
                 () => Volatile.Read(ref _stopping) != 0,
                 entryFailureHandler,

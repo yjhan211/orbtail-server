@@ -8,9 +8,9 @@ using network.common.data.models;
 
 namespace demo_regression_tests;
 
-public sealed class PlayerOrbAttackTests
+public sealed class PlayerOrbServiceTests
 {
-    public PlayerOrbAttackTests() => TestGameData.EnsureBattleItemCombatLoaded();
+    public PlayerOrbServiceTests() => TestGameData.EnsureBattleItemCombatLoaded();
 
     [Fact]
     public void SunActivationCapsTelegraphsAndProjectilesOutliveOwner()

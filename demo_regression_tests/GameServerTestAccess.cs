@@ -70,7 +70,8 @@ internal static class GameServerTestAccess
         var results = new MatchResultService(runtimes, logs, summaries, logger);
         var movement = new BotMovementService(logs,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotMovementService>.Instance);
-        var decisions = new BotDecisionService(runtimes, logs, growth, orbTrails,
+        var interactions = new PlayerInteractionService();
+        var decisions = new BotDecisionService(runtimes, logs, growth, orbTrails, interactions,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotDecisionService>.Instance);
         var environment = new MatchEnvironmentService(logs, health,
             cleanup, matchEliminations, results,
@@ -110,6 +111,8 @@ internal static class GameServerTestAccess
             entryFailureHandler: entryFailure,
             matchCleanup: cleanup,
             orbGrowth: growth,
+            movement: new PlayerMovementService(logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<PlayerMovementService>.Instance),
+            interactions: interactions,
             tickService: new MatchTickService(runtimes, createLoop, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchTickService>.Instance));
     }
 }

@@ -66,7 +66,7 @@ public sealed class SessionPacketProcessingTests
         Assert.DoesNotContain("ScheduleMessageAsync", main);
         Assert.DoesNotContain("ScheduleMessageAsync", move);
         int check = move.IndexOf("!PlayerMovementService.IsFinite(msg.Position)", StringComparison.Ordinal);
-        int apply = move.IndexOf("PlayerMovement.ProcessMovement(match, Player, msg, deltaTime)", StringComparison.Ordinal);
+        int apply = move.IndexOf("_movement.ProcessMovement(match, Player, msg, deltaTime)", StringComparison.Ordinal);
         Assert.True(check >= 0 && check < apply);
     }
     [Fact]
@@ -109,6 +109,8 @@ public sealed class SessionPacketProcessingTests
 
             logs,
             TestGameSessionServices.CreatePlayerOrbGrowthService(store, logs),
+            TestGameSessionServices.CreateMovementService(logs),
+            new PlayerInteractionService(),
 
             new FakeGameSessionLifecycle(),
             static () => false,

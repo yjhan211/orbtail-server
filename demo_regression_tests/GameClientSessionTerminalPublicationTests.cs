@@ -460,6 +460,8 @@ public sealed class GameClientSessionTerminalPublicationTests
 
                 eventLog,
                 TestGameSessionServices.CreatePlayerOrbGrowthService(matchRuntimes, eventLog),
+                TestGameSessionServices.CreateMovementService(eventLog),
+                new PlayerInteractionService(),
                 new FakeGameSessionLifecycle(prepareGameCompletion),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),

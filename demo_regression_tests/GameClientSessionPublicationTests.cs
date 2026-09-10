@@ -62,7 +62,7 @@ public sealed class GameClientSessionPublicationTests
             session.Player.InitializeSpawn(spawn);
             session.Player.State = PlayerState.SLEEP;
             int sentBefore = connection.DeliveredProtocols.Count;
-            var result = session.PlayerMovement.ProcessMovement(session.Match, session.Player, new C_TO_G_MOVE
+            var result = TestGameSessionServices.GetMovement(session).ProcessMovement(session.Match, session.Player, new C_TO_G_MOVE
             {
                 Position = session.Player.Position!,
                 Velocity = new Vector3f(),
@@ -1021,7 +1021,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("new Timer(", playerState);
         Assert.Contains("ProcessPeriodicBuffs(runtime, players, nowUtc)", combat);
         Assert.Contains("player.UpdatePeriodicBuffs(nowUtc", combat);
-        Assert.Equal(2, CountOccurrences(playerState, "PlayerInteractionService.CancelPendingInteractions(match, Player)"));
+        Assert.Equal(2, CountOccurrences(playerState, "_interactions.CancelPendingInteractions(match, Player)"));
 
         Assert.DoesNotContain("ProcessUseInGameItem", playerState);
         Assert.DoesNotContain("HandleUseInGameItem", playerState);
@@ -1523,6 +1523,8 @@ public sealed class GameClientSessionPublicationTests
 
                 eventLog,
                 TestGameSessionServices.CreatePlayerOrbGrowthService(matchRuntimes, eventLog),
+                TestGameSessionServices.CreateMovementService(eventLog),
+                new PlayerInteractionService(),
                 new FakeGameSessionLifecycle(),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),

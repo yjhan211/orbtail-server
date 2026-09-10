@@ -26,7 +26,7 @@ public sealed class PlayerServiceStateTests
         var match = store.GetOrCreate(948011);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var service = new PlayerMovementService(
-            logs, NullLogger.Instance);
+            logs, NullLogger<PlayerMovementService>.Instance);
         var player = new Player { Profile = new PlayerInfo { PlayerId = playerId } };
         match.RegisterParticipant(player);
         var spawn = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, MatchSpawnData.GetPhaseRoomCandidates()[0]);

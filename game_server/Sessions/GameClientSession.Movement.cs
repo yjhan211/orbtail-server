@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using game_server.items;
 using game_server.players;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -47,7 +46,7 @@ public partial class GameClientSession
                 long timestamp = Stopwatch.GetTimestamp();
                 float deltaTime = Player.CalculateMoveDeltaTime(timestamp);
 
-                var result = PlayerMovement.ProcessMovement(match, Player, msg, deltaTime);
+                var result = _movement.ProcessMovement(match, Player, msg, deltaTime);
                 if (result.BlockedCell is { } blockedCell)
                 {
                     using var rejected = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(result.NewArea, blockedCell);
@@ -160,7 +159,7 @@ public partial class GameClientSession
                     }
 
                 }
-                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(PlayerMovement.CreateGameObjectInfo(Match, Player, Player.State));
+                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(_movement.CreateGameObjectInfo(Match, Player, Player.State));
                 foreach (var session in newAreaSessions)
                 {
                     session.TrySend(enterPacket);
@@ -173,7 +172,7 @@ public partial class GameClientSession
                         continue;
                     }
 
-                    using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(session.PlayerMovement.CreateGameObjectInfo(session.Match, session.Player, session.Player.State));
+                    using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(_movement.CreateGameObjectInfo(session.Match, session.Player, session.Player.State));
                     TrySend(otherEnterPacket);
                 }
 

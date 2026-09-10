@@ -142,5 +142,4 @@ internal sealed class PlayerOrbTrailService
         }
         return destroyed;
     }
-
 }

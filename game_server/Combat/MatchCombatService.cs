@@ -40,7 +40,7 @@ internal class MatchCombatService(
     ILogger<MatchCombatService> logger)
 {
     // 매치 루프마다 생성되는 서비스의 상태. 해당 매치 잠금 안에서만 접근한다.
-    private string? OrbRankingsSignature;
+    private string? _orbRankingsSignature;
     private bool _timeoutResultProcessed;
     private DateTime? _fallbackStartedAtUtc;
     private DateTime? _nextContactLogAtUtc;
@@ -1235,11 +1235,11 @@ internal class MatchCombatService(
             return;
 
         string signature = string.Join("|", entries.Select(entry => $"{entry.PlayerId}:{entry.Orbs}"));
-        bool isFirstBroadcast = OrbRankingsSignature == null;
-        if (!isFirstBroadcast && OrbRankingsSignature == signature)
+        bool isFirstBroadcast = _orbRankingsSignature == null;
+        if (!isFirstBroadcast && _orbRankingsSignature == signature)
             return;
 
-        OrbRankingsSignature = signature;
+        _orbRankingsSignature = signature;
         if (isFirstBroadcast)
             logger.LogInformation(
                 "Orb rankings broadcast armed: MatchingId={MatchingId}, Participants={Count}, Sessions={Sessions}",

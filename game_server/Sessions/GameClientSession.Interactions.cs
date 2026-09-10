@@ -1,6 +1,4 @@
 using game_server.field;
-using game_server.matches;
-using game_server.players;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -45,7 +43,7 @@ public partial class GameClientSession
             {
                 error = info.ZoneId != (int)Player.CurrentArea
                     ? ErrorCode.AREA_MISMATCH
-                    : PlayerInteractionService.StartDoor(match, Player, msg.InteractId, info.DoorId, Environment.TickCount64);
+                    : _interactions.StartDoor(match, Player, msg.InteractId, info.DoorId, Environment.TickCount64);
             }
 
             if (error == ErrorCode.SUCCESS)
@@ -93,7 +91,7 @@ public partial class GameClientSession
                 doorId = info.DoorId;
                 error = info.ZoneId != (int)Player.CurrentArea
                     ? ErrorCode.AREA_MISMATCH
-                    : PlayerInteractionService.CheckDoorGauge(match, Player.CurrentArea, doorId);
+                    : _interactions.CheckDoorGauge(match, Player.CurrentArea, doorId);
             }
 
             bool completed = false;
@@ -101,7 +99,7 @@ public partial class GameClientSession
             {
                 Player.TryFinishInteraction(msg.InteractId);
             }
-            else if (PlayerInteractionService.TryFinishDoor(match, Player, msg.InteractId, doorId, Environment.TickCount64, out error))
+            else if (_interactions.TryFinishDoor(match, Player, msg.InteractId, doorId, Environment.TickCount64, out error))
             {
                 completed = true;
                 using var updatePacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, PlayerId.Value);

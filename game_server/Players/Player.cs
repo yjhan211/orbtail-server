@@ -67,9 +67,10 @@ public class Player
     public int Health { get; set; } = Config.MAX_HEALTH;
     /// <summary>보유 오브 컬렉션. 각 오브의 UID와 꼬리 순서를 유지한다.</summary>
     public PlayerOrbCollection Orbs { get; } = new();
-    /// <summary>파도 오브 UID별 다음 발동 시각. 매치 잠금 안에서 접근한다.</summary>
+    /// <summary>바람 오브 UID별 다음 칼날 시각과 표적이 반경에 든 시각. 매치 잠금 안에서 접근한다.</summary>
     private readonly Dictionary<long, DateTime> _windOrbNextAttackAtUtc = new();
     private readonly Dictionary<long, DateTime> _windOrbEngagedAtUtc = new();
+    /// <summary>파도 오브 UID별 다음 발동 시각. 매치 잠금 안에서 접근한다.</summary>
     internal Dictionary<long, DateTime> WaveOrbNextAttackAtUtc { get; } = new();
     /// <summary>소환석 잔액과 성공한 소환 횟수. 비용·후보·지급 규칙은 PlayerOrbGrowthService에 있다.</summary>
     public SummonStoneState SummonStones { get; internal set; }

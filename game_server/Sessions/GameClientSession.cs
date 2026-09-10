@@ -1,10 +1,7 @@
-using game_server.combat;
-using game_server.items;
 using game_server.logging;
 using game_server.matches;
 using game_server.matches.entry;
 using game_server.matches.results;
-using game_server.orbs;
 using game_server.players;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -37,7 +34,8 @@ public partial class GameClientSession : SessionBase
     private readonly IMatchSessionCleanup _matchSessionCleanup;
     private readonly MatchCleanupService _matchCleanup;
 
-    internal readonly PlayerMovementService PlayerMovement;
+    private readonly PlayerMovementService _movement;
+    private readonly PlayerInteractionService _interactions;
     private readonly PlayerOrbGrowthService _orbGrowth;
     private readonly GameEventLogManager _gameEventLogManager;
 
@@ -62,6 +60,8 @@ public partial class GameClientSession : SessionBase
         Func<long, GameClientSession, GameClientSession?> registerSessionCallback,
         GameEventLogManager gameEventLogManager,
         PlayerOrbGrowthService orbGrowth,
+        PlayerMovementService movement,
+        PlayerInteractionService interactions,
         IMatchSessionCleanup matchSessionCleanup,
         Func<bool> isServerStopping,
         IMatchEntryFailureHandler entryFailureHandler,
@@ -75,9 +75,10 @@ public partial class GameClientSession : SessionBase
 
         _gameEventLogManager = gameEventLogManager;
         _orbGrowth = orbGrowth;
+        _movement = movement;
+        _interactions = interactions;
 
         _matchEntry = matchEntry;
-        PlayerMovement = new PlayerMovementService(gameEventLogManager, logger);
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Connection.TrySend;
         _matchSessionCleanup = matchSessionCleanup;
         _isServerStopping = isServerStopping;
@@ -374,11 +375,11 @@ public partial class GameClientSession : SessionBase
 
             if (sessions.Count > 0)
             {
-                using var others = PacketMaker.G_TO_C_OBJECT_INFO(sessions.Select(s => s.PlayerMovement.CreateGameObjectInfo(s.Match, s.Player, s.Player.State)).ToList());
+                using var others = PacketMaker.G_TO_C_OBJECT_INFO(sessions.Select(s => _movement.CreateGameObjectInfo(s.Match, s.Player, s.Player.State)).ToList());
                 TrySend(others);
             }
 
-            using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([PlayerMovement.CreateGameObjectInfo(Match, Player, Player.State)]))
+            using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([_movement.CreateGameObjectInfo(Match, Player, Player.State)]))
             {
                 foreach (var session in sessions)
                 {

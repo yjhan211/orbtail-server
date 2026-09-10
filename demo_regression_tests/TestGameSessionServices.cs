@@ -49,7 +49,7 @@ internal static class TestGameSessionServices
             new network.core.TcpConnection(), NullLogger.Instance, new InMemoryRedisOperations(),
             static _ => false, CreateMatchCleanupService(), static (_, _) => null,
             logs,
-            CreatePlayerOrbGrowthService(store, logs), new FakeGameSessionLifecycle(), static () => false,
+            CreatePlayerOrbGrowthService(store, logs), CreateMovementService(logs), new PlayerInteractionService(), new FakeGameSessionLifecycle(), static () => false,
             new FakeMatchEntryFailureHandler(),
             matchEntry: CreateEntryService(null, store, NullLogger.Instance));
     }
@@ -83,8 +83,11 @@ internal static class TestGameSessionServices
             new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
         return new MatchRuntimeStore(logger.For<MatchRuntime>(), lifecycle, logger.For<MatchCombatDamageService>());
     }
+    public static PlayerMovementService CreateMovementService(GameEventLogManager logs) =>
+        new(logs, NullLogger<PlayerMovementService>.Instance);
+
     public static PlayerMovementService GetMovement(GameClientSession session) =>
-        (PlayerMovementService)typeof(GameClientSession).GetField("PlayerMovement",
+        (PlayerMovementService)typeof(GameClientSession).GetField("_movement",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(session)!;
 
     // 실제 입장처럼 참가자 등록을 마친 뒤 해당 플레이어에 연결을 붙인다.

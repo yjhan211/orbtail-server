@@ -1,5 +1,3 @@
-using game_server.field;
-using game_server.matches;
 using game_server.players;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -50,7 +48,7 @@ public partial class GameClientSession
 
             if (msg.State == PlayerState.SLEEP)
             {
-                int[] canceledIds = PlayerInteractionService.CancelPendingInteractions(match, Player);
+                int[] canceledIds = _interactions.CancelPendingInteractions(match, Player);
                 SendInteractionCanceled(canceledIds, "PlayerState:SLEEP");
                 if (!Player.IsSleeping && Player.TryStartSleep(DateTime.UtcNow))
                 {
@@ -61,7 +59,7 @@ public partial class GameClientSession
 
             if (!isExploreState)
             {
-                int[] canceledIds = PlayerInteractionService.CancelPendingInteractions(match, Player);
+                int[] canceledIds = _interactions.CancelPendingInteractions(match, Player);
                 SendInteractionCanceled(canceledIds, $"PlayerState:{msg.State}");
             }
 

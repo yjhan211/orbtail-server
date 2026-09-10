@@ -25,7 +25,7 @@ internal static class TestMatchTickServices
         new(runtime, store, logger, pickup,
             new MatchEntryFailureHandler(store, new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance), new game_server.matches.MatchSessionCleanupService(new InMemoryRedisOperations(), new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger), logger), new Combat(combat), new Environment(environment),
             new Movement(movement),
-            new BotDecisionService(store, null!, null!, null!, NullLogger<BotDecisionService>.Instance),
+            new BotDecisionService(store, null!, null!, null!, null!, NullLogger<BotDecisionService>.Instance),
             new Field(field), clock);
 
     // 실제 ProcessTick을 실행해 시간 조건과 단계별 호출 여부를 검증한다.

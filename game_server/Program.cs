@@ -1,11 +1,9 @@
 using game_server.combat;
 using game_server.field;
-using game_server.items;
 using game_server.logging;
 using game_server.matches;
 using game_server.matches.entry;
 using game_server.matches.results;
-using game_server.orbs;
 using game_server.players;
 using game_server.players.bots;
 using game_server.sessions;
@@ -137,13 +135,15 @@ internal static class Program
         services.AddSingleton<PlayerHealthService>();
         services.AddSingleton<MatchEnvironmentService>();
         services.AddSingleton<PlayerOrbGrowthService>();
+        services.AddSingleton<PlayerMovementService>();
+        services.AddSingleton<PlayerInteractionService>();
         services.AddSingleton<PlayerOrbService>();
         services.AddSingleton<PlayerPickupService>();
         services.AddSingleton<OrbVisualStatePublisher>();
         services.AddSingleton<PlayerOrbTrailService>();
         services.AddSingleton<SunOrbAttackService>();
         services.AddSingleton<WaveOrbAttackService>();
-       services.AddTransient<MatchZoneService>();
+        services.AddTransient<MatchZoneService>();
         services.AddSingleton<BotMovementService>();
         services.AddSingleton<BotDecisionService>();
         services.AddTransient<MatchCombatService>();
