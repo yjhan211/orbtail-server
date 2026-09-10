@@ -148,7 +148,7 @@ public sealed class GameClientSessionPublicationTests
         using (session.Match.Enter())
         {
             var combat = session.Match.CombatDamage;
-            combat.ApplyProximityAutoCombatHit(session, 101, (AreaType)50, 123, 5, isPeriodicDamage: true, sourceHealth: 73);
+            combat.ApplyProximityAutoCombatHit(session.Player, 101, (AreaType)50, 123, 5, isPeriodicDamage: true, sourceHealth: 73);
         }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(101, hit.AttackerId);
@@ -158,6 +158,31 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(5, hit.Damage);
         Assert.Equal(123, hit.WeaponItemId);
         Assert.True(hit.IsDot);
+    }
+
+    [Fact]
+    public void SharedCombatHitAppliesSameDamageAndHealingLockToHumanAndBot()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 102, (AreaType)50);
+        var match = session.Match;
+        var bot = new game_server.players.bots.BotPlayerState { PlayerId = -11 };
+        bot.Player.Health = session.Player.Health;
+        match.Bots.GetBots(match.MatchingId).Add(bot);
+        int before = bot.Player.Health;
+        using (match.Enter())
+        {
+            match.CombatDamage.ApplyProximityAutoCombatHit(session.Player, 101, (AreaType)50, 123, 5);
+            match.CombatDamage.ApplyProximityAutoCombatHit(bot.Player, 101, (AreaType)50, 123, 5);
+        }
+        Assert.Equal(before - 5, bot.Player.Health);
+        Assert.Equal(session.Player.Health, bot.Player.Health);
+        Assert.False(session.Player.CanSleep(DateTime.UtcNow));
+        Assert.False(bot.Player.CanSleep(DateTime.UtcNow));
+        Assert.Equal(101, bot.LastProximityAttackerPlayerId);
+        Assert.True(bot.LastDamagedAtUtc > DateTime.MinValue);
+        Assert.True(match.BotTactics.LastDamagedAtUtc.ContainsKey((match.MatchingId, bot.PlayerId)));
+        Assert.Single(fixture.ConnectionFor(session).AttemptedProtocols.Where(protocol => protocol == Protocol.G_TO_C_COMBAT_HIT));
     }
 
     [Fact]

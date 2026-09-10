@@ -105,33 +105,51 @@ internal sealed class MatchCombatDamageService(
 
     /// <summary>일반 피격의 로그·체력 변경·결과 전송을 매치 잠금 안에서 처리한다.</summary>
     public void ApplyProximityAutoCombatHit(
-        GameClientSession victimSession, long sourcePlayerId, AreaType area, int weaponItemId,
+        Player victim, long sourcePlayerId, AreaType area, int weaponItemId,
         int damage, bool isPeriodicDamage = false, int sourceHealth = -1)
     {
-        if (!victimSession.PlayerId.HasValue || victimSession.Player.IsEliminated || damage <= 0)
-        {
-            return;
-        }
-        eventLogs.LogHit(victimSession.MatchingId, sourcePlayerId, victimSession.PlayerId.Value, weaponItemId, damage,
-            victimSession.Player.Health > 0 && victimSession.Player.Health - damage <= 0,
+        if (victim.IsEliminated || damage <= 0) return;
+
+        RecordCombatContact(victim, sourcePlayerId);
+        eventLogs.LogHit(runtime.MatchingId, sourcePlayerId, victim.PlayerId, weaponItemId, damage,
+            victim.Health > 0 && victim.Health - damage <= 0,
             BotPlayerManager.IsBotPlayerId(sourcePlayerId), DateTimeOffset.UtcNow);
 
-        var change = victimSession.Player.ApplyDamage(damage);
-        victimSession.HealthChanges.Handle(victimSession.Match, victimSession.Player, change, attackerPlayerId: sourcePlayerId);
+        var change = victim.ApplyDamage(damage);
+        // 사람은 즉시, 봇은 전투 루프의 탈락 단계에서 처리하는 기존 순서를 유지한다.
+        var session = victim.Session;
+        if (session != null)
+            session.HealthChanges.Handle(runtime, victim, change, attackerPlayerId: sourcePlayerId);
+        else
+            PlayerHealthChangeService.Record(runtime.MatchingId, victim, change, eventLogs, logger);
+
+        if (session == null) return;
         using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
         {
             AttackerId = sourcePlayerId,
-            TargetId = victimSession.PlayerId.Value,
+            TargetId = victim.PlayerId,
             AreaType = area,
             WeaponItemId = weaponItemId,
             Damage = damage,
-            AttackerHealth = sourcePlayerId == victimSession.PlayerId.Value ? victimSession.Player.Health : sourceHealth,
-            TargetHealth = victimSession.Player.Health,
+            AttackerHealth = sourcePlayerId == victim.PlayerId ? victim.Health : sourceHealth,
+            TargetHealth = victim.Health,
             IsDot = isPeriodicDamage
         });
-        victimSession.TrySend(packet);
+        session.TrySend(packet);
     }
 
+    private void RecordCombatContact(Player victim, long attackerId)
+    {
+        var nowUtc = DateTime.UtcNow;
+        victim.MarkSwarmCombat(nowUtc);
+        var bot = runtime.Bots.GetBots(runtime.MatchingId).FirstOrDefault(bot => ReferenceEquals(bot.Player, victim));
+        if (bot == null) return;
+
+        // 피격 후 도주·문 열기 중단을 판단하는 봇 AI 입력만 별도로 남긴다.
+        bot.LastProximityAttackerPlayerId = attackerId;
+        bot.LastDamagedAtUtc = nowUtc;
+        runtime.BotTactics.LastDamagedAtUtc[(runtime.MatchingId, victim.PlayerId)] = nowUtc;
+    }
 
     /// <summary>몬스터 피해를 적용하고 같은 피해량을 클라이언트에 알린다.</summary>
     public void ApplySwarmAfterimageMonsterHit(
@@ -318,37 +336,15 @@ internal sealed class MatchCombatDamageService(
         if (runtime.WindOrbAttacks.IsWounded(victimId, DateTime.UtcNow) &&
             RollCritical(Config.SWARM_WIND_WOUND_CRIT_CHANCE))
             shock = Math.Max(shock + 1, (int)MathF.Round(shock * SwarmCriticalMultiplier));
-        int healthBefore;
-        int healthAfter;
+        var victim = aliveSessions.FirstOrDefault(session => session.PlayerId == victimId)?.Player
+            ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == victimId)?.Player;
+        if (victim == null || victim.IsEliminated) return;
 
-        var victimSession = aliveSessions.FirstOrDefault(session => session.PlayerId == victimId);
         var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
         int ownerHealth = ownerSession?.Player.Health ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == ownerId)?.Player.Health ?? -1;
-        if (victimSession != null)
-        {
-            healthBefore = victimSession.Player.Health;
-            // 사격 피격 경로 재사용 — 체력 감소·피격 숫자·탈락 흐름이 그대로 따라온다.
-            ApplyProximityAutoCombatHit(victimSession, ownerId, area, weaponItemId, shock, isPeriodicDamage, ownerHealth);
-            healthAfter = victimSession.Player.Health;
-        }
-        else
-        {
-            var bot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == victimId);
-            if (bot == null)
-                return;
-            healthBefore = bot.Player.Health;
-            bot.LastProximityAttackerPlayerId = ownerId;
-            runtime.BotTactics.LastDamagedAtUtc[(runtime.MatchingId, bot.PlayerId)] = DateTime.UtcNow;
-            bot.Player.MarkSwarmCombat(DateTime.UtcNow);
-            bot.LastDamagedAtUtc = DateTime.UtcNow;
-            eventLogs.LogHit(
-                runtime.MatchingId, ownerId, bot.PlayerId, weaponItemId, shock,
-                bot.Player.Health > 0 &&
-                bot.Player.Health - shock <= 0,
-                BotPlayerManager.IsBotPlayerId(ownerId), DateTimeOffset.UtcNow);
-            PlayerHealthChangeService.Record(runtime.MatchingId, bot.Player, bot.Player.ApplyDamage(shock), eventLogs, logger);
-            healthAfter = bot.Player.Health;
-        }
+        int healthBefore = victim.Health;
+        ApplyProximityAutoCombatHit(victim, ownerId, area, weaponItemId, shock, isPeriodicDamage, ownerHealth);
+        int healthAfter = victim.Health;
 
         SendPlayerHitNotification(ownerSession, victimId, area, weaponItemId, shock, healthAfter, isPeriodicDamage);
 
@@ -416,43 +412,16 @@ internal sealed class MatchCombatDamageService(
         int healthDamage = ConsumeSwarmPvpDamage(attack.TargetPlayerId, attack.Damage);
         var attackerSession = allSessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId);
         int attackerHealth = attackerSession?.Player.Health ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == attack.AttackerPlayerId)?.Player.Health ?? -1;
-        int targetHealth;
-        var targetSession = aliveSessions.FirstOrDefault(session =>
-            session.PlayerId == attack.TargetPlayerId);
-        if (targetSession != null)
-        {
-            if (healthDamage > 0)
-            {
-                ApplyProximityAutoCombatHit(targetSession,
-                    attack.AttackerPlayerId, attack.Area, attack.WeaponItemId, healthDamage, sourceHealth: attackerHealth);
-            }
-            targetHealth = targetSession.Player.Health;
-        }
-        else
-        {
-            var bot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == attack.TargetPlayerId);
-            if (bot == null)
-                return 0;
+        var target = aliveSessions.FirstOrDefault(session => session.PlayerId == attack.TargetPlayerId)?.Player
+            ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == attack.TargetPlayerId)?.Player;
+        if (target == null || target.IsEliminated) return 0;
 
-            // 오염이 0으로 이월돼도 "피격 중" 스탬프는 매 발 — 피격 반응 판단의 입력.
-            bot.LastProximityAttackerPlayerId = attack.AttackerPlayerId;
-            runtime.BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
-            bot.Player.MarkSwarmCombat(DateTime.UtcNow);
-            bot.LastDamagedAtUtc = DateTime.UtcNow;
-            if (healthDamage > 0)
-            {
-                // 킬 크레딧 (#226 F 계측): 봇 표적도 사람 표적과 같은 피격 로그를 남긴다 —
-                // 이게 빠지면 사람이 봇을 잡아도 killCount·totalDamageDealt가 0으로 남는다.
-                eventLogs.LogHit(
-                    matchingId, attack.AttackerPlayerId, bot.PlayerId, attack.WeaponItemId,
-                    healthDamage,
-                    bot.Player.Health > 0 &&
-                    bot.Player.Health - healthDamage <= 0,
-                    BotPlayerManager.IsBotPlayerId(attack.AttackerPlayerId), DateTimeOffset.UtcNow);
-                PlayerHealthChangeService.Record(runtime.MatchingId, bot.Player, bot.Player.ApplyDamage(healthDamage), eventLogs, logger);
-            }
-            targetHealth = bot.Player.Health;
-        }
+        if (healthDamage > 0)
+            ApplyProximityAutoCombatHit(target, attack.AttackerPlayerId, attack.Area,
+                attack.WeaponItemId, healthDamage, sourceHealth: attackerHealth);
+        else
+            RecordCombatContact(target, attack.AttackerPlayerId);
+        int targetHealth = target.Health;
 
         if (healthDamage > 0 && sendAttackerFeedback)
         {

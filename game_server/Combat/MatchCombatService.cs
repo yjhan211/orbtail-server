@@ -997,7 +997,7 @@ internal class MatchCombatService(
         int cutterHealthAfter;
         if (cutterSession != null)
         {
-            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplyProximityAutoCombatHit(cutterSession,
+            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplyProximityAutoCombatHit(cutterSession.Player,
                 cutterId, cutterArea, destroyedItem.ItemId, SwarmSingleCutHealthCost);
             cutterSession.Player.BlockHealingUntil(healLockUntil);
             cutterHealthAfter = cutterSession.Player.Health;

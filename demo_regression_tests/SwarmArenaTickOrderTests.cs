@@ -204,10 +204,10 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             applyProximityHit,
             "eventLogs.LogHit(",
-            "victimSession.Player.ApplyDamage(damage);",
-            "victimSession.HealthChanges.Handle(victimSession.Match, victimSession.Player, change, attackerPlayerId: sourcePlayerId);",
+            "victim.ApplyDamage(damage);",
+            "session.HealthChanges.Handle(runtime, victim, change, attackerPlayerId: sourcePlayerId);",
             "PacketMaker.G_TO_C_COMBAT_HIT(",
-            "victimSession.TrySend(packet);");
+            "session.TrySend(packet);");
 
         string orbPublicationSteps = ReadMethodSlice(
             proximity,
