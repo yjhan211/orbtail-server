@@ -31,7 +31,7 @@ public sealed class MatchRuntimeStoreTests
     [Fact]
     public void Constructor_RejectsMissingLifecycleService()
     {
-        Assert.Throws<ArgumentNullException>(() => new MatchRuntimeStore(NullLogger<MatchRuntime>.Instance, null!, Microsoft.Extensions.Logging.Abstractions.NullLogger<game_server.combat.MatchCombatDamageService>.Instance));
+        Assert.Throws<ArgumentNullException>(() => new MatchRuntimeStore(NullLogger<MatchRuntime>.Instance, null!));
     }
     [Fact]
     public void RuntimeAndStoreScopes_ShareDepthAndCleanupOnlyOnOutermostExit()

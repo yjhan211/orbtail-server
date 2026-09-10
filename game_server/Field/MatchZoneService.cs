@@ -15,7 +15,7 @@ using network.packets;
 namespace game_server.field;
 
 /// <summary>
-///     매치 루프마다 생성되며 자기장 초기 방송 여부를 관리한다.
+///     DI 싱글턴. 자기장 초기 방송 여부는 MatchRuntime.Progress가 소유한다.
 ///     자기장 스폰 위치와 폐쇄 시간표를 계산하고 구역·문·잔류 오브를 정리한다.
 ///     매치 잠금 안에서 상태 변경을 완료한 뒤 확정된 순서로 패킷을 전송한다.
 ///     전송 실패 시 이미 적용한 상태를 되돌리지 않는다.
@@ -26,8 +26,6 @@ internal class MatchZoneService(
     PlayerOrbTrailService orbTrails,
     ILogger<MatchZoneService> logger)
 {
-    private bool _initialFieldStateSent;
-
     public virtual void ProcessTick(long matchingId, GameClientSession[] sessionSnapshot)
     {
         var plan = PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);
@@ -149,9 +147,10 @@ internal class MatchZoneService(
         ImmutableArray<GameClientSession> allRecipients = sessions.ToImmutableArray();
         var closureState = matchRuntimes.GetOrThrow(matchingId).Closures.InitializeMatching(
             wavesOverride: MatchPressureFieldPolicy.Enabled ? GetSwarmFieldWaves() : null);
-        if (MatchPressureFieldPolicy.Enabled && !_initialFieldStateSent)
+        var progress = matchRuntimes.GetOrThrow(matchingId).Progress;
+        if (MatchPressureFieldPolicy.Enabled && !progress.InitialFieldStateSent)
         {
-            _initialFieldStateSent = true;
+            progress.InitialFieldStateSent = true;
             outbound.Add(new SwarmFieldStateOutbound(
                 new DateTimeOffset(closureState.GameStartTime).ToUnixTimeMilliseconds(),
                 allRecipients));

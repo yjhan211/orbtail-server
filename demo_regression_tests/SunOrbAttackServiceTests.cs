@@ -1,8 +1,8 @@
-using game_server.players;
 using game_server.combat;
 using game_server.logging;
 using game_server.matches;
 using game_server.orbs;
+using game_server.players;
 using game_server.players.bots;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -18,8 +18,8 @@ public sealed class SunOrbAttackServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947604);
         var service = new SunOrbAttackService(
-            TestGameSessionServices.CreateHealthService(store, store.EventLogs), store.EventLogs);
-        var attacks = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store, store.EventLogs), new PlayerOrbTrailService(), store.EventLogs);
+            TestGameSessionServices.CreateHealthService(store, store.EventLogs), TestGameSessionServices.CreateCombatDamageService(store.EventLogs), store.EventLogs);
+        var attacks = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store, store.EventLogs), TestGameSessionServices.CreateCombatDamageService(store.EventLogs), new PlayerOrbTrailService(), store.EventLogs);
         var owner = new Player { Profile = new PlayerInfo { PlayerId = 11 } };
         var now = DateTime.UtcNow;
         Assert.Throws<InvalidOperationException>(() => service.ProcessSwarmCrossfires(match, now));
@@ -45,7 +45,7 @@ public sealed class SunOrbAttackServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947601);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = new SunOrbAttackService(TestGameSessionServices.CreateHealthService(store, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), logs);
+        var service = new SunOrbAttackService(TestGameSessionServices.CreateHealthService(store, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), TestGameSessionServices.CreateCombatDamageService(logs), logs);
         var now = DateTime.UtcNow;
         var owner = new BotPlayerState { PlayerId = 11 };
         var victim = new BotPlayerState { PlayerId = 12 };
@@ -94,7 +94,7 @@ public sealed class SunOrbAttackServiceTests
         var first = store.GetOrCreate(947602);
         var second = store.GetOrCreate(947603);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = new SunOrbAttackService(TestGameSessionServices.CreateHealthService(store, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), logs);
+        var service = new SunOrbAttackService(TestGameSessionServices.CreateHealthService(store, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), TestGameSessionServices.CreateCombatDamageService(logs), logs);
         var now = DateTime.UtcNow;
         using (MatchRuntimeStore.Enter(first))
             first.SunOrbAttacks.SetSunBurn(12, 11, 107000010, AreaType.S2Ground,

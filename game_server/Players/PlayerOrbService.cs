@@ -18,6 +18,7 @@ namespace game_server.players;
 /// </summary>
 internal sealed class PlayerOrbService(
     PlayerHealthService healthService,
+    MatchCombatDamageService combatDamage,
     PlayerOrbTrailService orbTrails,
     GameEventLogManager eventLogs)
 {
@@ -591,8 +592,8 @@ internal sealed class PlayerOrbService(
                 {
                     monsterHits++;
                     runtime.Monsters.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
-                    int monsterDamage = runtime.CombatDamage.RollSwarmCriticalDamage(damage, out bool critical);
-                    runtime.CombatDamage.ApplySwarmMonsterHitNow(monster.CombatTargetId, monster.MonsterId, owner.PlayerId, orb.ItemId, owner.CurrentArea, monsterDamage, critical, activeSessions);
+                    int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, damage, out bool critical);
+                    combatDamage.ApplySwarmMonsterHitNow(runtime, monster.CombatTargetId, monster.MonsterId, owner.PlayerId, orb.ItemId, owner.CurrentArea, monsterDamage, critical, activeSessions);
                 }
             }
 
@@ -607,7 +608,7 @@ internal sealed class PlayerOrbService(
                     }
 
                     shocks++;
-                    runtime.CombatDamage.ApplySwarmShock(healthService, owner.PlayerId, orb.ItemId, owner.CurrentArea, participant.PlayerId, $"WIND_BLADE_HIT ordinal={ordinal}", alivePlayers);
+                    combatDamage.ApplySwarmShock(runtime, healthService, owner.PlayerId, orb.ItemId, owner.CurrentArea, participant.PlayerId, $"WIND_BLADE_HIT ordinal={ordinal}", alivePlayers);
                     if (runtime.IsEnded)
                     {
                         return;

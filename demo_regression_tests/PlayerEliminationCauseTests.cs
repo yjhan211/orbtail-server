@@ -54,18 +54,19 @@ public sealed class PlayerEliminationCauseTests
         var match = store.GetOrCreate(1);
         var healthService = TestGameSessionServices.CreateHealthService(store, store.EventLogs,
             new game_server.matches.results.MatchSummaryFileStore(), NullLogger.Instance);
+        var combat = TestGameSessionServices.CreateCombatDamageService(store.EventLogs);
         var bot = new BotPlayerState { PlayerId = -1, Player = { Health = 10 } };
         using (match.Enter())
         {
             match.Bots.GetBots(1).Add(bot);
             match.RegisterParticipant(bot.Player);
-            match.CombatDamage.ApplyProximityAutoCombatHit(healthService, bot.Player, 101, AreaType.None, 123, 9);
+            combat.ApplyProximityAutoCombatHit(match, healthService, bot.Player, 101, AreaType.None, 123, 9);
             Assert.False(bot.Player.IsEliminated);
-            match.CombatDamage.ApplyProximityAutoCombatHit(healthService, bot.Player, 102, AreaType.None, 123, 1);
+            combat.ApplyProximityAutoCombatHit(match, healthService, bot.Player, 102, AreaType.None, 123, 1);
             Assert.True(bot.Player.IsEliminated);
             Assert.Equal(102, bot.Player.AttackerPlayerId);
             int rank = bot.Player.EliminationRank;
-            match.CombatDamage.ApplyProximityAutoCombatHit(healthService, bot.Player, 103, AreaType.None, 123, 10);
+            combat.ApplyProximityAutoCombatHit(match, healthService, bot.Player, 103, AreaType.None, 123, 10);
             Assert.Equal(102, bot.Player.AttackerPlayerId);
             Assert.Equal(rank, bot.Player.EliminationRank);
             Assert.False(bot.Player.CanSleep(DateTime.UtcNow));

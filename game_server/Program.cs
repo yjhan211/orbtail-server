@@ -97,9 +97,7 @@ internal static class Program
             var lifecycle = sp.GetRequiredService<MatchSessionCleanupService>();
             return new MatchRuntimeStore(
                 sp.GetRequiredService<ILogger<MatchRuntime>>(),
-
-                matchSessionCleanup: lifecycle,
-                damageLogger: sp.GetRequiredService<ILogger<MatchCombatDamageService>>());
+                matchSessionCleanup: lifecycle);
         });
         services.AddSingleton<GameEventLogManager>(sp =>
         {
@@ -133,6 +131,7 @@ internal static class Program
             sp.GetRequiredService<MatchResultService>(),
             sp.GetRequiredService<ILogger<PlayerEliminationService>>()));
         services.AddSingleton<PlayerHealthService>();
+        services.AddSingleton<MatchCombatDamageService>();
         services.AddSingleton<MatchEnvironmentService>();
         services.AddSingleton<PlayerOrbGrowthService>();
         services.AddSingleton<PlayerMovementService>();
@@ -143,14 +142,16 @@ internal static class Program
         services.AddSingleton<PlayerOrbTrailService>();
         services.AddSingleton<SunOrbAttackService>();
         services.AddSingleton<WaveOrbAttackService>();
-        services.AddTransient<MatchZoneService>();
+        services.AddSingleton<MatchZoneService>();
         services.AddSingleton<BotMovementService>();
         services.AddSingleton<BotDecisionService>();
-        services.AddTransient<MatchCombatService>();
-        // 생성 함수만 공유한다. 루프와 전투·자기장 서비스는 매치마다 만든다.
+        services.AddSingleton<MatchCombatService>();
+        // 루프만 매치마다 만든다. 전투·자기장 서비스는 싱글턴이고 진행 표시는 MatchRuntime.Progress가 소유한다.
         services.AddSingleton<Func<MatchRuntime, TimeProvider, MatchTickLoop>>(sp =>
         {
             var environment = sp.GetRequiredService<MatchEnvironmentService>();
+            var zones = sp.GetRequiredService<MatchZoneService>();
+            var combat = sp.GetRequiredService<MatchCombatService>();
             var botMovement = sp.GetRequiredService<BotMovementService>();
             var botDecisions = sp.GetRequiredService<BotDecisionService>();
             var runtimes = sp.GetRequiredService<MatchRuntimeStore>();
@@ -159,8 +160,6 @@ internal static class Program
             return (runtime, clock) =>
             {
                 var entryFailureHandler = sp.GetRequiredService<MatchEntryFailureHandler>();
-                var zones = sp.GetRequiredService<MatchZoneService>();
-                var combat = ActivatorUtilities.CreateInstance<MatchCombatService>(sp, zones);
                 return new MatchTickLoop(
                     runtime,
                     runtimes, loopLogger, pickup,

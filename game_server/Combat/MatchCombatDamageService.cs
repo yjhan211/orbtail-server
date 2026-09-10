@@ -16,55 +16,49 @@ namespace game_server.combat;
 
 /// <summary>
 ///     오브 공격의 치명타·몬스터 피해·처치 보상과 플레이어 충격을 적용한다.
-///     매치마다 생성되며 예약된 몬스터·PvP 피해, 소수점 잔여 피해와 치명타 난수를 관리한다. 호출자는 매치 잠금을 보유한다.
-///     상태 변경 뒤 피격·드롭 패킷을 보내며 전송 실패로 적용한 피해를 되돌리지 않는다.
+///     DI 싱글턴이며 예약 피해와 치명타 난수는 MatchRuntime.CombatDamage가, 소수점 잔여 피해는 Player가 소유한다.
+///     호출자는 매치 잠금을 보유한다. 상태 변경 뒤 피격·드롭 패킷을 보내며 전송 실패로 적용한 피해를 되돌리지 않는다.
 /// </summary>
 internal sealed class MatchCombatDamageService(
-    MatchRuntime runtime,
     GameEventLogManager eventLogs,
     ILogger<MatchCombatDamageService> logger)
 {
-    private readonly List<PendingMonsterHit> _pendingMonsterHits = new();
-    private readonly List<(ProximityCombatAttack Attack, DateTime DueAtUtc)> _pendingPvpHits = new();
     private const int SwarmRingVfxKindRetaliationBlocked = 6;
 
-    private readonly Random _criticalRng = new();
-    private bool RollCritical(double chance) => _criticalRng.NextDouble() < chance;
+    private static bool RollCritical(MatchRuntime runtime, double chance) => runtime.CombatDamage.CriticalRng.NextDouble() < chance;
 
-    private readonly Dictionary<long, float> _pvpDamageCarry = new();
     private static float SwarmPvpDamagePerDamage =>
         SwarmConfigData.GetFloat("SWARM_PVP_DAMAGE_PER_DAMAGE", 0.12f);
 
     /// <summary>착탄 예정 피해를 이 매치의 대기열에 추가한다.</summary>
-    public void ScheduleMonsterHit(PendingMonsterHit hit) => _pendingMonsterHits.Add(hit);
+    public void ScheduleMonsterHit(MatchRuntime runtime, PendingMonsterHit hit) => runtime.CombatDamage.PendingMonsterHits.Add(hit);
 
-    public void SchedulePvpHit(ProximityCombatAttack attack, DateTime dueAtUtc) =>
-        _pendingPvpHits.Add((attack, dueAtUtc));
+    public void SchedulePvpHit(MatchRuntime runtime, ProximityCombatAttack attack, DateTime dueAtUtc) =>
+        runtime.CombatDamage.PendingPvpHits.Add((attack, dueAtUtc));
 
-    public void ProcessPendingPvpHits(PlayerHealthService healthService, DateTime nowUtc, IReadOnlyList<Player> players, List<GameClientSession> sessions)
+    public void ProcessPendingPvpHits(MatchRuntime runtime, PlayerHealthService healthService, DateTime nowUtc, IReadOnlyList<Player> players, List<GameClientSession> sessions)
     {
-        for (int index = _pendingPvpHits.Count - 1; index >= 0; index--)
+        for (int index = runtime.CombatDamage.PendingPvpHits.Count - 1; index >= 0; index--)
         {
-            var pending = _pendingPvpHits[index];
+            var pending = runtime.CombatDamage.PendingPvpHits[index];
             if (nowUtc < pending.DueAtUtc)
                 continue;
-            _pendingPvpHits.RemoveAt(index);
-            ApplySwarmPvpAttack(healthService, pending.Attack, players, sessions, broadcastVfx: false);
+            runtime.CombatDamage.PendingPvpHits.RemoveAt(index);
+            ApplySwarmPvpAttack(runtime, healthService, pending.Attack, players, sessions, broadcastVfx: false);
             if (runtime.IsEnded)
                 return;
         }
     }
 
     /// <summary>피해자별 소수점 잔여 피해를 누적하고 이번 공격에 적용할 정수 체력 피해를 반환한다.</summary>
-    internal int ConsumeSwarmPvpDamage(long victimId, int rawDamage)
+    internal static int ConsumeSwarmPvpDamage(Player victim, int rawDamage)
     {
-        float total = (_pvpDamageCarry.TryGetValue(victimId, out float carry) ? carry : 0f) +
-                      rawDamage * SwarmPvpDamagePerDamage;
+        float total = victim.PvpDamageCarry + rawDamage * SwarmPvpDamagePerDamage;
         int whole = (int)total;
-        _pvpDamageCarry[victimId] = total - whole;
+        victim.PvpDamageCarry = total - whole;
         return whole;
     }
-    public void SendPlayerHitNotification(Player? attacker, long targetPlayerId, AreaType area, int weaponItemId, int damage, int targetHealth, bool isPeriodicDamage = false)
+    public void SendPlayerHitNotification(MatchRuntime runtime, Player? attacker, long targetPlayerId, AreaType area, int weaponItemId, int damage, int targetHealth, bool isPeriodicDamage = false)
     {
         if (attacker == null || attacker.PlayerId == 0 || targetPlayerId == 0)
         {
@@ -84,7 +78,7 @@ internal sealed class MatchCombatDamageService(
         attacker.Session?.TrySend(packet);
     }
 
-    public void SendMonsterHitNotification(Player? attacker, int monsterId, AreaType area, int weaponItemId, int damage, bool critical = false, bool showDamageOnly = false)
+    public void SendMonsterHitNotification(MatchRuntime runtime, Player? attacker, int monsterId, AreaType area, int weaponItemId, int damage, bool critical = false, bool showDamageOnly = false)
     {
         if (attacker == null || attacker.PlayerId == 0 || attacker.IsEliminated || monsterId < 0 || weaponItemId <= 0 || damage <= 0) return;
         using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
@@ -103,13 +97,13 @@ internal sealed class MatchCombatDamageService(
     }
 
     /// <summary>일반 피격의 로그·체력 변경·결과 전송을 매치 잠금 안에서 처리한다.</summary>
-    public void ApplyProximityAutoCombatHit(PlayerHealthService healthService,
+    public void ApplyProximityAutoCombatHit(MatchRuntime runtime, PlayerHealthService healthService,
         Player victim, long sourcePlayerId, AreaType area, int weaponItemId,
         int damage, bool isPeriodicDamage = false, int sourceHealth = -1)
     {
         if (runtime.IsEnded || victim.IsEliminated || damage <= 0) return;
 
-        RecordCombatContact(victim, sourcePlayerId);
+        RecordCombatContact(runtime, victim, sourcePlayerId);
         eventLogs.LogHit(runtime.MatchingId, sourcePlayerId, victim.PlayerId, weaponItemId, damage,
             victim.Health > 0 && victim.Health - damage <= 0,
             BotPlayerManager.IsBotPlayerId(sourcePlayerId), DateTimeOffset.UtcNow);
@@ -132,7 +126,7 @@ internal sealed class MatchCombatDamageService(
         session.TrySend(packet);
     }
 
-    private void RecordCombatContact(Player victim, long attackerId)
+    private void RecordCombatContact(MatchRuntime runtime, Player victim, long attackerId)
     {
         var nowUtc = DateTime.UtcNow;
         victim.MarkSwarmCombat(nowUtc);
@@ -152,7 +146,7 @@ internal sealed class MatchCombatDamageService(
     }
 
     /// <summary>몬스터 피해를 적용하고 같은 피해량을 클라이언트에 알린다.</summary>
-    public void ApplySwarmAfterimageMonsterHit(PlayerHealthService healthService, Player victim, int monsterId, int damage)
+    public void ApplySwarmAfterimageMonsterHit(MatchRuntime runtime, PlayerHealthService healthService, Player victim, int monsterId, int damage)
     {
         if (runtime.IsEnded || victim.IsEliminated || monsterId <= 0 || damage <= 0) return;
 
@@ -203,15 +197,16 @@ internal sealed class MatchCombatDamageService(
     private static float SwarmCriticalMultiplier => SwarmConfigData.GetFloat("SWARM_CRITICAL_MULTIPLIER", 2f);
 
     /// <summary>PvE 치명타 굴림 — 적중이면 배율을 적용한 피해를 돌려준다.</summary>
-    public int RollSwarmCriticalDamage(int damage, out bool critical)
+    public int RollSwarmCriticalDamage(MatchRuntime runtime, int damage, out bool critical)
     {
-        critical = RollCritical(SwarmCriticalChance);
+        critical = RollCritical(runtime, SwarmCriticalChance);
         return critical
             ? Math.Max(damage + 1, (int)MathF.Round(damage * SwarmCriticalMultiplier))
             : damage;
     }
 
     private void SpawnSwarmSummonStone(
+        MatchRuntime runtime,
         MonsterRuntimeInfo defeatedWave,
         IReadOnlyCollection<GameClientSession> sessions,
         int heartReward = 0,
@@ -279,6 +274,7 @@ internal sealed class MatchCombatDamageService(
     ///     띄운다(투사체 없음).
     /// </summary>
     public void ApplySwarmMonsterHitNow(
+        MatchRuntime runtime,
         long combatTargetId,
         int monsterId,
         long attackerId,
@@ -294,15 +290,16 @@ internal sealed class MatchCombatDamageService(
 
         eventLogs.RecordMonsterHit(runtime.MatchingId, attackerId, damage, damageResult.Killed);
         var attacker = runtime.GetParticipant(attackerId);
-        SendMonsterHitNotification(attacker,
+        SendMonsterHitNotification(runtime, attacker,
             monsterId, area, weaponItemId, damage, critical, showDamageOnly: true);
 
         if (damageResult.Killed && damageResult.MonsterState != null)
-            SettleSwarmMonsterKill(damageResult, attackerId, damage, allSessions);
+            SettleSwarmMonsterKill(runtime, damageResult, attackerId, damage, allSessions);
     }
 
     /// <summary>처치 정산 — 착탄 큐와 즉시 타격이 같은 경로를 쓴다.</summary>
     public void SettleSwarmMonsterKill(
+        MatchRuntime runtime,
         SwarmArenaDamageResult damageResult,
         long attackerId,
         int damage,
@@ -327,7 +324,7 @@ internal sealed class MatchCombatDamageService(
             firstAttackerPlayerId: attackerId,
             lastAttackerPlayerId: attackerId,
             new Dictionary<long, int> { [attackerId] = damage });
-        SpawnSwarmSummonStone(
+        SpawnSwarmSummonStone(runtime,
             damageResult.MonsterState, allSessions,
             damageResult.HeartReward, damageResult.BootsReward);
     }
@@ -336,7 +333,7 @@ internal sealed class MatchCombatDamageService(
     ///     플레이어 충격 (고정값, 티어 무관): 사격 피격 경로를 재사용해 체력 감소·피격 숫자·탈락 흐름이 그대로
     ///     따라온다. 봇도 같은 값. 소유자 화면에는 사격 피드백을 보낸다. label은 로그용(어느 모양이 때렸나).
     /// </summary>
-    public void ApplySwarmShock(PlayerHealthService healthService,
+    public void ApplySwarmShock(MatchRuntime runtime, PlayerHealthService healthService,
         long ownerId,
         int weaponItemId,
         AreaType area,
@@ -353,7 +350,7 @@ internal sealed class MatchCombatDamageService(
             Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE) * damageScale));
         // 상처 (#268): 상처 입은 피해자만 PvP 충격 치명타가 열린다 — PvE와 같은 2배.
         if (runtime.WindOrbAttacks.IsWounded(victimId, DateTime.UtcNow) &&
-            RollCritical(Config.SWARM_WIND_WOUND_CRIT_CHANCE))
+            RollCritical(runtime, Config.SWARM_WIND_WOUND_CRIT_CHANCE))
             shock = Math.Max(shock + 1, (int)MathF.Round(shock * SwarmCriticalMultiplier));
         var victim = players.FirstOrDefault(player => player.PlayerId == victimId);
         if (victim == null || victim.IsEliminated) return;
@@ -361,10 +358,10 @@ internal sealed class MatchCombatDamageService(
         var owner = runtime.GetParticipant(ownerId);
         int ownerHealth = owner?.Health ?? -1;
         int healthBefore = victim.Health;
-        ApplyProximityAutoCombatHit(healthService, victim, ownerId, area, weaponItemId, shock, isPeriodicDamage, ownerHealth);
+        ApplyProximityAutoCombatHit(runtime, healthService, victim, ownerId, area, weaponItemId, shock, isPeriodicDamage, ownerHealth);
         int healthAfter = victim.Health;
 
-        SendPlayerHitNotification(owner, victimId, area, weaponItemId, shock, healthAfter, isPeriodicDamage);
+        SendPlayerHitNotification(runtime, owner, victimId, area, weaponItemId, shock, healthAfter, isPeriodicDamage);
 
         eventLogs.LogSystem(
             runtime.MatchingId,
@@ -374,16 +371,17 @@ internal sealed class MatchCombatDamageService(
 
     /// <summary>착탄 시각이 된 피해를 한 번 적용하고 몬스터 처치를 정산한다.</summary>
     public void ProcessPendingMonsterHits(
+        MatchRuntime runtime,
         DateTime nowUtc, List<GameClientSession> sessions)
     {
         long matchingId = runtime.MatchingId;
-        for (int index = _pendingMonsterHits.Count - 1; index >= 0; index--)
+        for (int index = runtime.CombatDamage.PendingMonsterHits.Count - 1; index >= 0; index--)
         {
-            var hit = _pendingMonsterHits[index];
+            var hit = runtime.CombatDamage.PendingMonsterHits[index];
             if (nowUtc < hit.ApplyAtUtc)
                 continue;
 
-            _pendingMonsterHits.RemoveAt(index);
+            runtime.CombatDamage.PendingMonsterHits.RemoveAt(index);
             var damageResult = runtime.Monsters.ApplyMonsterDamage(
                 matchingId, hit.CombatTargetId, hit.AttackerId, hit.Damage);
 
@@ -397,11 +395,11 @@ internal sealed class MatchCombatDamageService(
 
             // 처치 정산은 교차사격 즉시 타격과 같은 경로 — 계측·처치 로그·소환석 드롭.
             if (damageResult.Applied && damageResult.Killed && damageResult.MonsterState != null)
-                SettleSwarmMonsterKill(damageResult, hit.AttackerId, hit.Damage, sessions);
+                SettleSwarmMonsterKill(runtime, damageResult, hit.AttackerId, hit.Damage, sessions);
         }
     }
 
-    public int ApplySwarmPvpAttack(PlayerHealthService healthService,
+    public int ApplySwarmPvpAttack(MatchRuntime runtime, PlayerHealthService healthService,
         ProximityCombatAttack attack,
         IReadOnlyList<Player> players,
         List<GameClientSession> allSessions,
@@ -421,28 +419,28 @@ internal sealed class MatchCombatDamageService(
             guardWindow.BlockedHits++;
             guardWindow.BlockedDamage += attack.Damage;
             // 잔광 앞에서 짧게 깨지는 연출만 — 피해 숫자·피격 눌림·인카운터 배너는 만들지 않는다.
-            SendSwarmRetaliationVfx(
+            SendSwarmRetaliationVfx(runtime,
                 attack.AttackerPlayerId, attack.TargetPlayerId, attack.Area,
                 SwarmRingVfxKindRetaliationBlocked, 0f, allSessions);
             return 0;
         }
 
-        int healthDamage = ConsumeSwarmPvpDamage(attack.TargetPlayerId, attack.Damage);
-        var attacker = runtime.GetParticipant(attack.AttackerPlayerId);
-        int attackerHealth = attacker?.Health ?? -1;
         var target = players.FirstOrDefault(player => player.PlayerId == attack.TargetPlayerId);
         if (target == null || target.IsEliminated) return 0;
+        int healthDamage = ConsumeSwarmPvpDamage(target, attack.Damage);
+        var attacker = runtime.GetParticipant(attack.AttackerPlayerId);
+        int attackerHealth = attacker?.Health ?? -1;
 
         if (healthDamage > 0)
-            ApplyProximityAutoCombatHit(healthService, target, attack.AttackerPlayerId, attack.Area,
+            ApplyProximityAutoCombatHit(runtime, healthService, target, attack.AttackerPlayerId, attack.Area,
                 attack.WeaponItemId, healthDamage, sourceHealth: attackerHealth);
         else
-            RecordCombatContact(target, attack.AttackerPlayerId);
+            RecordCombatContact(runtime, target, attack.AttackerPlayerId);
         int targetHealth = target.Health;
 
         if (healthDamage > 0 && sendAttackerFeedback)
         {
-            SendPlayerHitNotification(attacker,
+            SendPlayerHitNotification(runtime, attacker,
                 attack.TargetPlayerId, attack.Area, attack.WeaponItemId, healthDamage, targetHealth);
         }
         // 태양 착탄(#226)은 발사 시점에 이미 연출을 쐈다 — 이중 투사체 방지.
@@ -452,6 +450,7 @@ internal sealed class MatchCombatDamageService(
     }
 
     public void SendSwarmRetaliationVfx(
+        MatchRuntime runtime,
         long cutterId, long victimId, AreaType area, int kind, float seconds,
         List<GameClientSession> allSessions)
     {

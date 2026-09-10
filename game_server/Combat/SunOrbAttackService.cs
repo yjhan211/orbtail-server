@@ -21,6 +21,7 @@ namespace game_server.combat;
 /// </summary>
 internal sealed class SunOrbAttackService(
     PlayerHealthService healthService,
+    MatchCombatDamageService combatDamage,
     GameEventLogManager eventLogs)
 {
     private static readonly bool SwarmCrossfireEnabled = true;
@@ -119,9 +120,9 @@ internal sealed class SunOrbAttackService(
                 shape.HitMonsters.Add(monster.CombatTargetId);
                 TrackSwarmCrossfireConvergence(runtime, monster.CombatTargetId, nowUtc);
                 runtime.Monsters.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
-                int monsterDamage = runtime.CombatDamage.RollSwarmCriticalDamage(
+                int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime,
                     shape.Damage, out bool critical);
-                runtime.CombatDamage.ApplySwarmMonsterHitNow(
+                combatDamage.ApplySwarmMonsterHitNow(runtime,
                     monster.CombatTargetId, monster.MonsterId, shape.OwnerId,
                     shape.WeaponItemId, shape.Area, monsterDamage, critical, allSessions);
             }
@@ -137,7 +138,7 @@ internal sealed class SunOrbAttackService(
                     continue;
 
                 shape.HitVictims.Add(participant.PlayerId);
-                runtime.CombatDamage.ApplySwarmShock(healthService,
+                combatDamage.ApplySwarmShock(runtime, healthService,
                     shape.OwnerId, shape.WeaponItemId, shape.Area, participant.PlayerId,
                     $"ORB_CROSSFIRE_HIT event={shape.EventId} shape=pierce anchor={shape.AnchorMonsterId}",
                     players);
@@ -348,7 +349,7 @@ internal sealed class SunOrbAttackService(
             nowUtc,
             Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS,
             (victimId, burn) =>
-                runtime.CombatDamage.ApplySwarmShock(healthService, burn.OwnerId, burn.WeaponItemId, burn.Area,
+                combatDamage.ApplySwarmShock(runtime, healthService, burn.OwnerId, burn.WeaponItemId, burn.Area,
                     victimId, "SUN_BURN_TICK", players,
                     Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER, isPeriodicDamage: true));
     }

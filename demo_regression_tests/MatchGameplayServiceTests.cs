@@ -94,8 +94,7 @@ public sealed class MatchGameplayServiceTests
                 BindingFlags.Instance | BindingFlags.NonPublic)!;
             broadcast.Invoke(service, [match.MatchingId,
                 new List<game_server.sessions.GameClientSession> { TestGameSessionServices.CreateRecipientSession() }]);
-            var signature = typeof(MatchCombatService).GetField("_orbRankingsSignature",
-                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service);
+            var signature = match.Progress.OrbRankingsSignature;
             Assert.Equal("101:2|-102:1|103:0", signature);
         }
     }
@@ -313,13 +312,13 @@ public sealed class MatchGameplayServiceTests
     }
 
     [Fact]
-    public void Composition_CreatesCombatPerResolutionWithoutDependingBackOnHost()
+    public void Composition_SharesOneCombatServiceWithoutDependingBackOnHost()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var decisions = provider.GetRequiredService<BotDecisionService>();
         var combat = provider.GetRequiredService<MatchCombatService>();
         var store = provider.GetRequiredService<MatchRuntimeStore>();
-        Assert.NotSame(combat, provider.GetRequiredService<MatchCombatService>());
+        Assert.Same(combat, provider.GetRequiredService<MatchCombatService>());
         Assert.Same(decisions, Read<BotDecisionService>(combat));
         Assert.Same(store, Read<MatchRuntimeStore>(combat));
         Assert.Same(store, Read<MatchRuntimeStore>(decisions));

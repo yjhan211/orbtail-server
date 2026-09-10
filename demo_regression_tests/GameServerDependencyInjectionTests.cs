@@ -20,7 +20,7 @@ namespace demo_regression_tests;
 public sealed class GameServerDependencyInjectionTests
 {
     [Fact]
-    public void CombatDamageAndCriticalRandomBelongToEachMatchButEventLogsAreShared()
+    public void CombatDamageStateAndCriticalRandomBelongToEachMatchButTheServiceIsShared()
     {
         using var provider = CreateProvider();
         var logs = provider.GetRequiredService<GameEventLogManager>();
@@ -28,25 +28,16 @@ public sealed class GameServerDependencyInjectionTests
         var first = store.GetOrCreate(990011);
         var second = store.GetOrCreate(990012);
 
-        Assert.Null(provider.GetService<MatchCombatDamageService>());
+        Assert.Same(provider.GetRequiredService<MatchCombatDamageService>(), provider.GetRequiredService<MatchCombatDamageService>());
         Assert.Same(logs, store.EventLogs);
         Assert.Same(first.CombatDamage, store.GetOrThrow(first.MatchingId).CombatDamage);
         Assert.NotSame(first.CombatDamage, second.CombatDamage);
-
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        var fields = typeof(MatchCombatDamageService).GetFields(flags);
-        var random = fields.Single(field => field.FieldType == typeof(Random));
-        Assert.NotSame(random.GetValue(first.CombatDamage), random.GetValue(second.CombatDamage));
-        var runtime = fields.Single(field => field.FieldType == typeof(MatchRuntime));
-        Assert.Same(first, runtime.GetValue(first.CombatDamage));
-        Assert.Same(second, runtime.GetValue(second.CombatDamage));
-        var eventLogs = fields.Single(field => field.FieldType == typeof(GameEventLogManager));
-        Assert.Same(logs, eventLogs.GetValue(first.CombatDamage));
-        Assert.Same(logs, eventLogs.GetValue(second.CombatDamage));
+        Assert.NotSame(first.CombatDamage.CriticalRng, second.CombatDamage.CriticalRng);
+        Assert.NotSame(first.Progress, second.Progress);
     }
 
     [Fact]
-    public void MatchTickServiceCreatesSeparateStatefulServicesForEachMatch()
+    public void MatchTickServiceSharesSingletonServicesAcrossMatches()
     {
         using var provider = CreateProvider();
         var service = provider.GetRequiredService<MatchTickService>();
@@ -79,11 +70,8 @@ public sealed class GameServerDependencyInjectionTests
                         .Single(field => field.FieldType == type).GetValue(firstLoop);
                     var secondDependency = typeof(MatchTickLoop).GetFields(flags)
                         .Single(field => field.FieldType == type).GetValue(secondLoop);
-                    if (type == typeof(MatchCombatService) ||
-                        type == typeof(game_server.field.MatchZoneService))
-                        Assert.NotSame(firstDependency, secondDependency);
-                    else
-                        Assert.Same(provider.GetRequiredService(type), dependency);
+                    Assert.Same(provider.GetRequiredService(type), dependency);
+                    Assert.Same(firstDependency, secondDependency);
                 }
                 Assert.DoesNotContain(typeof(MatchTickLoop).GetFields(flags),
                     field => typeof(Delegate).IsAssignableFrom(field.FieldType));

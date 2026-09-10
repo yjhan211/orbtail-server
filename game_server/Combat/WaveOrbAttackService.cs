@@ -17,6 +17,7 @@ namespace game_server.combat;
 /// </summary>
 internal sealed class WaveOrbAttackService(
     PlayerHealthService healthService,
+    MatchCombatDamageService combatDamage,
     GameEventLogManager eventLogs)
 {
     public void ProcessTick(
@@ -74,10 +75,10 @@ internal sealed class WaveOrbAttackService(
             float dy = (target.Position.Y - position.Y) * 2f;
             if (dx * dx + dy * dy > radiusSquared)
                 continue;
-            int monsterDamage = runtime.CombatDamage.RollSwarmCriticalDamage(damage, out bool critical);
+            int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, damage, out bool critical);
             runtime.Monsters.ReserveMonsterDamage(matchingId, target.CombatTargetId, monsterDamage);
             runtime.Monsters.RecordMonsterAttackEvent(matchingId, target.CombatTargetId);
-            runtime.CombatDamage.ScheduleMonsterHit(new PendingMonsterHit(
+            combatDamage.ScheduleMonsterHit(runtime, new PendingMonsterHit(
                 target.CombatTargetId, ownerId, monsterDamage, nowUtc));
             runtime.Monsters.TrySlowMonster(
                 matchingId, target.CombatTargetId, OrbData.WaveSlowSeconds, nowUtc);
@@ -88,7 +89,7 @@ internal sealed class WaveOrbAttackService(
                 continue;
 
             notifiedCount++;
-            runtime.CombatDamage.SendMonsterHitNotification(owner,
+            combatDamage.SendMonsterHitNotification(runtime, owner,
                 monsterId, area, sourceItemId, monsterDamage, critical, showDamageOnly: true);
         }
 
@@ -103,7 +104,7 @@ internal sealed class WaveOrbAttackService(
 
             // 충격 면역 없음: 겹친 링에 다 맞는다 — 침수는 지속 갱신이라 중첩 무해.
             soaked++;
-            runtime.CombatDamage.ApplySwarmShock(healthService, ownerId, sourceItemId, area, participant.PlayerId,
+            combatDamage.ApplySwarmShock(runtime, healthService, ownerId, sourceItemId, area, participant.PlayerId,
                 "WAVE_VORTEX_HIT", players,
                 Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER);
 

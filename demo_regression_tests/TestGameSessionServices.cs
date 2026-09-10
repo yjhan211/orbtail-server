@@ -81,8 +81,11 @@ internal static class TestGameSessionServices
         }
         var lifecycle = new MatchSessionCleanupService(redis,
             new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
-        return new MatchRuntimeStore(logger.For<MatchRuntime>(), lifecycle, logger.For<MatchCombatDamageService>());
+        return new MatchRuntimeStore(logger.For<MatchRuntime>(), lifecycle);
     }
+    public static MatchCombatDamageService CreateCombatDamageService(GameEventLogManager logs) =>
+        new(logs, NullLogger<MatchCombatDamageService>.Instance);
+
     public static PlayerMovementService CreateMovementService(GameEventLogManager logs) =>
         new(logs, NullLogger<PlayerMovementService>.Instance);
 

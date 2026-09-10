@@ -52,7 +52,7 @@ internal sealed class MatchRuntime
     internal readonly List<Action> AfterRelease = new();
 
     internal MatchRuntime(MatchRuntimeStore runtimeStore, long matchingId, ILogger<MatchRuntime> logger, MatchSessionCleanupService matchSessionCleanup,
-        GameEventLogManager eventLogs, ILogger<MatchCombatDamageService> damageLogger)
+        GameEventLogManager eventLogs)
     {
         _runtimeStore = runtimeStore;
         _logger = logger;
@@ -64,7 +64,6 @@ internal sealed class MatchRuntime
         GroundItems = new GroundItemManager(matchingId);
         Closures = new AreaClosureManager(matchingId, logger);
         Monsters = new SwarmMonsterDirector(matchingId, Closures, playerId => GetParticipant(playerId)?.Orbs.HasAnyOrb() ?? false);
-        CombatDamage = new MatchCombatDamageService(this, eventLogs, damageLogger);
     }
 
     // 매치 식별과 수명·잠금
@@ -76,7 +75,7 @@ internal sealed class MatchRuntime
 
     // 전투와 오브
     public AutoAttackController AutoAttack { get; }
-    public MatchCombatDamageService CombatDamage { get; }
+    public CombatDamageState CombatDamage { get; } = new();
     public TrailCombatState TrailCombat { get; } = new();
     public SunOrbAttackState SunOrbAttacks { get; }
     public WindOrbAttackState WindOrbAttacks { get; } = new();
@@ -92,6 +91,7 @@ internal sealed class MatchRuntime
     public OrbVisualStateCache OrbVisualCache { get; } = new();
     public OrbRecoveryState OrbRecovery { get; } = new();
     public EventLogState EventLog { get; } = new();
+    public MatchProgressState Progress { get; } = new();
 
     // 틱 실행과 일정
     internal MatchTickLoop? TickLoop

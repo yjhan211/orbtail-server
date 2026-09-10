@@ -173,7 +173,7 @@ public sealed class SwarmArenaTickOrderTests
             "CollectSwarmCrossfireAnchoredTargets(",
             "AutoAttack.ResolveAttacks(",
             "TryStartSunCrossfire(",
-            "runtime.CombatDamage.SendMonsterHitNotification(attacker,",
+            "combatDamage.SendMonsterHitNotification(runtime, attacker,",
             "BroadcastSwarmAttackVfxToTargetAndObservers(");
     }
 
@@ -438,8 +438,9 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("_swarmCriticalRng", crossfire);
         Assert.DoesNotContain("_criticalRng", runtimeStates);
         string damage = ReadNormalizedSource(root, "game_server", "Combat", "MatchCombatDamageService.cs");
-        Assert.Contains("private readonly Random _criticalRng = new();", damage);
-        Assert.Contains("RollCritical(Config.SWARM_WIND_WOUND_CRIT_CHANCE)", damage);
+        Assert.Contains("runtime.CombatDamage.CriticalRng.NextDouble()", damage);
+        Assert.DoesNotContain("new Random()", damage);
+        Assert.Contains("RollCritical(runtime, Config.SWARM_WIND_WOUND_CRIT_CHANCE)", damage);
         Assert.DoesNotContain("MatchRuntimeStore", damage);
 
         string field = ReadNormalizedSource(root, "game_server", "Field", "MatchZoneService.cs");

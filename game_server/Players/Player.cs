@@ -92,6 +92,8 @@ public class Player
     public DateTime HealLockUntilUtc { get; set; } = DateTime.MinValue;
     /// <summary>파도 오브 감속이 끝나는 시각.</summary>
     public DateTime WaveSlowUntilUtc { get; set; }
+    /// <summary>PvP 피해의 소수점 잔여. 정수 체력 피해로 넘어갈 때까지 누적한다.</summary>
+    internal float PvpDamageCarry { get; set; }
 
 
     // 다른 매치 잠금을 잡지 않고 이전 연결만 해제한다. 새 연결은 지우지 않는다.
