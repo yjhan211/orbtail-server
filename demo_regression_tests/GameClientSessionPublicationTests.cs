@@ -701,7 +701,7 @@ public sealed class GameClientSessionPublicationTests
             Assert.Equal(stonesBefore + 1, TestGameSessionServices.SummonStones(fixture.Store.GetOrThrow(70001), 101).StoneCount);
         else if (itemId == 107000010)
             Assert.Contains(
-                fixture.Store.GetOrThrow(70001).Inventory.GetAllItems(101),
+                TestGameSessionServices.Orbs(fixture.Store.GetOrThrow(70001), 101).GetAllItems(),
                 inventoryItem => inventoryItem.ItemId == itemId);
     }
 
@@ -740,7 +740,7 @@ public sealed class GameClientSessionPublicationTests
         await RunPickupTickAsync(session, fixture.Store, fixture.EventLog);
         Assert.Empty(fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.NotNull(fixture.Store.GetOrThrow(70001).GroundItems.GetItem(item.GroundItemUid));
-        Assert.DoesNotContain(fixture.Store.GetOrThrow(70001).Inventory.GetAllItems(101),
+        Assert.DoesNotContain(TestGameSessionServices.Orbs(fixture.Store.GetOrThrow(70001), 101).GetAllItems(),
             inventoryItem => inventoryItem.ItemId == itemId);
     }
 
@@ -1327,13 +1327,13 @@ public sealed class GameClientSessionPublicationTests
         var match = eliminated.Match;
         using (match.Enter())
         {
-            Assert.True(match.Inventory.TryAddItemWithCapacity(101, 107000010, Config.GetOrbCapacity(), out _));
+            Assert.True(TestGameSessionServices.Orbs(match, 101).TryAddItemWithCapacity(107000010, Config.GetOrbCapacity(), out _));
             var eliminations = TestGameSessionServices.CreateEliminationService(
                 fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance);
             eliminations.EliminatePlayer(match, eliminated.Player, EliminationReason.HEALTH_ZERO, deferGameOver: true);
             eliminations.EliminatePlayer(match, eliminated.Player, EliminationReason.HEALTH_ZERO, deferGameOver: true);
 
-            Assert.Empty(match.Inventory.GetAllItems(101));
+            Assert.Empty(TestGameSessionServices.Orbs(match, 101).GetAllItems());
             Assert.Single(match.GroundItems.GetSnapshot(eliminated.Player.CurrentArea));
         }
         Assert.Equal([Protocol.G_TO_C_ORB_UPDATE, Protocol.G_TO_C_PLAYER_ELIMINATED, Protocol.G_TO_C_AREA_PLAYER_LEAVE], fixture.ConnectionFor(eliminated).DeliveredProtocols);

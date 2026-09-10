@@ -56,9 +56,9 @@ public sealed class MatchGameplayServiceTests
             match.RegisterParticipant(eliminated);
             match.TryEliminatePlayer(303, network.common.EliminationReason.HEALTH_ZERO);
             for (int i = 0; i < 2; i++)
-                Assert.True(match.Inventory.TryAddItemWithCapacity(winnerId, 107000010, 8, out _));
+                Assert.True(TestGameSessionServices.Orbs(match, winnerId).TryAddItemWithCapacity(107000010, 8, out _));
             for (int i = 0; i < 6; i++)
-                Assert.True(match.Inventory.TryAddItemWithCapacity(303, 107000010, 8, out _));
+                Assert.True(TestGameSessionServices.Orbs(match, 303).TryAddItemWithCapacity(107000010, 8, out _));
             match.StartGameplay();
             var deadline = match.StartsAtUtc!.Value.AddSeconds(network.common.Config.SWARM_MATCH_DURATION_SECONDS);
             Assert.Empty(match.GetSessions());
@@ -84,10 +84,10 @@ public sealed class MatchGameplayServiceTests
             foreach (long id in new long[] { 101, -102, 103 })
                 match.RegisterParticipant(new game_server.players.Player { Profile = new PlayerInfo { PlayerId = id } });
             for (int i = 0; i < 2; i++)
-                Assert.True(match.Inventory.TryAddItemWithCapacity(101, 107000010, 8, out _));
-            Assert.True(match.Inventory.TryAddItemWithCapacity(-102, 107000010, 8, out _));
+                Assert.True(TestGameSessionServices.Orbs(match, 101).TryAddItemWithCapacity(107000010, 8, out _));
+            Assert.True(TestGameSessionServices.Orbs(match, -102).TryAddItemWithCapacity(107000010, 8, out _));
             for (int i = 0; i < 6; i++)
-                Assert.True(match.Inventory.TryAddItemWithCapacity(103, 107000010, 8, out _));
+                Assert.True(TestGameSessionServices.Orbs(match, 103).TryAddItemWithCapacity(107000010, 8, out _));
             match.TryEliminatePlayer(103, network.common.EliminationReason.HEALTH_ZERO);
             Assert.Empty(match.GetSessions());
             var broadcast = typeof(MatchCombatService).GetMethod("BroadcastSwarmOrbRankings",
@@ -121,8 +121,8 @@ public sealed class MatchGameplayServiceTests
             match.RegisterParticipant(cutter);
             match.RegisterParticipant(owner);
             if (cutterId < 0) match.Bots.GetBots(match.MatchingId).Add(bot);
-            Assert.True(match.Inventory.TryAddItemWithCapacity(owner.PlayerId, 107000010, 1, out _));
-            var orb = Assert.Single(match.Inventory.GetPlayerInventory(owner.PlayerId).GetAllItems());
+            Assert.True(TestGameSessionServices.Orbs(match, owner.PlayerId).TryAddItemWithCapacity(107000010, 1, out _));
+            var orb = Assert.Single(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllItems());
             var chains = new Dictionary<long, (network.common.AreaType Area, Vector3f OwnerPosition,
                 List<Vector3f> Points, List<long> Uids, List<int> ItemIds)>
             {
@@ -138,11 +138,11 @@ public sealed class MatchGameplayServiceTests
             if (health == 35)
             {
                 Assert.Equal(health, cutter.Health);
-                Assert.Single(match.Inventory.GetPlayerInventory(owner.PlayerId).GetAllItems());
+                Assert.Single(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllItems());
                 return;
             }
             Assert.Equal(initialHealth - 35, cutter.Health);
-            Assert.Empty(match.Inventory.GetPlayerInventory(owner.PlayerId).GetAllItems());
+            Assert.Empty(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllItems());
             Assert.True(cutter.HealLockUntilUtc >= now.AddSeconds(8));
             if (cutterId < 0)
             {
@@ -272,7 +272,7 @@ public sealed class MatchGameplayServiceTests
         {
             match.RegisterParticipant(hunter);
             match.RegisterParticipant(prey);
-            Assert.True(match.Inventory.TryAddItemWithCapacity(hunter.PlayerId, 107000010, 6, out _));
+            Assert.True(TestGameSessionServices.Orbs(match, hunter.PlayerId).TryAddItemWithCapacity(107000010, 6, out _));
             Assert.Equal(1, growth.GetTopOrbCount(match));
             match.TryEliminatePlayer(prey.PlayerId, network.common.EliminationReason.HEALTH_ZERO);
             match.TryEliminatePlayer(hunter.PlayerId, network.common.EliminationReason.HEALTH_ZERO);
@@ -421,7 +421,7 @@ public sealed class MatchGameplayServiceTests
         {
             Assert.True(bot.Player.TryStartSleep(DateTime.UtcNow));
             var result = match.Bots.ProcessBotMovementTick(match.MatchingId, match.Closures,
-                new Dictionary<long, network.common.AreaType>(), match.Inventory, match.GroundItems, [],
+                new Dictionary<long, network.common.AreaType>(), match.GroundItems, [],
                 (_, _) => throw new InvalidOperationException("A sleeping bot must not request a movement plan."));
             Assert.Single(result.Movements);
             Assert.Equal(0, bot.Player.Velocity.X);

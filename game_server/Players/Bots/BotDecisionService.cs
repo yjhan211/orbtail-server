@@ -31,7 +31,7 @@ internal sealed class BotDecisionService(
     {
         var runtime = matchRuntimes.GetOrThrow(matchingId);
         var player = runtime.GetParticipant(playerId)!;
-        var orbGroupIds = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs()
+        var orbGroupIds = player.Orbs.GetOrderedOrbs()
             .Select(item => OrbData.TryGetOrbGroupAndTier(item.ItemId, out int orbGroupId, out _)
                 ? orbGroupId
                 : 0)
@@ -78,7 +78,7 @@ internal sealed class BotDecisionService(
             {
                 continue;
             }
-            int orbCount = match.Inventory.GetOrbScore(bot.PlayerId).OrbCount;
+            int orbCount = bot.Player.Orbs.GetOrbScore().OrbCount;
             bool preferUpgrade = orbCount >= Config.SWARM_ORB_CAPACITY || (orbCount >= 4 && Random.Shared.Next(3) == 0);
             if (preferUpgrade && TryUpgradeForBot(matchingId, bot.PlayerId))
             {
@@ -909,7 +909,7 @@ internal sealed class BotDecisionService(
     /// <summary>오브 선두 판독 (#226 F): 내 오브 수가 생존자 최다와 같거나 크면 선두다.</summary>
     private bool IsSwarmOrbLeader(long matchingId, long playerId)
     {
-        int myOrbCount = matchRuntimes.GetOrThrow(matchingId).Inventory.GetOrbScore(playerId).OrbCount;
+        int myOrbCount = matchRuntimes.GetOrThrow(matchingId).GetOrbs(playerId).GetOrbScore().OrbCount;
         return myOrbCount > 0 && myOrbCount >= growth.GetTopOrbCount(matchRuntimes.GetOrThrow(matchingId));
     }
 
@@ -956,6 +956,6 @@ internal sealed class BotDecisionService(
     ///     상자 시간 등급 도입 후 회피/추격 판단의 단일 기준.
     /// </summary>
     private float GetSwarmSquadPower(long matchingId, long playerId) =>
-        matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId).GetOrbPower();
+        matchRuntimes.GetOrThrow(matchingId).GetOrbs(playerId).GetOrbPower();
 
 }

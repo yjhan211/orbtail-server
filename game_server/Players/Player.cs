@@ -65,6 +65,8 @@ public class Player
     public float OrbOrbitPhaseDegrees => _orbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(PlayerId);
 
     public int Health { get; set; } = Config.MAX_HEALTH;
+    /// <summary>보유 오브 컬렉션. 각 오브의 UID와 꼬리 순서를 유지한다.</summary>
+    public PlayerOrbCollection Orbs { get; } = new();
     /// <summary>소환석 잔액과 성공한 소환 횟수. 비용·후보·지급 규칙은 PlayerOrbGrowthService에 있다.</summary>
     public SummonStoneState SummonStones { get; internal set; }
 

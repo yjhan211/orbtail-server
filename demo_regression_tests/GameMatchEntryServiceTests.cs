@@ -49,9 +49,9 @@ public sealed class GameMatchEntryServiceTests
             humanStones += Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(index));
         Assert.Equal(humanStones, TestGameSessionServices.SummonStones(runtime, 1001).StoneCount);
         Assert.Equal(humanStones, TestGameSessionServices.SummonStones(runtime, 1002).StoneCount);
-        Assert.Empty(runtime.Inventory.GetPlayerInventory(1001).GetOrderedOrbs());
+        Assert.Empty(TestGameSessionServices.Orbs(runtime, 1001).GetOrderedOrbs());
         long botId = Assert.Single(runtime.GetPlayerProfiles(), player => player.PlayerId < 0).PlayerId;
-        Assert.Empty(runtime.Inventory.GetPlayerInventory(botId).GetOrderedOrbs());
+        Assert.Empty(TestGameSessionServices.Orbs(runtime, botId).GetOrderedOrbs());
         Assert.Equal(humanStones, TestGameSessionServices.SummonStones(runtime, botId).StoneCount);
 
         using (runtime.Enter())
@@ -64,7 +64,7 @@ public sealed class GameMatchEntryServiceTests
         Assert.Equal(humanStones, TestGameSessionServices.SummonStones(runtime, botId).StoneCount);
         Assert.Equal(humanStones - 1, TestGameSessionServices.SummonStones(runtime, 1001).StoneCount);
         Assert.Equal(humanStones, TestGameSessionServices.SummonStones(runtime, 1002).StoneCount);
-        Assert.Empty(runtime.Inventory.GetPlayerInventory(botId).GetOrderedOrbs());
+        Assert.Empty(TestGameSessionServices.Orbs(runtime, botId).GetOrderedOrbs());
     }
 
     [Fact]

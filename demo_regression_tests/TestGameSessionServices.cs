@@ -141,6 +141,9 @@ internal static class TestGameSessionServices
         return player;
     }
 
+    /// <summary>참가자(없으면 등록)의 배낭.</summary>
+    public static PlayerOrbCollection Orbs(MatchRuntime match, long playerId) => GetOrRegisterPlayer(match, playerId).Orbs;
+
     public static Player.SummonStoneState SummonStones(MatchRuntime match, long playerId)
     {
         var player = match.GetParticipant(playerId) ?? match.Bots.GetBot(match.MatchingId, playerId)?.Player;

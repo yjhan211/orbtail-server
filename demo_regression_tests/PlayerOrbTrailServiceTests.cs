@@ -64,10 +64,10 @@ public sealed class PlayerOrbTrailServiceTests
         match.RegisterParticipant(player);
         using (MatchRuntimeStore.Enter(match))
         {
-            var inventory = match.Inventory.GetPlayerInventory(11);
-            inventory.AddItem(107000010, forceSeparateStack: true);
-            inventory.AddItem(107000020, forceSeparateStack: true);
-            inventory.AddItem(107000030, forceSeparateStack: true);
+            var inventory = TestGameSessionServices.Orbs(match, 11);
+            inventory.AddItem(107000010);
+            inventory.AddItem(107000020);
+            inventory.AddItem(107000030);
             var original = inventory.GetAllItems().OrderBy(item => item.ItemUid).ToArray();
             Assert.Empty(service.DestroyOrbsFromOrdinal(match, player, -1));
             Assert.Empty(service.DestroyOrbsFromOrdinal(match, player, 3));

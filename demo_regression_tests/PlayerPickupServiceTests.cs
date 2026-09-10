@@ -36,7 +36,7 @@ public sealed class PlayerPickupServiceTests
             CreateService(store).PickUp(match, player);
 
             Assert.NotNull(match.GroundItems.GetItem(item.GroundItemUid));
-            Assert.Empty(match.Inventory.GetAllItems(1));
+            Assert.Empty(TestGameSessionServices.Orbs(match, 1).GetAllItems());
             match.TryMarkEnded();
         }
     }
@@ -107,7 +107,7 @@ public sealed class PlayerPickupServiceTests
             CreateService(store).PickUp(match, player);
 
             Assert.Equal(healthBeforePickup, player.Health);
-            Assert.Empty(match.Inventory.GetAllItems(player.PlayerId));
+            Assert.Empty(match.GetOrbs(player.PlayerId).GetAllItems());
             Assert.Empty(player.ReachableItems);
             match.TryMarkEnded();
         }

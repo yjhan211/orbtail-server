@@ -54,9 +54,9 @@ public partial class BotPlayerManager
         return tileFactor > 0.0001f ? baseSpeed / tileFactor : baseSpeed;
     }
 
-    internal static float GetBotMovementSpeedMultiplier(BotPlayerState bot, InGameInventoryManager inventoryManager)
+    internal static float GetBotMovementSpeedMultiplier(BotPlayerState bot)
     {
-        float wind = OrbData.GetWindMoveSpeedMultiplier(inventoryManager.GetAllItems(bot.PlayerId));
+        float wind = OrbData.GetWindMoveSpeedMultiplier(bot.Player.Orbs.GetAllItems());
         // 부츠 (#222 M4): 사람과 같은 10초 이속 버프.
         float boots = DateTime.UtcNow < bot.BootsSpeedUntilUtc
             ? Config.BOOTS_MOVE_SPEED_MULTIPLIER
@@ -99,7 +99,6 @@ public partial class BotPlayerManager
     /// </summary>
     public BotWalkingTickResult ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
-        InGameInventoryManager inventoryManager,
         GroundItemManager groundItemManager,
         IReadOnlyCollection<MonsterCombatTarget>? pveTargets,
         Func<long, long, SwarmBotDirective> spotArenaDirectiveProvider)
@@ -117,7 +116,6 @@ public partial class BotPlayerManager
             activeBots,
             result,
             closureManager,
-            inventoryManager,
             groundItemManager,
             playerAreas,
             pveTargets ?? [],
@@ -129,7 +127,6 @@ public partial class BotPlayerManager
         IReadOnlyList<BotPlayerState> activeBots,
         BotWalkingTickResult result,
         AreaClosureManager closureManager,
-        InGameInventoryManager inventoryManager,
         GroundItemManager groundItemManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
         IReadOnlyCollection<MonsterCombatTarget> pveTargets,
@@ -218,7 +215,6 @@ public partial class BotPlayerManager
                 bot,
                 matchingId,
                 closureManager,
-                inventoryManager,
                 playerAreas,
                 pveTargets,
                 canPlanThisTick);
@@ -341,7 +337,6 @@ public partial class BotPlayerManager
     ///     일반 셀 walk는 진행 방향 + 속도 포함 MOVE 이벤트 반환.
     /// </summary>
     private BotMovementEvent? WalkStep(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
-        InGameInventoryManager inventoryManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
         IReadOnlyCollection<MonsterCombatTarget> pveTargets,
         bool allowPathPlanning)
@@ -354,7 +349,7 @@ public partial class BotPlayerManager
         // 투사체 회피 반사 (#232 §9): 경로·휴식·대기보다 먼저 — 이 자리를 지나갈 태양 투사체가
         // 있으면 그 직선의 수직으로 한 걸음 비켜선다. 경로는 버리지 않는다: 다음 틱에 비켜선 자리에서
         // 다음 웨이포인트로 이어 걷는다.
-        if (TryDodgeStep(bot, matchingId, now, deltaSec, inventoryManager, out var dodgeMovement))
+        if (TryDodgeStep(bot, matchingId, now, deltaSec, out var dodgeMovement))
             return dodgeMovement;
 
         // issue22 디버그: 도착 후 대기 중이면 walking 스킵
@@ -364,7 +359,7 @@ public partial class BotPlayerManager
         if (bot.Path.Count == 0 || bot.PathIndex >= bot.Path.Count)
         {
             if (!allowPathPlanning) return null;
-            ChooseNewWanderTarget(bot, matchingId, closureManager, inventoryManager, playerAreas,
+            ChooseNewWanderTarget(bot, matchingId, closureManager, playerAreas,
                 pveTargets);
             if (bot.Path.Count == 0) return null;
 
@@ -414,9 +409,9 @@ public partial class BotPlayerManager
         float dx = targetPos.X - bot.Player.Position!.X;
         float dy = targetPos.Y - bot.Player.Position!.Y;
         float dist = (float)Math.Sqrt(dx * dx + dy * dy);
-        float maxDist = BotWalkSpeed * GetBotMovementSpeedMultiplier(bot, inventoryManager) * deltaSec;
+        float maxDist = BotWalkSpeed * GetBotMovementSpeedMultiplier(bot) * deltaSec;
         if (dist >= 0.01f)
-            maxDist = ScaledWalkSpeed(dx / dist, dy / dist, GetBotMovementSpeedMultiplier(bot, inventoryManager)) * deltaSec;
+            maxDist = ScaledWalkSpeed(dx / dist, dy / dist, GetBotMovementSpeedMultiplier(bot)) * deltaSec;
 
         Vector3f newPosition;
         Vector3f velocity;
@@ -455,7 +450,7 @@ public partial class BotPlayerManager
                     velocity = ScaledWalkVelocity(
                         nextDx / nextDist,
                         nextDy / nextDist,
-                        GetBotMovementSpeedMultiplier(bot, inventoryManager));
+                        GetBotMovementSpeedMultiplier(bot));
 
                     // 웨이포인트에 스냅하면 이번 틱에 갈 수 있었던 거리가 버려져 그 틱만 느려진다.
                     // 셀을 지날 때마다 반복되므로 이동이 움찔거려 보인다. 남은 몫을 다음
@@ -481,7 +476,7 @@ public partial class BotPlayerManager
                 bot.Player.Position!.X + dirX * maxDist,
                 bot.Player.Position!.Y + dirY * maxDist,
                 0f);
-            velocity = ScaledWalkVelocity(dirX, dirY, GetBotMovementSpeedMultiplier(bot, inventoryManager));
+            velocity = ScaledWalkVelocity(dirX, dirY, GetBotMovementSpeedMultiplier(bot));
             bot.Player.Position = newPosition;
         }
 
@@ -527,7 +522,7 @@ public partial class BotPlayerManager
     /// </summary>
     /// <returns>true면 이번 틱은 회피 층이 처리했다(경로 걸음 없음). movement는 보낼 이벤트, 없으면 null.</returns>
     private bool TryDodgeStep(
-        BotPlayerState bot, long matchingId, DateTime now, float deltaSec, InGameInventoryManager inventoryManager, out BotMovementEvent? movement)
+        BotPlayerState bot, long matchingId, DateTime now, float deltaSec, out BotMovementEvent? movement)
     {
         movement = null;
         if (bot.Player.CurrentArea == AreaType.None)
@@ -580,7 +575,7 @@ public partial class BotPlayerManager
             bot.SwarmDodgeHoldUntilUtc = holdUntil;
 
         var mapId = GetMatchingMapId(matchingId);
-        float multiplier = GetBotMovementSpeedMultiplier(bot, inventoryManager);
+        float multiplier = GetBotMovementSpeedMultiplier(bot);
         for (int attempt = 0; attempt < 2; attempt++)
         {
             float sign = attempt == 0 ? 1f : -1f;
@@ -632,7 +627,6 @@ public partial class BotPlayerManager
     ///     따라가기(타겟 방)·흩어지기(최저 인원 방)·임의 방. 복도는 목적지가 아니라 통과만(transit).
     /// </summary>
     private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
-        InGameInventoryManager inventoryManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
         IReadOnlyCollection<MonsterCombatTarget> pveTargets)
     {
@@ -640,14 +634,14 @@ public partial class BotPlayerManager
         bot.Path.Clear();
         bot.PathIndex = 0;
 
-        bool needsGuardianOrb = !inventoryManager.GetPlayerInventory(bot.PlayerId).GetOrderedOrbs().Any(item => OrbData.IsOrbItem(item.ItemId));
+        bool needsGuardianOrb = !bot.Player.Orbs.GetOrderedOrbs().Any(item => OrbData.IsOrbItem(item.ItemId));
 
         // 복도는 통로다. 잔상 분포로 목적지를 정할 수 있으면 그것이 우선이고,
         // 못 정할 때만 가장 가까운 방으로 나간다. 이전에는 복도 탈출이 먼저 걸려
         // 잔상 사냥 판단에 도달하지 못했고, 봇이 잔상 없는 방과 복도를 왕복했다.
         if (bot.Player.CurrentArea.IsCorridor() && !needsGuardianOrb &&
             Config.MONSTER_SUMMON_ECONOMY_ENABLED &&
-            TryStartAfterimageHuntPath(bot, matchingId, mapId, closureManager, inventoryManager, pveTargets))
+            TryStartAfterimageHuntPath(bot, matchingId, mapId, closureManager, pveTargets))
         {
             return;
         }
@@ -667,7 +661,7 @@ public partial class BotPlayerManager
         }
 
         if (Config.MONSTER_SUMMON_ECONOMY_ENABLED &&
-            TryStartAfterimageHuntPath(bot, matchingId, mapId, closureManager, inventoryManager, pveTargets))
+            TryStartAfterimageHuntPath(bot, matchingId, mapId, closureManager, pveTargets))
         {
             return;
         }
@@ -717,7 +711,6 @@ public partial class BotPlayerManager
         long matchingId,
         MapId mapId,
         AreaClosureManager closureManager,
-        InGameInventoryManager inventoryManager,
         IReadOnlyCollection<MonsterCombatTarget> pveTargets)
     {
         // 복도에서도 목적지를 고를 수 있어야 한다. 복도에 서 있는 봇에게는 방만 후보로
@@ -727,7 +720,7 @@ public partial class BotPlayerManager
 
         var closure = closureManager.GetClientStateSnapshot();
         var unavailable = closure.ClosedAreas.Concat(closure.WarningAreas).ToHashSet();
-        var boardItemIds = inventoryManager.GetPlayerInventory(bot.PlayerId)
+        var boardItemIds = bot.Player.Orbs
             .GetAllItems()
             .Select(item => item.ItemId)
             .ToArray();

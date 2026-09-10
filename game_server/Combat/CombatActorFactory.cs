@@ -1,4 +1,4 @@
-using game_server.items;
+using game_server.players;
 
 using network.common;
 using network.common.data;
@@ -11,7 +11,7 @@ internal static class CombatActorFactory
     public static void AddInventoryCombatActors(
         ICollection<ProximityCombatActor> actors,
         ProximityCombatActor spatialActor,
-        PlayerInGameInventory inventory)
+        PlayerOrbCollection inventory)
     {
         bool addedBoardOrb = false;
 

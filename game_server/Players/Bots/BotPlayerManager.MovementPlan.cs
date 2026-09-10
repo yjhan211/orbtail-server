@@ -28,7 +28,6 @@ public partial class BotPlayerManager
 
     internal SwarmBotMovementPlan PrepareMovementTick(
         AreaClosureManager closures,
-        InGameInventoryManager inventory,
         GroundItemManager groundItems,
         EncounterRevealManager encounters,
         GameEventLogManager gameEventLogManager,
@@ -54,14 +53,12 @@ public partial class BotPlayerManager
             matchingId,
             closures,
             playerAreas,
-            inventory,
             groundItems,
             pveTargets,
             directiveProvider);
 
         long preparationStartedAt = Stopwatch.GetTimestamp();
         SwarmBotMovementPlan plan = PrepareResult(
-            inventory,
             encounters,
             gameEventLogManager,
             matchingId,
@@ -84,7 +81,6 @@ public partial class BotPlayerManager
     ///     not advance the orb orbit because the existing cut-dummy controls never did so.
     /// </summary>
     internal SwarmBotMovementPlan PrepareExternalMovement(
-        InGameInventoryManager inventory,
         EncounterRevealManager encounters,
         GameEventLogManager gameEventLogManager,
         BotMovementEvent movement,
@@ -97,7 +93,6 @@ public partial class BotPlayerManager
 
         long preparationStartedAt = Stopwatch.GetTimestamp();
         SwarmBotMovementPlan plan = PrepareResult(
-            inventory,
             encounters,
             gameEventLogManager,
             matchingId,
@@ -115,7 +110,6 @@ public partial class BotPlayerManager
     }
 
     private SwarmBotMovementPlan PrepareResult(
-        InGameInventoryManager inventory,
         EncounterRevealManager encounters,
         GameEventLogManager gameEventLogManager,
         long matchingId,

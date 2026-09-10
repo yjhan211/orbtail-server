@@ -14,7 +14,6 @@ public sealed class PlayerEliminationInventoryDropTests
 {
     private const int HopeOrbT1 = 107000010;
     private const int ForgetOrbT1 = 107000020;
-    private const int Bandage = 201000008;
 
     public PlayerEliminationInventoryDropTests()
     {
@@ -38,9 +37,8 @@ public sealed class PlayerEliminationInventoryDropTests
             new MatchSummaryFileStore(),
             NullLogger.Instance);
 
-        match.Inventory.AddItem(playerId, HopeOrbT1);
-        match.Inventory.AddItem(playerId, ForgetOrbT1);
-        match.Inventory.AddItem(playerId, Bandage);
+        TestGameSessionServices.Orbs(match, playerId).AddItem(HopeOrbT1);
+        TestGameSessionServices.Orbs(match, playerId).AddItem(ForgetOrbT1);
 
         using (match.Enter())
         {
@@ -51,7 +49,7 @@ public sealed class PlayerEliminationInventoryDropTests
                 deferGameOver: true);
         }
 
-        Assert.Empty(match.Inventory.GetAllItems(playerId));
+        Assert.Empty(TestGameSessionServices.Orbs(match, playerId).GetAllItems());
         Assert.Equal(
             new[] { HopeOrbT1, ForgetOrbT1 },
             match.GroundItems.GetSnapshot(player.CurrentArea)
@@ -75,7 +73,7 @@ public sealed class PlayerEliminationInventoryDropTests
             new MatchSummaryFileStore(),
             NullLogger.Instance);
 
-        match.Inventory.AddItem(botPlayerId, HopeOrbT1);
+        TestGameSessionServices.Orbs(match, botPlayerId).AddItem(HopeOrbT1);
 
         using (match.Enter())
         {
@@ -91,7 +89,7 @@ public sealed class PlayerEliminationInventoryDropTests
                 deferGameOver: true);
         }
 
-        Assert.Empty(match.Inventory.GetAllItems(botPlayerId));
+        Assert.Empty(TestGameSessionServices.Orbs(match, botPlayerId).GetAllItems());
         Assert.Single(match.GroundItems.GetSnapshot(player.CurrentArea));
         Assert.Single(
             eventLogs.GetRecent(matchingId),

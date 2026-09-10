@@ -61,10 +61,9 @@ internal sealed class MatchRuntime
         SunOrbAttacks = new SunOrbAttackState(matchingId);
         Bots = new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks, eventLogs);
         AutoAttack = new AutoAttackController(matchingId);
-        Inventory = new InGameInventoryManager(matchingId, logger);
         GroundItems = new GroundItemManager(matchingId);
         Closures = new AreaClosureManager(matchingId, logger);
-        Monsters = new SwarmMonsterDirector(matchingId, Closures, Inventory);
+        Monsters = new SwarmMonsterDirector(matchingId, Closures, playerId => GetParticipant(playerId)?.Orbs.HasAnyOrb() ?? false);
         CombatDamage = new MatchCombatDamageService(this, eventLogs, damageLogger);
     }
 
@@ -83,7 +82,6 @@ internal sealed class MatchRuntime
     public WindOrbAttackState WindOrbAttacks { get; } = new();
 
     // 아이템과 재화
-    public InGameInventoryManager Inventory { get; }
     public GroundItemManager GroundItems { get; }
 
     // 맵과 진행 상태
@@ -156,6 +154,9 @@ internal sealed class MatchRuntime
             _logger.LogInformation("Match participant registered: MatchingId={MatchingId}, PlayerId={PlayerId}, Count={Count}", MatchingId, participant.PlayerId, _aliveCount);
         }
     }
+
+    /// <summary>참가자의 배낭. 등록되지 않은 플레이어면 아무것도 담지 않는 빈 배낭을 돌려준다.</summary>
+    public PlayerOrbCollection GetOrbs(long playerId) => GetParticipant(playerId)?.Orbs ?? new PlayerOrbCollection();
 
     public Player? GetParticipant(long playerId)
     {
@@ -385,7 +386,6 @@ internal sealed class MatchRuntime
                 }
                 Doors.Clear();
                 EventLog.Release();
-                Inventory.Release();
                 GroundItems.Release();
                 Encounters.Release();
                 _participants.Clear();

@@ -34,7 +34,7 @@ public sealed class PlayerOrbGrowthServiceTests
         Assert.Throws<InvalidOperationException>(() => service.GetNextOrbGrowthCost(runtime, player));
         Assert.Throws<InvalidOperationException>(() => service.GetTopOrbCount(runtime));
         Assert.Equal(100, TestGameSessionServices.SummonStones(runtime, 1).StoneCount);
-        Assert.Empty(runtime.Inventory.GetAllItems(1));
+        Assert.Empty(TestGameSessionServices.Orbs(runtime, 1).GetAllItems());
         Assert.Equal(0, player.GetOrbUpgradeCount(107000010 / 10));
     }
 
@@ -54,12 +54,12 @@ public sealed class PlayerOrbGrowthServiceTests
             Assert.True(attempt.Success);
             Assert.Equal(0, attempt.State.StoneCount);
             Assert.Equal(attempt.AddedItem!.ItemUid,
-                Assert.Single(runtime.Inventory.GetAllItems(1)).ItemUid);
+                Assert.Single(TestGameSessionServices.Orbs(runtime, 1).GetAllItems()).ItemUid);
             var again = service.Summon(runtime, player);
             Assert.False(again.Success);
             Assert.Equal(ErrorCode.INSUFFICIENT_CURRENCY, again.ErrorCode);
             Assert.Equal(0, again.State.StoneCount);
-            Assert.Single(runtime.Inventory.GetAllItems(1));
+            Assert.Single(TestGameSessionServices.Orbs(runtime, 1).GetAllItems());
             runtime.TryMarkEnded();
         }
     }

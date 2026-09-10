@@ -252,7 +252,7 @@ public sealed class SwarmMonsterDirector
     public Func<long, AreaType, (Cell Spawn, Cell Anchor)?>? FieldSpawnCellResolver { get; set; }
 
     /// <summary>공격·회복 오브가 없는 플레이어를 우선 추격 대상으로 판정한다.</summary>
-    internal bool IsPlayerOrbless(long playerId) => !_inventory.HasAnySquadOrb(playerId);
+    internal bool IsPlayerOrbless(long playerId) => !_hasAnyOrb(playerId);
 
     private static int GetEscalationStage(double elapsedSeconds) =>
         elapsedSeconds >= EscalationStage2AtSeconds ? 2 :
@@ -263,16 +263,16 @@ public sealed class SwarmMonsterDirector
 
     private readonly long _matchingId;
     private readonly AreaClosureManager _closures;
-    private readonly InGameInventoryManager _inventory;
+    private readonly Func<long, bool> _hasAnyOrb;
     private MatchState? _state;
     private readonly Func<DateTime> _utcNow;
 
-    public SwarmMonsterDirector(long matchingId, AreaClosureManager closures, InGameInventoryManager inventory, Func<DateTime>? utcNow = null)
+    public SwarmMonsterDirector(long matchingId, AreaClosureManager closures, Func<long, bool> hasAnyOrb, Func<DateTime>? utcNow = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
         _matchingId = matchingId;
         _closures = closures ?? throw new ArgumentNullException(nameof(closures));
-        _inventory = inventory ?? throw new ArgumentNullException(nameof(inventory));
+        _hasAnyOrb = hasAnyOrb ?? throw new ArgumentNullException(nameof(hasAnyOrb));
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
 

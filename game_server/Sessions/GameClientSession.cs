@@ -421,7 +421,7 @@ public partial class GameClientSession : SessionBase
 
     private void LogInitialInventory()
     {
-        var inventory = Match.Inventory.GetPlayerInventory(PlayerId!.Value);
+        var inventory = Player.Orbs;
         _gameEventLogManager.LogOrbBoardTransition(MatchingId, PlayerId.Value, inventory.GetAllItems(),
             inventory.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0, Player.CurrentArea.ToString(), "connection_sync", isBot: false);
     }

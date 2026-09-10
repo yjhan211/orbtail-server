@@ -36,7 +36,7 @@ internal sealed class PlayerEliminationService(
         var eliminatedArea = eliminatedPlayer.CurrentArea;
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
 
-        int finalOrbTier = runtime.Inventory.GetHighestOrbTier(eliminatedPlayerId);
+        int finalOrbTier = eliminatedPlayer.Orbs.GetHighestOrbTier();
         bool eliminated = runtime.TryEliminatePlayer(eliminatedPlayerId, reason, resolvedAttackerPlayerId, eliminatedArea, forcedRank, finalOrbTier);
         if (!eliminated)
         {
@@ -57,7 +57,7 @@ internal sealed class PlayerEliminationService(
         var position = eliminatedPlayer.Position;
         if (position != null && eliminatedArea != AreaType.None)
         {
-            var removedItems = runtime.Inventory.TakeAllItems(eliminatedPlayerId);
+            var removedItems = eliminatedPlayer.Orbs.TakeAllItems();
             var droppedItemIds = new List<int>();
             foreach (var item in removedItems)
             {
@@ -82,7 +82,7 @@ internal sealed class PlayerEliminationService(
 
             if (removedItems.Count > 0)
             {
-                var emptyBoard = runtime.Inventory.GetPlayerInventory(eliminatedPlayerId);
+                var emptyBoard = eliminatedPlayer.Orbs;
                 gameEventLogManager.LogOrbBoardTransition(matchingId, eliminatedPlayerId, emptyBoard.GetAllItems(), 0, eliminatedArea.ToString(), "elimination_drop", isBot: eliminatedBot != null);
                 foreach (var item in removedItems)
                 {

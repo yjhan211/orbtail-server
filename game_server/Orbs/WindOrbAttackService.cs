@@ -47,7 +47,7 @@ internal sealed class WindOrbAttackService(
         foreach (var owner in players)
         {
             if (owner.IsEliminated || owner.Position == null) continue;
-            var trailOrbs = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(owner.PlayerId).GetOrderedOrbs();
+            var trailOrbs = owner.Orbs.GetOrderedOrbs();
             if (trailOrbs.Count == 0)
                 continue;
 

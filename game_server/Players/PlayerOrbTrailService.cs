@@ -21,11 +21,11 @@ internal sealed class PlayerOrbTrailService
             throw new InvalidOperationException("Orb trail operations require the match lock.");
         }
 
-        var inventory = runtime.Inventory.GetPlayerInventory(player.PlayerId);
+        var inventory = player.Orbs;
         int orbCount = 0;
         foreach (var item in inventory.GetAllItems())
         {
-            if (item.Count <= 0 || GetOrbTier(item.ItemId) <= 0)
+            if (item.Count <= 0 || PlayerOrbCollection.GetOrbTier(item.ItemId) <= 0)
             {
                 continue;
             }
@@ -43,7 +43,7 @@ internal sealed class PlayerOrbTrailService
             throw new InvalidOperationException("Orb trail operations require the match lock.");
         }
 
-        var items = runtime.Inventory.GetPlayerInventory(player.PlayerId).GetAllItems().ToList();
+        var items = player.Orbs.GetAllItems().ToList();
         items.Sort((left, right) => left.ItemUid.CompareTo(right.ItemUid));
 
         var tiers = new List<int>();
@@ -54,7 +54,7 @@ internal sealed class PlayerOrbTrailService
                 continue;
             }
 
-            int tier = GetOrbTier(item.ItemId);
+            int tier = PlayerOrbCollection.GetOrbTier(item.ItemId);
             if (tier > 0)
             {
                 tiers.Add(tier);
@@ -126,8 +126,8 @@ internal sealed class PlayerOrbTrailService
         }
 
         var destroyed = new List<InGameItemInfo>();
-        var inventory = runtime.Inventory.GetPlayerInventory(player.PlayerId);
-        var orbs = inventory.GetAllItems().Where(item => item.Count > 0 && GetOrbTier(item.ItemId) > 0).OrderBy(item => item.ItemUid).ToList();
+        var inventory = player.Orbs;
+        var orbs = inventory.GetAllItems().Where(item => item.Count > 0 && PlayerOrbCollection.GetOrbTier(item.ItemId) > 0).OrderBy(item => item.ItemUid).ToList();
         if (fromOrdinal < 0 || fromOrdinal >= orbs.Count)
         {
             return destroyed;
@@ -143,12 +143,4 @@ internal sealed class PlayerOrbTrailService
         return destroyed;
     }
 
-    private static int GetOrbTier(int itemId)
-    {
-        if (OrbData.TryGetColorAndTier(itemId, out _, out int tier))
-        {
-            return tier;
-        }
-        return OrbData.TryGetRecoveryTier(itemId, out int recoveryTier) ? recoveryTier : 0;
-    }
 }

@@ -317,7 +317,7 @@ internal class MatchZoneService(
             if (closed.Contains(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, ownerCell)))
                 continue;
 
-            int orbCount = runtime.Inventory.GetPlayerInventory(playerId).GetOrderedOrbs().Sum(item => item.Count);
+            int orbCount = runtime.GetOrbs(playerId).GetOrderedOrbs().Sum(item => item.Count);
             if (orbCount == 0)
                 continue;
             var closureTiers = orbTrails.GetOrbTiersInOrder(runtime, player);

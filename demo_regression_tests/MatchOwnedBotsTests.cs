@@ -13,21 +13,20 @@ public sealed class MatchOwnedBotsTests
     public void BotMovementUsesCurrentWindOrbs()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
-        var inventory = new game_server.items.InGameInventoryManager(948023, NullLogger.Instance);
         var bot = new BotPlayerState { PlayerId = -1 };
 
-        Assert.Equal(1f, BotPlayerManager.GetBotMovementSpeedMultiplier(bot, inventory));
-        Assert.True(inventory.TryAddItemWithCapacity(-1, 107000020, 8, out _));
-        Assert.Equal(1.06f, BotPlayerManager.GetBotMovementSpeedMultiplier(bot, inventory));
-        Assert.True(inventory.TryAddItemWithCapacity(-1, 107000022, 8, out _));
-        Assert.Equal(1.08f, BotPlayerManager.GetBotMovementSpeedMultiplier(bot, inventory));
+        Assert.Equal(1f, BotPlayerManager.GetBotMovementSpeedMultiplier(bot));
+        Assert.True(bot.Player.Orbs.TryAddItemWithCapacity(107000020, 8, out _));
+        Assert.Equal(1.06f, BotPlayerManager.GetBotMovementSpeedMultiplier(bot));
+        Assert.True(bot.Player.Orbs.TryAddItemWithCapacity(107000022, 8, out _));
+        Assert.Equal(1.08f, BotPlayerManager.GetBotMovementSpeedMultiplier(bot));
 
         bot.BootsSpeedUntilUtc = DateTime.UtcNow.AddMinutes(1);
         Assert.Equal(1.08f * Config.BOOTS_MOVE_SPEED_MULTIPLIER,
-            BotPlayerManager.GetBotMovementSpeedMultiplier(bot, inventory));
-        inventory.TakeAllItems(-1);
+            BotPlayerManager.GetBotMovementSpeedMultiplier(bot));
+        bot.Player.Orbs.TakeAllItems();
         Assert.Equal(Config.BOOTS_MOVE_SPEED_MULTIPLIER,
-            BotPlayerManager.GetBotMovementSpeedMultiplier(bot, inventory));
+            BotPlayerManager.GetBotMovementSpeedMultiplier(bot));
     }
 
     [Fact]
@@ -67,18 +66,18 @@ public sealed class MatchOwnedBotsTests
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         Assert.NotSame(first.Bots, second.Bots);
         using (MatchRuntimeStore.Enter(first))
-            Assert.Equal(1L, first.Bots.PrepareMovementTick(first.Closures, first.Inventory, first.GroundItems, first.Encounters, logs, [], [], (_, _) => default).MatchingId);
+            Assert.Equal(1L, first.Bots.PrepareMovementTick(first.Closures, first.GroundItems, first.Encounters, logs, [], [], (_, _) => default).MatchingId);
         using (MatchRuntimeStore.Enter(second))
-            Assert.Equal(2L, second.Bots.PrepareMovementTick(second.Closures, second.Inventory, second.GroundItems, second.Encounters, logs, [], [], (_, _) => default).MatchingId);
+            Assert.Equal(2L, second.Bots.PrepareMovementTick(second.Closures, second.GroundItems, second.Encounters, logs, [], [], (_, _) => default).MatchingId);
         using (MatchRuntimeStore.Enter(first))
         {
             first.TryMarkEnded();
             var movementService = new BotMovementService(logs, NullLogger<BotMovementService>.Instance);
             Assert.Throws<InvalidOperationException>(() => movementService.ProcessTick(first, (_, _) => default));
         }
-        Assert.Throws<InvalidOperationException>(() => first.Bots.PrepareMovementTick(first.Closures, first.Inventory, first.GroundItems, first.Encounters, logs, [], [], (_, _) => default));
+        Assert.Throws<InvalidOperationException>(() => first.Bots.PrepareMovementTick(first.Closures, first.GroundItems, first.Encounters, logs, [], [], (_, _) => default));
         using (MatchRuntimeStore.Enter(second))
-            Assert.Equal(2L, second.Bots.PrepareMovementTick(second.Closures, second.Inventory, second.GroundItems, second.Encounters, logs, [], [], (_, _) => default).MatchingId);
+            Assert.Equal(2L, second.Bots.PrepareMovementTick(second.Closures, second.GroundItems, second.Encounters, logs, [], [], (_, _) => default).MatchingId);
     }
 
     [Fact]

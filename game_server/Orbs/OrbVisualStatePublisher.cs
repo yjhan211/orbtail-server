@@ -27,7 +27,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
     /// <summary>앞줄 오브 = 최저 티어·선입(ItemUid) — 피해·표시가 같은 기준을 읽는다.</summary>
     private InGameItemInfo? FindSwarmFrontOrb(long matchingId, long playerId)
     {
-        return matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId)
+        return matchRuntimes.GetOrThrow(matchingId).GetOrbs(playerId)
             .GetAllItems()
             .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
             .OrderBy(item => GetSquadOrbTier(item.ItemId))
@@ -61,7 +61,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
     private long GetSwarmArmorMask(long matchingId, long playerId)
     {
         long mask = 0;
-        var orbs = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs();
+        var orbs = matchRuntimes.GetOrThrow(matchingId).GetOrbs(playerId).GetOrderedOrbs();
         for (int ordinal = 0; ordinal < orbs.Count && ordinal < 64; ordinal++)
             if (matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, orbs[ordinal].ItemUid)))
                 mask |= 1L << ordinal;

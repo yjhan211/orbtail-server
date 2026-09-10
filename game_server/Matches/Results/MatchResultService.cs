@@ -207,10 +207,10 @@ internal sealed class MatchResultService(
             int survivalSeconds = Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds));
             killCountsByPlayerId.TryGetValue(playerId, out int playerKillCount);
             int killCount = playerKillCount + stats.MonsterKillCount;
-            int orbCount = runtime.Inventory.GetOrbScore(playerId).OrbCount;
+            int orbCount = runtime.GetOrbs(playerId).GetOrbScore().OrbCount;
             bool isWinner = playerId == winnerId;
             int rank = isWinner ? 1 : row.eliminationRank;
-            int finalOrbTier = isWinner ? runtime.Inventory.GetHighestOrbTier(playerId) : row.finalOrbTier;
+            int finalOrbTier = isWinner ? runtime.GetOrbs(playerId).GetHighestOrbTier() : row.finalOrbTier;
 
             var result = new GameResultPlayerInfo
             {

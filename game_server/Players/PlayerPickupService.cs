@@ -219,7 +219,7 @@ internal sealed class PlayerPickupService(
                     return true;
                 }
 
-                return match.Inventory.GetPlayerInventory(player.PlayerId).TryAddItemWithCapacity(
+                return match.GetOrbs(player.PlayerId).TryAddItemWithCapacity(
                     groundItem.ItemId,
                     Config.GetOrbCapacity(),
                     out addedItem);
@@ -277,7 +277,7 @@ internal sealed class PlayerPickupService(
         eventLogs.LogGroundItemPickup(match.MatchingId, player.PlayerId, discovererPlayerId, claimedItem.GroundItemUid, claimedItem.ItemId, player.CurrentArea.ToString(), autoUsed, isBot: player.PlayerId < 0);
         if (!summonStonePickup && !bootsPickup)
         {
-            var boardAfterPickup = match.Inventory.GetPlayerInventory(player.PlayerId);
+            var boardAfterPickup = player.Orbs;
             eventLogs.LogOrbBoardTransition(match.MatchingId, player.PlayerId, boardAfterPickup.GetAllItems(), boardAfterPickup.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0, player.CurrentArea.ToString(), "pickup", isBot: player.PlayerId < 0);
         }
         using var result = PacketMaker.G_TO_C_GROUND_ITEM_PICKUP_RESULT(claimedItem.GroundItemUid, claimedItem.ItemId, true, autoUsed, ErrorCode.SUCCESS);

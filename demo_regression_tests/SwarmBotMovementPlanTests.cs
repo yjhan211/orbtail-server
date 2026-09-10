@@ -33,7 +33,7 @@ public sealed class SwarmBotMovementPlanTests
         using (match.Enter())
         {
             match.RegisterParticipant(target);
-            var plan = match.Bots.PrepareExternalMovement(match.Inventory, match.Encounters,
+            var plan = match.Bots.PrepareExternalMovement(match.Encounters,
                 TestGameEventLogs.Create(), movement, match.GetAlivePlayers(), []);
             var dispatch = Assert.Single(plan.Movements);
             var encounter = Assert.IsType<SwarmBotEncounterDispatch>(dispatch.Encounter);
@@ -73,7 +73,7 @@ public sealed class SwarmBotMovementPlanTests
         players[3].Position = null;
         using (match.Enter())
         {
-            var plan = match.Bots.PrepareExternalMovement(match.Inventory, match.Encounters,
+            var plan = match.Bots.PrepareExternalMovement(match.Encounters,
                 TestGameEventLogs.Create(), movement, players, []);
             Assert.Null(Assert.Single(plan.Movements).Encounter);
         }
@@ -110,7 +110,7 @@ public sealed class SwarmBotMovementPlanTests
 
         var match = CreateMatch();
         SwarmBotMovementPlan plan = match.Bots.PrepareExternalMovement(
-            match.Inventory, match.Encounters,
+            match.Encounters,
             TestGameEventLogs.Create(),
             movement,
             [],

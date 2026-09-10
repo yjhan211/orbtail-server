@@ -704,7 +704,7 @@ internal class MatchCombatService(
                 List<long> Uids, List<int> ItemIds)>();
         foreach (var owner in participants)
         {
-            var orbs = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(owner.PlayerId)
+            var orbs = matchRuntimes.GetOrThrow(matchingId).GetOrbs(owner.PlayerId)
                 .GetAllItems()
                 .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
                 .OrderBy(item => item.ItemUid)
@@ -760,7 +760,7 @@ internal class MatchCombatService(
     /// <summary>열 순서대로의 아이템 ID — 절단 후 재조회용.</summary>
     private List<int> GetSwarmOrbItemIdsInOrder(long matchingId, long playerId)
     {
-        return matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId)
+        return matchRuntimes.GetOrThrow(matchingId).GetOrbs(playerId)
             .GetAllItems()
             .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
             .OrderBy(item => item.ItemUid)
@@ -1438,7 +1438,7 @@ internal class MatchCombatService(
     ///     (봇도 같은 인게임 인벤토리를 쓴다).
     /// </summary>
     private (int OrbCount, int TierSum) GetSwarmOrbScore(long matchingId, long playerId) =>
-        matchRuntimes.GetOrThrow(matchingId).Inventory.GetOrbScore(playerId);
+        matchRuntimes.GetOrThrow(matchingId).GetOrbs(playerId).GetOrbScore();
 
     /// <summary>
     ///     오브 순위 브로드캐스트 (#226 단계 B): 오브 수가 곧 점수다. 패킷은 잼 순위 시절의
@@ -1487,7 +1487,7 @@ internal class MatchCombatService(
 
     /// <summary>열 순서의 오브 목록 — 강화·철갑의 "가장 앞" 판정과 트레일 순번의 단일 출처.</summary>
     private List<InGameItemInfo> GetSwarmTrailOrbs(long matchingId, long playerId) =>
-        matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs();
+        matchRuntimes.GetOrThrow(matchingId).GetOrbs(playerId).GetOrderedOrbs();
 
     private static int GetSquadOrbTier(int itemId)
     {
@@ -1551,7 +1551,7 @@ internal class MatchCombatService(
             // 사거리 판정을 이미 필터가 하므로, 후보에 올라온 사람은 곧 사정권 안이다.
             TargetPriority = 0
         };
-        var inventory = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(spatial.PlayerId);
+        var inventory = matchRuntimes.GetOrThrow(matchingId).GetOrbs(spatial.PlayerId);
         var inventoryItems = inventory.GetAllItems().Where(item => item.Count > 0).ToList();
         if (inventoryItems.Count == 0)
         {

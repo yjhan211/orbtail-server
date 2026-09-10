@@ -54,7 +54,7 @@ internal sealed class MatchCleanupService(
                 var stats = eventLogs.GetResultStats(matchingId, row.playerId);
                 var survivalEndUtc = row.eliminatedAt ?? endedAtUtc;
                 int survivalSeconds = Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds));
-                int orbCount = runtime.Inventory.GetOrbScore(row.playerId).OrbCount;
+                int orbCount = runtime.GetOrbs(row.playerId).GetOrbScore().OrbCount;
                 var playerStats = new MatchFinalPlayerStats(
                     row.playerId,
                     row.eliminationRank,

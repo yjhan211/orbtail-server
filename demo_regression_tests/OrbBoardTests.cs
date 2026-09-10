@@ -1,5 +1,6 @@
 using game_server.combat;
 using game_server.items;
+using game_server.players;
 using network.common;
 using network.common.data;
 using network.common.data.helpers;
@@ -166,11 +167,11 @@ public sealed class OrbBoardTests
     [Fact]
     public void InventoryResonanceUsesAllOwnedOrbs()
     {
-        var inventory = new PlayerInGameInventory(198);
-        inventory.AddItem(107000030, forceSeparateStack: true);
-        inventory.AddItem(107000032, forceSeparateStack: true);
+        var inventory = new PlayerOrbCollection();
+        inventory.AddItem(107000030);
+        inventory.AddItem(107000032);
 
-        Assert.True(inventory.TryGetActiveOrbPair(out var color, out int supportTier));
+        Assert.True(OrbData.TryGetActivePair(inventory.GetOrderedOrbs().Select(item => item.ItemId), out var color, out int supportTier));
         Assert.Equal(OrbColor.Blue, color);
         Assert.Equal(3, supportTier);
     }
@@ -179,10 +180,9 @@ public sealed class OrbBoardTests
     public void PickedUpOrbsJoinTheTailInUidOrderWithoutEquipmentSelection()
     {
         InitializeBattleCombatData();
-        var manager = MatchTestServices.Inventory(10);
-        Assert.True(manager.TryAddItemWithCapacity(100, 107000010, 6, out var first));
-        Assert.True(manager.TryAddItemWithCapacity(100, 107000020, 6, out var second));
-        var inventory = manager.GetPlayerInventory(100);
+        var inventory = new PlayerOrbCollection();
+        Assert.True(inventory.TryAddItemWithCapacity(107000010, 6, out var first));
+        Assert.True(inventory.TryAddItemWithCapacity(107000020, 6, out var second));
         Assert.Equal(new[] { first!.ItemUid, second!.ItemUid },
             inventory.GetOrderedOrbs().Select(item => item.ItemUid));
         var actors = new List<ProximityCombatActor>();
@@ -197,14 +197,13 @@ public sealed class OrbBoardTests
     public void ReconnectRecomputesTheSameSingleResonanceFromTheAuthoritativeBoard()
     {
         InitializeBattleCombatData();
-        var manager = MatchTestServices.Inventory(198);
-        Assert.True(manager.TryAddItemWithCapacity(101, 107000010, 6, out _));
-        Assert.True(manager.TryAddItemWithCapacity(101, 107000010, 6, out _));
-        Assert.True(manager.TryAddItemWithCapacity(101, 107000020, 6, out _));
-        Assert.True(manager.TryAddItemWithCapacity(101, 107000020, 6, out _));
+        var reconnectedInventory = new PlayerOrbCollection();
+        Assert.True(reconnectedInventory.TryAddItemWithCapacity(107000010, 6, out _));
+        Assert.True(reconnectedInventory.TryAddItemWithCapacity(107000010, 6, out _));
+        Assert.True(reconnectedInventory.TryAddItemWithCapacity(107000020, 6, out _));
+        Assert.True(reconnectedInventory.TryAddItemWithCapacity(107000020, 6, out _));
 
-        var reconnectedInventory = manager.GetPlayerInventory(101);
-        Assert.True(reconnectedInventory.TryGetActiveOrbPair(out var color, out int supportTier));
+        Assert.True(OrbData.TryGetActivePair(reconnectedInventory.GetOrderedOrbs().Select(item => item.ItemId), out var color, out int supportTier));
         Assert.Equal(OrbColor.Red, color);
         Assert.Equal(1, supportTier);
     }

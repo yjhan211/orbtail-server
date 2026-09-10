@@ -127,10 +127,10 @@ internal sealed class PlayerOrbGrowthService(
 
         long playerId = player.PlayerId;
         var area = player.CurrentArea;
-        var attempt = TrySummon(runtime, player, itemId => runtime.Inventory.TryAddItemWithCapacity(playerId, itemId, Config.SWARM_ORB_CAPACITY, out var added) ? added : null);
+        var attempt = TrySummon(runtime, player, itemId => player.Orbs.TryAddItemWithCapacity(itemId, Config.SWARM_ORB_CAPACITY, out var added) ? added : null);
         if (attempt is { Success: true, AddedItem: not null })
         {
-            var inventory = runtime.Inventory.GetPlayerInventory(playerId);
+            var inventory = player.Orbs;
             eventLogs.LogOrbBoardTransition(runtime.MatchingId, playerId, inventory.GetAllItems(), inventory.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0, area.ToString(), "summon", isBot: playerId < 0);
         }
 
@@ -170,7 +170,7 @@ internal sealed class PlayerOrbGrowthService(
         }
 
         player.IncrementOrbUpgradeCount(orbGroupId);
-        var inventory = runtime.Inventory.GetPlayerInventory(playerId);
+        var inventory = player.Orbs;
         bool replaced = inventory.TryReplaceOrb(target.ItemUid, upgradedItemId, out _);
 
         eventLogs.LogSystem(matchingId, $"ORB_UPGRADED player={playerId} bot={playerId < 0} group={orbGroupId} ordinal={ordinal} " + $"uid={target.ItemUid} tier={tier}->{tier + 1} cost={cost} replaced={replaced}");
@@ -181,7 +181,7 @@ internal sealed class PlayerOrbGrowthService(
     private int GetGroupLevel(MatchRuntime runtime, Player player, int orbGroupId)
     {
         int highestTier = 1;
-        foreach (var item in runtime.Inventory.GetPlayerInventory(player.PlayerId).GetOrderedOrbs())
+        foreach (var item in player.Orbs.GetOrderedOrbs())
         {
             if (OrbData.TryGetOrbGroupAndTier(item.ItemId, out int itemGroupId, out int tier) &&
                 itemGroupId == orbGroupId && tier > highestTier)
@@ -194,7 +194,7 @@ internal sealed class PlayerOrbGrowthService(
 
     private int FindUpgradeTargetOrdinal(MatchRuntime runtime, Player player, int orbGroupId, out InGameItemInfo? target)
     {
-        var orbs = runtime.Inventory.GetPlayerInventory(player.PlayerId).GetOrderedOrbs();
+        var orbs = player.Orbs.GetOrderedOrbs();
         for (int ordinal = 0; ordinal < orbs.Count; ordinal++)
         {
             if (!OrbData.TryGetOrbGroupAndTier(orbs[ordinal].ItemId, out int itemGroupId, out int tier) ||
@@ -254,7 +254,7 @@ internal sealed class PlayerOrbGrowthService(
             throw new InvalidOperationException("Orb growth operations require the match lock.");
         }
 
-        int cost = runtime.Inventory.GetOrbScore(player.PlayerId).OrbCount < Config.SWARM_ORB_CAPACITY ? player.SummonStones.NextCost : int.MaxValue;
+        int cost = player.Orbs.GetOrbScore().OrbCount < Config.SWARM_ORB_CAPACITY ? player.SummonStones.NextCost : int.MaxValue;
         var upgrades = GetOrbUpgradeInfo(runtime, player);
         foreach (int upgradeCost in new[] { upgrades.SunCost, upgrades.WindCost, upgrades.WaveCost })
         {
@@ -277,7 +277,7 @@ internal sealed class PlayerOrbGrowthService(
         int top = 0;
         foreach (var player in runtime.GetAlivePlayers())
         {
-            top = Math.Max(top, runtime.Inventory.GetOrbScore(player.PlayerId).OrbCount);
+            top = Math.Max(top, player.Orbs.GetOrbScore().OrbCount);
         }
         return top;
     }

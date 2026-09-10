@@ -220,7 +220,7 @@ public partial class GameClientSession
             return;
         }
 
-        var items = Match.Inventory.GetPlayerInventory(PlayerId.Value).GetAllItems();
+        var items = Player.Orbs.GetAllItems();
         using var packet = PacketMaker.G_TO_C_ORB_LIST(items);
         TrySend(packet);
 
