@@ -46,17 +46,18 @@ public sealed class MatchGameplayStateTests
     public void WindOrbAttackState_PreservesTimingBoundariesAndEngagementReset()
     {
         var state = new WindOrbAttackState();
+        var player = new Player { Profile = new PlayerInfo { PlayerId = 10 } };
         DateTime nowUtc = new(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc);
 
-        Assert.True(state.TryBeginTick(10, 100, nowUtc, 1d));
-        Assert.False(state.TryBeginTick(10, 100, nowUtc.AddMilliseconds(999), 1d));
-        Assert.True(state.TryBeginTick(10, 100, nowUtc.AddSeconds(1), 1d));
+        Assert.True(player.TryBeginWindOrbTick( 100, nowUtc, 1d));
+        Assert.False(player.TryBeginWindOrbTick( 100, nowUtc.AddMilliseconds(999), 1d));
+        Assert.True(player.TryBeginWindOrbTick( 100, nowUtc.AddSeconds(1), 1d));
 
-        Assert.False(state.HasCompletedSpinup(10, 100, nowUtc, 0.2f));
-        Assert.False(state.HasCompletedSpinup(10, 100, nowUtc.AddMilliseconds(200), 0.2f));
-        Assert.True(state.HasCompletedSpinup(10, 100, nowUtc.AddMilliseconds(200).AddTicks(1), 0.2f));
-        state.ResetEngagement(10, 100);
-        Assert.False(state.HasCompletedSpinup(10, 100, nowUtc.AddSeconds(1), 0.2f));
+        Assert.False(player.HasCompletedWindOrbSpinup( 100, nowUtc, 0.2f));
+        Assert.False(player.HasCompletedWindOrbSpinup( 100, nowUtc.AddMilliseconds(200), 0.2f));
+        Assert.True(player.HasCompletedWindOrbSpinup( 100, nowUtc.AddMilliseconds(200).AddTicks(1), 0.2f));
+        player.ResetWindOrbEngagement( 100);
+        Assert.False(player.HasCompletedWindOrbSpinup( 100, nowUtc.AddSeconds(1), 0.2f));
 
         Assert.True(state.TryClaimVictimShock(20, nowUtc, 0.9d));
         Assert.False(state.TryClaimVictimShock(20, nowUtc.AddMilliseconds(899), 0.9d));
@@ -97,12 +98,12 @@ public sealed class MatchGameplayStateTests
         first.WindOrbAttacks.ApplyWound(playerId, nowUtc.AddMinutes(1));
         Assert.True(first.WindOrbAttacks.IsWounded(playerId, nowUtc));
         Assert.False(second.WindOrbAttacks.IsWounded(playerId, nowUtc));
-        Assert.False(first.WindOrbAttacks.HasCompletedSpinup(playerId, itemUid, nowUtc, 1d));
-        Assert.False(second.WindOrbAttacks.HasCompletedSpinup(playerId, itemUid, nowUtc.AddSeconds(2), 1d));
+        Assert.False(GetOrRegisterPlayer(first, playerId).HasCompletedWindOrbSpinup( itemUid, nowUtc, 1d));
+        Assert.False(GetOrRegisterPlayer(second, playerId).HasCompletedWindOrbSpinup( itemUid, nowUtc.AddSeconds(2), 1d));
 
-        Assert.True(first.WindOrbAttacks.TryBeginTick(playerId, itemUid, nowUtc, 1d));
-        Assert.False(first.WindOrbAttacks.TryBeginTick(playerId, itemUid, nowUtc, 1d));
-        Assert.True(second.WindOrbAttacks.TryBeginTick(playerId, itemUid, nowUtc, 1d));
+        Assert.True(GetOrRegisterPlayer(first, playerId).TryBeginWindOrbTick( itemUid, nowUtc, 1d));
+        Assert.False(GetOrRegisterPlayer(first, playerId).TryBeginWindOrbTick( itemUid, nowUtc, 1d));
+        Assert.True(GetOrRegisterPlayer(second, playerId).TryBeginWindOrbTick( itemUid, nowUtc, 1d));
         Assert.True(first.WindOrbAttacks.TryClaimVictimShock(playerId, nowUtc, 1d));
         Assert.False(first.WindOrbAttacks.TryClaimVictimShock(playerId, nowUtc, 1d));
         Assert.True(second.WindOrbAttacks.TryClaimVictimShock(playerId, nowUtc, 1d));

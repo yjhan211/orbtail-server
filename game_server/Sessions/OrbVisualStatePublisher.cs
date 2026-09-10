@@ -1,3 +1,4 @@
+using game_server.orbs;
 using System.Collections.Immutable;
 using game_server.combat;
 using game_server.matches;
@@ -9,7 +10,7 @@ using network.common.data.models;
 using network.packets;
 using OrbVisualState = game_server.orbs.OrbVisualStateCache.OrbVisualState;
 
-namespace game_server.orbs;
+namespace game_server.sessions;
 
 /// <summary>
 ///     관전자별 오브·체력·외피 표시 상태를 계산하고 변경된 항목만 전송한다.

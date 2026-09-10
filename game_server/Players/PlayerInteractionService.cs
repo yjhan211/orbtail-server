@@ -1,20 +1,14 @@
 using game_server.matches;
 using network.common;
 using network.common.data;
-using network.common.data.models;
 
 namespace game_server.players;
 
 /// <summary>
-///     매치 잠금 안에서 문 열기 조건과 진행 중인 상호작용 취소를 처리한다.
-///     참가자의 START/FINISH 상태는 Player가, 패킷 전송은 세션이 맡는다.
+///     매치 잠금 안에서 플레이어의 상호작용 상태를 시작·취소·완료한다.
 /// </summary>
 internal static class PlayerInteractionService
 {
-    /// <summary>
-    ///     진행 중인 문 상호작용을 정리하고 취소한 ID를 반환한다.
-    ///     호출자는 매치 잠금을 유지한 채 반환된 ID로 로그와 취소 알림을 보낸다.
-    /// </summary>
     public static int[] CancelPendingInteractions(MatchRuntime runtime, Player state)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -75,9 +69,8 @@ internal static class PlayerInteractionService
         {
             throw new InvalidOperationException("Interaction changes require the match lock.");
         }
-        error = runtime.IsEnded || player.IsEliminated
-            ? ErrorCode.INVALID_GAME_STATE
-            : CheckDoorGauge(runtime, player.CurrentArea, doorId);
+
+        error = runtime.IsEnded || player.IsEliminated ? ErrorCode.INVALID_GAME_STATE : CheckDoorGauge(runtime, player.CurrentArea, doorId);
         if (error != ErrorCode.SUCCESS)
         {
             player.TryFinishInteraction(interactId);
@@ -93,8 +86,8 @@ internal static class PlayerInteractionService
             error = ErrorCode.DOOR_ALREADY_OPEN;
             return false;
         }
+
         player.CompleteDoor();
         return true;
     }
-
 }

@@ -19,7 +19,7 @@ public sealed class SwarmRetaliationWindow
     public AreaType OpenedArea;
 }
 
-/// <summary>오브 트레일·절단·반격 창·내구·파도 폭탄 상태 (#232 절단 전투 축).</summary>
+/// <summary>오브 트레일·절단·반격 창·내구 상태.</summary>
 public sealed class TrailCombatState
 {
     public readonly Dictionary<(long MatchingId, long PlayerId), List<Vector3f>> OrbTrails = new();
@@ -34,9 +34,4 @@ public sealed class TrailCombatState
     // 파괴·매치 정리에서 함께 지운다.
     public readonly Dictionary<(long MatchingId, long PlayerId, long ItemUid), int> OrbDurabilityBonus = new();
 
-    // 파도 폭탄: 오브 uid 기반 고유 위상으로 첫 발동을 흩뿌린다.
-    public readonly Dictionary<(long MatchingId, long PlayerId, long ItemUid), DateTime>
-        WaveOrbNextAttackAtUtc = new();
-    public readonly List<(long MatchingId, long OwnerId, AreaType Area, Vector3f Position, int Damage,
-        float Radius, int SourceItemId, DateTime ExplodeAtUtc)> PendingWaveOrbAttacks = new();
 }

@@ -399,15 +399,15 @@ public sealed class GameClientSessionPublicationTests
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
         fixture.SetHealth(session, Config.MAX_HEALTH - 3);
-        var recoveryService = new OrbRecoveryService(
-            fixture.Store, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<OrbRecoveryService>.Instance);
+        var recoveryService = new PlayerOrbService(
+            TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), new PlayerOrbTrailService(), fixture.EventLog);
         var actor = new ProximityCombatActor(101, (AreaType)50, new Vector3f(0, 0, 0),
             107000040, 0, 0, 0, WeaponItemUid: 1);
         var now = DateTime.UtcNow;
         using (session.Match.Enter())
         {
-            recoveryService.Process(70001, [actor], [session.Player], now);
-            recoveryService.Process(70001, [actor], [session.Player], now.AddSeconds(OrbData.RecoveryTickSeconds));
+            recoveryService.ProcessOrbRecovery(session.Match, [actor], now);
+            recoveryService.ProcessOrbRecovery(session.Match, [actor], now.AddSeconds(OrbData.RecoveryTickSeconds));
         }
         using var packet = PacketMaker.G_TO_C_STATUS_EFFECT(new()
         {

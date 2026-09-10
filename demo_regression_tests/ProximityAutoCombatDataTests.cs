@@ -138,9 +138,9 @@ public class ProximityAutoCombatDataTests
     public void RecoveryOrbUsesSharedParticipantHealthRecording()
     {
         string source = ReadNormalizedSource(
-            FindRepositoryRoot(), "game_server", "Orbs", "OrbRecoveryService.cs");
-        Assert.Contains("IReadOnlyCollection<Player> players", source);
-        Assert.Contains("var change = healthService.Recover(matchRuntimes.GetOrThrow(matchingId), player, requestedRecovery);", source);
+            FindRepositoryRoot(), "game_server", "Players", "PlayerOrbService.cs");
+        Assert.Contains("MatchRuntime runtime", source);
+        Assert.Contains("var change = healthService.Recover(runtime, player, requestedRecovery);", source);
         Assert.DoesNotContain("eventLogs.RecordRecovery(", source);
         Assert.DoesNotContain("matchingBots", source);
     }
@@ -163,7 +163,7 @@ public class ProximityAutoCombatDataTests
     public void OrbVisualPublication_UsesOneCommitAndSendStepPerCandidate()
     {
         string source = ReadNormalizedSource(
-            FindRepositoryRoot(), "game_server", "Orbs", "OrbVisualStatePublisher.cs");
+            FindRepositoryRoot(), "game_server", "Sessions", "OrbVisualStatePublisher.cs");
         string append = ReadMethodSlice(
             source,
             "private void DispatchOrbVisualStatePublications(",
@@ -192,7 +192,7 @@ public class ProximityAutoCombatDataTests
     {
         string root = FindRepositoryRoot();
         string proximity = ReadNormalizedSource(
-            root, "game_server", "Orbs", "OrbVisualStatePublisher.cs");
+            root, "game_server", "Sessions", "OrbVisualStatePublisher.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Combat", "MatchCombatService.cs");
         int prepareStart = proximity.IndexOf(
             "private ImmutableArray<SwarmOrbVisualPublication> PrepareOrbVisualStatePublications(",

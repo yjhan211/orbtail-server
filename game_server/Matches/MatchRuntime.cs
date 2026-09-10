@@ -80,6 +80,7 @@ internal sealed class MatchRuntime
     public TrailCombatState TrailCombat { get; } = new();
     public SunOrbAttackState SunOrbAttacks { get; }
     public WindOrbAttackState WindOrbAttacks { get; } = new();
+    public WaveOrbAttackState WaveOrbAttacks { get; } = new();
 
     // 아이템과 재화
     public GroundItemManager GroundItems { get; }

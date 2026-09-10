@@ -83,11 +83,10 @@ internal static class GameServerTestAccess
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchZoneService>.Instance);
             var combat = new MatchCombatService(runtimes, logs, cleanup,
                 health, results,
-                new OrbRecoveryService(runtimes, health,
-                    Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbRecoveryService>.Instance),
+                new PlayerOrbService(health, orbTrails, logs),
                 new OrbVisualStatePublisher(runtimes), orbTrails,
-                new WindOrbAttackService(runtimes, TestGameSessionServices.CreateHealthService(runtimes, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), orbTrails, logs),
-                new SunOrbAttackService(runtimes, TestGameSessionServices.CreateHealthService(runtimes, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), logs), field, decisions,
+                new SunOrbAttackService(TestGameSessionServices.CreateHealthService(runtimes, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), logs),
+                new WaveOrbAttackService(health, logs), field, decisions,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatService>.Instance);
 
             return new MatchTickLoop(runtime, runtimes, logger, groundPickup,

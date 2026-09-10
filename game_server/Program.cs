@@ -137,13 +137,13 @@ internal static class Program
         services.AddSingleton<PlayerHealthService>();
         services.AddSingleton<MatchEnvironmentService>();
         services.AddSingleton<PlayerOrbGrowthService>();
-        services.AddSingleton<OrbRecoveryService>();
+        services.AddSingleton<PlayerOrbService>();
         services.AddSingleton<PlayerPickupService>();
         services.AddSingleton<OrbVisualStatePublisher>();
         services.AddSingleton<PlayerOrbTrailService>();
-        services.AddSingleton<WindOrbAttackService>();
         services.AddSingleton<SunOrbAttackService>();
-        services.AddTransient<MatchZoneService>();
+        services.AddSingleton<WaveOrbAttackService>();
+       services.AddTransient<MatchZoneService>();
         services.AddSingleton<BotMovementService>();
         services.AddSingleton<BotDecisionService>();
         services.AddTransient<MatchCombatService>();

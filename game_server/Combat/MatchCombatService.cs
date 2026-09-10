@@ -20,7 +20,7 @@ using network.packets;
 namespace game_server.combat;
 
 /// <summary>
-///     매치의 전투 틱 순서를 조율하고 꼬리 절단·파도·점수 만료를 처리한다.
+///     매치의 전투 틱 순서를 조율하고 꼬리 절단·점수 만료를 처리한다.
 ///     매치 루프마다 생성되며 순위 방송·시간 종료·접촉 로그 상태를 단일 값으로 관리한다. 호출자는 해당 매치 잠금을 보유한다.
 ///     봇 판단과 개별 무기·성장·피해 규칙은 각 서비스에 위임한다.
 /// </summary>
@@ -30,11 +30,11 @@ internal class MatchCombatService(
     MatchCleanupService matchCleanup,
     PlayerHealthService healthService,
     MatchResultService matchResults,
-    OrbRecoveryService orbRecovery,
+    PlayerOrbService playerOrbs,
     OrbVisualStatePublisher orbVisuals,
     PlayerOrbTrailService orbTrails,
-    WindOrbAttackService windOrbAttacks,
     SunOrbAttackService sunOrbAttacks,
+    WaveOrbAttackService waveOrbAttacks,
     MatchZoneService zones,
     BotDecisionService botDecisions,
     ILogger<MatchCombatService> logger)
@@ -158,16 +158,20 @@ internal class MatchCombatService(
             ProcessSwarmRetaliationWindows(matchingId, nowUtc, participants);
         }
 
-        ProcessWaveOrbAttacks(matchingId, nowUtc, players, sessions);
+        waveOrbAttacks.ProcessTick(runtime, nowUtc);
+        if (runtime.IsEnded) return;
+        foreach (var player in runtime.GetAlivePlayers())
+            playerOrbs.ActivateWaveOrbs(runtime, player, nowUtc);
         if (runtime.IsEnded)
             return;
 
-        windOrbAttacks.Process(matchingId, nowUtc, players, sessions);
+        foreach (var player in runtime.GetAlivePlayers())
+            playerOrbs.ActivateWindOrbs(runtime, player, nowUtc);
         if (runtime.IsEnded)
             return;
 
         // 화상 틱 (#268): 교차사격 충격이 남긴 지속 피해를 정산한다.
-        sunOrbAttacks.ProcessSwarmSunBurns(matchingId, nowUtc, players, sessions);
+        sunOrbAttacks.ProcessSwarmSunBurns(runtime, nowUtc);
         if (runtime.IsEnded)
             return;
 
@@ -208,7 +212,7 @@ internal class MatchCombatService(
             MonsterSnapshotPublisher.Broadcast(runtime, sessions, runtime.Monsters.GetVisualStates(matchingId));
 
         var actors = BuildSwarmArenaCombatActors(matchingId, players, nowUtc);
-        orbRecovery.Process(matchingId, actors, players, nowUtc);
+        playerOrbs.ProcessOrbRecovery(runtime, actors, nowUtc);
         orbVisuals.Publish(matchingId, actors, sessions);
         BroadcastSwarmOrbRankings(matchingId, sessions);
         // 봇은 현재 소환·계열 강화 중 하나에 소환석을 투자한다.
@@ -218,7 +222,7 @@ internal class MatchCombatService(
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.
         runtime.CombatDamage.ProcessPendingMonsterHits(nowUtc, sessions);
         // 교차사격 판정 (#232 2단계): 예고가 끝난 모양을 이번 틱 위치로 판정한다.
-        sunOrbAttacks.ProcessSwarmCrossfires(matchingId, nowUtc, players, sessions);
+        sunOrbAttacks.ProcessSwarmCrossfires(runtime, nowUtc);
         if (runtime.IsEnded)
             return;
 
@@ -240,10 +244,10 @@ internal class MatchCombatService(
         // 교차사격 예고 상한 (#232, 명세 "동시 예고 최대 2개"): 상한에 닿은 소유자의 태양 오브는
         // 이번 틱에 표적을 잡지 않는다 — 리졸버가 조준을 유예하고, 자리가 나면 곧 쏜다.
         // 발을 버리지 않으면서 예고 수를 묶는 유일한 자리 (발사 뒤엔 이미 쿨다운이 소모돼 있다).
-        var crossfireCappedOwners = sunOrbAttacks.CollectSwarmCrossfireCappedOwners(matchingId, nowUtc);
+        var crossfireCappedOwners = sunOrbAttacks.CollectSwarmCrossfireCappedOwners(runtime, nowUtc);
         // 표적 분산 (#232): 내 살아 있는 모양이 이미 겨눈 몹은 내 다른 태양 오브의 후보에서 뺀다 —
         // 오브마다 제 자리에서 "아직 아무도 안 겨눈" 가장 가까운 몹을 고른다.
-        var crossfireAnchoredTargets = sunOrbAttacks.CollectSwarmCrossfireAnchoredTargets(matchingId);
+        var crossfireAnchoredTargets = sunOrbAttacks.CollectSwarmCrossfireAnchoredTargets(runtime);
 
         var attacks = runtime.AutoAttack.ResolveAttacks(
             matchingId,
@@ -268,7 +272,7 @@ internal class MatchCombatService(
                     // 사거리(티어, 바닥면 타원) 안에 표적이 있으면 쏜다 — 축 정렬 조건은 퇴역
                     // (유저 결정 개정: 축이 맞는 표적을 기다리면 태양이 아예 공격을 안
                     // 하는 구간이 생긴다). 발사 방향은 표적이 아니라 이동 방향의 수직 타일 축이
-                    // 정하므로(TryScheduleSwarmCrossfire), 이 표적은 "쏠 이유"일 뿐 "조준점"이 아니다 —
+                    // 정하므로(TryStartSunCrossfire), 이 표적은 "쏠 이유"일 뿐 "조준점"이 아니다 —
                     // 선이 이 표적을 못 맞혀도 발사한다. 논타게팅.
                     if (!IsWithinSwarmOrbRange(attacker, target))
                         return false;
@@ -320,23 +324,12 @@ internal class MatchCombatService(
                 // 모양을 못 잠그면(같은 틱에 여러 오브가 함께 준비돼 예고 상한을 넘김) 그 발은 환불한다 —
                 // 쿨다운을 되돌려 다음 틱에 다시 시도한다. 모양 없이 때리던 옛 폴백은 "안 맞은 몹이 죽는"
                 // 보이지 않는 피해였다 (유저 제보). 표시 = 판정: 화면에 없는 공격은 없다.
-                actorById ??= actors
-                    .GroupBy(actor => actor.PlayerId)
-                    .ToDictionary(group => group.Key, group => group.First());
-                var sunOrigin = attack.Origin ??
-                                (actorById.TryGetValue(attack.AttackerPlayerId, out var sunAttacker)
-                                    ? sunAttacker.Position
-                                    : null);
-                var sunAnchor = attack.AnchorPosition ??
-                                (actorById.TryGetValue(attack.TargetPlayerId, out var sunTarget)
-                                    ? sunTarget.Position
-                                    : null);
                 // 표적 분산의 같은 틱 구멍: 리졸버 필터는 틱 시작의 모양만 봤으니, 같은 틱에 준비된
                 // 두 오브가 같은 몹을 고를 수 있다 — 뒤 오브는 환불하고 다음 틱에 다른 몹을 고르게 한다.
                 bool anchoredThisTick = !crossfireAnchoredTargets.Add((attack.AttackerPlayerId, attack.TargetPlayerId));
                 if (anchoredThisTick ||
-                    !sunOrbAttacks.TryScheduleSwarmCrossfire(
-                        matchingId, attack, sunOrigin, sunAnchor, monsterId, attack.Damage, nowUtc, sessions))
+                    runtime.GetParticipant(attack.AttackerPlayerId) is not { } sunOwner ||
+                    !playerOrbs.TryStartSunCrossfire(runtime, sunOwner, attack, nowUtc))
                 {
                     // 로그는 남기지 않는다 — 상한이 찬 동안 매 틱 되풀이되는 정상 대기라 이벤트 흐름만 메운다.
                     runtime.AutoAttack.RefundAttack(
@@ -1028,7 +1021,6 @@ internal class MatchCombatService(
     // Radius 필드에 단계(1~4)를 실어 보낸다.
     private const int SwarmRingVfxKindEncircle = 0;
     private const int SwarmRingVfxKindCut = PlayerOrbTrailService.CutVfxKind;
-    private const int OrbRingEffectKindWaveOrb = 2;
     // 반격 보호 (#227 7단계): 5 = 피해자 남은 꼬리의 유리 잔광 개시(Radius에 지속 초),
     // 6 = 그 절단자의 투사체가 잔광 앞에서 깨짐(피해 숫자 없음).
     private const int SwarmRingVfxKindRetaliationGuard = 5;
@@ -1058,228 +1050,6 @@ internal class MatchCombatService(
         }
     }
 
-    // ===== 파도 = 소용돌이 (#268): 파도 오브 각각이 주기(2초)마다 자기 열 위치에 소용돌이를 깐다 — 오브가 곧
-    // 무기 위치라는 점에서 바람 회전 칼날과 같은 문법. 예고(0.65초 림 링) 후 반경 안 전원을 잠깐 늦춘다(침수) —
-    // 피해는 타격 피드백 수준(1/4). 예고 원점은 스폰 순간 고정. 주기·예고의 원천은 swarm_config.csv (#335). =====
-    private static double WaveOrbAttackIntervalSeconds =>
-        SwarmConfigData.GetDouble("SWARM_WAVE_VORTEX_INTERVAL_SECONDS", 2d);
-    private static double WaveOrbDetonationDelaySeconds =>
-        SwarmConfigData.GetDouble("SWARM_WAVE_VORTEX_FUSE_SECONDS", 0.65d);
-
-    // 오브별 독립 시계("다같이 터지는 게 어색"). 파도 폭탄 상태(위상·대기열)는 matchRuntimes.GetOrThrow(matchingId).TrailCombat.
-
-    internal void ProcessWaveOrbAttacks(
-        long matchingId,
-        DateTime nowUtc,
-        IReadOnlyList<Player> players,
-        List<GameClientSession> allSessions)
-    {
-        // 1) 기폭: 예약된 소용돌이 정산.
-        for (int index = matchRuntimes.GetOrThrow(matchingId).TrailCombat.PendingWaveOrbAttacks.Count - 1; index >= 0; index--)
-        {
-            var vortex = matchRuntimes.GetOrThrow(matchingId).TrailCombat.PendingWaveOrbAttacks[index];
-            if (vortex.MatchingId != matchingId || nowUtc < vortex.ExplodeAtUtc)
-                continue;
-            matchRuntimes.GetOrThrow(matchingId).TrailCombat.PendingWaveOrbAttacks.RemoveAt(index);
-            DetonateWaveOrbVortex(matchingId, vortex.OwnerId, vortex.Area, vortex.Position,
-                vortex.Damage, vortex.Radius, vortex.SourceItemId, nowUtc,
-                players, allSessions);
-            if (IsMatchTerminal(matchingId)) return;
-        }
-
-        // 2) 생성: 파도 오브 각각이 자기 시계(2초)로 자기 열 위치에 소용돌이를 깐다.
-        // 오브 uid 기반 위상으로 첫 발동이 흩어져 일제사가 되지 않는다. 비무장은 쉰다.
-        IReadOnlyList<SwarmArenaCombatTarget>? vortexTargets = null;
-        foreach (var owner in players)
-        {
-            if (owner.IsEliminated || owner.Position == null) continue;
-            var trailOrbs = GetSwarmTrailOrbs(matchingId, owner.PlayerId);
-            if (trailOrbs.Count == 0)
-                continue;
-
-            float sunMultiplier = -1f;
-            List<int>? tiers = null;
-            for (int ordinal = 0; ordinal < trailOrbs.Count; ordinal++)
-            {
-                var item = trailOrbs[ordinal];
-                if (!OrbData.TryGetColorAndTier(item.ItemId, out var color, out _) ||
-                    color != OrbColor.Blue)
-                    continue;
-
-                var orbKey = (matchingId, owner.PlayerId, item.ItemUid);
-                if (!matchRuntimes.GetOrThrow(matchingId).TrailCombat.WaveOrbNextAttackAtUtc.TryGetValue(orbKey, out var nextDropAtUtc))
-                {
-                    // 고유 위상: 첫 발동을 0.5~1.5주기 사이에 흩뿌린다 — uid라 재접속에도 안정.
-                    double phase = 0.5d + item.ItemUid % 977 / 977d;
-                    matchRuntimes.GetOrThrow(matchingId).TrailCombat.WaveOrbNextAttackAtUtc[orbKey] =
-                        nowUtc.AddSeconds(WaveOrbAttackIntervalSeconds * phase);
-                    continue;
-                }
-
-                if (nowUtc < nextDropAtUtc)
-                    continue;
-
-                float radius = OrbData.GetSwarmWaveBombRadius(item.ItemId);
-                int baseDamage = OrbData.GetSwarmPveAttackDamage(item.ItemId);
-                if (radius <= 0f || baseDamage <= 0)
-                    continue;
-
-                // 사거리 게이트 (유저 결정, 태양·바람과 동일): 소용돌이 반경 안에
-                // 표적(몹 또는 소유자 아닌 플레이어)이 있어야 깐다. 없으면 시계를 소모하지 않고
-                // 대기 — 표적이 들어오는 순간 바로 발동한다.
-                var runtime = matchRuntimes.GetOrThrow(matchingId);
-                tiers ??= orbTrails.GetOrbTiersInOrder(runtime, owner);
-                var orbPosition = orbTrails.GetOrbPosition(
-                    runtime, owner, ordinal, owner.Position!, tiers);
-                vortexTargets ??= matchRuntimes.GetOrThrow(matchingId).Monsters.GetCombatTargets(matchingId);
-                bool hasTarget = false;
-                foreach (var target in vortexTargets)
-                {
-                    if (target.Area != owner.CurrentArea ||
-                        !SwarmCombatGeometry.IsWithinGroundRadius(
-                            orbPosition, target.Position, radius + SwarmCombatGeometry.MonsterRadius))
-                        continue;
-                    hasTarget = true;
-                    break;
-                }
-
-                if (!hasTarget)
-                {
-                    foreach (var participant in players)
-                    {
-                        if (participant.IsEliminated || participant.Position == null || participant.PlayerId == owner.PlayerId || participant.CurrentArea != owner.CurrentArea ||
-                            !SwarmCombatGeometry.IsWithinGroundRadius(
-                                orbPosition, participant.Position, radius + SwarmBotDodgePolicy.SwarmCrossfirePlayerRadius))
-                            continue;
-                        hasTarget = true;
-                        break;
-                    }
-                }
-
-                if (!hasTarget)
-                    continue;
-
-                // 비무장(소환·채집 중)이어도 시계는 돈다 — 칼날·미사일과 같은 규칙.
-                matchRuntimes.GetOrThrow(matchingId).TrailCombat.WaveOrbNextAttackAtUtc[orbKey] = nowUtc.AddSeconds(WaveOrbAttackIntervalSeconds);
-
-                if (sunMultiplier < 0f)
-                    sunMultiplier = OrbData.GetSunPveAttackMultiplier(trailOrbs);
-                int damage = Math.Max(1, (int)MathF.Round(
-                    baseDamage * sunMultiplier * Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER));
-
-                // 스폰 = 그 오브의 현재 열 좌표(사거리 게이트가 계산한 그 지점) — 스폰 순간 고정.
-                matchRuntimes.GetOrThrow(matchingId).TrailCombat.PendingWaveOrbAttacks.Add((
-                    matchingId,
-                    owner.PlayerId,
-                    owner.CurrentArea,
-                    orbPosition,
-                    damage,
-                    radius,
-                    item.ItemId,
-                    nowUtc.AddSeconds(WaveOrbDetonationDelaySeconds)));
-                SendOrbRingEffect(owner.CurrentArea, owner.PlayerId, orbPosition.X, orbPosition.Y,
-                    radius, allSessions, OrbRingEffectKindWaveOrb,
-                    victimId: 0, fromOrdinal: ordinal);
-                eventLogs.LogSystem(
-                    matchingId,
-                    $"wave_vortex_spawn owner={owner.PlayerId} ordinal={ordinal} " +
-                    $"at=({orbPosition.X:F2},{orbPosition.Y:F2}) radius={radius:F2} damage={damage}");
-            }
-        }
-    }
-
-    /// <summary>
-    ///     소용돌이 기폭 (#268): 반경 안 전원(몹·플레이어 동일)에게 타격 피드백 수준의 피해와
-    ///     "침수"(5초 25% 감속) 디버프를 준다. 변위(당김·밀침·원 밖 축출) 실험은 전부
-    ///     기각(유저 판정). 플레이어는 충격 면역 창(0.9초)이 연쇄 피격을 막는다 —
-    ///     면역이면 감속·피해 전부 없음.
-    /// </summary>
-    internal void DetonateWaveOrbVortex(
-        long matchingId,
-        long ownerId,
-        AreaType area,
-        Vector3f position,
-        int damage,
-        float radius,
-        int sourceItemId,
-        DateTime nowUtc,
-        IReadOnlyList<Player> players,
-        List<GameClientSession> allSessions)
-    {
-        var owner = matchRuntimes.GetOrThrow(matchingId).GetParticipant(ownerId);
-        float radiusSquared = radius * radius;
-        int hitCount = 0;
-        int notifiedCount = 0;
-        // 몹: 착탄 지연 정산 파이프라인 재사용 — 킬 보상·상태 브로드캐스트가 따라온다.
-        // 당김은 서버 위치를 즉시 옮긴다 — 클라 표시가 SmoothDamp로 따라가며 당김으로 읽힌다.
-        foreach (var target in matchRuntimes.GetOrThrow(matchingId).Monsters.GetCombatTargets(matchingId))
-        {
-            if (target.Area != area)
-                continue;
-            float dx = target.Position.X - position.X;
-            float dy = (target.Position.Y - position.Y) * 2f;
-            if (dx * dx + dy * dy > radiusSquared)
-                continue;
-            int monsterDamage = matchRuntimes.GetOrThrow(matchingId).CombatDamage.RollSwarmCriticalDamage(damage, out bool critical);
-            matchRuntimes.GetOrThrow(matchingId).Monsters.ReserveMonsterDamage(matchingId, target.CombatTargetId, monsterDamage);
-            matchRuntimes.GetOrThrow(matchingId).Monsters.RecordMonsterAttackEvent(matchingId, target.CombatTargetId);
-            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ScheduleMonsterHit(new PendingMonsterHit(
-                target.CombatTargetId, ownerId, monsterDamage, nowUtc));
-            matchRuntimes.GetOrThrow(matchingId).Monsters.TrySlowMonster(
-                matchingId, target.CombatTargetId, OrbData.WaveSlowSeconds, nowUtc);
-            hitCount++;
-
-            int monsterId = matchRuntimes.GetOrThrow(matchingId).Monsters.GetMonsterIdForCombatTarget(matchingId, target.CombatTargetId);
-            if (monsterId <= 0)
-                continue;
-
-            notifiedCount++;
-            matchRuntimes.GetOrThrow(matchingId).CombatDamage.SendMonsterHitNotification(owner,
-                monsterId, area, sourceItemId, monsterDamage, critical, showDamageOnly: true);
-        }
-
-        // 플레이어: 같은 반경(바닥면 타원) + 몸통 여유. 소유자 제외 — 침수 디버프 + 피해.
-        int soaked = 0;
-        foreach (var participant in players)
-        {
-            if (participant.IsEliminated || participant.PlayerId == ownerId || participant.CurrentArea != area || participant.Position == null)
-                continue;
-            if (!SwarmCombatGeometry.IsWithinGroundRadius(position, participant.Position, radius + SwarmBotDodgePolicy.SwarmCrossfirePlayerRadius))
-                continue;
-
-            // 충격 면역 없음: 겹친 링에 다 맞는다 — 침수는 지속 갱신이라 중첩 무해.
-            soaked++;
-            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(healthService, ownerId, sourceItemId, area, participant.PlayerId,
-                "WAVE_VORTEX_HIT", players,
-                Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER);
-
-            if (IsMatchTerminal(matchingId)) return;
-            if (participant.IsEliminated) continue;
-            participant.WaveSlowUntilUtc = nowUtc.AddSeconds(OrbData.WaveSlowSeconds);
-            var victimSession = participant.Session;
-            if (victimSession != null && ownerId != 0)
-            {
-                using var packet = PacketMaker.G_TO_C_STATUS_EFFECT(new()
-                {
-                    SourcePlayerId = ownerId,
-                    TargetPlayerId = participant.PlayerId,
-                    AreaType = area,
-                    Effect = CombatStatusEffectKind.WaveOrbSlow,
-                    DurationMs = (int)(OrbData.WaveSlowSeconds * 1000f)
-                });
-                victimSession.TrySend(packet);
-            }
-        }
-
-        if (hitCount > 0 || soaked > 0)
-        {
-            eventLogs.LogSystem(
-                matchingId,
-                $"wave_vortex_hit owner={ownerId} area={area} monsters={hitCount} " +
-                $"notified={notifiedCount} playersSoaked={soaked} radius={radius:F2} " +
-                $"damage={damage} item={sourceItemId}");
-        }
-    }
 
     /// <summary>점이 오브 판정 타원 안에 있는지 — 래치 이탈 재무장 판정.</summary>
     private static bool IsInsideOrbHitEllipse(Vector3f point, Vector3f orbHitPoint)

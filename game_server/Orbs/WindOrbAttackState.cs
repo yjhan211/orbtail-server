@@ -5,40 +5,13 @@ using network.common.data.models;
 namespace game_server.orbs;
 
 /// <summary>
-///     바람 칼날의 틱·시동·피해자 면역·상처 상태. 이 객체 자체가 한 매치에 귀속되므로 내부 key에는
-///     matching id를 반복하지 않는다. enclosing match execution gate가 모든 변경을 직렬화한다.
+///     매치 내 바람 공격의 피해자 면역·상처 상태를 보관한다.
+///     개인 발동 시각·시동 상태는 Player가 소유하며, 모든 변경은 매치 잠금 안에서 수행한다.
 /// </summary>
 public sealed class WindOrbAttackState
 {
-    private readonly Dictionary<(long PlayerId, long ItemUid), DateTime> _nextTickAtUtc = new();
-    private readonly Dictionary<(long PlayerId, long ItemUid), DateTime> _engagedAtUtc = new();
     private readonly Dictionary<long, DateTime> _victimImmuneUntilUtc = new();
     private readonly Dictionary<long, DateTime> _woundsUntilUtc = new();
-
-    public bool TryBeginTick(long playerId, long itemUid, DateTime nowUtc, double intervalSeconds)
-    {
-        var key = (playerId, itemUid);
-        if (_nextTickAtUtc.TryGetValue(key, out DateTime nextTickAtUtc) && nowUtc < nextTickAtUtc)
-            return false;
-
-        _nextTickAtUtc[key] = nowUtc.AddSeconds(intervalSeconds);
-        return true;
-    }
-
-    public void ResetEngagement(long playerId, long itemUid) =>
-        _engagedAtUtc.Remove((playerId, itemUid));
-
-    public bool HasCompletedSpinup(long playerId, long itemUid, DateTime nowUtc, double durationSeconds)
-    {
-        var key = (playerId, itemUid);
-        if (!_engagedAtUtc.TryGetValue(key, out DateTime engagedAtUtc))
-        {
-            engagedAtUtc = nowUtc;
-            _engagedAtUtc[key] = engagedAtUtc;
-        }
-
-        return (nowUtc - engagedAtUtc).TotalSeconds >= durationSeconds;
-    }
 
     public bool TryClaimVictimShock(long victimId, DateTime nowUtc, double immunitySeconds)
     {

@@ -67,6 +67,10 @@ public class Player
     public int Health { get; set; } = Config.MAX_HEALTH;
     /// <summary>보유 오브 컬렉션. 각 오브의 UID와 꼬리 순서를 유지한다.</summary>
     public PlayerOrbCollection Orbs { get; } = new();
+    /// <summary>파도 오브 UID별 다음 발동 시각. 매치 잠금 안에서 접근한다.</summary>
+    private readonly Dictionary<long, DateTime> _windOrbNextAttackAtUtc = new();
+    private readonly Dictionary<long, DateTime> _windOrbEngagedAtUtc = new();
+    internal Dictionary<long, DateTime> WaveOrbNextAttackAtUtc { get; } = new();
     /// <summary>소환석 잔액과 성공한 소환 횟수. 비용·후보·지급 규칙은 PlayerOrbGrowthService에 있다.</summary>
     public SummonStoneState SummonStones { get; internal set; }
 
@@ -365,6 +369,29 @@ public class Player
             long cost = Math.Max(BaseSummonCost, summonNumber * (summonNumber + 1) / 2);
             return (int)Math.Min(int.MaxValue, cost);
         }
+    }
+
+    internal bool TryBeginWindOrbTick(long itemUid, DateTime nowUtc, double intervalSeconds)
+    {
+        if (_windOrbNextAttackAtUtc.TryGetValue(itemUid, out DateTime nextTickAtUtc) && nowUtc < nextTickAtUtc)
+            return false;
+
+        _windOrbNextAttackAtUtc[itemUid] = nowUtc.AddSeconds(intervalSeconds);
+        return true;
+    }
+
+    internal void ResetWindOrbEngagement(long itemUid) =>
+        _windOrbEngagedAtUtc.Remove(itemUid);
+
+    internal bool HasCompletedWindOrbSpinup(long itemUid, DateTime nowUtc, double durationSeconds)
+    {
+        if (!_windOrbEngagedAtUtc.TryGetValue(itemUid, out DateTime engagedAtUtc))
+        {
+            engagedAtUtc = nowUtc;
+            _windOrbEngagedAtUtc[itemUid] = engagedAtUtc;
+        }
+
+        return (nowUtc - engagedAtUtc).TotalSeconds >= durationSeconds;
     }
 
     /// <summary>이동 구간에서 획득 반경에 닿은 바닥 아이템. 다음 자동 줍기 틱이 집는다.</summary>
