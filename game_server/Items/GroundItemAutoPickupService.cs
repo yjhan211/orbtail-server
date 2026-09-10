@@ -1,6 +1,7 @@
 using game_server.logging;
 using game_server.matches;
 using game_server.sessions;
+using game_server.players;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
@@ -10,74 +11,72 @@ namespace game_server.items;
 
 /// <summary>
 /// 승인된 이동 경로와 현재 위치에서 자동 획득을 처리하고 상태 변경과 결과를 전송한다.
-/// 후보는 매치가 세션별로 소유하며, 모든 호출은 해당 매치 잠금 안에서 실행한다.
+/// 후보는 매치가 참가자별로 소유하며, 모든 호출은 해당 매치 잠금 안에서 실행한다.
 /// </summary>
 internal sealed class GroundItemAutoPickupService(
     GameEventLogManager eventLogs,
     ILogger<GroundItemAutoPickupService> logger)
 {
-    public static void RecordMovement(GameClientSession session, Vector3f from, Vector3f to, AreaType nextArea)
+    public static void RecordMovement(MatchRuntime match, Player player, Vector3f from, Vector3f to, AreaType nextArea)
     {
-        var match = session.Match;
         RequireMatchLock(match);
-        if (match.IsEnded || !session.PlayerId.HasValue) return;
-        var candidates = GetCandidates(match, session);
-        if (nextArea != session.Player.CurrentArea)
-            candidates.Record(match.GroundItems, session.PlayerId.Value, session.Player.CurrentArea,
+        if (match.IsEnded || player.PlayerId == 0) return;
+        var candidates = GetCandidates(match, player);
+        if (nextArea != player.CurrentArea)
+            candidates.Record(match.GroundItems, player.PlayerId, player.CurrentArea,
                 from, to, Config.SWARM_MATCH_MAP);
-        candidates.Record(match.GroundItems, session.PlayerId.Value, nextArea,
-            from, to, nextArea != session.Player.CurrentArea ? Config.SWARM_MATCH_MAP : null);
+        candidates.Record(match.GroundItems, player.PlayerId, nextArea,
+            from, to, nextArea != player.CurrentArea ? Config.SWARM_MATCH_MAP : null);
     }
 
-    public void Process(MatchRuntime match, IReadOnlyCollection<GameClientSession> sessions)
+    public void Process(MatchRuntime match, IReadOnlyCollection<Player> players)
     {
         RequireMatchLock(match);
-        // 접속 종료·탈락·세션 교체로 더 이상 처리하지 않는 후보는 버린다.
-        foreach (var stale in match.GroundItemPickupCandidates.Keys.Except(sessions).ToArray())
+        // 처리 대상에서 빠진 참가자의 후보는 버린다.
+        foreach (var stale in match.GroundItemPickupCandidates.Keys.Except(players).ToArray())
             match.GroundItemPickupCandidates.Remove(stale);
-        foreach (var session in sessions)
+        foreach (var player in players)
         {
             if (match.IsEnded) return;
             try
             {
-                Process(session);
+                Process(match, player);
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Automatic pickup failed: MatchingId={MatchingId}, PlayerId={PlayerId}",
-                    match.MatchingId, session.PlayerId);
+                    match.MatchingId, player.PlayerId);
             }
         }
     }
 
-    public void Process(GameClientSession session)
+    public void Process(MatchRuntime match, Player player)
     {
-        var match = session.Match;
         RequireMatchLock(match);
-        if (match.IsEnded || !session.PlayerId.HasValue || session.MatchingId <= 0 ||
-            session.Player.IsEliminated || session.IsGameEnded || session.IsConnectionReleased || session.Player.Position == null)
+        if (match.IsEnded || player.PlayerId == 0 || match.MatchingId <= 0 ||
+            player.IsEliminated || player.Position == null)
         {
-            match.GroundItemPickupCandidates.Remove(session);
+            match.GroundItemPickupCandidates.Remove(player);
             return;
         }
-        var candidates = GetCandidates(match, session);
-        candidates.Record(match.GroundItems, session.PlayerId.Value, session.Player.CurrentArea,
-            session.Player.Position, session.Player.Position);
-        match.GroundItemPickupCandidates.Remove(session);
+        var candidates = GetCandidates(match, player);
+        candidates.Record(match.GroundItems, player.PlayerId, player.CurrentArea,
+            player.Position, player.Position);
+        match.GroundItemPickupCandidates.Remove(player);
         foreach (var candidate in candidates.Take())
         {
             if (match.IsEnded) break;
-            var pickup = GroundItemPickupService.TryPickup(match, session.PlayerId.Value, candidate.Area,
-                candidate.Position, session.Player.Health, candidate.GroundItemUid);
+            var pickup = GroundItemPickupService.TryPickup(match, player.PlayerId, candidate.Area,
+                candidate.Position, player.Health, candidate.GroundItemUid);
             if (pickup.Status != GroundItemClaimStatus.Success || pickup.ClaimedItem == null) continue;
-            PublishGroundItemPickup(session, pickup);
+            ApplyGroundItemPickup(match, player, pickup);
         }
     }
 
-    private static GroundItemPickupCandidates GetCandidates(MatchRuntime match, GameClientSession session)
+    private static GroundItemPickupCandidates GetCandidates(MatchRuntime match, Player player)
     {
-        if (!match.GroundItemPickupCandidates.TryGetValue(session, out var candidates))
-            match.GroundItemPickupCandidates.Add(session, candidates = new GroundItemPickupCandidates());
+        if (!match.GroundItemPickupCandidates.TryGetValue(player, out var candidates))
+            match.GroundItemPickupCandidates.Add(player, candidates = new GroundItemPickupCandidates());
         return candidates;
     }
 
@@ -87,7 +86,7 @@ internal sealed class GroundItemAutoPickupService(
             throw new InvalidOperationException("Automatic pickup requires the match lock.");
     }
 
-    private void PublishGroundItemPickup(GameClientSession session, GroundItemPickupResult pickup)
+    private void ApplyGroundItemPickup(MatchRuntime match, Player player, GroundItemPickupResult pickup)
     {
         var claimedItem = pickup.ClaimedItem!;
         var addedItem = pickup.AddedItem;
@@ -99,46 +98,46 @@ internal sealed class GroundItemAutoPickupService(
         }
         else if (pickup.SummonStonePickup)
         {
-            var summonState = session.Match.SummonStones.AddStones(session.PlayerId.Value, 1);
-            session.SendSummonStoneState(1, claimedItem.PositionX, claimedItem.PositionY);
+            var summonState = match.SummonStones.AddStones(player.PlayerId, 1);
+            player.Session?.SendSummonStoneState(1, claimedItem.PositionX, claimedItem.PositionY);
             eventLogs.LogSummonStoneAward(
-                session.MatchingId,
-                session.PlayerId.Value,
+                match.MatchingId,
+                player.PlayerId,
                 monsterId: 0,
                 amount: 1,
                 summonState.StoneCount,
-                session.Player.CurrentArea.ToString(),
+                player.CurrentArea.ToString(),
                 isCore: false,
-                isBot: false);
+                isBot: player.PlayerId < 0);
         }
         else if (pickup.AutoUsed)
         {
-            int effectiveHealthRecovery = Math.Min(pickup.HealthRecovery, Math.Max(0, Config.MAX_HEALTH - session.Player.Health));
+            int effectiveHealthRecovery = Math.Min(pickup.HealthRecovery, Math.Max(0, Config.MAX_HEALTH - player.Health));
             int requestedRecovery = pickup.HealthRecovery;
             int effectiveRecovery = effectiveHealthRecovery;
-            session.HealthChanges.Handle(session.Match, session.Player, session.Player.Recover(pickup.HealthRecovery));
+            PlayerHealthChangeService.Record(match.MatchingId, player, player.Recover(pickup.HealthRecovery), eventLogs, logger);
             // 하트는 앞줄 오브 HP도 만충으로 (#222 M4) — 원작 하트의 스쿼드 회복.
             if (claimedItem.ItemId == Config.HEART_GROUND_ITEM_ID)
-                GameClientSession.SwarmHeartPickupCallback?.Invoke(session.MatchingId, session.PlayerId.Value);
+                GameClientSession.SwarmHeartPickupCallback?.Invoke(match.MatchingId, player.PlayerId);
             eventLogs.LogRecoveryUse(
-                session.MatchingId, session.PlayerId.Value, claimedItem.ItemId,
-                effectiveRecovery, source: "ground_auto_use", isBot: false);
+                match.MatchingId, player.PlayerId, claimedItem.ItemId,
+                effectiveRecovery, source: "ground_auto_use", isBot: player.PlayerId < 0);
             eventLogs.LogPelletPickupOutcome(
-                session.MatchingId, session.PlayerId.Value, claimedItem.ItemId, requestedRecovery, effectiveRecovery,
+                match.MatchingId, player.PlayerId, claimedItem.ItemId, requestedRecovery, effectiveRecovery,
                 effectiveRecovery == 0 ? "wasted" : effectiveRecovery == requestedRecovery ? "effective" : "partial_waste",
-                isBot: false);
+                isBot: player.PlayerId < 0);
         }
         else if (addedItem != null)
         {
-            session.SendOrbUpdate(addedItem);
+            player.Session?.SendOrbUpdate(addedItem);
 
         }
 
         using (var removed = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(
-                   claimedItem.GroundItemUid, session.PlayerId.Value, pickup.AutoUsed))
+                   claimedItem.GroundItemUid, player.PlayerId, pickup.AutoUsed))
         {
             var targetSessions = new List<GameClientSession>();
-            foreach (var other in session.Match.GetSessions())
+            foreach (var other in match.GetSessions())
             {
                 if (!other.Player.IsEliminated && other.Player.CurrentArea == (AreaType)claimedItem.AreaType)
                     targetSessions.Add(other);
@@ -147,23 +146,23 @@ internal sealed class GroundItemAutoPickupService(
                 other.TrySend(removed);
         }
         eventLogs.LogGroundItemPickup(
-            session.MatchingId,
-            session.PlayerId.Value,
+            match.MatchingId,
+            player.PlayerId,
             pickup.DiscovererPlayerId,
             claimedItem.GroundItemUid,
             claimedItem.ItemId,
-            session.Player.CurrentArea.ToString(),
+            player.CurrentArea.ToString(),
             pickup.AutoUsed,
-            isBot: false);
+            isBot: player.PlayerId < 0);
         if (!pickup.SummonStonePickup && !pickup.BootsPickup)
         {
-            var boardAfterPickup = session.Match.Inventory.GetPlayerInventory(session.PlayerId.Value);
+            var boardAfterPickup = match.Inventory.GetPlayerInventory(player.PlayerId);
             eventLogs.LogOrbBoardTransition(
-                session.MatchingId, session.PlayerId.Value, boardAfterPickup.GetAllItems(),
-                boardAfterPickup.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0, session.Player.CurrentArea.ToString(), "pickup", isBot: false);
+                match.MatchingId, player.PlayerId, boardAfterPickup.GetAllItems(),
+                boardAfterPickup.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0, player.CurrentArea.ToString(), "pickup", isBot: player.PlayerId < 0);
         }
         using var result = PacketMaker.G_TO_C_GROUND_ITEM_PICKUP_RESULT(
             claimedItem.GroundItemUid, claimedItem.ItemId, true, pickup.AutoUsed, ErrorCode.SUCCESS);
-        session.TrySend(result);
+        player.Session?.TrySend(result);
     }
 }

@@ -1138,12 +1138,31 @@ public sealed class GameClientSessionPublicationTests
         var match = session.Match;
         using (match.Enter())
         {
-            GroundItemAutoPickupService.RecordMovement(session,
+            GroundItemAutoPickupService.RecordMovement(session.Match, session.Player,
                 session.Player.Position!, session.Player.Position!, session.Player.CurrentArea);
             Assert.Single(match.GroundItemPickupCandidates);
         }
 
         fixture.MarkTerminal(session.MatchingId);
+        Assert.Empty(match.GroundItemPickupCandidates);
+    }
+
+    [Fact]
+    public void AutomaticPickupUpdatesPlayerWithoutSession()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
+        var item = fixture.SpawnAtSession(session, Config.SUMMON_STONE_GROUND_ITEM_ID);
+        var match = session.Match;
+        var player = session.Player;
+        using (match.Enter())
+        {
+            player.DetachSession(session);
+            new GroundItemAutoPickupService(fixture.EventLog, NullLogger<GroundItemAutoPickupService>.Instance)
+                .Process(match, player);
+        }
+        Assert.Equal(1, match.SummonStones.GetSnapshot(player.PlayerId).StoneCount);
+        Assert.Null(match.GroundItems.GetItem(item.GroundItemUid));
         Assert.Empty(match.GroundItemPickupCandidates);
     }
 
@@ -1155,14 +1174,20 @@ public sealed class GameClientSessionPublicationTests
         var item = fixture.SpawnAtSession(previous, Config.SUMMON_STONE_GROUND_ITEM_ID);
         var match = previous.Match;
         using (match.Enter())
-            GroundItemAutoPickupService.RecordMovement(previous,
+            GroundItemAutoPickupService.RecordMovement(previous.Match, previous.Player,
                 previous.Player.Position!, previous.Player.Position!, previous.Player.CurrentArea);
 
+        var registry = new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance);
+        registry.Register(101, previous);
+        using (match.Enter())
+            GroundItemAutoPickupService.RecordMovement(match, previous.Player,
+                previous.Player.Position!, previous.Player.Position!, previous.Player.CurrentArea);
         var current = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
+        registry.Register(101, current);
         TestGameSessionServices.SetMovementProperty(current, "Position", new Vector3f(item.PositionX + 20, item.PositionY, 0));
         using (match.Enter())
             new GroundItemAutoPickupService(fixture.EventLog, NullLogger<GroundItemAutoPickupService>.Instance)
-                .Process(match, [current]);
+                .Process(match, new[] { current.Player });
 
         Assert.Equal(0, current.Match.SummonStones.GetSnapshot(current.PlayerId!.Value).StoneCount);
         Assert.NotNull(match.GroundItems.GetItem(item.GroundItemUid));
@@ -1239,7 +1264,7 @@ public sealed class GameClientSessionPublicationTests
     private static Task RunPickupTickAsync(GameClientSession session, GameEventLogManager eventLogs)
     {
         using (session.Match.Enter())
-            new GroundItemAutoPickupService(eventLogs, NullLogger<GroundItemAutoPickupService>.Instance).Process(session);
+            new GroundItemAutoPickupService(eventLogs, NullLogger<GroundItemAutoPickupService>.Instance).Process(session.Match, session.Player);
         return Task.CompletedTask;
     }
 

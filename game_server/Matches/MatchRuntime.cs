@@ -87,7 +87,7 @@ internal sealed class MatchRuntime
     // 아이템과 재화
     public InGameInventoryManager Inventory { get; }
     public GroundItemManager GroundItems { get; }
-    internal Dictionary<GameClientSession, GroundItemPickupCandidates> GroundItemPickupCandidates { get; } = new();
+    internal Dictionary<Player, GroundItemPickupCandidates> GroundItemPickupCandidates { get; } = new();
     public SummonStoneManager SummonStones { get; }
 
     // 맵과 진행 상태

@@ -89,7 +89,6 @@ internal sealed class MatchTickLoop(
         }
 
         var playerSessions = runtime.GetSessions();
-        var activeSessions = playerSessions.Where(static session => session is { Player.IsEliminated: false, IsGameEnded: false }).ToList();
         var utcNow = (timeProvider ?? TimeProvider.System).GetUtcNow().UtcDateTime;
         if (runtime.IsEntryTimedOut(utcNow))
         {
@@ -100,7 +99,8 @@ internal sealed class MatchTickLoop(
         bool isGameplayActive = runtime.IsGameplayActive(utcNow);
         if (isGameplayActive)
         {
-            groundItemAutoPickup.Process(runtime, activeSessions);
+            // 봇은 이동 틱의 기존 획득 경로를 유지한다.
+            groundItemAutoPickup.Process(runtime, runtime.GetAlivePlayers().Where(player => player.PlayerId > 0).ToList());
             if (runtime.IsEnded)
             {
                 return;

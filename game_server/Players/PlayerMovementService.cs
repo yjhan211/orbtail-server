@@ -122,8 +122,7 @@ internal sealed class PlayerMovementService(
         player.AdvanceOrbOrbit(validatedPosition);
         // 승인된 구간마다 후보를 기록한다. 구역을 넘으면 경로 위 좌표가 속한 구역도 확인한다.
         var pickupArea = newArea == AreaType.None ? player.CurrentArea : newArea;
-        if (player.Session is { } session)
-            GroundItemAutoPickupService.RecordMovement(session,
+        GroundItemAutoPickupService.RecordMovement(match, player,
             player.Position ?? validatedPosition, validatedPosition, pickupArea);
         ApplyValidatedMovement(player, validation, msg.Rotation);
         match.GroundItems.ReleaseSourcePickupBlocks(player.PlayerId, pickupArea, validatedPosition.X, validatedPosition.Y);

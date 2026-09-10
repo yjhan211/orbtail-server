@@ -32,6 +32,7 @@ public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
         {
             if (!_sessionsByPlayer.TryGetValue(playerId, out var existingSession))
             {
+                match.GroundItemPickupCandidates.Remove(session.Player);
                 session.Player.Session = session;
                 _sessionsByPlayer[playerId] = session;
                 logger.LogInformation("Game client session registered: PlayerId={PlayerId}", playerId);
@@ -43,6 +44,7 @@ public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
                 return null;
             }
 
+            match.GroundItemPickupCandidates.Remove(session.Player);
             session.Player.Session = session;
             _sessionsByPlayer[playerId] = session;
             existingSession.Player.DetachSession(existingSession);
