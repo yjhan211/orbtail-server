@@ -1,3 +1,5 @@
+using game_server.logging;
+using game_server.players;
 using game_server.combat;
 using game_server.field;
 using game_server.orbs;
@@ -35,7 +37,6 @@ public partial class BotPlayerManager
     private const double BotRoomDwellMaxSeconds = 2.25;
 
     private const int BotMissionTickIntervalSeconds = 1;
-    private static int InitialHealth => Config.MAX_HEALTH;
 
     private readonly long _matchingId;
     private List<BotPlayerState> _bots = [];
@@ -49,14 +50,16 @@ public partial class BotPlayerManager
     private MapId _mapId = Config.SWARM_MATCH_MAP;
 
     private readonly ILogger _logger;
+    private readonly GameEventLogManager _eventLogs;
 
     private readonly Random _rng = Random.Shared;
 
-    internal BotPlayerManager(long matchingId, ILogger logger, DoorState doors, SunOrbAttackState sunOrbAttacks)
+    internal BotPlayerManager(long matchingId, ILogger logger, DoorState doors, SunOrbAttackState sunOrbAttacks, GameEventLogManager eventLogs)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
         _matchingId = matchingId;
         _logger = logger;
+        _eventLogs = eventLogs;
         _doors = doors ?? throw new ArgumentNullException(nameof(doors));
         _sunOrbAttacks = sunOrbAttacks ?? throw new ArgumentNullException(nameof(sunOrbAttacks));
     }
@@ -94,7 +97,6 @@ public partial class BotPlayerManager
                 Cell = startCell,
                 Position = startPosition,
                 Rotation = 0f,
-                Health = InitialHealth,
                 PlayerMatchStatus = PlayerMatchStatus.ACTIVE,
                 GameStartTime = now,
                 LoopWaitUntil = now.AddSeconds(RandomRange(
@@ -171,14 +173,11 @@ public partial class BotPlayerManager
         var state = bot.RestUntil != DateTime.MinValue && DateTime.UtcNow < bot.RestUntil
             ? PlayerState.SLEEP
             : PlayerState.IDLE;
-        var info = new PlayerInfo
-        {
-            PlayerId = bot.PlayerId,
-            Name = bot.Name,
-            State = state,
-            Hp = 5000,
-            WearItemIdList = BuildBotWearItems(bot)
-        };
+        var info = bot.Player.Profile;
+        info.Name = bot.Name;
+        info.State = state;
+        info.Hp = 5000;
+        info.WearItemIdList = BuildBotWearItems(bot);
         return info;
     }
 
@@ -226,10 +225,11 @@ public partial class BotPlayerManager
 
 public class BotPlayerState
 {
-    public long PlayerId { get; set; }
+    /// <summary>매치 참가자와 공유하는 상태. 체력은 이 객체에만 보관한다.</summary>
+    public MatchPlayer Player { get; } = new() { Profile = new PlayerInfo() };
+    public long PlayerId { get => Player.PlayerId; set => Player.Profile.PlayerId = value; }
 
     public AreaType CurrentArea { get; set; }
-    public int Health { get; set; } = Config.MAX_HEALTH;
     public long LastProximityAttackerPlayerId { get; set; }
     public bool IsEliminated { get; set; }
     public PlayerMatchStatus PlayerMatchStatus { get; set; } = PlayerMatchStatus.ACTIVE;

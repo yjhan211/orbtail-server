@@ -49,7 +49,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
         foreach (var bot in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
         {
             if (bot.PlayerId == playerId)
-                return bot.Health;
+                return bot.Player.Health;
         }
 
         return -1;

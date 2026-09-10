@@ -1,3 +1,4 @@
+using game_server.players;
 using game_server.logging;
 using game_server.orbs;
 using game_server.combat;
@@ -651,7 +652,7 @@ internal sealed class BotDecisionService(
     {
         var key = (matchingId, bot.PlayerId);
         bool wounded = matchRuntimes.GetOrThrow(matchingId).BotTactics.Wounded.Contains(key);
-        float ratio = bot.Health / (float)Config.MAX_HEALTH;
+        float ratio = bot.Player.Health / (float)Config.MAX_HEALTH;
         if (!wounded && ratio <= SwarmBotWoundedEnterRatio)
         {
             matchRuntimes.GetOrThrow(matchingId).BotTactics.Wounded.Add(key);
@@ -803,7 +804,7 @@ internal sealed class BotDecisionService(
     {
         foreach (var bot in aliveBots)
         {
-            if (bot.Health >= Config.MAX_HEALTH)
+            if (bot.Player.Health >= Config.MAX_HEALTH)
                 continue;
 
             var key = (matchingId, bot.PlayerId);
@@ -815,7 +816,8 @@ internal sealed class BotDecisionService(
                 continue;
 
             matchRuntimes.GetOrThrow(matchingId).BotTactics.NextRecoveryAtUtc[key] = nowUtc.AddSeconds(1d);
-            bot.Health = Math.Min(Config.MAX_HEALTH, bot.Health + SwarmBotRecoveryPerSecond);
+            var change = bot.Player.Recover(SwarmBotRecoveryPerSecond);
+            PlayerHealthChangeService.Record(matchingId, bot.Player, change, eventLogs, logger);
         }
     }
 

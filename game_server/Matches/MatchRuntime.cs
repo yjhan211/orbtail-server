@@ -58,7 +58,7 @@ internal sealed class MatchRuntime
         _matchSessionCleanup = matchSessionCleanup;
         MatchingId = matchingId;
         SunOrbAttacks = new SunOrbAttackState(matchingId);
-        Bots = new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks);
+        Bots = new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks, eventLogs);
         AutoAttack = new AutoAttackController(matchingId);
         Inventory = new InGameInventoryManager(matchingId, logger);
         GroundItems = new GroundItemManager(matchingId);
@@ -127,7 +127,8 @@ internal sealed class MatchRuntime
         SpawnCells = spawnCells;
         foreach (var player in playerRoster)
         {
-            RegisterParticipant(new MatchPlayer { Profile = player });
+            var participant = Bots.GetBot(MatchingId, player.PlayerId)?.Player ?? new MatchPlayer { Profile = player };
+            RegisterParticipant(participant);
             OrbUpgradeService.GrantStartingResources(this, player.PlayerId);
         }
 

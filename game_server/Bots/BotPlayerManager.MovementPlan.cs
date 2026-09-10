@@ -283,8 +283,6 @@ public partial class BotPlayerManager
 
     private void LogGroundItemPickup(InGameInventoryManager inventory, GameEventLogManager gameEventLogManager, long matchingId, BotGroundItemPickup pickup)
     {
-        if (pickup.HealthRecovery > 0)
-            gameEventLogManager.RecordRecovery(matchingId, pickup.BotPlayerId, pickup.HealthRecovery);
         if (pickup.AutoUsed)
         {
             gameEventLogManager.LogRecoveryUse(

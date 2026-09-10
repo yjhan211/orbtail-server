@@ -153,20 +153,16 @@ public class ProximityAutoCombatDataTests
     }
 
     [Fact]
-    public void RecoveryOrbRecordsHumanRecoveryOnlyThroughSessionStats()
+    public void RecoveryOrbUsesSharedParticipantHealthRecording()
     {
         string source = ReadNormalizedSource(
             FindRepositoryRoot(), "game_server", "Orbs", "OrbRecoveryService.cs");
-
-        Assert.Contains(
-            "if (session == null)\n" +
-            "            {\n" +
-            "                eventLogs.RecordRecovery(\n" +
-            "                    matchingId, playerId, effectiveRecovery);\n" +
-            "            }",
-            source);
+        Assert.Contains("IReadOnlyCollection<MatchPlayer> players", source);
+        Assert.Contains("var change = player.Recover(requestedRecovery);", source);
+        Assert.Contains("PlayerHealthChangeService.Record(matchingId, player, change, eventLogs, logger);", source);
+        Assert.DoesNotContain("eventLogs.RecordRecovery(", source);
+        Assert.DoesNotContain("matchingBots", source);
     }
-
     [Fact]
     public void OrbVisualPublicationCapture_DeepCopiesItemIds()
     {

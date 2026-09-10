@@ -56,20 +56,20 @@ public sealed class MatchGameplayServiceTests
         var now = DateTime.UtcNow;
         using (MatchRuntimeStore.Enter(first))
         {
-            var bot = new BotPlayerState { PlayerId = 11, Health = 10 };
+            var bot = new BotPlayerState { PlayerId = 11, Player = { Health = 10 } };
             first.BotTactics.LastDamagedAtUtc[(first.MatchingId, 11)] = now;
             service.ProcessSwarmBotRecovery(first.MatchingId, [bot], now.AddSeconds(5));
-            Assert.Equal(10, bot.Health);
+            Assert.Equal(10, bot.Player.Health);
             service.ProcessSwarmBotRecovery(first.MatchingId, [bot], now.AddSeconds(6));
-            Assert.Equal(12, bot.Health);
+            Assert.Equal(12, bot.Player.Health);
             service.ProcessSwarmBotRecovery(first.MatchingId, [bot], now.AddSeconds(6));
-            Assert.Equal(12, bot.Health);
+            Assert.Equal(12, bot.Player.Health);
         }
         using (MatchRuntimeStore.Enter(second))
         {
-            var bot = new BotPlayerState { PlayerId = 11, Health = 10 };
+            var bot = new BotPlayerState { PlayerId = 11, Player = { Health = 10 } };
             service.ProcessSwarmBotRecovery(second.MatchingId, [bot], now.AddSeconds(6));
-            Assert.Equal(12, bot.Health);
+            Assert.Equal(12, bot.Player.Health);
             second.TryMarkEnded();
         }
         using (MatchRuntimeStore.Enter(first)) first.TryMarkEnded();

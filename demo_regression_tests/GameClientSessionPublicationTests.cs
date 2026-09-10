@@ -219,8 +219,8 @@ public sealed class GameClientSessionPublicationTests
         var now = DateTime.UtcNow;
         using (session.Match.Enter())
         {
-            recoveryService.Process(70001, [actor], [session], [], now);
-            recoveryService.Process(70001, [actor], [session], [], now.AddSeconds(OrbData.RecoveryTickSeconds));
+            recoveryService.Process(70001, [actor], [session.Player], now);
+            recoveryService.Process(70001, [actor], [session.Player], now.AddSeconds(OrbData.RecoveryTickSeconds));
         }
         using var packet = PacketMaker.G_TO_C_STATUS_EFFECT(new()
         {

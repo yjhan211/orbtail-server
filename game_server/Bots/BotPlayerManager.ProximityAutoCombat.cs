@@ -1,3 +1,4 @@
+using game_server.players;
 using game_server.items;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
@@ -59,7 +60,7 @@ public partial class BotPlayerManager
 
                     disposition = GroundItemPickupPolicy.Resolve(
                         item.ItemId,
-                        bot.Health,
+                        bot.Player.Health,
                         out healthRecovery,
                         matchingId,
                         bot.PlayerId);
@@ -86,9 +87,9 @@ public partial class BotPlayerManager
             }
             else if (autoUsed)
             {
-                int effectiveHealthRecovery = Math.Min(healthRecovery, Math.Max(0, Config.MAX_HEALTH - bot.Health));
-                effectiveRecovery = effectiveHealthRecovery;
-                bot.Health = Math.Min(Config.MAX_HEALTH, bot.Health + healthRecovery);
+                var change = bot.Player.Recover(healthRecovery);
+                effectiveRecovery = change.Recovered;
+                PlayerHealthChangeService.Record(matchingId, bot.Player, change, _eventLogs, _logger);
                 // 하트는 앞줄 오브 HP도 만충으로 (#222 M4) — 사람과 같은 규칙.
                 if (claimedItem.ItemId == global::network.common.Config.HEART_GROUND_ITEM_ID)
                     game_server.sessions.GameClientSession.SwarmHeartPickupCallback?.Invoke(
@@ -141,15 +142,16 @@ public partial class BotPlayerManager
         if (bot.IsEliminated || damage <= 0)
             return;
 
-        int previousHealth = bot.Health;
-        bot.Health = Math.Clamp(bot.Health - damage, 0, Config.MAX_HEALTH);
-        if (previousHealth > 0 && bot.Health <= 0)
+        int previousHealth = bot.Player.Health;
+        var change = bot.Player.ApplyDamage(damage);
+        PlayerHealthChangeService.Record(_matchingId, bot.Player, change, _eventLogs, _logger);
+        if (previousHealth > 0 && bot.Player.Health <= 0)
             bot.LastProximityAttackerPlayerId = attackerPlayerId;
     }
 
     public bool TryFinalizeProximityAutoCombatElimination(BotPlayerState bot, long matchingId)
     {
-        if (bot.IsEliminated || bot.Health > 0)
+        if (bot.IsEliminated || bot.Player.Health > 0)
             return false;
 
         bot.IsEliminated = true;
@@ -162,7 +164,7 @@ public partial class BotPlayerManager
             "Bot eliminated by proximity auto combat: MatchingId={MatchingId}, BotId={BotId}, Health={Health}",
             matchingId,
             bot.PlayerId,
-            bot.Health);
+            bot.Player.Health);
         return true;
     }
 }

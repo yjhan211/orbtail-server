@@ -31,7 +31,7 @@ public sealed class WindOrbAttackServiceTests
             List<SwarmParticipantSpatial> participants =
                 [new(11, AreaType.None, new Vector3f(0, 0, 0)), new(12, AreaType.None, origin)];
             service.Process(match.MatchingId, now, participants, [], [owner, victim], []);
-            Assert.Equal(Config.MAX_HEALTH, victim.Health);
+            Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
             Assert.False(match.WindOrbAttacks.IsWounded(12, now));
 
             var hitAt = now.AddSeconds(Math.Max(Config.SWARM_WIND_BLADE_TICK_SECONDS,
@@ -39,13 +39,13 @@ public sealed class WindOrbAttackServiceTests
             service.Process(match.MatchingId, hitAt, participants, [], [owner, victim], []);
             int expected = Math.Max(1, (int)MathF.Round(
                 Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE)));
-            Assert.Equal(Config.MAX_HEALTH - expected, victim.Health);
+            Assert.Equal(Config.MAX_HEALTH - expected, victim.Player.Health);
             Assert.True(match.WindOrbAttacks.IsWounded(12, hitAt));
-            Assert.Equal(Config.MAX_HEALTH, owner.Health);
+            Assert.Equal(Config.MAX_HEALTH, owner.Player.Health);
 
             service.Process(match.MatchingId, hitAt.AddSeconds(Config.SWARM_WIND_BLADE_TICK_SECONDS + 0.001),
                 participants, [], [owner, victim], []);
-            Assert.Equal(Config.MAX_HEALTH - expected, victim.Health);
+            Assert.Equal(Config.MAX_HEALTH - expected, victim.Player.Health);
             match.TryMarkEnded();
         }
     }
@@ -70,7 +70,7 @@ public sealed class WindOrbAttackServiceTests
             var now = DateTime.UtcNow;
             service.Process(match.MatchingId, now, participants, [], [victim], []);
             service.Process(match.MatchingId, now.AddSeconds(1), participants, [], [victim], []);
-            Assert.Equal(Config.MAX_HEALTH, victim.Health);
+            Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
             Assert.False(match.WindOrbAttacks.IsWounded(12, now.AddSeconds(1)));
             match.TryMarkEnded();
         }

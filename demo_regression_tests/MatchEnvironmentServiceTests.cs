@@ -80,14 +80,14 @@ public sealed class MatchEnvironmentServiceTests
         Assert.NotEmpty(closure.Waves);
         closure.GameStartTime = DateTime.UtcNow.AddSeconds(-network.common.Config.SWARM_MATCH_DURATION_SECONDS - 100);
         var bots = match.Bots.GetBots(match.MatchingId).ToList();
-        var healthBefore = bots.Select(bot => bot.Health).ToArray();
+        var healthBefore = bots.Select(bot => bot.Player.Health).ToArray();
         foreach (var bot in bots)
             Assert.Equal(0, MatchPressureFieldPolicy.GetDamagePerTick(match, bot.Position, DateTime.UtcNow));
 
         lock (match.MatchLock)
             CreateService().ProcessTick(match, []);
 
-        Assert.Equal(healthBefore, bots.Select(bot => bot.Health).ToArray());
+        Assert.Equal(healthBefore, bots.Select(bot => bot.Player.Health).ToArray());
         Assert.All(bots, bot => Assert.False(bot.IsEliminated));
     }
 

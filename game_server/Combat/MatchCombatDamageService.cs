@@ -1,3 +1,4 @@
+using game_server.players;
 using game_server.matches;
 using game_server.bots;
 using game_server.items;
@@ -322,7 +323,7 @@ internal sealed class MatchCombatDamageService(
 
         var victimSession = aliveSessions.FirstOrDefault(session => session.PlayerId == victimId);
         var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
-        int ownerHealth = ownerSession?.Player.Health ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == ownerId)?.Health ?? -1;
+        int ownerHealth = ownerSession?.Player.Health ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == ownerId)?.Player.Health ?? -1;
         if (victimSession != null)
         {
             healthBefore = victimSession.Player.Health;
@@ -335,17 +336,17 @@ internal sealed class MatchCombatDamageService(
             var bot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == victimId);
             if (bot == null)
                 return;
-            healthBefore = bot.Health;
+            healthBefore = bot.Player.Health;
             bot.LastProximityAttackerPlayerId = ownerId;
             runtime.BotTactics.LastDamagedAtUtc[(runtime.MatchingId, bot.PlayerId)] = DateTime.UtcNow;
             bot.LastDamagedAtUtc = DateTime.UtcNow;
             eventLogs.LogHit(
                 runtime.MatchingId, ownerId, bot.PlayerId, weaponItemId, shock,
-                bot.Health > 0 &&
-                bot.Health - shock <= 0,
+                bot.Player.Health > 0 &&
+                bot.Player.Health - shock <= 0,
                 BotPlayerManager.IsBotPlayerId(ownerId), DateTimeOffset.UtcNow);
-            bot.Health = Math.Max(0, bot.Health - shock);
-            healthAfter = bot.Health;
+            PlayerHealthChangeService.Record(runtime.MatchingId, bot.Player, bot.Player.ApplyDamage(shock), eventLogs, logger);
+            healthAfter = bot.Player.Health;
         }
 
         SendPlayerHitNotification(ownerSession, victimId, area, weaponItemId, shock, healthAfter, isPeriodicDamage);
@@ -413,7 +414,7 @@ internal sealed class MatchCombatDamageService(
 
         int healthDamage = ConsumeSwarmPvpDamage(attack.TargetPlayerId, attack.Damage);
         var attackerSession = allSessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId);
-        int attackerHealth = attackerSession?.Player.Health ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == attack.AttackerPlayerId)?.Health ?? -1;
+        int attackerHealth = attackerSession?.Player.Health ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == attack.AttackerPlayerId)?.Player.Health ?? -1;
         int targetHealth;
         var targetSession = aliveSessions.FirstOrDefault(session =>
             session.PlayerId == attack.TargetPlayerId);
@@ -443,12 +444,12 @@ internal sealed class MatchCombatDamageService(
                 eventLogs.LogHit(
                     matchingId, attack.AttackerPlayerId, bot.PlayerId, attack.WeaponItemId,
                     healthDamage,
-                    bot.Health > 0 &&
-                    bot.Health - healthDamage <= 0,
+                    bot.Player.Health > 0 &&
+                    bot.Player.Health - healthDamage <= 0,
                     BotPlayerManager.IsBotPlayerId(attack.AttackerPlayerId), DateTimeOffset.UtcNow);
-                bot.Health = Math.Max(0, bot.Health - healthDamage);
+                PlayerHealthChangeService.Record(runtime.MatchingId, bot.Player, bot.Player.ApplyDamage(healthDamage), eventLogs, logger);
             }
-            targetHealth = bot.Health;
+            targetHealth = bot.Player.Health;
         }
 
         if (healthDamage > 0 && sendAttackerFeedback)

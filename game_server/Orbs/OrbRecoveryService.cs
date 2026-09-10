@@ -1,9 +1,7 @@
-using game_server.bots;
 using game_server.combat;
 using game_server.logging;
 using game_server.players;
 using game_server.matches;
-using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -12,7 +10,7 @@ using network.packets;
 
 namespace game_server.orbs;
 /// <summary>
-///     오브별 회복 시각을 확인하고 같은 틱의 회복량을 플레이어별로 합산해 적용한다.
+///     사람·봇 참가자의 오브별 회복 시각을 확인하고 같은 틱의 회복량을 합산해 적용한다.
 ///     회복 시각은 매치별 OrbRecoveryState에 보관하며 호출자는 매치 잠금을 보유한다.
 /// </summary>
 internal sealed class OrbRecoveryService(
@@ -23,8 +21,7 @@ internal sealed class OrbRecoveryService(
     public void Process(
         long matchingId,
         IReadOnlyCollection<ProximityCombatActor> actors,
-        IReadOnlyCollection<GameClientSession> matchingSessions,
-        IReadOnlyCollection<BotPlayerState> matchingBots,
+        IReadOnlyCollection<MatchPlayer> players,
         DateTime nowUtc)
     {
         if (matchRuntimes.GetOrNull(matchingId)?.OrbRecovery is not { } recovery)
@@ -74,54 +71,24 @@ internal sealed class OrbRecoveryService(
                 .ThenBy(entry => entry.Actor.WeaponItemUid)
                 .First().Actor;
 
-            int effectiveRecovery = 0;
-            var session = matchingSessions.FirstOrDefault(candidate =>
-                candidate.PlayerId == playerId && !candidate.Player.IsEliminated);
-            if (session != null)
-            {
-                int previousHealth = session.Player.Health;
-                if (previousHealth < Config.MAX_HEALTH)
-                {
-                    var change = session.Player.Recover(requestedRecovery);
-                    session.HealthChanges.Handle(session.Match, session.Player, change);
-                    effectiveRecovery = change.Recovered;
-                }
-            }
-            else
-            {
-                var bot = matchingBots.FirstOrDefault(candidate =>
-                    candidate.PlayerId == playerId && !candidate.IsEliminated);
-                if (bot != null && bot.Health < Config.MAX_HEALTH)
-                {
-                    int previousHealth = bot.Health;
-                    bot.Health = Math.Min(Config.MAX_HEALTH, bot.Health + requestedRecovery);
-                    effectiveRecovery = bot.Health - previousHealth;
-                }
-            }
+            var player = players.FirstOrDefault(candidate => candidate.PlayerId == playerId && !candidate.IsEliminated);
+            if (player == null) continue;
+            var change = player.Recover(requestedRecovery);
+            int effectiveRecovery = change.Recovered;
+            if (effectiveRecovery <= 0) continue;
+            PlayerHealthChangeService.Record(matchingId, player, change, eventLogs, logger);
 
-            if (effectiveRecovery <= 0)
-                continue;
-
-            if (session != null && session.PlayerId.HasValue && !session.Player.IsEliminated &&
-                representative.WeaponItemId > 0)
+            if (representative.WeaponItemId > 0)
             {
                 using var packet = PacketMaker.G_TO_C_HEALTH_RECOVERY(new()
                 {
                     PlayerId = playerId,
-                    AreaType = session.Player.CurrentArea,
+                    AreaType = player.CurrentArea,
                     Amount = effectiveRecovery,
                     Source = HealthRecoveryKind.Orb,
                     OrbItemId = representative.WeaponItemId
                 });
-                session.TrySend(packet);
-            }
-
-            // Human sessions already record effective recovery inside PlayerHealthChangeService.Handle.
-            // Bots mutate their state directly, so only that path needs explicit telemetry.
-            if (session == null)
-            {
-                eventLogs.RecordRecovery(
-                    matchingId, playerId, effectiveRecovery);
+                player.Session?.TrySend(packet);
             }
             logger.LogDebug(
                 "Survivor recovery event tick: MatchingId={MatchingId}, PlayerId={PlayerId}, " +

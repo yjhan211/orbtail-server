@@ -21,6 +21,19 @@ internal sealed class PlayerHealthChangeService(
         // 값이 변경되지 않았으면 패킷 전송 안함
         if (!change.Changed) return;
 
+        Record(match.MatchingId, player, change, eventLogs, logger);
+
+        if (change.IsDepleted && !deferElimination &&
+            !match.IsEnded && !player.IsEliminated && player.Health <= 0)
+        {
+            eliminations.EliminatePlayer(match.MatchingId, player.PlayerId, EliminationReason.HEALTH_ZERO,
+                attackerPlayerId: attackerPlayerId);
+        }
+    }
+    /// <summary>사람·봇의 실제 체력 변화량을 기록하고 연결이 있으면 알린다. 탈락 시점은 호출 경로가 결정한다.</summary>
+    internal static void Record(long matchingId, MatchPlayer player, MatchPlayer.HealthChange change, GameEventLogManager eventLogs, ILogger logger)
+    {
+        if (!change.Changed) return;
         logger.LogInformation(
             "Player {PlayerId} Health: {OldHealth}→{Health} ({Delta:+#;-#;0})",
             player.PlayerId, change.Before, change.After, change.RequestedDelta);
@@ -32,17 +45,11 @@ internal sealed class PlayerHealthChangeService(
         if (player.PlayerId != 0)
         {
             if (change.Recovered > 0)
-                eventLogs.RecordRecovery(match.MatchingId, player.PlayerId, change.Recovered);
+                eventLogs.RecordRecovery(matchingId, player.PlayerId, change.Recovered);
 
-            eventLogs.LogResource(match.MatchingId, player.PlayerId,
+            eventLogs.LogResource(matchingId, player.PlayerId,
                 change.RequestedDelta, change.After, reason: "", isBot: player.PlayerId < 0);
         }
 
-        if (change.IsDepleted && !deferElimination &&
-            !match.IsEnded && !player.IsEliminated && player.Health <= 0)
-        {
-            eliminations.EliminatePlayer(match.MatchingId, player.PlayerId, EliminationReason.HEALTH_ZERO,
-                attackerPlayerId: attackerPlayerId);
-        }
     }
 }

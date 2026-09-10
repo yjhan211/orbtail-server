@@ -92,7 +92,7 @@ public sealed class SwarmArenaTickOrderTests
             "long matchingId = match.MatchingId;",
             "var humans = activeSessions",
             "var bots = match.Bots.GetBots(matchingId)",
-            "target.Session.HealthChanges.Handle(target.Session.Match, target.Session.Player,",
+            "PlayerHealthChangeService.Record(matchingId, player, change, eventLogs, logger);",
             "var eliminatedTargets = targets",
             "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
             "matchEliminations.EliminatePlayer(",
@@ -195,7 +195,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             healthNotification,
             "if (!change.Changed) return;",
-            "player.Session?.SendHealth(",
+            "Record(match.MatchingId, player, change, eventLogs, logger);",
             "eliminations.EliminatePlayer(");
 
         string applyProximityHit = ReadMethodSlice(
@@ -402,7 +402,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.Contains("SunOrbAttackState sunOrbAttacks = matchRuntimes.GetOrThrow(matchingId).SunOrbAttacks;", crossfire);
         Assert.Contains("public SunOrbAttackState SunOrbAttacks { get; }", botDodge);
 
-        Assert.Contains("new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks)", botDodge);
+        Assert.Contains("new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks, eventLogs)", botDodge);
         string botMovement = ReadNormalizedSource(root, "game_server", "Bots", "BotPlayerManager.Movement.cs");
         Assert.Contains("_sunOrbAttacks.DodgeSnapshot, matchingId, bot.PlayerId, bot.Position, bot.CurrentArea, now", botMovement);
         Assert.DoesNotContain("matchRuntimes.GetOrThrow(matchingId).Swarm", botDodge);

@@ -50,11 +50,11 @@ public sealed class PlayerEliminationCauseTests
     [Fact]
     public void BotDamage_RemembersFirstAttackerThatReachesEliminationThreshold()
     {
-        var manager = new BotPlayerManager(1, NullLogger.Instance, new DoorState(), new SunOrbAttackState(1));
+        var manager = new BotPlayerManager(1, NullLogger.Instance, new DoorState(), new SunOrbAttackState(1), TestGameEventLogs.Create());
         var bot = new BotPlayerState
         {
             PlayerId = -1,
-            Health = 10
+            Player = { Health = 10 }
         };
 
         manager.ApplyProximityAutoCombatDamage(bot, 9, attackerPlayerId: 101);

@@ -216,7 +216,7 @@ internal class MatchCombatService(
             MonsterSnapshotPublisher.Broadcast(matchRuntimes.GetOrThrow(matchingId), sessions, matchRuntimes.GetOrThrow(matchingId).Monsters.GetVisualStates(matchingId));
 
         var actors = BuildSwarmArenaCombatActors(matchingId, aliveSessions, aliveBots, nowUtc);
-        orbRecovery.Process(matchingId, actors, aliveSessions, aliveBots, nowUtc);
+        orbRecovery.Process(matchingId, actors, aliveSessions.Select(session => session.Player).Concat(aliveBots.Select(bot => bot.Player)).ToList(), nowUtc);
         orbVisuals.Publish(matchingId, actors, sessions);
         BroadcastSwarmOrbRankings(matchingId, sessions, bots);
         // 성장 카드 (#226 단계 C): 소환석이 비용에 닿는 즉시 3택 오퍼 — 상자 트리거 퇴역.
@@ -933,7 +933,7 @@ internal class MatchCombatService(
         var cutterBot = cutterSession == null
             ? aliveBots.FirstOrDefault(candidate => candidate.PlayerId == cutterId)
             : null;
-        int cutterHealthBefore = cutterSession?.Player.Health ?? cutterBot?.Health ?? 0;
+        int cutterHealthBefore = cutterSession?.Player.Health ?? cutterBot?.Player.Health ?? 0;
         if (cutterHealthBefore - SwarmSingleCutHealthCost <= 0)
         {
             eventLogs.LogSystem(
@@ -1005,13 +1005,12 @@ internal class MatchCombatService(
         }
         else if (cutterBot != null)
         {
-            cutterBot.Health = Math.Max(
-                0, cutterBot.Health - SwarmSingleCutHealthCost);
+            PlayerHealthChangeService.Record(matchingId, cutterBot.Player, cutterBot.Player.ApplyDamage(SwarmSingleCutHealthCost), eventLogs, logger);
             cutterBot.LastDamagedAtUtc = nowUtc;
             matchRuntimes.GetOrThrow(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
             // 봇 절단 시각 — 절단 자제 쿨다운(IsSwarmBotCutAllowed)과 절단 후 회수 창이 읽는다.
             matchRuntimes.GetOrThrow(matchingId).BotTactics.LastTrailCutAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
-            cutterHealthAfter = cutterBot.Health;
+            cutterHealthAfter = cutterBot.Player.Health;
         }
         else
         {
@@ -1429,15 +1428,15 @@ internal class MatchCombatService(
         // 반올림으로 맞춘다 (#229 4단계-보정): 잘라내기라 raw 6(배율 통과 3)이 1로, raw 8(4)이
         // 2로 뭉개져 페이즈별 접촉 곡선이 봇에게는 통째로 평평했다. 사람 경로는 Round를 쓴다.
         int botDamage = Math.Max(1, (int)MathF.Round(damage.Damage * SwarmBotContactDamageMultiplier));
-        int legacyBefore = bot.Health;
-        bot.Health = Math.Max(0, bot.Health - botDamage);
+        int legacyBefore = bot.Player.Health;
+        PlayerHealthChangeService.Record(matchingId, bot.Player, bot.Player.ApplyDamage(botDamage), eventLogs, logger);
         matchRuntimes.GetOrThrow(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
         // 세 번째 봇 경로도 남긴다 — 앞의 두 경로만 로그를 붙여 놓으면 여기로 빠진 피해가
         // 그대로 안 보인다.
         eventLogs.LogSwarmAfterimageHit(
             matchingId, damage.MonsterId, bot.PlayerId, damage.Area.ToString(),
-            botDamage, legacyBefore, bot.Health,
-            bot.Health <= 0, isBot: true, DateTimeOffset.UtcNow);
+            botDamage, legacyBefore, bot.Player.Health,
+            bot.Player.Health <= 0, isBot: true, DateTimeOffset.UtcNow);
     }
 
     /// <summary>
@@ -1476,7 +1475,7 @@ internal class MatchCombatService(
             .Select(session => (
                 PlayerId: session.PlayerId!.Value,
                 Health: session.Player.Health))
-            .Concat(aliveBots.Select(bot => (bot.PlayerId, bot.Health)))
+            .Concat(aliveBots.Select(bot => (bot.PlayerId, bot.Player.Health)))
             .Select(candidate =>
             {
                 var (orbCount, tierSum) = GetSwarmOrbScore(matchingId, candidate.PlayerId);

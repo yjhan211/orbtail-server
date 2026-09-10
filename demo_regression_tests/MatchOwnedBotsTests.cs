@@ -49,6 +49,30 @@ public sealed class MatchOwnedBotsTests
     }
 
     [Fact]
+    public void SetupKeepsTheBotAndRosterOnTheSamePlayerState()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(948020);
+        using (match.Enter())
+        {
+            var cells = network.common.data.MatchSpawnData.CreatePhaseRoomAssignments(match.MatchingId, [1L, -1L]);
+            match.Bots.RegisterBots(match.MatchingId, Config.SWARM_MATCH_MAP, [-1L], cells);
+            var bot = Assert.IsType<BotPlayerState>(match.Bots.GetBot(match.MatchingId, -1));
+            var profile = match.Bots.CreatePlayerInfo(match.MatchingId, -1)!;
+            bot.Player.ApplyDamage(20);
+            match.InitializeMatch(MatchMode.Normal, cells, [new PlayerInfo { PlayerId = 1 }, profile]);
+            Assert.Same(bot.Player, match.GetParticipant(-1));
+            Assert.Same(profile, bot.Player.Profile);
+            Assert.Null(typeof(BotPlayerState).GetProperty("Health"));
+            Assert.Equal(Config.MAX_HEALTH - 20, match.GetParticipant(-1)!.Health);
+            match.GetParticipant(-1)!.Recover(5);
+            Assert.Equal(Config.MAX_HEALTH - 15, bot.Player.Health);
+            Assert.Equal(Config.MAX_HEALTH, match.GetParticipant(1)!.Health);
+            Assert.Null(bot.Player.Session);
+        }
+    }
+    [Fact]
     public void BotsAreIsolatedAndReleasedWithTheirMatch()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);

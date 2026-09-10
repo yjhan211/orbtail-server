@@ -77,13 +77,7 @@ public partial class BotPlayerManager
         public double WalkingElapsedMilliseconds { get; set; }
     }
 
-    public void ApplyEnvironmentalDamage(BotPlayerState bot, int damage)
-    {
-        if (bot.IsEliminated || damage == 0)
-            return;
 
-        bot.Health = Math.Clamp(bot.Health - damage, 0, Config.MAX_HEALTH);
-    }
 
     /// <summary>
     ///     #127: 봇 walking 틱(50ms). legacy mode 비활성 시 BotPathfinder 경로를 따라 셀 단위 이동.

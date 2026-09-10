@@ -84,7 +84,7 @@ internal class MatchEnvironmentService(
             int fieldDamage = MatchPressureFieldPolicy.GetDamagePerTick(match, bot.Position, DateTime.UtcNow);
             targets.Add(new EnvironmentalTarget(
                 bot.PlayerId,
-                bot.Health,
+                bot.Player.Health,
                 fieldDamage,
                 null,
                 bot));
@@ -96,18 +96,10 @@ internal class MatchEnvironmentService(
             if (totalDelta == 0)
                 continue;
 
-            if (target.Session != null)
-            {
-                target.Session.HealthChanges.Handle(target.Session.Match, target.Session.Player,
-                    target.Session.Player.ApplyDamage(totalDelta),
-                    deferElimination: true);
-            }
-            else if (target.Bot != null)
-            {
-                match.Bots.ApplyEnvironmentalDamage(target.Bot, totalDelta);
-            }
+            var player = target.Session?.Player ?? target.Bot!.Player;
+            var change = player.ApplyDamage(totalDelta);
+            PlayerHealthChangeService.Record(matchingId, player, change, eventLogs, logger);
         }
-
         var eliminatedTargets = targets
             .Where(target => target.FieldDamage > 0 && target.PreDamageHealth - target.FieldDamage <= 0)
             .ToList();
