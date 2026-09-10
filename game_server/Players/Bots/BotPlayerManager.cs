@@ -100,7 +100,6 @@ public partial class BotPlayerManager
                     Position = startPosition,
                     Rotation = 0f
                 },
-                GameStartTime = now,
                 LoopWaitUntil = now.AddSeconds(RandomRange(
                     BotInitialDecisionDelayMinSeconds,
                     BotInitialDecisionDelayMaxSeconds))

@@ -401,9 +401,8 @@ internal sealed class BotDecisionService(
         }
         if (strongerPosition != null)
         {
-            // 위협 앞에서는 채집 채널 홀드도 끊고 뛴다 — 홀드 채로 맞다 죽는 사고 방지 (매치 2372 봇 -78).
+            // 더 강한 상대를 만나면 도주 지시를 우선한다.
             matchRuntimes.GetOrThrow(matchingId).BotTactics.FleeDirective.Add((matchingId, botPlayerId));
-            bot.CancelChannelHold();
             float fleeDx = bot.Player.Position!.X - strongerPosition.X;
             float fleeDy = bot.Player.Position!.Y - strongerPosition.Y;
             float fleeLength = MathF.Sqrt(fleeDx * fleeDx + fleeDy * fleeDy);
@@ -777,7 +776,7 @@ internal sealed class BotDecisionService(
             var player = bot.Player;
             var position = player.Position!;
             bool unsafeToSleep = player.IsEliminated || player.Health <= 0 || !player.CanSleep(nowUtc) ||
-                player.CurrentArea == AreaType.None || bot.IsChannelHeld || player.PendingDoorInteractionId.HasValue ||
+                player.CurrentArea == AreaType.None || player.PendingDoorInteractionId.HasValue ||
                 match.Closures.IsAreaClosed(player.CurrentArea) ||
                 MatchPressureFieldPolicy.GetDamagePerTick(match, position, nowUtc) > 0 ||
                 nowUtc < bot.SwarmDodgeHoldUntilUtc ||

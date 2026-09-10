@@ -406,7 +406,7 @@ public sealed class MatchGameplayServiceTests
             service.UpdateSleep(match, [bot], now.AddSeconds(9));
             Assert.False(bot.Player.IsSleeping);
             bot.Player.ApplyDamage(1);
-            bot.IsChannelHeld = true;
+            bot.Player.BeginDoor(10, 0);
             service.UpdateSleep(match, [bot], now.AddSeconds(10));
             Assert.False(bot.Player.IsSleeping);
         }

@@ -34,12 +34,6 @@ public class BotPlayerState
     /// <summary>잠긴 문 차단 로그의 중복 억제 — 같은 방에 연속으로 막히면 한 번만 남긴다.</summary>
     public AreaType LastLockedDoorBlockArea { get; set; } = AreaType.None;
 
-    public bool IsChannelHeld { get; set; }
-
-    public DateTime ChannelHoldUntil { get; set; } = DateTime.MinValue;
-
-    public DateTime GameStartTime { get; set; } = DateTime.UtcNow;
-
     // 투사체 회피 커밋 (2026-08-18): 한 번 비켜서기 시작한 방향과 유지 시각. 유지 중에는 띠 밖에 나가도
     // 원래 경로로 되돌아가지 않고 제자리에 선다 — 띠 가장자리에서 들락거리는 떨림을 없앤다.
     public float SwarmDodgeDirectionX { get; set; }
@@ -54,13 +48,6 @@ public class BotPlayerState
 
     public SwarmBotMode SwarmMode { get; set; } = SwarmBotMode.None;
     public DateTime SwarmModeUntilUtc { get; set; } = DateTime.MinValue;
-
-    /// <summary>위협 감지 시 채집·상호작용 홀드를 즉시 끊는다 — 홀드 채로 맞다 죽는 사고 방지.</summary>
-    public void CancelChannelHold()
-    {
-        IsChannelHeld = false;
-        ChannelHoldUntil = DateTime.MinValue;
-    }
 
     /// <summary>마지막 피격 시각 (#222) — 피격 중에는 이동 계획 홀드를 무시하는 판단 입력.</summary>
     public DateTime LastDamagedAtUtc { get; set; } = DateTime.MinValue;

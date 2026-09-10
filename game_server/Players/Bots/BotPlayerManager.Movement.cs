@@ -254,22 +254,18 @@ public partial class BotPlayerManager
         bot.IdleWatchLastLoggedAtUtc = nowUtc;
         _logger.LogInformation(
             "Swarm bot idle: BotId={BotId}, Area={Area}, IdleSeconds={IdleSeconds:F0}, " +
-            "Mode={Mode}, DirectiveArea={DirectiveArea}, PathRemaining={PathRemaining}, " +
-            "InInteraction={InInteraction}",
+            "Mode={Mode}, DirectiveArea={DirectiveArea}, PathRemaining={PathRemaining}",
             bot.PlayerId,
             bot.Player.CurrentArea,
             (nowUtc - bot.IdleWatchLastMovedAtUtc).TotalSeconds,
             directive.Mode,
             directive.DestinationArea,
-            Math.Max(0, bot.Path.Count - bot.PathIndex),
-            bot.IsChannelHeld);
+            Math.Max(0, bot.Path.Count - bot.PathIndex));
     }
 
     /// <summary>유휴 배회 (#222): 제자리 4초 이상이면 같은 구역 인근 셀로 짧은 산책 경로를 만든다.</summary>
     private void TryStartSwarmIdleWander(BotPlayerState bot, long matchingId, DateTime nowUtc)
     {
-        if (bot.IsChannelHeld)
-            return;
         if ((nowUtc - bot.IdleWatchLastMovedAtUtc).TotalSeconds < 4d || nowUtc < bot.NextIdleWanderAtUtc)
             return;
 
@@ -358,37 +354,9 @@ public partial class BotPlayerManager
         if (deltaSec <= 0) deltaSec = 0.25f;
         bot.LastWalkStepTime = now;
 
-        // 상호작용 중에는 walking 정지 (실제 플레이어 정지 동작과 동등).
-        // ChannelHoldUntil 시각이 지나면 자동 해제.
-        if (bot.IsChannelHeld)
-        {
-            if (now >= bot.ChannelHoldUntil) bot.IsChannelHeld = false;
-            else
-            {
-                // 첫 진입 시 velocity 0 패킷 1회 발행 (이전 walking 패킷의 velocity가 그대로면 클라 발소리 잔존)
-                if (bot.Player.Velocity.X != 0f || bot.Player.Velocity.Y != 0f)
-                {
-                    bot.Player.Velocity = new Vector3f(0f, 0f, 0f);
-                    return new BotMovementEvent
-                    {
-                        BotPlayerId = bot.PlayerId,
-                        FromArea = bot.Player.CurrentArea,
-                        ToArea = bot.Player.CurrentArea,
-                        FromCell = bot.Player.Cell!,
-                        ToCell = bot.Player.Cell!,
-                        Position = bot.Player.Position!,
-                        Velocity = new Vector3f(0f, 0f, 0f),
-                        Rotation = bot.Player.Rotation,
-                        IsAreaTransition = false
-                    };
-                }
-                return null;
-            }
-        }
-
         // 투사체 회피 반사 (#232 §9): 경로·휴식·대기보다 먼저 — 이 자리를 지나갈 태양 투사체가
         // 있으면 그 직선의 수직으로 한 걸음 비켜선다. 경로는 버리지 않는다: 다음 틱에 비켜선 자리에서
-        // 다음 웨이포인트로 이어 걷는다. 상호작용(채널링) 중만 예외 — 사람도 채널링 중엔 못 움직인다.
+        // 다음 웨이포인트로 이어 걷는다.
         if (TryDodgeStep(bot, matchingId, now, deltaSec, out var dodgeMovement))
             return dodgeMovement;
 

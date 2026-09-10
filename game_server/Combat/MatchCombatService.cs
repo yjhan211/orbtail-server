@@ -992,7 +992,6 @@ internal class MatchCombatService(
             ownerBot.LastDamagedAtUtc = nowUtc;
             matchRuntimes.GetOrThrow(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, ownerBot.PlayerId)] = nowUtc;
             ownerBot.Player.MarkSwarmCombat(nowUtc);
-            ownerBot.CancelChannelHold();
         }
 
         // 절단 전후 대차대조 (#227 5단계): 오브 수(=점수)·순위·공격 기여 수를 한 줄에 묶는다.
