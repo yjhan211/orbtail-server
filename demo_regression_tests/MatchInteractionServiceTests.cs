@@ -1,10 +1,10 @@
-using network.common.data.models;
-using game_server.players;
 using game_server.field;
 using game_server.matches;
+using game_server.players;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data.helpers;
+using network.common.data.models;
 
 namespace demo_regression_tests;
 
@@ -30,7 +30,7 @@ public sealed class MatchInteractionServiceTests
         state.BeginInteraction(11);
         state.ClearPendingInteractions();
         Assert.False(state.TryFinishInteraction(11));
-        Assert.Equal(0, state.GetPendingInteractionIds().Length);
+        Assert.Empty(state.GetPendingInteractionIds());
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public sealed class MatchInteractionServiceTests
             int[] canceled = MatchInteractionService.CancelPendingInteractions(runtime, state);
 
             Assert.Equal(new[] { 10, 11 }, canceled.OrderBy(id => id));
-            Assert.Equal(0, state.GetPendingInteractionIds().Length);
+            Assert.Empty(state.GetPendingInteractionIds());
             Assert.False(state.TryFinishInteraction(10));
             Assert.False(state.TryFinishDoor(11, 6000, TimeSpan.FromSeconds(3), out _));
 
@@ -116,7 +116,7 @@ public sealed class MatchInteractionServiceTests
 
         Assert.Throws<InvalidOperationException>(() =>
             MatchInteractionService.CancelPendingInteractions(runtime, state));
-        Assert.Equal(1, state.GetPendingInteractionIds().Length);
+        Assert.Single(state.GetPendingInteractionIds());
 
         using (MatchRuntimeStore.Enter(runtime))
         {

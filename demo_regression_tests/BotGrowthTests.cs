@@ -18,7 +18,7 @@ public sealed class BotGrowthTests
         var human = new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 1 } };
         match.RegisterParticipant(human);
         var logs = TestGameEventLogs.Create();
-        var growth = new PlayerOrbGrowthService( logs, NullLogger<PlayerOrbGrowthService>.Instance);
+        var growth = new PlayerOrbGrowthService(logs, NullLogger<PlayerOrbGrowthService>.Instance);
         var decisions = new BotDecisionService(store, logs, growth, new PlayerOrbTrailService(), NullLogger<BotDecisionService>.Instance);
         var bot = new BotPlayerState { PlayerId = -1 };
         match.RegisterParticipant(bot.Player);
@@ -47,7 +47,7 @@ public sealed class BotGrowthTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(949102);
         var logs = TestGameEventLogs.Create();
-        var growth = new PlayerOrbGrowthService( logs, NullLogger<PlayerOrbGrowthService>.Instance);
+        var growth = new PlayerOrbGrowthService(logs, NullLogger<PlayerOrbGrowthService>.Instance);
         var decisions = new BotDecisionService(store, logs, growth, new PlayerOrbTrailService(), NullLogger<BotDecisionService>.Instance);
         var bot = new BotPlayerState { PlayerId = -1 };
         match.RegisterParticipant(bot.Player);
@@ -72,7 +72,7 @@ public sealed class BotGrowthTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(949103);
         var logs = TestGameEventLogs.Create();
-        var growth = new PlayerOrbGrowthService( logs, NullLogger<PlayerOrbGrowthService>.Instance);
+        var growth = new PlayerOrbGrowthService(logs, NullLogger<PlayerOrbGrowthService>.Instance);
         var decisions = new BotDecisionService(store, logs, growth, new PlayerOrbTrailService(), NullLogger<BotDecisionService>.Instance);
         var bot = new BotPlayerState { PlayerId = -1 };
         match.RegisterParticipant(bot.Player);

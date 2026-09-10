@@ -1,10 +1,10 @@
 using game_server;
-using user_server.matching.creation;
 using network.common;
 using network.common.data.models;
 using network.gameentry;
 using network.routing;
 using user_server.matching;
+using user_server.matching.creation;
 
 namespace demo_regression_tests;
 

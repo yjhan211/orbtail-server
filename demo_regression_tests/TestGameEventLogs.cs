@@ -1,6 +1,6 @@
+using System.Collections.Concurrent;
 using game_server.logging;
 using game_server.matches;
-using System.Collections.Concurrent;
 
 namespace demo_regression_tests;
 

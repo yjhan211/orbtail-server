@@ -1,11 +1,11 @@
-using user_server.matching.creation;
-using user_server.matching.queue;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
 using network.gameentry;
-using network.infrastructure.redis;
 using network.infrastructure;
+using network.infrastructure.redis;
+using user_server.matching.creation;
+using user_server.matching.queue;
 using user_server.sessions;
 
 namespace user_server.matching;

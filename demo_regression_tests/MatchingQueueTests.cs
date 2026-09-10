@@ -1,7 +1,7 @@
-using user_server.matching.queue;
 using MessagePack;
 using network.common;
 using user_server.matching;
+using user_server.matching.queue;
 
 namespace demo_regression_tests;
 

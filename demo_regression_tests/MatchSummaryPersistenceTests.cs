@@ -1,12 +1,12 @@
-using game_server.players;
-using game_server.logging;
-using game_server.matches;
-using game_server.matches.results;
-using game_server.matches;
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using game_server;
+using game_server.logging;
+using game_server.matches;
+using game_server.matches;
+using game_server.matches.results;
+using game_server.players;
 using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Configuration;
@@ -36,7 +36,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         const long matchingId = 42091;
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(matchingId);
-        runtime.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11  }});
+        runtime.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11 } });
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         logs.BeginMatch(matchingId, seed: 17);
         var summaries = new MatchSummaryFileStore(_directory);

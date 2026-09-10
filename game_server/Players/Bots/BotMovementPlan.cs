@@ -1,5 +1,5 @@
-using game_server.sessions;
 using System.Collections.Immutable;
+using game_server.sessions;
 using network.common;
 using network.common.data.models;
 

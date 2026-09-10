@@ -1,6 +1,6 @@
 using game_server.combat;
-using game_server.matches.results;
 using game_server.matches;
+using game_server.matches.results;
 namespace demo_regression_tests;
 
 public sealed class ServerDeploymentSurfaceTests

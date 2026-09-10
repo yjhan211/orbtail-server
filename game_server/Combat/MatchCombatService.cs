@@ -1,13 +1,14 @@
-using game_server.players;
+using System.Collections.Immutable;
 using game_server;
-using game_server.players.bots;
+using game_server.field;
 using game_server.logging;
+using game_server.matches;
+using game_server.matches.entry;
+using game_server.matches.results;
 using game_server.monsters;
 using game_server.orbs;
-using game_server.matches.entry;
-using game_server.field;
-using game_server.matches.results;
-using game_server.matches;
+using game_server.players;
+using game_server.players.bots;
 using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -15,7 +16,6 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 using network.packets;
-using System.Collections.Immutable;
 
 namespace game_server.combat;
 
@@ -192,7 +192,7 @@ internal class MatchCombatService(
                 return;
         }
         // 앞선 피해 단계에서 탈락한 참가자는 회복·성장·새 공격 대상에서 제외한다.
-       aliveBots.RemoveAll(bot => bot.Player.IsEliminated);
+        aliveBots.RemoveAll(bot => bot.Player.IsEliminated);
         botDecisions.UpdateSleep(runtime, aliveBots, nowUtc);
         ProcessPeriodicBuffs(runtime, players, nowUtc);
         if (runtime.IsEnded)

@@ -8,5 +8,5 @@ namespace game_server.matches.entry;
 /// </summary>
 internal interface IMatchEntryFailureHandler
 {
-    void Handle(GameClientSession session);
+    public void Handle(GameClientSession session);
 }

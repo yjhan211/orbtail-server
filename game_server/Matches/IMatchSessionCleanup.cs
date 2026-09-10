@@ -7,7 +7,7 @@ namespace game_server.matches;
 /// </summary>
 internal interface IMatchSessionCleanup
 {
-    void PublishPlayerLeft(long playerId, long matchingId);
-    Action? PrepareGameCompletion(long playerId, long matchingId);
-    void ReleaseMatchingReservation(long playerId, long matchingId);
+    public void PublishPlayerLeft(long playerId, long matchingId);
+    public Action? PrepareGameCompletion(long playerId, long matchingId);
+    public void ReleaseMatchingReservation(long playerId, long matchingId);
 }

@@ -1,7 +1,7 @@
 using network.common;
-using network.infrastructure;
 using network.common.data.models;
 using network.gameentry;
+using network.infrastructure;
 using user_server.matching;
 using user_server.matching.queue;
 using user_server.sessions;

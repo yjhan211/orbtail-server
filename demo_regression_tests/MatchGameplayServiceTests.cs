@@ -1,9 +1,9 @@
-using game_server.players;
-using game_server.players.bots;
-using game_server.combat;
-using game_server.matches;
 using System.Reflection;
 using game_server;
+using game_server.combat;
+using game_server.matches;
+using game_server.players;
+using game_server.players.bots;
 using Microsoft.Extensions.DependencyInjection;
 using network.common.data.models;
 
@@ -67,7 +67,7 @@ public sealed class MatchGameplayServiceTests
             Assert.True(match.IsEnded);
             Assert.False(service.ProcessSwarmScoreTimeout(match.MatchingId, deadline.AddSeconds(1)));
             var events = provider.GetRequiredService<game_server.logging.GameEventLogManager>().GetForPersistence(match.MatchingId);
-            var result = Assert.Single(events.Where(entry => entry.Type == game_server.logging.GameEventType.MatchEnded));
+            var result = Assert.Single(events, entry => entry.Type == game_server.logging.GameEventType.MatchEnded);
             Assert.Equal(winnerId, result.WinnerPlayerId);
         }
     }

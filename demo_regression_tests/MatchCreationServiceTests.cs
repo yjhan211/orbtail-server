@@ -1,9 +1,9 @@
-using user_server.matching.creation;
-using user_server.matching.queue;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
 using user_server.matching;
+using user_server.matching.creation;
+using user_server.matching.queue;
 
 namespace demo_regression_tests;
 

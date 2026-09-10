@@ -1,5 +1,5 @@
-using game_server.matches.entry;
 using game_server.matches;
+using game_server.matches.entry;
 using game_server.sessions;
 using MessagePack;
 using network.common;

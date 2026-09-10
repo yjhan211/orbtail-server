@@ -1,11 +1,11 @@
-using game_server.players;
 using game_server;
-using game_server.players.bots;
+using game_server.field;
 using game_server.items;
 using game_server.logging;
-using game_server.field;
-using game_server.matches.results;
 using game_server.matches;
+using game_server.matches.results;
+using game_server.players;
+using game_server.players.bots;
 using game_server.sessions;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -44,7 +44,7 @@ public sealed class MatchOwnedStateTests
 
         inventory.AddItem(11, 107000010);
         stones.AddStones(11, 9);
-        roster.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11  }});
+        roster.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11 } });
 
         Assert.Same(inventory.GetPlayerInventory(11),
             store.GetOrThrow(first.MatchingId).Inventory.GetPlayerInventory(11));
@@ -73,7 +73,7 @@ public sealed class MatchOwnedStateTests
         sibling.SummonStones.AddStones(11, 7);
         inventory.AddItem(11, 107000010);
         ground.SpawnItems(area, 0, 0, [107000010]);
-        roster.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11  }});
+        roster.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11 } });
         closures.InitializeMatching();
 
         using (MatchRuntimeStore.Enter(runtime))
@@ -159,7 +159,7 @@ public sealed class MatchOwnedStateTests
             runtime.Bots.RegisterBots(runtime.MatchingId, Config.SWARM_MATCH_MAP,
                 [botId], new Dictionary<long, Cell> { [botId] = new(0, 0) });
             runtime.RegisterParticipant(runtime.Bots.GetBot(runtime.MatchingId, botId)!.Player);
-            runtime.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11  }});
+            runtime.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11 } });
             runtime.Inventory.AddItem(botId, 107000010);
         }
         var bot = match.Bots.GetBot(match.MatchingId, botId)!;
@@ -221,7 +221,7 @@ public sealed class MatchOwnedStateTests
             Assert.Equal(5, player.EliminationRank);
             Assert.Equal(11, player.AttackerPlayerId);
             Assert.Equal(eliminatedAt, player.EliminatedAt);
-            Assert.Single(logs.GetRecent(match.MatchingId).Where(entry => entry.Type == GameEventType.Eliminate));
+            Assert.Single(logs.GetRecent(match.MatchingId), entry => entry.Type == GameEventType.Eliminate);
             Assert.Equal((true, (long?)11), match.CheckGameOver());
             Assert.False(match.IsEnded);
         }
@@ -249,7 +249,7 @@ public sealed class MatchOwnedStateTests
             Assert.Equal(player.CurrentArea, player.EliminatedArea);
             Assert.Empty(match.Inventory.GetAllItems(player.PlayerId));
             Assert.Single(match.GroundItems.GetSnapshot(player.CurrentArea));
-            Assert.Single(logs.GetRecent(match.MatchingId).Where(entry => entry.Type == GameEventType.EliminationDrop));
+            Assert.Single(logs.GetRecent(match.MatchingId), entry => entry.Type == GameEventType.EliminationDrop);
         }
     }
     [Fact]

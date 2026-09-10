@@ -1,16 +1,16 @@
-using game_server;
-using game_server.players.bots;
-using game_server.items;
-using game_server.logging;
-using game_server.orbs;
-using game_server.combat;
-using game_server.matches.entry;
-using game_server.field;
-using game_server.matches.results;
-using game_server.players;
-using game_server.matches;
 using System.Collections.Concurrent;
 using System.Reflection;
+using game_server;
+using game_server.combat;
+using game_server.field;
+using game_server.items;
+using game_server.logging;
+using game_server.matches;
+using game_server.matches.entry;
+using game_server.matches.results;
+using game_server.orbs;
+using game_server.players;
+using game_server.players.bots;
 using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -303,7 +303,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(101, bot.LastProximityAttackerPlayerId);
         Assert.True(bot.LastDamagedAtUtc > DateTime.MinValue);
         Assert.True(match.BotTactics.LastDamagedAtUtc.ContainsKey((match.MatchingId, bot.PlayerId)));
-        Assert.Single(fixture.ConnectionFor(session).AttemptedProtocols.Where(protocol => protocol == Protocol.G_TO_C_COMBAT_HIT));
+        Assert.Single(fixture.ConnectionFor(session).AttemptedProtocols, protocol => protocol == Protocol.G_TO_C_COMBAT_HIT);
     }
 
     [Fact]
@@ -1028,8 +1028,8 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("HandleHealthChanged", playerState);
         Assert.DoesNotContain("SendInGameInventory", playerState);
         Assert.DoesNotContain("HandleUseInGameItem", session);
-        Assert.False(Enum.GetNames<Protocol>().Contains("C_TO_G_USE_INGAME_ITEM"));
-        Assert.False(Enum.GetNames<Protocol>().Contains("G_TO_C_USE_INGAME_ITEM_RESULT"));
+        Assert.DoesNotContain("C_TO_G_USE_INGAME_ITEM", Enum.GetNames<Protocol>());
+        Assert.DoesNotContain("G_TO_C_USE_INGAME_ITEM_RESULT", Enum.GetNames<Protocol>());
         Assert.DoesNotContain("HandleRestStateRequest", playerState);
         Assert.DoesNotContain("await ", playerState);
         Assert.Equal(1, CountOccurrences(playerState, "using (match.Enter())"));
@@ -1482,8 +1482,8 @@ public sealed class GameClientSessionPublicationTests
             foreach (var loop in TickLoops) loop.Stop();
             foreach (long matchingId in _sessions.Select(session => session.MatchingId).Distinct())
 
-            if (Directory.Exists(_summaryDirectory))
-                Directory.Delete(_summaryDirectory, recursive: true);
+                if (Directory.Exists(_summaryDirectory))
+                    Directory.Delete(_summaryDirectory, recursive: true);
         }
 
         private static void SetIdentity(

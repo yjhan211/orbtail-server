@@ -1,7 +1,6 @@
-using game_server.combat;
-
-using game_server.matches;
 using System.Collections.Immutable;
+using game_server.combat;
+using game_server.matches;
 using game_server.sessions;
 using MessagePack;
 using network.common;

@@ -1,6 +1,6 @@
+using System.Diagnostics;
 using game_server.items;
 using game_server.players;
-using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;

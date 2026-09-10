@@ -1,5 +1,3 @@
-using user_server.matching.creation;
-using user_server.matching.queue;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -12,6 +10,8 @@ using network.routing;
 using RedLockNet;
 using StackExchange.Redis;
 using user_server.matching;
+using user_server.matching.creation;
+using user_server.matching.queue;
 
 namespace demo_regression_tests;
 

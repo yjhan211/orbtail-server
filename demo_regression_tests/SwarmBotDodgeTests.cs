@@ -1,5 +1,5 @@
-using game_server.players.bots;
 using game_server;
+using game_server.players.bots;
 using network.common;
 using network.common.data.models;
 

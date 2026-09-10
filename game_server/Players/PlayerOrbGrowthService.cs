@@ -1,6 +1,6 @@
 using game_server.items;
-using game_server.matches;
 using game_server.logging;
+using game_server.matches;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;

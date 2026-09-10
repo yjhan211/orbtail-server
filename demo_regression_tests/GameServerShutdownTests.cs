@@ -1,5 +1,5 @@
-using game_server.matches;
 using game_server;
+using game_server.matches;
 using Microsoft.Extensions.DependencyInjection;
 using network.infrastructure.messaging;
 

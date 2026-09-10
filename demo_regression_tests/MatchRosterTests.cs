@@ -1,6 +1,6 @@
-using game_server.players;
-using game_server.matches.results;
 using game_server.matches;
+using game_server.matches.results;
+using game_server.players;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 
@@ -146,7 +146,7 @@ public sealed class MatchRosterTests
         Assert.Equal((false, (long?)null), roster.CheckGameOver());
         Assert.False(roster.TryEliminatePlayer(10, EliminationReason.HEALTH_ZERO));
         Assert.Throws<InvalidOperationException>(() =>
-            roster.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 20  }}));
+            roster.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 20 } }));
     }
     [Fact]
     public void Participant_OwnsTheProfileUsedByPacketsAndResults()

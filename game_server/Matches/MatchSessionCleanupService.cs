@@ -1,10 +1,10 @@
+using System.Collections.Concurrent;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
 using network.infrastructure.messaging;
 using network.infrastructure.redis;
-using System.Collections.Concurrent;
 
 namespace game_server.matches;
 

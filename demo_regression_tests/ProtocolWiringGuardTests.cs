@@ -1,10 +1,10 @@
-using game_server.matches.entry;
-using game_server.matches;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using game_server.matches;
+using game_server.matches.entry;
 using game_server.sessions;
 using Xunit;
 

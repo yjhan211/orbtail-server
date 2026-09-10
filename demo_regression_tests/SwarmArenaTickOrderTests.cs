@@ -1,12 +1,12 @@
-using game_server.players.bots;
+using game_server.combat;
+using game_server.field;
+using game_server.matches;
+using game_server.matches.entry;
+using game_server.matches.results;
 using game_server.monsters;
 using game_server.orbs;
-using game_server.combat;
-using game_server.matches.entry;
-using game_server.field;
-using game_server.matches.results;
 using game_server.players;
-using game_server.matches;
+using game_server.players.bots;
 using game_server.sessions;
 namespace demo_regression_tests;
 

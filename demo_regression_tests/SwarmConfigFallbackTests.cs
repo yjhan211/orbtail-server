@@ -1,7 +1,7 @@
-using game_server.monsters;
 using System.Globalization;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using game_server.monsters;
 using network.common.data;
 using network.common.data.helpers;
 

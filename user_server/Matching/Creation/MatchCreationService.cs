@@ -1,8 +1,8 @@
-using user_server.matching.queue;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
 using network.infrastructure.redis;
+using user_server.matching.queue;
 
 namespace user_server.matching.creation;
 

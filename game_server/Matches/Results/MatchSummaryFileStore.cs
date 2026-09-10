@@ -1,5 +1,5 @@
-using game_server.logging;
 using System.Text.Json;
+using game_server.logging;
 using Microsoft.Extensions.Logging;
 
 namespace game_server.matches.results;

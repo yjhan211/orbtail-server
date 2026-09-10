@@ -1,6 +1,3 @@
-using network.infrastructure;
-using user_server.matching.creation;
-using user_server.matching.queue;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -8,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using network.core;
 using network.gameentry;
 using network.hosting;
+using network.infrastructure;
 using network.infrastructure.messaging;
 using network.infrastructure.redis;
 using network.routing;
@@ -15,6 +13,8 @@ using Serilog;
 using Serilog.Events;
 using user_server.accounts;
 using user_server.matching;
+using user_server.matching.creation;
+using user_server.matching.queue;
 using user_server.players;
 using user_server.sessions;
 

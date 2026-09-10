@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
-using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;

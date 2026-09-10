@@ -1,10 +1,9 @@
-using game_server.players;
-using game_server.matches.entry;
-using game_server.matches;
-
 using System.Collections.Concurrent;
 using System.Reflection;
 using game_server;
+using game_server.matches;
+using game_server.matches.entry;
+using game_server.players;
 using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Configuration;
@@ -46,7 +45,7 @@ public sealed class MatchStartCountdownPublicationTests
             Assert.True(runtime.IsEnded);
             Assert.Null(server.GetMatchRuntimes().GetOrNull(matchingId));
         }
-        finally {  }
+        finally { }
     }
 
     [Fact]
@@ -65,7 +64,7 @@ public sealed class MatchStartCountdownPublicationTests
             InvokeEntryTimeoutCheck(server, [matchingId], [session]);
             Assert.Equal(0, session.SendCount);
         }
-        finally {  }
+        finally { }
     }
 
     [Fact]
@@ -96,7 +95,7 @@ public sealed class MatchStartCountdownPublicationTests
             Assert.InRange(firstBody.StartsAtUnixMs - firstBody.ServerUnixMs, 1, 5000);
             Assert.False(server.GetMatchRuntimes().GetOrThrow(matchingId).IsGameplayActive());
         }
-        finally {  }
+        finally { }
     }
 
     [Theory]

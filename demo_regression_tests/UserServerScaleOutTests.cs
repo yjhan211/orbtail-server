@@ -1,5 +1,3 @@
-using user_server.matching.creation;
-using user_server.matching.queue;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -9,6 +7,8 @@ using network.gameentry;
 using network.infrastructure.messaging;
 using network.packets;
 using user_server.matching;
+using user_server.matching.creation;
+using user_server.matching.queue;
 using user_server.sessions;
 
 namespace demo_regression_tests;
@@ -311,7 +311,7 @@ public sealed class UserServerScaleOutTests
         // 성공 응답만 유실돼도 성공 전달을 재시도하지 않고 실패 통지로 진행한다.
         Assert.Equal(2, bus.RequestCount); // 성공 요청 1회 + 실패 통지 1회
         Assert.Equal(loseReply ? 1 : 0, owner.Deliveries.Count(d => d.Op == "success"));
-        Assert.Single(owner.Deliveries.Where(d => d.Op == "failed"));
+        Assert.Single(owner.Deliveries, d => d.Op == "failed");
         Assert.Null(cache.GetString(MatchingRedisKeys.ReservationKey(7)));
         Assert.Equal(0, cache.SortedSetCount(MatchingQueue.QueueKey));
         Assert.True((await cache.HashGetAsync(

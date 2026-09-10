@@ -25,7 +25,7 @@ public sealed class PlayerOrbGrowthServiceTests
         var player = new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 1 } };
         runtime.RegisterParticipant(player);
         runtime.SummonStones.AddStones(1, 100);
-        var service = new PlayerOrbGrowthService( TestGameEventLogs.Create(), NullLogger<PlayerOrbGrowthService>.Instance);
+        var service = new PlayerOrbGrowthService(TestGameEventLogs.Create(), NullLogger<PlayerOrbGrowthService>.Instance);
         Assert.Throws<InvalidOperationException>(() => service.Summon(runtime, player));
         Assert.Throws<InvalidOperationException>(() => service.UpgradeOrb(runtime, player, Config.ORB_UPGRADE_GROUP, 107000010));
         Assert.Throws<InvalidOperationException>(() => PlayerOrbGrowthService.GrantStartingSummonStones(runtime, player));
@@ -49,7 +49,7 @@ public sealed class PlayerOrbGrowthServiceTests
         {
             int cost = runtime.SummonStones.GetSnapshot(1).NextCost;
             runtime.SummonStones.AddStones(1, cost);
-            var service = new PlayerOrbGrowthService( TestGameEventLogs.Create(), NullLogger<PlayerOrbGrowthService>.Instance);
+            var service = new PlayerOrbGrowthService(TestGameEventLogs.Create(), NullLogger<PlayerOrbGrowthService>.Instance);
             var attempt = service.Summon(runtime, player);
             Assert.True(attempt.Success);
             Assert.Equal(0, attempt.State.StoneCount);

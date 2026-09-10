@@ -1,5 +1,5 @@
-using game_server;
 using System.Reflection;
+using game_server;
 using network.routing;
 
 namespace demo_regression_tests;

@@ -1,8 +1,8 @@
-using game_server.players.bots;
 using game_server.items;
 using game_server.logging;
-using game_server.matches.entry;
 using game_server.matches;
+using game_server.matches.entry;
+using game_server.players.bots;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data.helpers;
@@ -217,7 +217,7 @@ public sealed class MatchTickLoopTests
         var first = store.GetOrCreate(945108);
         var second = store.GetOrCreate(945109);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = new BotMovementService( logs,
+        var service = new BotMovementService(logs,
             NullLogger<BotMovementService>.Instance);
         using (MatchRuntimeStore.Enter(first))
         {

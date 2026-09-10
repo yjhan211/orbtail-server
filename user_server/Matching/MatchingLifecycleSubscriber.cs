@@ -1,8 +1,8 @@
 using MessagePack;
-using network.common.data.models;
-using network.infrastructure;
 using Microsoft.Extensions.Logging;
 using network.common;
+using network.common.data.models;
+using network.infrastructure;
 using network.infrastructure.messaging;
 using user_server.sessions;
 

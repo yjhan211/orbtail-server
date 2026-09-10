@@ -1,5 +1,5 @@
-using game_server.items;
 using System.Reflection;
+using game_server.items;
 
 namespace demo_regression_tests;
 

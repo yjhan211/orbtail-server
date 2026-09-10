@@ -1,5 +1,5 @@
-using game_server.matches;
 using System.Collections.Immutable;
+using game_server.matches;
 
 namespace game_server.players.bots;
 

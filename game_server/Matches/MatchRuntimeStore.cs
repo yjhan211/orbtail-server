@@ -1,7 +1,7 @@
+using System.Collections.Concurrent;
 using game_server.combat;
 using game_server.logging;
 using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
 
 namespace game_server.matches;
 

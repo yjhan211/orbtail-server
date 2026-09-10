@@ -1,6 +1,6 @@
+using System.Diagnostics;
 using game_server.players;
 using network.common.data.models;
-using System.Diagnostics;
 
 namespace demo_regression_tests;
 

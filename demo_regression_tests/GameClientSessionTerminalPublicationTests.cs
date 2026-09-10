@@ -1,12 +1,12 @@
-using game_server;
-using game_server.logging;
-using game_server.orbs;
-using game_server.players;
-using game_server.matches.entry;
-using game_server.matches.results;
-using game_server.matches;
 using System.Collections.Concurrent;
 using System.Reflection;
+using game_server;
+using game_server.logging;
+using game_server.matches;
+using game_server.matches.entry;
+using game_server.matches.results;
+using game_server.orbs;
+using game_server.players;
 using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -353,14 +353,16 @@ public sealed class GameClientSessionTerminalPublicationTests
         {
             Assert.True(totalEntries >= humanSessions.Count);
             var entries = humanSessions
-                .Select(session => new Player {
+                .Select(session => new Player
+                {
                     Profile = new network.common.data.models.PlayerInfo { PlayerId = session.PlayerId!.Value },
                     Status = session.Player.Status
                 })
                 .ToList();
             for (int index = entries.Count; index < totalEntries; index++)
             {
-                entries.Add(new Player {
+                entries.Add(new Player
+                {
                     Profile = new network.common.data.models.PlayerInfo { PlayerId = 80_000 + index },
                     Status = PlayerMatchStatus.ACTIVE
                 });

@@ -185,7 +185,7 @@ public partial class GameClientSession
         }
     }
 
-    private void SendInteractableList( AreaType areaType)
+    private void SendInteractableList(AreaType areaType)
     {
         if (areaType == AreaType.None)
         {

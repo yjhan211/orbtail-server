@@ -1,12 +1,12 @@
-using game_server.matches;
-using network.infrastructure;
 using System.Reflection;
+using game_server.matches;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NATS.Client;
+using network.infrastructure;
 using network.infrastructure.messaging;
 using network.infrastructure.redis;
 using user_server.matching;
