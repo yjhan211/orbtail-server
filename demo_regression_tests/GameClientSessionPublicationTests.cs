@@ -898,7 +898,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("OnPeriodicBuffTick", playerState);
         Assert.DoesNotContain("_periodicBuffTimer", session);
         Assert.DoesNotContain("new Timer(", playerState);
-        Assert.Contains("ProcessPeriodicBuffs(matchRuntimes.GetOrThrow(matchingId), players, nowUtc)", combat);
+        Assert.Contains("ProcessPeriodicBuffs(runtime, players, nowUtc)", combat);
         Assert.Contains("player.UpdatePeriodicBuffs(nowUtc", combat);
         Assert.Equal(2, CountOccurrences(playerState, "MatchInteractionService.CancelPendingInteractions(match, Player)"));
 

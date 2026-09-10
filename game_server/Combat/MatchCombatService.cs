@@ -74,37 +74,30 @@ internal class MatchCombatService(
     ///     흐름이 소유하고, 여기서는 스웜 디렉터 틱·접촉 피해·전투 액터·PvP만 돌린다.
     ///     호출자(50ms 전투 틱·5초 정산 틱)가 매치 잠금을 쥔 채 부른다.
     /// </summary>
-    public virtual void ProcessTick(
-        long matchingId,
-        List<GameClientSession> activeSessions)
+    public virtual void ProcessTick(MatchRuntime runtime)
     {
-        // 종료되었거나 이미 정리된 매치는 틱 처리를 건너뛴다.
-        if (IsMatchTerminal(matchingId))
+        if (runtime.IsEnded)
             return;
 
-        // 탐사 모드(SOLO_MAP_VALIDATION=1): 맵 검증용 1인 매치 — 캠프 몹·접촉 피해·
-        // 전투·오브 스트림을 전부 끈다. 이동·문·탐색만 남는다.
-        if (matchRuntimes.GetOrThrow(matchingId).Mode == MatchMode.SoloMapValidation)
+        long matchingId = runtime.MatchingId;
+        if (runtime.Mode == MatchMode.SoloMapValidation)
             return;
 
-        var sessions = activeSessions
-            .Where(session => session.PlayerId.HasValue &&
-                              session.MatchingId == matchingId &&
-                              !session.IsGameEnded)
-            .ToList();
-        var bots = matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId).ToList();
-        var players = matchRuntimes.GetOrThrow(matchingId).GetAlivePlayers();
+        // 참가자는 게임 규칙의 대상이고, 세션은 결과를 받을 연결만 나타낸다.
+        var sessions = runtime.GetSessions().Where(session => !session.IsGameEnded).ToList();
+        var bots = runtime.Bots.GetBots(matchingId).ToList();
+        var players = runtime.GetAlivePlayers();
         if (players.Count == 0)
             return;
 
-        if (!matchRuntimes.GetOrThrow(matchingId).Monsters.HasMatching(matchingId))
+        if (!runtime.Monsters.HasMatching(matchingId))
         {
             long initialPlayerId = players[0].PlayerId;
-            if (!matchRuntimes.GetOrThrow(matchingId).Monsters.InitializeMatching(matchingId, initialPlayerId, DateTime.UtcNow))
+            if (!runtime.Monsters.InitializeMatching(matchingId, initialPlayerId, DateTime.UtcNow))
                 return;
 
             // 자기장 경계 스폰 규칙을 이 매치의 몬스터 처리기에 연결한다.
-            matchRuntimes.GetOrThrow(matchingId).Monsters.FieldSpawnCellResolver ??= zones.ResolveSpawn;
+            runtime.Monsters.FieldSpawnCellResolver ??= zones.ResolveSpawn;
             LogSwarmPairZoneDistances(matchingId);
             // #272 자기장: 수축 시계는 폐쇄 시계와 같은 앵커(AreaClosureManager.GameStartTime)를 쓴다 —
             // 무장은 폐쇄 틱(PrepareSwarmScheduledClosureTick)의 최초 InitializeMatching이 담당한다.
@@ -114,12 +107,12 @@ internal class MatchCombatService(
                 matchingId, SwarmPressureField.MaxDistance, MatchPressureFieldPolicy.HoldSeconds, MatchPressureFieldPolicy.ShrinkSeconds);
             logger.LogInformation(
                 "Swarm arena initialized: MatchingId={MatchingId}, Humans={HumanCount}, Bots={BotCount}",
-                matchingId, sessions.Count, bots.Count);
+                matchingId, players.Count(player => player.PlayerId > 0), bots.Count);
         }
 
         DateTime nowUtc = DateTime.UtcNow;
 
-        var aliveSessions = sessions.Where(session => !session.Player.IsEliminated).ToList();
+        int aliveHumanCount = players.Count(player => player.PlayerId > 0);
         var aliveBots = bots.Where(bot => !bot.Player.IsEliminated).ToList();
         var participants = new List<SwarmParticipantSpatial>();
         foreach (var player in players)
@@ -128,7 +121,7 @@ internal class MatchCombatService(
             participants.Add(new SwarmParticipantSpatial(player.PlayerId, player.CurrentArea, player.Position));
         }
 
-        var tick = matchRuntimes.GetOrThrow(matchingId).Monsters.Tick(matchingId, participants, matchRuntimes.GetOrThrow(matchingId).IsGameplayActive(), nowUtc);
+        var tick = runtime.Monsters.Tick(matchingId, participants, runtime.IsGameplayActive(), nowUtc);
 
         // 정지 감시: 8초 이상 제자리인 몹을 매치 로그로 남긴다 — 회귀 감지선.
         foreach (string report in tick.StuckReports)
@@ -138,7 +131,7 @@ internal class MatchCombatService(
         // alive는 상한 48 준수와 구역 목표 유지를 한 줄로 읽기 위한 값이다.
         if (tick.SupplyPackSpawns.Count > 0)
         {
-            int aliveAfter = matchRuntimes.GetOrThrow(matchingId).Monsters.GetVisualStates(matchingId).Count(state => state.IsAlive);
+            int aliveAfter = runtime.Monsters.GetVisualStates(matchingId).Count(state => state.IsAlive);
             foreach (var supplySpawn in tick.SupplyPackSpawns)
                 eventLogs.LogSystem(
                     matchingId,
@@ -150,10 +143,10 @@ internal class MatchCombatService(
         // 인트로 예열은 여기서 끝난다: 공급 디렉터와 몹 이동만 돌리고
         // 전투·절단·포위·물폭탄·접촉 피해는 매치가 시작된 뒤에 붙는다. 카운트다운 동안
         // 운동장에서 각 방으로 걸어 나가는 그림만 만들면 되고, 그 사이 누가 맞아서는 안 된다.
-        if (!matchRuntimes.GetOrThrow(matchingId).IsGameplayActive())
+        if (!runtime.IsGameplayActive())
         {
             MonsterSnapshotPublisher.Broadcast(
-                matchRuntimes.GetOrThrow(matchingId), sessions, matchRuntimes.GetOrThrow(matchingId).Monsters.GetVisualStates(matchingId));
+                runtime, sessions, runtime.Monsters.GetVisualStates(matchingId));
             return;
         }
 
@@ -168,16 +161,16 @@ internal class MatchCombatService(
         }
 
         ProcessWaveOrbAttacks(matchingId, nowUtc, players, sessions);
-        if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
+        if (runtime.IsEnded)
             return;
 
         windOrbAttacks.Process(matchingId, nowUtc, players, sessions);
-        if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
+        if (runtime.IsEnded)
             return;
 
         // 화상 틱 (#268): 교차사격 충격이 남긴 지속 피해를 정산한다.
         sunOrbAttacks.ProcessSwarmSunBurns(matchingId, nowUtc, players, sessions);
-        if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
+        if (runtime.IsEnded)
             return;
 
         // 접촉 계측: 접촉이 성립하는지 층별로 남긴다. 이 줄들이 "봇은 접촉 피해를
@@ -190,22 +183,21 @@ internal class MatchCombatService(
             eventLogs.LogSystem(
                 matchingId,
                 $"contact_probe damage={tick.PlayerDamage.Count} toBots={toBots} toHumans={toHumans} " +
-                $"aliveBots={aliveBots.Count} aliveSessions={aliveSessions.Count} " +
+                $"aliveBots={aliveBots.Count} aliveHumans={aliveHumanCount} " +
                 $"participants={participants.Count}");
         }
 
         foreach (var damage in tick.PlayerDamage)
         {
             ApplySwarmParticipantDamage(matchingId, damage, sessions);
-            if (sessions.Any(session => session.IsGameEnded))
+            if (runtime.IsEnded)
                 return;
         }
         // 앞선 피해 단계에서 탈락한 참가자는 회복·성장·새 공격 대상에서 제외한다.
-        aliveSessions.RemoveAll(session => session.Player.IsEliminated);
-        aliveBots.RemoveAll(bot => bot.Player.IsEliminated);
-        botDecisions.UpdateSleep(matchRuntimes.GetOrThrow(matchingId), aliveBots, nowUtc);
-        ProcessPeriodicBuffs(matchRuntimes.GetOrThrow(matchingId), players, nowUtc);
-        if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
+       aliveBots.RemoveAll(bot => bot.Player.IsEliminated);
+        botDecisions.UpdateSleep(runtime, aliveBots, nowUtc);
+        ProcessPeriodicBuffs(runtime, players, nowUtc);
+        if (runtime.IsEnded)
             return;
         players.RemoveAll(player => player.IsEliminated);
         ProcessSleepRecovery(matchingId, players, nowUtc, eventLogs, logger);
@@ -214,8 +206,8 @@ internal class MatchCombatService(
 
         botDecisions.ProcessSwarmBotDoorUnlocks(matchingId, aliveBots, sessions, nowUtc);
 
-        if (MonsterSnapshotPublisher.TryConsumeBroadcastSlot(matchRuntimes.GetOrThrow(matchingId), nowUtc))
-            MonsterSnapshotPublisher.Broadcast(matchRuntimes.GetOrThrow(matchingId), sessions, matchRuntimes.GetOrThrow(matchingId).Monsters.GetVisualStates(matchingId));
+        if (MonsterSnapshotPublisher.TryConsumeBroadcastSlot(runtime, nowUtc))
+            MonsterSnapshotPublisher.Broadcast(runtime, sessions, runtime.Monsters.GetVisualStates(matchingId));
 
         var actors = BuildSwarmArenaCombatActors(matchingId, players, nowUtc);
         orbRecovery.Process(matchingId, actors, players, nowUtc);
@@ -226,16 +218,16 @@ internal class MatchCombatService(
         if (ProcessSwarmScoreTimeout(matchingId, nowUtc))
             return;
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.
-        matchRuntimes.GetOrThrow(matchingId).CombatDamage.ProcessPendingMonsterHits(nowUtc, sessions);
+        runtime.CombatDamage.ProcessPendingMonsterHits(nowUtc, sessions);
         // 교차사격 판정 (#232 2단계): 예고가 끝난 모양을 이번 틱 위치로 판정한다.
         sunOrbAttacks.ProcessSwarmCrossfires(matchingId, nowUtc, players, sessions);
-        if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
+        if (runtime.IsEnded)
             return;
 
         // 비행 중인 PvP 탄은 여기서 착탄 처리한다 — 매 틱 지우면 안 된다. "리졸버는 PvE 전용"이라는 전제의 청소가
         // 리졸버가 사람 표적도 내보내게 바뀐 뒤 방금 발사한 탄을 다음 틱에 통째로 삭제해 PvP가 한 발도 착탄하지 못했다.
-        matchRuntimes.GetOrThrow(matchingId).CombatDamage.ProcessPendingPvpHits(playerEliminations, nowUtc, matchRuntimes.GetOrThrow(matchingId).GetAlivePlayers(), sessions);
-        if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
+        runtime.CombatDamage.ProcessPendingPvpHits(playerEliminations, nowUtc, runtime.GetAlivePlayers(), sessions);
+        if (runtime.IsEnded)
             return;
 
         // 본체 위치 사전 — PvP 사거리를 본체 기준으로 재기 위한 조회표.
@@ -255,7 +247,7 @@ internal class MatchCombatService(
         // 오브마다 제 자리에서 "아직 아무도 안 겨눈" 가장 가까운 몹을 고른다.
         var crossfireAnchoredTargets = sunOrbAttacks.CollectSwarmCrossfireAnchoredTargets(matchingId);
 
-        var attacks = matchRuntimes.GetOrThrow(matchingId).AutoAttack.ResolveAttacks(
+        var attacks = runtime.AutoAttack.ResolveAttacks(
             matchingId,
             actors,
             nowUtc,
@@ -314,9 +306,9 @@ internal class MatchCombatService(
         Dictionary<long, ProximityCombatActor>? actorById = null;
         foreach (var attack in attacks)
         {
-            if (matchRuntimes.GetOrThrow(matchingId).GetParticipant(attack.AttackerPlayerId)?.IsEliminated == true)
+            if (runtime.GetParticipant(attack.AttackerPlayerId)?.IsEliminated == true)
                 continue;
-            int monsterId = matchRuntimes.GetOrThrow(matchingId).Monsters.GetMonsterIdForCombatTarget(matchingId, attack.TargetPlayerId);
+            int monsterId = runtime.Monsters.GetMonsterIdForCombatTarget(matchingId, attack.TargetPlayerId);
             // 유령 발사 가드 (#226 진단): 같은 틱에 죽은 몬스터의 CombatTargetId(-4e18대)가 몬스터 분기를
             // 통과해 PvP 분기로 새던 문제 — 음수 대역 차단. 태양 분기보다 먼저 건다.
             if (monsterId <= 0 && attack.TargetPlayerId < -1_000_000_000_000L)
@@ -349,7 +341,7 @@ internal class MatchCombatService(
                         matchingId, attack, sunOrigin, sunAnchor, monsterId, attack.Damage, nowUtc, sessions))
                 {
                     // 로그는 남기지 않는다 — 상한이 찬 동안 매 틱 되풀이되는 정상 대기라 이벤트 흐름만 메운다.
-                    matchRuntimes.GetOrThrow(matchingId).AutoAttack.RefundAttack(
+                    runtime.AutoAttack.RefundAttack(
                         matchingId, attack.AttackerPlayerId, attack.AttackerItemUid, nowUtc);
                 }
                 continue;
@@ -357,7 +349,7 @@ internal class MatchCombatService(
 
             if (monsterId > 0)
             {
-                int monsterDamage = matchRuntimes.GetOrThrow(matchingId).CombatDamage.RollSwarmCriticalDamage(
+                int monsterDamage = runtime.CombatDamage.RollSwarmCriticalDamage(
                     attack.Damage, out bool critical);
                 // 발사 연출은 즉시, 피해는 투사체 비행시간 뒤에 — 체력바와 폭발이 일치한다.
                 var attackerSession = sessions.FirstOrDefault(
@@ -367,7 +359,7 @@ internal class MatchCombatService(
                 // 못한다 — "수면은 잔상이 없는 상태를 요구하지 않는다"는 규칙과 정면으로 충돌하고,
                 // 전멸 뒤 4초 휴지 창도 3초를 잠금에 뺏겨 무의미해진다.
                 // 잠금은 내가 몸으로 지르는 절단과 피격에만 건다.
-                matchRuntimes.GetOrThrow(matchingId).CombatDamage.SendMonsterHitNotification(attackerSession,
+                runtime.CombatDamage.SendMonsterHitNotification(attackerSession,
                     monsterId, attack.Area, attack.WeaponItemId, monsterDamage, critical);
 
                 // 관전자에게도 발사 연출 (#219): 공격자 피드백만으로는 봇의 사냥이 완전 무음이었다.
@@ -395,12 +387,12 @@ internal class MatchCombatService(
                     OrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, distance);
                 // 발사 즉시 예약 (#229): 착탄까지 기다리면 그 사이 다른 오브가 같은 몹을 또
                 // 고른다. 예약분으로 이미 죽는 몹은 표적 후보에서 빠지므로 사격이 흩어진다.
-                matchRuntimes.GetOrThrow(matchingId).Monsters.ReserveMonsterDamage(
+                runtime.Monsters.ReserveMonsterDamage(
                     matchingId, attack.TargetPlayerId, monsterDamage);
                 // 기준점 계측 + 잠금 (#232 1단계): 발사 순간 몹의 공격 사건 수를 올리고,
                 // 원점·기준 위치·무기를 박제해 착탄 정산까지 들고 간다.
-                matchRuntimes.GetOrThrow(matchingId).Monsters.RecordMonsterAttackEvent(matchingId, attack.TargetPlayerId);
-                matchRuntimes.GetOrThrow(matchingId).CombatDamage.ScheduleMonsterHit(new PendingMonsterHit(
+                runtime.Monsters.RecordMonsterAttackEvent(matchingId, attack.TargetPlayerId);
+                runtime.CombatDamage.ScheduleMonsterHit(new PendingMonsterHit(
                     attack.TargetPlayerId, attack.AttackerPlayerId,
                     monsterDamage, nowUtc.AddSeconds(delaySeconds),
                     attack.WeaponItemId, attack.AttackerItemUid, origin, anchor));
@@ -427,13 +419,13 @@ internal class MatchCombatService(
                     : Config.SWARM_ORB_ATTACK_RANGE;
                 double pvpDelaySeconds =
                     OrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, pvpDistance);
-                matchRuntimes.GetOrThrow(matchingId).CombatDamage.SchedulePvpHit(attack, nowUtc.AddSeconds(pvpDelaySeconds));
+                runtime.CombatDamage.SchedulePvpHit(attack, nowUtc.AddSeconds(pvpDelaySeconds));
                 continue;
             }
 
             // PvP는 저데미지 보조다. 킬의 주 경로는 스웜이어야 한다 (#217 결합 원칙).
-            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmPvpAttack(playerEliminations, attack, matchRuntimes.GetOrThrow(matchingId).GetAlivePlayers(), sessions);
-            if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
+            runtime.CombatDamage.ApplySwarmPvpAttack(playerEliminations, attack, runtime.GetAlivePlayers(), sessions);
+            if (runtime.IsEnded)
                 return;
         }
 

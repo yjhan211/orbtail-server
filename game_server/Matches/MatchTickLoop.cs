@@ -107,7 +107,7 @@ internal sealed class MatchTickLoop(
             }
         }
 
-        combat.ProcessTick(matchingId, activeSessions);
+        combat.ProcessTick(runtime);
         if (runtime.IsEnded || !isGameplayActive)
         {
             return;

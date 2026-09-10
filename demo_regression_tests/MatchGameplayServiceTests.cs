@@ -305,21 +305,19 @@ public sealed class MatchGameplayServiceTests
     }
 
     [Fact]
-    public void Arena_SkipsMissingAndTerminalMatchesWithoutRecreatingThem()
+    public void Arena_SkipsTerminalAndRemovedRuntimeWithoutRecreatingIt()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var combat = provider.GetRequiredService<MatchCombatService>();
         var store = provider.GetRequiredService<MatchRuntimeStore>();
-        combat.ProcessTick(947701, []);
-        Assert.Null(store.GetOrNull(947701));
         var match = store.GetOrCreate(947702);
         using (MatchRuntimeStore.Enter(match))
         {
             match.TryMarkEnded();
-            combat.ProcessTick(match.MatchingId, []);
+            combat.ProcessTick(match);
         }
         Assert.Null(store.GetOrNull(match.MatchingId));
-        combat.ProcessTick(match.MatchingId, []);
+        combat.ProcessTick(match);
         Assert.Null(store.GetOrNull(match.MatchingId));
     }
 

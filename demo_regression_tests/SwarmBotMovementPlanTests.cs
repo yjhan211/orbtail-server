@@ -203,7 +203,7 @@ public sealed class SwarmBotMovementPlanTests
             tick,
             "using var scope = runtime.Enter();",
             "runtime.IsEnded",
-            "combat.ProcessTick(matchingId, activeSessions);",
+            "combat.ProcessTick(runtime);",
             "!isGameplayActive",
             "!runtime.Bots.HasBots(matchingId)",
             "botMovement.ProcessTick(runtime, botDecisions.DecideMovement);");

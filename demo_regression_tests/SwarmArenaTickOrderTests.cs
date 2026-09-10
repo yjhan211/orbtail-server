@@ -34,7 +34,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(runner,
             "using var scope = runtime.Enter();",
             "runtime.IsEnded",
-            "combat.ProcessTick(matchingId, activeSessions);");
+            "combat.ProcessTick(runtime);");
         Assert.DoesNotContain("matchRuntimes.Enter(", runner);
     }
 
@@ -57,7 +57,7 @@ public sealed class SwarmArenaTickOrderTests
             "using var scope = runtime.Enter();",
             "runtime.GetSessions()",
             "runtime.IsEntryTimedOut(utcNow)",
-            "combat.ProcessTick(matchingId, activeSessions);");
+            "combat.ProcessTick(runtime);");
         Assert.DoesNotContain("catch (", proximityTick);
         string loopSource = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs");
         AssertInOrder(loopSource,
@@ -76,7 +76,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             proximityTick,
             "using var scope = runtime.Enter();",
-            "combat.ProcessTick(matchingId, activeSessions);",
+            "combat.ProcessTick(runtime);",
             "runtime.StartsAtUtc",
             "if (currentEnvironmentInterval > _lastEnvironmentInterval)",
             "environment.ProcessTick(runtime);",
@@ -110,13 +110,13 @@ public sealed class SwarmArenaTickOrderTests
 
         AssertInOrder(
             arenaCode,
-            "matchRuntimes.GetOrThrow(matchingId).Monsters.Tick(",
-            "if (!matchRuntimes.GetOrThrow(matchingId).IsGameplayActive())");
+            "runtime.Monsters.Tick(",
+            "if (!runtime.IsGameplayActive())");
 
         string inactiveGameplayBranch = MaskCommentsAndLiterals(
             ReadBracedBlockAfterMarker(
                 arenaTick,
-                "if (!matchRuntimes.GetOrThrow(matchingId).IsGameplayActive())"));
+                "if (!runtime.IsGameplayActive())"));
         AssertInOrder(
             inactiveGameplayBranch,
             "MonsterSnapshotPublisher.Broadcast(",
@@ -128,12 +128,17 @@ public sealed class SwarmArenaTickOrderTests
     {
         string arenaTickSource = ReadSwarmArenaTick();
         string arenaTick = MaskCommentsAndLiterals(arenaTickSource);
+        Assert.DoesNotContain("matchRuntimes.GetOrThrow", arenaTick);
+        Assert.DoesNotContain("sessions.Any", arenaTick);
+        Assert.DoesNotContain("aliveSessions", arenaTick);
+        Assert.Contains("runtime.GetAlivePlayers()", arenaTick);
+        Assert.Contains("runtime.IsEnded", arenaTick);
         Assert.DoesNotContain("GrantStartingResources", arenaTick);
         Assert.DoesNotContain("StartingOrbGrantedPlayers", arenaTick);
         string inactiveGameplayBranch = MaskCommentsAndLiterals(
             ReadBracedBlockAfterMarker(
                 arenaTickSource,
-                "if (!matchRuntimes.GetOrThrow(matchingId).IsGameplayActive())"));
+                "if (!runtime.IsGameplayActive())"));
         AssertInOrder(
             inactiveGameplayBranch,
             "MonsterSnapshotPublisher.Broadcast(",
@@ -141,8 +146,8 @@ public sealed class SwarmArenaTickOrderTests
 
         AssertInOrder(
             arenaTick,
-            "matchRuntimes.GetOrThrow(matchingId).Monsters.Tick(",
-            "if (!matchRuntimes.GetOrThrow(matchingId).IsGameplayActive())",
+            "runtime.Monsters.Tick(",
+            "if (!runtime.IsGameplayActive())",
             "UpdateSwarmOrbTrails(",
             "ProcessSwarmTrailCuts(",
             "ProcessSwarmRetaliationWindows(",
@@ -167,7 +172,7 @@ public sealed class SwarmArenaTickOrderTests
             "CollectSwarmCrossfireAnchoredTargets(",
             "AutoAttack.ResolveAttacks(",
             "TryScheduleSwarmCrossfire(",
-            "matchRuntimes.GetOrThrow(matchingId).CombatDamage.SendMonsterHitNotification(attackerSession,",
+            "runtime.CombatDamage.SendMonsterHitNotification(attackerSession,",
             "BroadcastSwarmAttackVfxToTargetAndObservers(");
     }
 
