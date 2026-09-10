@@ -110,7 +110,7 @@ internal class MatchEnvironmentService(
             var target = eliminatedTargets.First(entry => entry.Player.PlayerId == candidate.PlayerId);
 
             matchEliminations.EliminatePlayer(
-                matchingId, target.Player.PlayerId, EliminationReason.PRESSURE_FIELD,
+                match, target.Player, EliminationReason.PRESSURE_FIELD,
                 deferGameOver: true,
                 forcedRank: rank);
 

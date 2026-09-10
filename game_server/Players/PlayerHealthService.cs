@@ -42,7 +42,7 @@ internal sealed class PlayerHealthService(
         }
         if (handleElimination && change.IsDepleted && !match.IsEnded && !player.IsEliminated)
         {
-            eliminations.EliminatePlayer(match.MatchingId, player.PlayerId, EliminationReason.HEALTH_ZERO, attackerPlayerId: attackerId);
+            eliminations.EliminatePlayer(match, player, EliminationReason.HEALTH_ZERO, attackerPlayerId: attackerId);
         }
     }
 

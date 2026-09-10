@@ -133,7 +133,6 @@ internal static class Program
             sp.GetRequiredService<MatchSummaryFileStore>(),
             sp.GetRequiredService<ILogger<MatchResultService>>()));
         services.AddSingleton<PlayerEliminationService>(sp => new PlayerEliminationService(
-            sp.GetRequiredService<MatchRuntimeStore>(),
             sp.GetRequiredService<GameEventLogManager>(),
             sp.GetRequiredService<MatchResultService>(),
             sp.GetRequiredService<ILogger<PlayerEliminationService>>()));

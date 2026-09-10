@@ -169,7 +169,7 @@ public sealed class MatchOwnedStateTests
         bot.LoopWaitUntil = DateTime.UtcNow.AddMinutes(1);
         using (MatchRuntimeStore.Enter(match))
         {
-            service.EliminatePlayer(match.MatchingId, botId, EliminationReason.HEALTH_ZERO, attackerPlayerId: 11);
+            service.EliminatePlayer(match, bot.Player, EliminationReason.HEALTH_ZERO, attackerPlayerId: 11);
             var entry = match.BuildGameResult().Single(row => row.playerId == botId);
             Assert.Equal(PlayerMatchStatus.ELIMINATED, entry.finalStatus);
             Assert.True(bot.Player.IsEliminated);
@@ -180,7 +180,7 @@ public sealed class MatchOwnedStateTests
             int drops = match.GroundItems.GetSnapshot(bot.Player.CurrentArea).Count;
             var eliminatedAt = entry.eliminatedAt;
 
-            service.EliminatePlayer(match.MatchingId, botId, EliminationReason.HEALTH_ZERO, attackerPlayerId: 99);
+            service.EliminatePlayer(match, bot.Player, EliminationReason.HEALTH_ZERO, attackerPlayerId: 99);
             Assert.Equal(drops, match.GroundItems.GetSnapshot(bot.Player.CurrentArea).Count);
             Assert.Equal(eliminatedAt, match.BuildGameResult().Single(row => row.playerId == botId).eliminatedAt);
             Assert.Equal(11, match.BuildGameResult().Single(row => row.playerId == botId).attackerPlayerId);
@@ -209,10 +209,10 @@ public sealed class MatchOwnedStateTests
         var service = TestGameSessionServices.CreateEliminationService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance);
         using (match.Enter())
         {
-            service.EliminatePlayer(match.MatchingId, playerId, EliminationReason.PRESSURE_FIELD,
+            service.EliminatePlayer(match, player, EliminationReason.PRESSURE_FIELD,
                 deferGameOver: true, attackerPlayerId: 11, forcedRank: 5);
             var eliminatedAt = player.EliminatedAt;
-            service.EliminatePlayer(match.MatchingId, playerId, EliminationReason.HEALTH_ZERO,
+            service.EliminatePlayer(match, player, EliminationReason.HEALTH_ZERO,
                 deferGameOver: true, attackerPlayerId: 99, forcedRank: 9);
             Assert.Null(player.Session);
             Assert.True(player.IsEliminated);
@@ -243,8 +243,8 @@ public sealed class MatchOwnedStateTests
         using (match.Enter())
         {
             match.Inventory.AddItem(player.PlayerId, 107000010);
-            service.EliminatePlayer(match.MatchingId, player.PlayerId, EliminationReason.HEALTH_ZERO, deferGameOver: true);
-            service.EliminatePlayer(match.MatchingId, player.PlayerId, EliminationReason.HEALTH_ZERO, deferGameOver: true);
+            service.EliminatePlayer(match, player, EliminationReason.HEALTH_ZERO, deferGameOver: true);
+            service.EliminatePlayer(match, player, EliminationReason.HEALTH_ZERO, deferGameOver: true);
             Assert.Null(player.Session);
             Assert.Equal(player.CurrentArea, player.EliminatedArea);
             Assert.Empty(match.Inventory.GetAllItems(player.PlayerId));

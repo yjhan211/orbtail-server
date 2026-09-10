@@ -12,23 +12,22 @@ namespace game_server.players;
 
 /// <summary>
 ///     사람과 봇의 탈락을 확정하고 순위 기록·아이템 드롭·참가자 통지·매치 종료 판정을 처리한다.
-///     탈락 상태는 MatchPlayer에 기록하며, 이미 탈락한 참가자는 다시 처리하지 않는다.
+///     탈락 상태는 Player에 기록하며, 이미 탈락한 참가자는 다시 처리하지 않는다.
 ///     호출자는 해당 매치의 잠금을 보유해야 한다.
 /// </summary>
 internal sealed class PlayerEliminationService(
-    MatchRuntimeStore matchRuntimes,
     GameEventLogManager gameEventLogManager,
     MatchResultService matchResults,
     ILogger logger)
 {
-    public void EliminatePlayer(long matchingId, long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null, bool deferGameOver = false, long attackerPlayerId = 0, int forcedRank = 0)
+    public void EliminatePlayer(MatchRuntime runtime, Player eliminatedPlayer, EliminationReason reason, long? causePlayerId = null, bool deferGameOver = false, long attackerPlayerId = 0, int forcedRank = 0)
     {
-        var runtime = matchRuntimes.GetOrThrow(matchingId);
+        long matchingId = runtime.MatchingId;
+        long eliminatedPlayerId = eliminatedPlayer.PlayerId;
         var allSessions = runtime.GetSessions();
-        var eliminatedPlayer = runtime.GetParticipant(eliminatedPlayerId);
-        var eliminatedSession = eliminatedPlayer?.Session;
+        var eliminatedSession = eliminatedPlayer.Session;
         var eliminatedBot = runtime.Bots.GetBot(matchingId, eliminatedPlayerId);
-        var eliminatedArea = eliminatedPlayer?.CurrentArea ?? AreaType.None;
+        var eliminatedArea = eliminatedPlayer.CurrentArea;
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
 
         int finalOrbTier = runtime.Inventory.GetHighestOrbTier(eliminatedPlayerId);
@@ -49,7 +48,7 @@ internal sealed class PlayerEliminationService(
         runtime.GroundItems.ReleaseClaimReservationsForPlayer(eliminatedPlayerId);
         gameEventLogManager.LogElimination(matchingId, eliminatedPlayerId, reason.ToString(), isBot: eliminatedBot != null, attackerPlayerId: resolvedAttackerPlayerId);
 
-        var position = eliminatedPlayer?.Position;
+        var position = eliminatedPlayer.Position;
         if (position != null && eliminatedArea != AreaType.None)
         {
             var drop = EliminationInventoryDropper.DropAll(
