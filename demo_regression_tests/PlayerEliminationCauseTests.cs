@@ -48,23 +48,28 @@ public sealed class PlayerEliminationCauseTests
         Assert.Equal(EliminationReason.PRESSURE_FIELD, result.EliminationReason);
     }
     [Fact]
-    public void BotDamage_RemembersFirstAttackerThatReachesEliminationThreshold()
+    public void BotDamageEliminatesImmediatelyAndKeepsLethalAttacker()
     {
-        var manager = new BotPlayerManager(1, NullLogger.Instance, new DoorState(), new SunOrbAttackState(1), TestGameEventLogs.Create());
-        var bot = new BotPlayerState
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(1);
+        var eliminations = TestGameSessionServices.CreateEliminationService(store, store.EventLogs,
+            new game_server.matches.results.MatchSummaryFileStore(), NullLogger.Instance);
+        var bot = new BotPlayerState { PlayerId = -1, Player = { Health = 10 } };
+        using (match.Enter())
         {
-            PlayerId = -1,
-            Player = { Health = 10 }
-        };
-
-        manager.ApplyProximityAutoCombatDamage(bot, 9, attackerPlayerId: 101);
-        Assert.Equal(0, bot.LastProximityAttackerPlayerId);
-
-        manager.ApplyProximityAutoCombatDamage(bot, 1, attackerPlayerId: 102);
-        Assert.Equal(102, bot.LastProximityAttackerPlayerId);
-
-        manager.ApplyProximityAutoCombatDamage(bot, 10, attackerPlayerId: 103);
-        Assert.Equal(102, bot.LastProximityAttackerPlayerId);
+            match.Bots.GetBots(1).Add(bot);
+            match.RegisterParticipant(bot.Player);
+            match.CombatDamage.ApplyProximityAutoCombatHit(eliminations, bot.Player, 101, AreaType.None, 123, 9);
+            Assert.False(bot.Player.IsEliminated);
+            match.CombatDamage.ApplyProximityAutoCombatHit(eliminations, bot.Player, 102, AreaType.None, 123, 1);
+            Assert.True(bot.Player.IsEliminated);
+            Assert.Equal(102, bot.Player.AttackerPlayerId);
+            int rank = bot.Player.EliminationRank;
+            match.CombatDamage.ApplyProximityAutoCombatHit(eliminations, bot.Player, 103, AreaType.None, 123, 10);
+            Assert.Equal(102, bot.Player.AttackerPlayerId);
+            Assert.Equal(rank, bot.Player.EliminationRank);
+            Assert.False(bot.Player.CanSleep(DateTime.UtcNow));
+        }
     }
 
 }

@@ -20,7 +20,7 @@ public sealed class WindOrbAttackServiceTests
         var match = store.GetOrCreate(947501);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var trails = new OrbTrailService(store);
-        var service = new WindOrbAttackService(store, trails, logs);
+        var service = new WindOrbAttackService(store, TestGameSessionServices.CreateEliminationService(store, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), trails, logs);
         var now = DateTime.UtcNow;
         var owner = new BotPlayerState { PlayerId = 11 };
         var victim = new BotPlayerState { PlayerId = 12 };
@@ -59,7 +59,7 @@ public sealed class WindOrbAttackServiceTests
         var match = store.GetOrCreate(947502);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var trails = new OrbTrailService(store);
-        var service = new WindOrbAttackService(store, trails, logs);
+        var service = new WindOrbAttackService(store, TestGameSessionServices.CreateEliminationService(store, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), trails, logs);
         using (MatchRuntimeStore.Enter(match))
         {
             match.Inventory.GetPlayerInventory(11).AddItem(itemId, forceSeparateStack: true);

@@ -41,7 +41,7 @@ internal sealed class MatchCombatDamageService(
     public void SchedulePvpHit(ProximityCombatAttack attack, DateTime dueAtUtc) =>
         _pendingPvpHits.Add((attack, dueAtUtc));
 
-    public void ProcessPendingPvpHits(DateTime nowUtc, List<GameClientSession> aliveSessions,
+    public void ProcessPendingPvpHits(PlayerEliminationService eliminations, DateTime nowUtc, List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots, List<GameClientSession> sessions)
     {
         for (int index = _pendingPvpHits.Count - 1; index >= 0; index--)
@@ -50,7 +50,7 @@ internal sealed class MatchCombatDamageService(
             if (nowUtc < pending.DueAtUtc)
                 continue;
             _pendingPvpHits.RemoveAt(index);
-            ApplySwarmPvpAttack(pending.Attack, aliveSessions, aliveBots, sessions, broadcastVfx: false);
+            ApplySwarmPvpAttack(eliminations, pending.Attack, aliveSessions, aliveBots, sessions, broadcastVfx: false);
             if (runtime.IsEnded || sessions.Any(session => session.IsGameEnded))
                 return;
         }
@@ -104,11 +104,11 @@ internal sealed class MatchCombatDamageService(
     }
 
     /// <summary>일반 피격의 로그·체력 변경·결과 전송을 매치 잠금 안에서 처리한다.</summary>
-    public void ApplyProximityAutoCombatHit(
+    public void ApplyProximityAutoCombatHit(PlayerEliminationService eliminations,
         Player victim, long sourcePlayerId, AreaType area, int weaponItemId,
         int damage, bool isPeriodicDamage = false, int sourceHealth = -1)
     {
-        if (victim.IsEliminated || damage <= 0) return;
+        if (runtime.IsEnded || victim.IsEliminated || damage <= 0) return;
 
         RecordCombatContact(victim, sourcePlayerId);
         eventLogs.LogHit(runtime.MatchingId, sourcePlayerId, victim.PlayerId, weaponItemId, damage,
@@ -116,12 +116,10 @@ internal sealed class MatchCombatDamageService(
             BotPlayerManager.IsBotPlayerId(sourcePlayerId), DateTimeOffset.UtcNow);
 
         var change = victim.ApplyDamage(damage);
-        // 사람은 즉시, 봇은 전투 루프의 탈락 단계에서 처리하는 기존 순서를 유지한다.
         var session = victim.Session;
-        if (session != null)
-            session.HealthChanges.Handle(runtime, victim, change, attackerPlayerId: sourcePlayerId);
-        else
-            PlayerHealthChangeService.Record(runtime.MatchingId, victim, change, eventLogs, logger);
+        PlayerHealthChangeService.Record(runtime.MatchingId, victim, change, eventLogs, logger);
+        if (change.IsDepleted)
+            eliminations.EliminatePlayer(runtime.MatchingId, victim.PlayerId, EliminationReason.HEALTH_ZERO, attackerPlayerId: sourcePlayerId);
 
         if (session == null) return;
         using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
@@ -152,9 +150,9 @@ internal sealed class MatchCombatDamageService(
     }
 
     /// <summary>몬스터 피해를 적용하고 같은 피해량을 클라이언트에 알린다.</summary>
-    public void ApplySwarmAfterimageMonsterHit(Player victim, int monsterId, int damage)
+    public void ApplySwarmAfterimageMonsterHit(PlayerEliminationService eliminations, Player victim, int monsterId, int damage)
     {
-        if (victim.IsEliminated || monsterId <= 0 || damage <= 0) return;
+        if (runtime.IsEnded || victim.IsEliminated || monsterId <= 0 || damage <= 0) return;
 
         var nowUtc = DateTime.UtcNow;
         // 수면 상태는 유지하되 피격 직후의 수면 진입·회복을 제한한다.
@@ -179,11 +177,9 @@ internal sealed class MatchCombatDamageService(
 
         var change = victim.ApplyDamage(damage);
         var session = victim.Session;
-        // 기존 탈락 순서 유지: 사람은 즉시, 봇은 전투 루프의 탈락 단계에서 처리한다.
-        if (session != null)
-            session.HealthChanges.Handle(runtime, victim, change);
-        else
-            PlayerHealthChangeService.Record(runtime.MatchingId, victim, change, eventLogs, logger);
+        PlayerHealthChangeService.Record(runtime.MatchingId, victim, change, eventLogs, logger);
+        if (change.IsDepleted)
+            eliminations.EliminatePlayer(runtime.MatchingId, victim.PlayerId, EliminationReason.HEALTH_ZERO);
 
         if (session == null) return;
         using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
@@ -335,7 +331,7 @@ internal sealed class MatchCombatDamageService(
     ///     플레이어 충격 (고정값, 티어 무관): 사격 피격 경로를 재사용해 체력 감소·피격 숫자·탈락 흐름이 그대로
     ///     따라온다. 봇도 같은 값. 소유자 화면에는 사격 피드백을 보낸다. label은 로그용(어느 모양이 때렸나).
     /// </summary>
-    public void ApplySwarmShock(
+    public void ApplySwarmShock(PlayerEliminationService eliminations,
         long ownerId,
         int weaponItemId,
         AreaType area,
@@ -347,6 +343,7 @@ internal sealed class MatchCombatDamageService(
         float damageScale = 1f,
         bool isPeriodicDamage = false)
     {
+        if (runtime.IsEnded) return;
         // 받는 피해 배율: 고정 충격 50에 1/3을 곱한다. 태양·바람·파도 충격이 전부 이 한 곳을 지난다.
         // damageScale: 파도 소용돌이(#268)는 당김이 본체라 피해를 타격 피드백 수준(1/4)으로 줄인다.
         int shock = Math.Max(1, (int)MathF.Round(
@@ -362,7 +359,7 @@ internal sealed class MatchCombatDamageService(
         var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
         int ownerHealth = ownerSession?.Player.Health ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == ownerId)?.Player.Health ?? -1;
         int healthBefore = victim.Health;
-        ApplyProximityAutoCombatHit(victim, ownerId, area, weaponItemId, shock, isPeriodicDamage, ownerHealth);
+        ApplyProximityAutoCombatHit(eliminations, victim, ownerId, area, weaponItemId, shock, isPeriodicDamage, ownerHealth);
         int healthAfter = victim.Health;
 
         SendPlayerHitNotification(ownerSession, victimId, area, weaponItemId, shock, healthAfter, isPeriodicDamage);
@@ -402,7 +399,7 @@ internal sealed class MatchCombatDamageService(
         }
     }
 
-    public int ApplySwarmPvpAttack(
+    public int ApplySwarmPvpAttack(PlayerEliminationService eliminations,
         ProximityCombatAttack attack,
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
@@ -411,6 +408,7 @@ internal sealed class MatchCombatDamageService(
         bool sendAttackerFeedback = true)
     {
         long matchingId = runtime.MatchingId;
+        if (runtime.IsEnded) return 0;
         // 반격 보호 (#227 7단계): 방금 이 표적의 꼬리를 자른 공격자의 본체 피해는 통과하지 못한다.
         // 착탄 시점에 보므로 창이 열리기 '전에' 발사된 대기 투사체도 함께 걸린다.
         // 제3자·잔상·폐쇄는 이 경로를 타지 않아 종전대로 들어간다.
@@ -436,7 +434,7 @@ internal sealed class MatchCombatDamageService(
         if (target == null || target.IsEliminated) return 0;
 
         if (healthDamage > 0)
-            ApplyProximityAutoCombatHit(target, attack.AttackerPlayerId, attack.Area,
+            ApplyProximityAutoCombatHit(eliminations, target, attack.AttackerPlayerId, attack.Area,
                 attack.WeaponItemId, healthDamage, sourceHealth: attackerHealth);
         else
             RecordCombatContact(target, attack.AttackerPlayerId);

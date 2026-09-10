@@ -137,17 +137,7 @@ public partial class BotPlayerManager
     private static Cell WorldToCell(Vector3f position) =>
         new((int)MathF.Floor(position.X + 2f * position.Y),
             (int)MathF.Floor(2f * position.Y - position.X));
-    public void ApplyProximityAutoCombatDamage(BotPlayerState bot, int damage, long attackerPlayerId = 0)
-    {
-        if (bot.Player.IsEliminated || damage <= 0)
-            return;
 
-        int previousHealth = bot.Player.Health;
-        var change = bot.Player.ApplyDamage(damage);
-        PlayerHealthChangeService.Record(_matchingId, bot.Player, change, _eventLogs, _logger);
-        if (previousHealth > 0 && bot.Player.Health <= 0)
-            bot.LastProximityAttackerPlayerId = attackerPlayerId;
-    }
 
 
 }

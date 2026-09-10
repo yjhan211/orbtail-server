@@ -169,9 +169,7 @@ public sealed class SwarmArenaTickOrderTests
             "AutoAttack.ResolveAttacks(",
             "TryScheduleSwarmCrossfire(",
             "matchRuntimes.GetOrThrow(matchingId).CombatDamage.SendMonsterHitNotification(attackerSession,",
-            "BroadcastSwarmAttackVfxToTargetAndObservers(",
-            "if (bot.Player.IsEliminated || bot.Player.Health > 0)",
-            "playerEliminations.EliminatePlayer(");
+            "BroadcastSwarmAttackVfxToTargetAndObservers(");
     }
 
     [Fact]
@@ -205,7 +203,7 @@ public sealed class SwarmArenaTickOrderTests
             applyProximityHit,
             "eventLogs.LogHit(",
             "victim.ApplyDamage(damage);",
-            "session.HealthChanges.Handle(runtime, victim, change, attackerPlayerId: sourcePlayerId);",
+            "eliminations.EliminatePlayer(runtime.MatchingId, victim.PlayerId, EliminationReason.HEALTH_ZERO, attackerPlayerId: sourcePlayerId);",
             "PacketMaker.G_TO_C_COMBAT_HIT(",
             "session.TrySend(packet);");
 

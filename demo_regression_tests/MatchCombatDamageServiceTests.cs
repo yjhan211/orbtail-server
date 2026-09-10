@@ -19,14 +19,14 @@ public sealed class MatchCombatDamageServiceTests
             first.CombatDamage.ScheduleMonsterHit(new game_server.combat.PendingMonsterHit(-123, 1001, 1, dueAt));
             first.CombatDamage.SchedulePvpHit(attack, dueAt);
             first.CombatDamage.ProcessPendingMonsterHits(dueAt.AddTicks(-1), []);
-            first.CombatDamage.ProcessPendingPvpHits(dueAt.AddTicks(-1), [], [], []);
+            first.CombatDamage.ProcessPendingPvpHits(TestGameSessionServices.CreateEliminationService(store, store.EventLogs, new game_server.matches.results.MatchSummaryFileStore(), NullLogger.Instance), dueAt.AddTicks(-1), [], [], []);
             Assert.Equal(1, PendingCount(first.CombatDamage, "_pendingMonsterHits"));
             Assert.Equal(1, PendingCount(first.CombatDamage, "_pendingPvpHits"));
         }
         using (second.Enter())
         {
             second.CombatDamage.ProcessPendingMonsterHits(dueAt, []);
-            second.CombatDamage.ProcessPendingPvpHits(dueAt, [], [], []);
+            second.CombatDamage.ProcessPendingPvpHits(TestGameSessionServices.CreateEliminationService(store, store.EventLogs, new game_server.matches.results.MatchSummaryFileStore(), NullLogger.Instance), dueAt, [], [], []);
             Assert.Equal(0, PendingCount(second.CombatDamage, "_pendingMonsterHits"));
             Assert.Equal(0, PendingCount(second.CombatDamage, "_pendingPvpHits"));
         }
@@ -35,9 +35,9 @@ public sealed class MatchCombatDamageServiceTests
             Assert.Equal(1, PendingCount(first.CombatDamage, "_pendingMonsterHits"));
             Assert.Equal(1, PendingCount(first.CombatDamage, "_pendingPvpHits"));
             first.CombatDamage.ProcessPendingMonsterHits(dueAt, []);
-            first.CombatDamage.ProcessPendingPvpHits(dueAt, [], [], []);
+            first.CombatDamage.ProcessPendingPvpHits(TestGameSessionServices.CreateEliminationService(store, store.EventLogs, new game_server.matches.results.MatchSummaryFileStore(), NullLogger.Instance), dueAt, [], [], []);
             first.CombatDamage.ProcessPendingMonsterHits(dueAt.AddSeconds(1), []);
-            first.CombatDamage.ProcessPendingPvpHits(dueAt.AddSeconds(1), [], [], []);
+            first.CombatDamage.ProcessPendingPvpHits(TestGameSessionServices.CreateEliminationService(store, store.EventLogs, new game_server.matches.results.MatchSummaryFileStore(), NullLogger.Instance), dueAt.AddSeconds(1), [], [], []);
             Assert.Equal(0, PendingCount(first.CombatDamage, "_pendingMonsterHits"));
             Assert.Equal(0, PendingCount(first.CombatDamage, "_pendingPvpHits"));
         }

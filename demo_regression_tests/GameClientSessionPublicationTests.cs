@@ -148,7 +148,7 @@ public sealed class GameClientSessionPublicationTests
         using (session.Match.Enter())
         {
             var combat = session.Match.CombatDamage;
-            combat.ApplyProximityAutoCombatHit(session.Player, 101, (AreaType)50, 123, 5, isPeriodicDamage: true, sourceHealth: 73);
+            combat.ApplyProximityAutoCombatHit(TestGameSessionServices.CreateEliminationService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), session.Player, 101, (AreaType)50, 123, 5, isPeriodicDamage: true, sourceHealth: 73);
         }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(101, hit.AttackerId);
@@ -172,8 +172,8 @@ public sealed class GameClientSessionPublicationTests
         int before = bot.Player.Health;
         using (match.Enter())
         {
-            match.CombatDamage.ApplyProximityAutoCombatHit(session.Player, 101, (AreaType)50, 123, 5);
-            match.CombatDamage.ApplyProximityAutoCombatHit(bot.Player, 101, (AreaType)50, 123, 5);
+            match.CombatDamage.ApplyProximityAutoCombatHit(TestGameSessionServices.CreateEliminationService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), session.Player, 101, (AreaType)50, 123, 5);
+            match.CombatDamage.ApplyProximityAutoCombatHit(TestGameSessionServices.CreateEliminationService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), bot.Player, 101, (AreaType)50, 123, 5);
         }
         Assert.Equal(before - 5, bot.Player.Health);
         Assert.Equal(session.Player.Health, bot.Player.Health);
@@ -198,8 +198,9 @@ public sealed class GameClientSessionPublicationTests
         int before = bot.Player.Health;
         using (match.Enter())
         {
-            match.CombatDamage.ApplySwarmAfterimageMonsterHit(session.Player, 42, 5);
-            match.CombatDamage.ApplySwarmAfterimageMonsterHit(bot.Player, 42, 5);
+            if (match.GetParticipant(bot.PlayerId) == null) match.RegisterParticipant(bot.Player);
+            match.CombatDamage.ApplySwarmAfterimageMonsterHit(TestGameSessionServices.CreateEliminationService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), session.Player, 42, 5);
+            match.CombatDamage.ApplySwarmAfterimageMonsterHit(TestGameSessionServices.CreateEliminationService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), bot.Player, 42, 5);
         }
         Assert.Equal(before - 5, bot.Player.Health);
         Assert.Equal(session.Player.Health, bot.Player.Health);
@@ -215,9 +216,10 @@ public sealed class GameClientSessionPublicationTests
 
         using (match.Enter())
         {
-            match.CombatDamage.ApplySwarmAfterimageMonsterHit(bot.Player, 42, Config.MAX_HEALTH);
+            if (match.GetParticipant(bot.PlayerId) == null) match.RegisterParticipant(bot.Player);
+            match.CombatDamage.ApplySwarmAfterimageMonsterHit(TestGameSessionServices.CreateEliminationService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), bot.Player, 42, Config.MAX_HEALTH);
             Assert.Equal(0, bot.Player.Health);
-            Assert.False(bot.Player.IsEliminated); // 봇 탈락은 기존 전투 루프가 처리한다.
+            Assert.True(bot.Player.IsEliminated);
         }
     }
 
@@ -245,7 +247,7 @@ public sealed class GameClientSessionPublicationTests
         using (session.Match.Enter())
         {
             var combat = session.Match.CombatDamage;
-            combat.ApplySwarmAfterimageMonsterHit(session.Player, 42, 1);
+            combat.ApplySwarmAfterimageMonsterHit(TestGameSessionServices.CreateEliminationService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), session.Player, 42, 1);
         }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(CombatEntityKind.Monster, hit.AttackerKind);

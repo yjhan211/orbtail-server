@@ -200,6 +200,9 @@ internal class MatchCombatService(
             if (sessions.Any(session => session.IsGameEnded))
                 return;
         }
+        // 앞선 피해 단계에서 탈락한 참가자는 회복·성장·새 공격 대상에서 제외한다.
+        aliveSessions.RemoveAll(session => session.Player.IsEliminated);
+        aliveBots.RemoveAll(bot => bot.Player.IsEliminated);
         botDecisions.UpdateSleep(matchRuntimes.GetOrThrow(matchingId), aliveBots, nowUtc);
         ProcessPeriodicBuffs(matchingId, aliveSessions, nowUtc);
         if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
@@ -230,7 +233,7 @@ internal class MatchCombatService(
 
         // 비행 중인 PvP 탄은 여기서 착탄 처리한다 — 매 틱 지우면 안 된다. "리졸버는 PvE 전용"이라는 전제의 청소가
         // 리졸버가 사람 표적도 내보내게 바뀐 뒤 방금 발사한 탄을 다음 틱에 통째로 삭제해 PvP가 한 발도 착탄하지 못했다.
-        matchRuntimes.GetOrThrow(matchingId).CombatDamage.ProcessPendingPvpHits(nowUtc, aliveSessions, aliveBots, sessions);
+        matchRuntimes.GetOrThrow(matchingId).CombatDamage.ProcessPendingPvpHits(playerEliminations, nowUtc, aliveSessions, aliveBots, sessions);
         if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
             return;
 
@@ -310,6 +313,8 @@ internal class MatchCombatService(
         Dictionary<long, ProximityCombatActor>? actorById = null;
         foreach (var attack in attacks)
         {
+            if (matchRuntimes.GetOrThrow(matchingId).GetParticipant(attack.AttackerPlayerId)?.IsEliminated == true)
+                continue;
             int monsterId = matchRuntimes.GetOrThrow(matchingId).Monsters.GetMonsterIdForCombatTarget(matchingId, attack.TargetPlayerId);
             // 유령 발사 가드 (#226 진단): 같은 틱에 죽은 몬스터의 CombatTargetId(-4e18대)가 몬스터 분기를
             // 통과해 PvP 분기로 새던 문제 — 음수 대역 차단. 태양 분기보다 먼저 건다.
@@ -426,23 +431,12 @@ internal class MatchCombatService(
             }
 
             // PvP는 저데미지 보조다. 킬의 주 경로는 스웜이어야 한다 (#217 결합 원칙).
-            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmPvpAttack(attack, aliveSessions, aliveBots, sessions);
+            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmPvpAttack(playerEliminations, attack, aliveSessions, aliveBots, sessions);
             if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
                 return;
         }
 
-        // 봇 피해 처리가 끝난 뒤 사람과 같은 서비스에서 탈락을 확정한다.
-        foreach (var bot in aliveBots)
-        {
-            if (bot.Player.IsEliminated || bot.Player.Health > 0)
-                continue;
 
-            playerEliminations.EliminatePlayer(matchingId, bot.PlayerId, EliminationReason.HEALTH_ZERO,
-                attackerPlayerId: bot.LastProximityAttackerPlayerId);
-            if (IsMatchTerminal(matchingId) ||
-                activeSessions.Any(session => session.IsGameEnded))
-                return;
-        }
     }
 
     // 스팟 예산 선소진(#217 성장곡선 v3, 21개)은 퇴역 — SB에는 인위적 봉인이 없고,
@@ -995,14 +989,15 @@ internal class MatchCombatService(
         int cutterHealthAfter;
         if (cutterSession != null)
         {
-            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplyProximityAutoCombatHit(cutterSession.Player,
+            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplyProximityAutoCombatHit(playerEliminations, cutterSession.Player,
                 cutterId, cutterArea, destroyedItem.ItemId, SwarmSingleCutHealthCost);
             cutterSession.Player.BlockHealingUntil(healLockUntil);
             cutterHealthAfter = cutterSession.Player.Health;
         }
         else if (cutterBot != null)
         {
-            PlayerHealthChangeService.Record(matchingId, cutterBot.Player, cutterBot.Player.ApplyDamage(SwarmSingleCutHealthCost), eventLogs, logger);
+            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplyProximityAutoCombatHit(playerEliminations,
+                cutterBot.Player, cutterId, cutterArea, destroyedItem.ItemId, SwarmSingleCutHealthCost);
             cutterBot.LastDamagedAtUtc = nowUtc;
             cutterBot.Player.BlockHealingUntil(healLockUntil);
             matchRuntimes.GetOrThrow(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
@@ -1284,7 +1279,7 @@ internal class MatchCombatService(
 
             // 충격 면역 없음: 겹친 링에 다 맞는다 — 침수는 지속 갱신이라 중첩 무해.
             soaked++;
-            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(ownerId, sourceItemId, area, participant.PlayerId,
+            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(playerEliminations, ownerId, sourceItemId, area, participant.PlayerId,
                 "WAVE_VORTEX_HIT", aliveSessions, aliveBots, allSessions,
                 Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER);
 
@@ -1414,7 +1409,7 @@ internal class MatchCombatService(
 
         if (session != null)
             session.BreakDoorUnlockGauge();
-        matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmAfterimageMonsterHit(
+        matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmAfterimageMonsterHit(playerEliminations,
             victim, damage.MonsterId, damage.Damage);
     }
 

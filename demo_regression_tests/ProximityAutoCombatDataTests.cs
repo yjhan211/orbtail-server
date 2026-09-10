@@ -138,7 +138,7 @@ public class ProximityAutoCombatDataTests
         string playerSource = ReadNormalizedSource(
             repoRoot, "client", "Assets", "Scripts", "Components", "Player", "Player.cs");
 
-        Assert.Contains("ApplyProximityAutoCombatHit(target,", sessionSource);
+        Assert.Contains("ApplyProximityAutoCombatHit(eliminations, target,", sessionSource);
         Assert.Contains("attack.WeaponItemId,", gameServerSource);
         Assert.Contains("WeaponItemId = weaponItemId", sessionSource);
         Assert.Contains("Damage = damage", sessionSource);

@@ -87,8 +87,8 @@ internal static class GameServerTestAccess
             new OrbRecoveryService(runtimes, logs,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbRecoveryService>.Instance),
             new OrbVisualStatePublisher(runtimes), orbTrails,
-            new WindOrbAttackService(runtimes, orbTrails, logs),
-            new SunOrbAttackService(runtimes, logs), field, decisions,
+            new WindOrbAttackService(runtimes, TestGameSessionServices.CreateEliminationService(runtimes, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), orbTrails, logs),
+            new SunOrbAttackService(runtimes, TestGameSessionServices.CreateEliminationService(runtimes, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), logs), field, decisions,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatService>.Instance);
 
             return new MatchTickLoop(runtime, runtimes, logger, groundPickup,
