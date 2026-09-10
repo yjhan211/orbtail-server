@@ -199,8 +199,7 @@ public partial class BotPlayerManager
             matchingId,
             movement,
             players,
-            observers,
-            bot);
+            observers);
 
         return new SwarmBotMovementDispatch(
             movement.BotPlayerId,
@@ -223,8 +222,7 @@ public partial class BotPlayerManager
         long matchingId,
         BotMovementEvent movement,
         IReadOnlyList<Player> players,
-        IReadOnlyList<SwarmBotObserverSnapshot> observers,
-        BotPlayerState? bot)
+        IReadOnlyList<SwarmBotObserverSnapshot> observers)
     {
         if (!movement.ToArea.IsCorridor())
             return null;
@@ -244,12 +242,8 @@ public partial class BotPlayerManager
             movement.BotPlayerId,
             new Vector3f(movement.Position.X, movement.Position.Y, movement.Position.Z),
             candidates,
-            PassiveBuffUtility.GetValuePercent(
-                bot?.ActiveBuffIds ?? [],
-                BuffSubType.RISK_EVENT_CHANCE_DOWN),
-            PassiveBuffUtility.GetValuePercent(
-                bot?.ActiveBuffIds ?? [],
-                BuffSubType.ENCOUNTER_ESCAPE_CHANCE_ADD));
+            0,
+            0);
         if (!decision.HasEvent)
             return null;
 

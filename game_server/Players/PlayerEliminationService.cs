@@ -43,7 +43,6 @@ internal sealed class PlayerEliminationService(
         {
             eliminatedBot.Path.Clear();
             eliminatedBot.PathIndex = 0;
-            eliminatedBot.PendingRngInteractId = 0;
             eliminatedBot.LoopWaitUntil = DateTime.MinValue;
         }
 

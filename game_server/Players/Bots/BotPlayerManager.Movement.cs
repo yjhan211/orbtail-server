@@ -392,27 +392,12 @@ public partial class BotPlayerManager
         if (TryDodgeStep(bot, matchingId, now, deltaSec, out var dodgeMovement))
             return dodgeMovement;
 
-        if (bot.PendingForcedInteractId > 0 && bot.PendingForcedInteractArea != AreaType.None)
-        {
-            if (!allowPathPlanning) return null;
-
-            if (TryStartBotInteractPath(bot, matchingId, bot.PendingForcedInteractArea,
-                    bot.PendingForcedInteractId, closureManager))
-                return null;
-
-            bot.PendingForcedInteractArea = AreaType.None;
-            bot.PendingForcedInteractId = 0;
-        }
-
         // issue22 디버그: 도착 후 대기 중이면 walking 스킵
         if (now < bot.LoopWaitUntil) return null;
 
         // 경로 없거나 완료 → 새 타겟 결정
         if (bot.Path.Count == 0 || bot.PathIndex >= bot.Path.Count)
         {
-            // #134 — 도착 후 RNG 채집이 아직 안 됐으면 walking 보류 (ProcessBotMissionTick이 PendingRngInteractId 처리 후 0으로 클리어할 때까지 대기).
-            if (bot.PendingRngInteractId != 0) return null;
-
             if (!allowPathPlanning) return null;
             ChooseNewWanderTarget(bot, matchingId, closureManager, inventoryManager, playerAreas,
                 pveTargets);
@@ -689,7 +674,6 @@ public partial class BotPlayerManager
         var mapId = GetMatchingMapId(matchingId);
         bot.Path.Clear();
         bot.PathIndex = 0;
-        bot.PendingRngInteractId = 0;
 
         bool needsGuardianOrb = !inventoryManager.GetPlayerInventory(bot.PlayerId).GetOrderedOrbs().Any(item => OrbData.IsOrbItem(item.ItemId));
 
@@ -1013,74 +997,8 @@ public partial class BotPlayerManager
             if (pop.ContainsKey(area)) pop[area]++;
         return pop;
     }
-
-    private bool TryStartBotInteractPath(BotPlayerState bot, long matchingId, AreaType area, int interactId,
-        AreaClosureManager closureManager)
-    {
-        if (bot.Player.IsEliminated) return false;
-        if (IsAreaClosingOrClosed(closureManager, matchingId, area)) return false;
-
-        var info = GameInteractableData.Get(interactId);
-        if (info == null || info.ZoneId != (int)area) return false;
-        if (info.CellX == 0 && info.CellY == 0) return false;
-
-        var mapId = GetMatchingMapId(matchingId);
-        var targetCell = new Cell(info.CellX, info.CellY);
-        if (bot.Player.CurrentArea == area && bot.Player.Cell!.Equals(targetCell))
-        {
-            bot.Path.Clear();
-            bot.PathIndex = 0;
-            bot.MovementDestination = AreaType.None;
-            bot.PendingRngInteractId = interactId;
-            bot.IsChannelHeld = false;
-            bot.ChannelHoldUntil = DateTime.MinValue;
-            bot.PendingForcedInteractArea = AreaType.None;
-            bot.PendingForcedInteractId = 0;
-            bot.LoopWaitUntil = DateTime.MinValue;
-            bot.Player.Velocity = new Vector3f(0f, 0f, 0f);
-
-            _logger.LogInformation(
-                "Bot gift pickup queued at current cell: BotId={Bot}, Area={Area}, InteractId={InteractId}",
-                bot.PlayerId, area, interactId);
-            return true;
-        }
-
-        var path = BotPathfinder.FindPath(mapId, bot.Player.CurrentArea, bot.Player.Cell!,
-            area, targetCell,
-            a => IsAreaClosingOrClosed(closureManager, matchingId, a));
-        if (path == null || path.Count == 0) return false;
-
-        bot.Path = path;
-        bot.PathIndex = 0;
-        bot.MovementDestination = area;
-        bot.PendingRngInteractId = interactId;
-        bot.IsChannelHeld = false;
-        bot.ChannelHoldUntil = DateTime.MinValue;
-        bot.PendingForcedInteractArea = AreaType.None;
-        bot.PendingForcedInteractId = 0;
-        bot.LoopWaitUntil = DateTime.MinValue;
-
-        _logger.LogInformation(
-            "봇 선물 회수 이동 시작: BotId={Bot}, Area={Area}, InteractId={InteractId}, Steps={Steps}",
-            bot.PlayerId, area, interactId, path.Count);
-        return true;
-    }
-
-    /// <summary>
-    ///     W3 시연 모드 — 봇 위치를 BotMovementScript에 따라 강제. 매 틱(5초)마다 평가.
-    ///     큐 순회 로직 우회. 폐쇄된 위치는 도착 보류(다음 웨이포인트로 진행되면 자연 해소).
-    /// </summary>
-    /// <summary>
-    ///     봇 영역 전환 — Cell/Position을 새 영역의 스폰 셀로 갱신하고 BotMovementEvent 생성.
-    ///     legacy mode 스크립트 텔레포트 전용. walking 경로 통과 시점은 WalkStep에서 처리.
-    /// </summary>
 }
 
-/// <summary>
-///     봇 이동 이벤트. ProcessBotTick / ProcessBotMovementTick이 반환하면 GameServer가 같은 영역 인간 세션에 패킷 브로드캐스트.
-///     영역 변경 시: 보행으로 새 영역 셀에 도착한 뒤 LEAVE + ENTER + MOVE를 전송.
-///     영역 내 walk 시: G_TO_C_MOVE 만 (같은 영역 인간들에게)
-/// </summary>
 public class BotMovementEvent
 {
     public long BotPlayerId { get; set; }

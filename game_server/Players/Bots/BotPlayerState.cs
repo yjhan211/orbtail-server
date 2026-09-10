@@ -19,7 +19,6 @@ public class BotPlayerState
     public long PlayerId { get => Player.PlayerId; set => Player.Profile.PlayerId = value; }
 
     public long LastProximityAttackerPlayerId { get; set; }
-    public List<int> ActiveBuffIds { get; set; } = new();
 
     public string Name { get; set; } = "";
 
@@ -32,39 +31,14 @@ public class BotPlayerState
 
     public DateTime LoopWaitUntil { get; set; } = DateTime.MinValue;
 
-
-    /// <summary>
-    ///     현재 지역에 들어온 시각. 방 사냥이 진전 없이 길어졌는지 판정하는 기준이다.
-    ///     정상적인 팩 정리는 20초 안에 끝나므로, 이 시각이 오래되면 그 방을 목적지 후보에서 뺀다.
-    /// </summary>
-
     /// <summary>잠긴 문 차단 로그의 중복 억제 — 같은 방에 연속으로 막히면 한 번만 남긴다.</summary>
     public AreaType LastLockedDoorBlockArea { get; set; } = AreaType.None;
-
-    /// <summary>
-    ///     정체가 감지되어 현재 방을 떠나야 한다는 요청. 이동 루프 상단에서 세우고
-    ///     잔상 사냥 계획이 소비한다. 목적지 커밋이 사냥 계획을 가로막기 때문에 두 단계로 나눈다.
-    /// </summary>
 
     public bool IsChannelHeld { get; set; }
 
     public DateTime ChannelHoldUntil { get; set; } = DateTime.MinValue;
 
-    public AreaType PendingForcedInteractArea { get; set; } = AreaType.None;
-
-    public int PendingForcedInteractId { get; set; }
-
-
-
-
-
-
     public DateTime GameStartTime { get; set; } = DateTime.UtcNow;
-
-
-
-    // 카이팅 접선 방향 (2026-08-18 유저 지시 "제자리 좌우 와리가리 금지"): 초마다 좌우를 바꾸던 것을
-    // 봇마다 한쪽으로 고정한다 — 그쪽이 막혔을 때만 뒤집는다. 0이면 미정(봇 id 홀짝으로 정한다).
 
     // 투사체 회피 커밋 (2026-08-18): 한 번 비켜서기 시작한 방향과 유지 시각. 유지 중에는 띠 밖에 나가도
     // 원래 경로로 되돌아가지 않고 제자리에 선다 — 띠 가장자리에서 들락거리는 떨림을 없앤다.
@@ -78,26 +52,8 @@ public class BotPlayerState
     /// <summary>Room goal retained while the bot is travelling for loot, an interaction, or a target.</summary>
     public AreaType MovementDestination { get; set; } = AreaType.None;
 
-    /// <summary>Safe room selected during #214 corridor selection.</summary>
-
     public SwarmBotMode SwarmMode { get; set; } = SwarmBotMode.None;
     public DateTime SwarmModeUntilUtc { get; set; } = DateTime.MinValue;
-
-
-
-
-
-
-
-
-
-
-
-    public void HoldForChannel(TimeSpan fallbackDuration)
-    {
-        IsChannelHeld = true;
-        ChannelHoldUntil = DateTime.UtcNow.Add(fallbackDuration);
-    }
 
     /// <summary>위협 감지 시 채집·상호작용 홀드를 즉시 끊는다 — 홀드 채로 맞다 죽는 사고 방지.</summary>
     public void CancelChannelHold()
@@ -126,17 +82,6 @@ public class BotPlayerState
     // 빈손 가속 만료 (#229 12단계): 마지막 오브를 잃은 직후 2초만 빨라진다.
     // 빈손인 내내 빠르면 "패배 직전"이 아니라 도주 특화 상태가 된다.
     public DateTime SwarmBareSpeedUntilUtc { get; set; } = DateTime.MinValue;
-
-    public int PendingRngInteractId { get; set; }
-
-
-    /// <summary>이번 매치에서 이 봇이 탐색을 끝낸 방. 방을 이동해도 유지한다.</summary>
-
-    /// <summary>이번 매치에서 이 봇이 실제 RNG 탐색을 완료한 상호작용 지점.</summary>
-
-
-
-
 
     /// <summary>Server-authoritative movement multiplier from currently living Wind orbs.</summary>
     public float WindMoveSpeedMultiplier { get; set; } = 1f;

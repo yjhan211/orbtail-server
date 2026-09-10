@@ -166,7 +166,6 @@ public sealed class MatchOwnedStateTests
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var service = TestGameSessionServices.CreateEliminationService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance);
         bot.PathIndex = 3;
-        bot.PendingRngInteractId = 10;
         bot.LoopWaitUntil = DateTime.UtcNow.AddMinutes(1);
         using (MatchRuntimeStore.Enter(match))
         {
@@ -176,7 +175,6 @@ public sealed class MatchOwnedStateTests
             Assert.True(bot.Player.IsEliminated);
             Assert.Same(bot.Player, match.GetParticipant(botId));
             Assert.Equal(0, bot.PathIndex);
-            Assert.Equal(0, bot.PendingRngInteractId);
             Assert.Equal(DateTime.MinValue, bot.LoopWaitUntil);
             Assert.Empty(match.Inventory.GetPlayerInventory(botId).GetAllItems());
             int drops = match.GroundItems.GetSnapshot(bot.Player.CurrentArea).Count;
