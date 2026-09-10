@@ -29,13 +29,6 @@ internal sealed class BotDecisionService(
 {
     // 봇은 매치 참가자다. 각 처리 단계의 호출 순서는 MatchCombatService가 정한다.
 
-    // 봇 체력 자연 회복: 회복 오브 운에 기대지 않는 생존 바닥. 마지막 피격 후 유예가 지나면 초당 일정량
-    // 회복한다 — "도망 성공"이 실제 생존이 되게. 사람은 위로 오브가 같은 역할을 하므로 제외. 유예 6초·초당 2는
-    // 접촉 피해 최대치(1.25~2.5/초)를 앞지르지 않는 값이다 — 앞지르면 봇이 잔상에게 수학적으로 죽을 수 없고,
-    // 사람은 이만한 수동 회복이 없다(수면은 정지·무피격을 요구하고 맞으면 끊긴다).
-    private const double SwarmBotRecoveryGraceSeconds = 6d;
-    private const int SwarmBotRecoveryPerSecond = 2;
-
     // 봇 문 잠금해제 (#229). 사람과 같은 규칙을 봇에도 건다 — 봇만 잠긴 문을 통과하면
     // 폐쇄 압력이 봇에게만 무의미해지고, 봇 매치로 이 메카닉을 검증할 수도 없다.
     // #272: 채널 길이는 사람 게이지와 같은 Config 문 등급 값을 쓴다 (합류 문 = 듀얼 관문 12초).
@@ -49,6 +42,7 @@ internal sealed class BotDecisionService(
     {
         foreach (var bot in bots)
         {
+            if (bot.Player.IsSleeping) continue;
             // 진행 중 — 맞았으면 풀리고, 다 채웠으면 열린다
             if (bot.SwarmDoorUnlockDoorId > 0)
             {
@@ -796,31 +790,51 @@ internal sealed class BotDecisionService(
         return false;
     }
 
-    /// <summary>
-    ///     비접촉 유예를 넘긴 봇의 체력을 1초 단위로 회복한다. 피격이 들어오면
-    ///     유예가 리셋되므로, 스웜에 물려 있는 동안에는 회복되지 않는다.
-    /// </summary>
-    public void ProcessSwarmBotRecovery(long matchingId, List<BotPlayerState> aliveBots, DateTime nowUtc)
+    /// <summary>안전하고 체력이 부족하면 수면을 선택한다. 회복은 공통 Player 규칙으로 처리한다.</summary>
+    public void UpdateSleep(MatchRuntime match, IReadOnlyList<BotPlayerState> bots, DateTime nowUtc)
     {
-        foreach (var bot in aliveBots)
+        var sessions = match.GetSessions();
+        var players = sessions.Select(session => session.Player).Concat(bots.Select(bot => bot.Player)).ToList();
+        var monsters = match.Monsters.GetCombatTargets(match.MatchingId);
+        float safeRadiusSquared = Config.SWARM_ORB_ATTACK_RANGE * Config.SWARM_ORB_ATTACK_RANGE;
+        foreach (var bot in bots)
         {
-            if (bot.Player.Health >= Config.MAX_HEALTH)
-                continue;
-
-            var key = (matchingId, bot.PlayerId);
-            if (matchRuntimes.GetOrThrow(matchingId).BotTactics.LastDamagedAtUtc.TryGetValue(key, out var lastDamagedAtUtc) &&
-                (nowUtc - lastDamagedAtUtc).TotalSeconds < SwarmBotRecoveryGraceSeconds)
-                continue;
-            if (matchRuntimes.GetOrThrow(matchingId).BotTactics.NextRecoveryAtUtc.TryGetValue(key, out var nextRecoveryAtUtc) &&
-                nowUtc < nextRecoveryAtUtc)
-                continue;
-
-            matchRuntimes.GetOrThrow(matchingId).BotTactics.NextRecoveryAtUtc[key] = nowUtc.AddSeconds(1d);
-            var change = bot.Player.Recover(SwarmBotRecoveryPerSecond);
-            PlayerHealthChangeService.Record(matchingId, bot.Player, change, eventLogs, logger);
+            var player = bot.Player;
+            var position = player.Position!;
+            bool unsafeToSleep = player.IsEliminated || player.Health <= 0 || !player.CanSleep(nowUtc) ||
+                player.CurrentArea == AreaType.None || bot.IsChannelHeld || bot.SwarmDoorUnlockDoorId > 0 ||
+                match.Closures.IsAreaClosed(player.CurrentArea) ||
+                MatchPressureFieldPolicy.GetDamagePerTick(match, position, nowUtc) > 0 ||
+                nowUtc < bot.SwarmDodgeHoldUntilUtc ||
+                SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(match.SunOrbAttacks.DodgeSnapshot,
+                    match.MatchingId, player.PlayerId, position, player.CurrentArea, nowUtc) != null;
+            foreach (var other in players)
+            {
+                if (unsafeToSleep) break;
+                if (other.PlayerId == player.PlayerId || other.IsEliminated || other.Position == null) continue;
+                float dx = other.Position.X - position.X;
+                float dy = other.Position.Y - position.Y;
+                unsafeToSleep = dx * dx + dy * dy <= safeRadiusSquared;
+            }
+            foreach (var monster in monsters)
+            {
+                if (unsafeToSleep) break;
+                float dx = monster.Position.X - position.X;
+                float dy = monster.Position.Y - position.Y;
+                unsafeToSleep = dx * dx + dy * dy <= safeRadiusSquared;
+            }
+            bool changed = unsafeToSleep || player.Health >= Config.MAX_HEALTH
+                ? player.TryStopSleep()
+                : player.TryStartSleep(nowUtc);
+            if (!changed) continue;
+            using var packet = PacketMaker.G_TO_C_PLAYER_STATE(player.PlayerId, player.State);
+            foreach (var session in sessions)
+            {
+                if (!session.Player.IsEliminated && session.Player.CurrentArea == player.CurrentArea)
+                    session.TrySend(packet);
+            }
         }
     }
-
     /// <summary>
     ///     같은 구역의 반응 지연 지난 최근접 바닥 소환석 — 봇 회수 지시의 목적지.
     ///     반응 지연 (#222): 갓 떨어진 돌은 무시 — 사람이 먼저 주울 시간을 준다.

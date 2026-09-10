@@ -132,6 +132,28 @@ public partial class BotPlayerManager
         DateTime nowUtc = DateTime.UtcNow;
         foreach (var bot in activeBots)
         {
+            // 수면 중에는 경로 판단·걷기·아이템 획득을 하지 않는다. AI가 깨우면 기존 경로를 이어 간다.
+            if (bot.Player.IsSleeping)
+            {
+                bot.LastWalkStepTime = nowUtc;
+                if (bot.Player.Velocity.X != 0f || bot.Player.Velocity.Y != 0f)
+                {
+                    bot.Player.Velocity = new Vector3f();
+                    result.Movements.Add(new BotMovementEvent
+                    {
+                        BotPlayerId = bot.PlayerId,
+                        FromArea = bot.Player.CurrentArea,
+                        ToArea = bot.Player.CurrentArea,
+                        FromCell = bot.Player.Cell!,
+                        ToCell = bot.Player.Cell!,
+                        Position = bot.Player.Position!,
+                        Velocity = bot.Player.Velocity,
+                        Rotation = bot.Player.Rotation,
+                        IsAreaTransition = false
+                    });
+                }
+                continue;
+            }
 
 
             if (TryAutoPickupGroundItem(
@@ -367,28 +389,6 @@ public partial class BotPlayerManager
         // 다음 웨이포인트로 이어 걷는다. 상호작용(채널링) 중만 예외 — 사람도 채널링 중엔 못 움직인다.
         if (TryDodgeStep(bot, matchingId, now, deltaSec, out var dodgeMovement))
             return dodgeMovement;
-
-        if (now < bot.RestUntil)
-        {
-            if (bot.Player.Velocity.X != 0f || bot.Player.Velocity.Y != 0f)
-            {
-                bot.Player.Velocity = new Vector3f(0f, 0f, 0f);
-                return new BotMovementEvent
-                {
-                    BotPlayerId = bot.PlayerId,
-                    FromArea = bot.Player.CurrentArea,
-                    ToArea = bot.Player.CurrentArea,
-                    FromCell = bot.Player.Cell!,
-                    ToCell = bot.Player.Cell!,
-                    Position = bot.Player.Position!,
-                    Velocity = new Vector3f(0f, 0f, 0f),
-                    Rotation = bot.Player.Rotation,
-                    IsAreaTransition = false
-                };
-            }
-
-            return null;
-        }
 
         if (bot.PendingForcedInteractId > 0 && bot.PendingForcedInteractArea != AreaType.None)
         {

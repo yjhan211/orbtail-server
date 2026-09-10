@@ -46,35 +46,89 @@ public sealed class MatchGameplayServiceTests
     }
 
     [Fact]
-    public void BotRecovery_RespectsHitGraceAndKeepsMatchClocksSeparate()
+    public void BotSleepUsesSharedWarmupRecoveryAndCombatLock()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var service = provider.GetRequiredService<BotDecisionService>();
         var store = provider.GetRequiredService<MatchRuntimeStore>();
-        var first = store.GetOrCreate(947703);
-        var second = store.GetOrCreate(947704);
+        var match = store.GetOrCreate(947703);
+        var bot = new BotPlayerState { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA } };
+        match.RegisterParticipant(bot.Player);
         var now = DateTime.UtcNow;
-        using (MatchRuntimeStore.Enter(first))
+        using (match.Enter())
         {
-            var bot = new BotPlayerState { PlayerId = 11, Player = { Health = 10 } };
-            first.BotTactics.LastDamagedAtUtc[(first.MatchingId, 11)] = now;
-            service.ProcessSwarmBotRecovery(first.MatchingId, [bot], now.AddSeconds(5));
+            bot.Player.MarkSwarmCombat(now);
+            service.UpdateSleep(match, [bot], now.AddSeconds(2));
+            Assert.False(bot.Player.IsSleeping);
+            MatchCombatService.ProcessSleepRecovery(match.MatchingId, [bot.Player], now.AddSeconds(2), store.EventLogs, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
             Assert.Equal(10, bot.Player.Health);
-            service.ProcessSwarmBotRecovery(first.MatchingId, [bot], now.AddSeconds(6));
-            Assert.Equal(12, bot.Player.Health);
-            service.ProcessSwarmBotRecovery(first.MatchingId, [bot], now.AddSeconds(6));
-            Assert.Equal(12, bot.Player.Health);
+            service.UpdateSleep(match, [bot], now.AddSeconds(3));
+            Assert.True(bot.Player.IsSleeping);
+            MatchCombatService.ProcessSleepRecovery(match.MatchingId, [bot.Player], now.AddSeconds(3), store.EventLogs, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+            Assert.Equal(10, bot.Player.Health);
+            MatchCombatService.ProcessSleepRecovery(match.MatchingId, [bot.Player], now.AddSeconds(4), store.EventLogs, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+            int expected = 10 + Math.Max(1, (int)MathF.Round(network.common.Config.MAX_HEALTH * 0.05f));
+            Assert.Equal(expected, bot.Player.Health);
+            MatchCombatService.ProcessSleepRecovery(match.MatchingId, [bot.Player], now.AddSeconds(4), store.EventLogs, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+            Assert.Equal(expected, bot.Player.Health);
+            bot.Player.MarkSwarmCombat(now.AddSeconds(4));
+            service.UpdateSleep(match, [bot], now.AddSeconds(4));
+            Assert.False(bot.Player.IsSleeping);
         }
-        using (MatchRuntimeStore.Enter(second))
-        {
-            var bot = new BotPlayerState { PlayerId = 11, Player = { Health = 10 } };
-            service.ProcessSwarmBotRecovery(second.MatchingId, [bot], now.AddSeconds(6));
-            Assert.Equal(12, bot.Player.Health);
-            second.TryMarkEnded();
-        }
-        using (MatchRuntimeStore.Enter(first)) first.TryMarkEnded();
     }
 
+    [Fact]
+    public void BotSleepWakesForDangerAndFullHealthAndRespectsHealingLock()
+    {
+        using var provider = GameServerDependencyInjectionTests.CreateProvider();
+        var service = provider.GetRequiredService<BotDecisionService>();
+        var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947704);
+        var bot = new BotPlayerState { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA } };
+        var enemy = new BotPlayerState { PlayerId = -12 };
+        var now = DateTime.UtcNow;
+        using (match.Enter())
+        {
+            service.UpdateSleep(match, [bot], now);
+            Assert.True(bot.Player.IsSleeping);
+            service.UpdateSleep(match, [bot, enemy], now);
+            Assert.False(bot.Player.IsSleeping);
+            bot.Player.BlockHealingUntil(now.AddSeconds(8));
+            service.UpdateSleep(match, [bot], now.AddSeconds(7));
+            Assert.False(bot.Player.IsSleeping);
+            service.UpdateSleep(match, [bot], now.AddSeconds(8));
+            Assert.True(bot.Player.IsSleeping);
+            bot.Player.Recover(network.common.Config.MAX_HEALTH);
+            service.UpdateSleep(match, [bot], now.AddSeconds(9));
+            Assert.False(bot.Player.IsSleeping);
+            bot.Player.ApplyDamage(1);
+            bot.IsChannelHeld = true;
+            service.UpdateSleep(match, [bot], now.AddSeconds(10));
+            Assert.False(bot.Player.IsSleeping);
+        }
+    }
+
+    [Fact]
+    public void SleepingBotStopsWithoutPlanningWalkingOrPickingUpItems()
+    {
+        using var provider = GameServerDependencyInjectionTests.CreateProvider();
+        var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947706);
+        var bot = new BotPlayerState { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA, Velocity = new Vector3f(3, 0, 0) } };
+        match.Bots.GetBots(match.MatchingId).Add(bot);
+        using (match.Enter())
+        {
+            Assert.True(bot.Player.TryStartSleep(DateTime.UtcNow));
+            var result = match.Bots.ProcessBotMovementTick(match.MatchingId, match.Closures,
+                new Dictionary<long, network.common.AreaType>(), match.Inventory, match.GroundItems, [],
+                (_, _) => throw new InvalidOperationException("A sleeping bot must not request a movement plan."), match.SummonStones);
+            Assert.Empty(result.GroundItemPickups);
+            Assert.Single(result.Movements);
+            Assert.Equal(0, bot.Player.Velocity.X);
+            Assert.Equal(0, bot.Player.Position!.X);
+            Assert.True(bot.Player.IsSleeping);
+            Assert.Equal(network.common.PlayerState.SLEEP, match.Bots.SynthesizeGameObjectInfo(match.MatchingId, bot.PlayerId)!.State);
+            Assert.Equal(network.common.PlayerState.SLEEP, match.Bots.CreatePlayerInfo(match.MatchingId, bot.PlayerId)!.State);
+        }
+    }
     [Fact]
     public void BotCut_UsesProvidedCostAndMatchCooldown()
     {

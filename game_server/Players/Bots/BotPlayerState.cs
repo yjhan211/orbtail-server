@@ -57,7 +57,6 @@ public class BotPlayerState
 
 
 
-    public DateTime RestUntil { get; set; } = DateTime.MinValue;
 
 
     public DateTime GameStartTime { get; set; } = DateTime.UtcNow;

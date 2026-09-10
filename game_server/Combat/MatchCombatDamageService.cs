@@ -339,6 +339,7 @@ internal sealed class MatchCombatDamageService(
             healthBefore = bot.Player.Health;
             bot.LastProximityAttackerPlayerId = ownerId;
             runtime.BotTactics.LastDamagedAtUtc[(runtime.MatchingId, bot.PlayerId)] = DateTime.UtcNow;
+            bot.Player.MarkSwarmCombat(DateTime.UtcNow);
             bot.LastDamagedAtUtc = DateTime.UtcNow;
             eventLogs.LogHit(
                 runtime.MatchingId, ownerId, bot.PlayerId, weaponItemId, shock,
@@ -436,6 +437,7 @@ internal sealed class MatchCombatDamageService(
             // 오염이 0으로 이월돼도 "피격 중" 스탬프는 매 발 — 피격 반응 판단의 입력.
             bot.LastProximityAttackerPlayerId = attack.AttackerPlayerId;
             runtime.BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
+            bot.Player.MarkSwarmCombat(DateTime.UtcNow);
             bot.LastDamagedAtUtc = DateTime.UtcNow;
             if (healthDamage > 0)
             {

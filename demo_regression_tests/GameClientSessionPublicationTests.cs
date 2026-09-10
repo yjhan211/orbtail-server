@@ -252,8 +252,8 @@ public sealed class GameClientSessionPublicationTests
         using (session.Match.Enter())
         {
             Assert.True(session.Player.TryStartSleep(now));
-            MatchCombatService.ProcessSwarmSleepRecovery([session], now);
-            MatchCombatService.ProcessSwarmSleepRecovery([session], now.AddSeconds(1));
+            MatchCombatService.ProcessSleepRecovery(session.MatchingId, [session.Player], now, fixture.EventLog, NullLogger.Instance);
+            MatchCombatService.ProcessSleepRecovery(session.MatchingId, [session.Player], now.AddSeconds(1), fixture.EventLog, NullLogger.Instance);
         }
         var packet = fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_HEALTH_RECOVERY>(Protocol.G_TO_C_HEALTH_RECOVERY);

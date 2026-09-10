@@ -172,9 +172,7 @@ public partial class BotPlayerManager
         if (bot == null) return null;
 
         var mapId = GetMatchingMapId(matchingId);
-        var state = bot.RestUntil != DateTime.MinValue && DateTime.UtcNow < bot.RestUntil
-            ? PlayerState.SLEEP
-            : PlayerState.IDLE;
+        var state = bot.Player.State;
         var info = bot.Player.Profile;
         info.Name = bot.Name;
         info.State = state;
@@ -187,9 +185,7 @@ public partial class BotPlayerManager
     {
         var bot = GetBot(matchingId, botPlayerId);
         if (bot == null) return null;
-        var state = bot.RestUntil != DateTime.MinValue && DateTime.UtcNow < bot.RestUntil
-            ? PlayerState.SLEEP
-            : PlayerState.IDLE;
+        var state = bot.Player.State;
         return new GameObjectInfo(ObjectType.PLAYER, bot.PlayerId, GetMatchingMapId(matchingId), matchingId, bot.Player.Cell!)
         {
             Position = new Vector3f(bot.Player.Position!.X, bot.Player.Position!.Y, bot.Player.Position!.Z),

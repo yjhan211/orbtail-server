@@ -202,11 +202,11 @@ internal class MatchCombatService(
             if (sessions.Any(session => session.IsGameEnded))
                 return;
         }
-        botDecisions.ProcessSwarmBotRecovery(matchingId, aliveBots, nowUtc);
+        botDecisions.UpdateSleep(matchRuntimes.GetOrThrow(matchingId), aliveBots, nowUtc);
         ProcessPeriodicBuffs(matchingId, aliveSessions, nowUtc);
         if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
             return;
-        ProcessSwarmSleepRecovery(aliveSessions, nowUtc);
+        ProcessSleepRecovery(matchingId, aliveSessions.Select(session => session.Player).Concat(aliveBots.Select(bot => bot.Player)), nowUtc, eventLogs, logger);
 
         // 봇도 사람과 같은 문 게이지 규칙으로 잠긴 문을 연다.
 
@@ -513,27 +513,26 @@ internal class MatchCombatService(
         }
     }
     /// <summary>생존 플레이어의 수면 회복을 갱신한다.</summary>
-    internal static void ProcessSwarmSleepRecovery(
-        List<GameClientSession> aliveSessions, DateTime nowUtc)
+    internal static void ProcessSleepRecovery(long matchingId,
+        IEnumerable<Player> players, DateTime nowUtc, GameEventLogManager eventLogs, ILogger logger)
     {
-        foreach (var session in aliveSessions)
+        foreach (var player in players)
         {
-            int recovered = session.Player.GetSleepRecovery(nowUtc, session.Player.IsEliminated, Config.MAX_HEALTH);
+            int recovered = player.GetSleepRecovery(nowUtc, player.IsEliminated, Config.MAX_HEALTH);
             if (recovered <= 0) continue;
-            session.HealthChanges.Handle(session.Match, session.Player, session.Player.Recover(recovered));
-            if (!session.PlayerId.HasValue) continue;
-
+            var change = player.Recover(recovered);
+            PlayerHealthChangeService.Record(matchingId, player, change, eventLogs, logger);
+            if (player.Session == null) continue;
             using var packet = PacketMaker.G_TO_C_HEALTH_RECOVERY(new()
             {
-                PlayerId = session.PlayerId.Value,
-                AreaType = session.Player.CurrentArea,
-                Amount = recovered,
+                PlayerId = player.PlayerId,
+                AreaType = player.CurrentArea,
+                Amount = change.Recovered,
                 Source = HealthRecoveryKind.Sleep
             });
-            session.TrySend(packet);
+            player.Session.TrySend(packet);
         }
     }
-
     /// <summary>상자 시간 등급 (#222 M3): 개전 앵커(게이트, 봇 전용은 스웜 첫 틱) 경과로 티어 결정.</summary>
     private int GetSwarmDraftTier(long matchingId)
     {
@@ -993,7 +992,7 @@ internal class MatchCombatService(
             victimId: bestOwnerId, fromOrdinal: bestTailOrdinal);
 
         // 공격자 치명상 (#232): 같은 사건으로 +35. 사람은 사격 피격 경로(체력 감소·피격 숫자)를 타고
-        // 8초 수면 회복 차단이 걸린다. 봇은 체력만 감소한다.
+        // 8초 수면 회복 차단이 걸린다. 봇도 같은 차단을 적용한다.
         DateTime healLockUntil = nowUtc.AddSeconds(SwarmSingleCutHealLockSeconds);
         int cutterHealthAfter;
         if (cutterSession != null)
@@ -1007,7 +1006,9 @@ internal class MatchCombatService(
         {
             PlayerHealthChangeService.Record(matchingId, cutterBot.Player, cutterBot.Player.ApplyDamage(SwarmSingleCutHealthCost), eventLogs, logger);
             cutterBot.LastDamagedAtUtc = nowUtc;
+            cutterBot.Player.BlockHealingUntil(healLockUntil);
             matchRuntimes.GetOrThrow(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
+            cutterBot.Player.MarkSwarmCombat(nowUtc);
             // 봇 절단 시각 — 절단 자제 쿨다운(IsSwarmBotCutAllowed)과 절단 후 회수 창이 읽는다.
             matchRuntimes.GetOrThrow(matchingId).BotTactics.LastTrailCutAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
             cutterHealthAfter = cutterBot.Player.Health;
@@ -1024,6 +1025,7 @@ internal class MatchCombatService(
             ownerBot.LastProximityAttackerPlayerId = creditPlayerId;
             ownerBot.LastDamagedAtUtc = nowUtc;
             matchRuntimes.GetOrThrow(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, ownerBot.PlayerId)] = nowUtc;
+            ownerBot.Player.MarkSwarmCombat(nowUtc);
             ownerBot.CancelChannelHold();
         }
 
@@ -1431,6 +1433,7 @@ internal class MatchCombatService(
         int legacyBefore = bot.Player.Health;
         PlayerHealthChangeService.Record(matchingId, bot.Player, bot.Player.ApplyDamage(botDamage), eventLogs, logger);
         matchRuntimes.GetOrThrow(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
+        bot.Player.MarkSwarmCombat(DateTime.UtcNow);
         // 세 번째 봇 경로도 남긴다 — 앞의 두 경로만 로그를 붙여 놓으면 여기로 빠진 피해가
         // 그대로 안 보인다.
         eventLogs.LogSwarmAfterimageHit(

@@ -169,7 +169,7 @@ public class SwarmDamagePathTests
         Assert.Contains("MarkSwarmCombat(nowUtc)", combat);
         // 아레나에서 수면을 깨우는 호출이 되살아나면 계약 위반이다 (폐쇄·경고 깨우기 퇴역).
         Assert.DoesNotContain("BreakSwarmSleep", combat);
-        Assert.Contains("ProcessSwarmSleepRecovery(aliveSessions, nowUtc)", combat);
+        Assert.Contains("ProcessSleepRecovery(matchingId,", combat);
         // 봇 파셜(#312)도 같은 계약을 진다.
         Assert.DoesNotContain("BreakSwarmSleep", File.ReadAllText(
             Path.Combine(root, "game_server", "Players", "Bots", "BotDecisionService.cs")));
