@@ -141,13 +141,13 @@ public sealed class SwarmBotMovementPlanTests
             "botMovement.ProcessTick(runtime, botDecisions.DecideMovement);");
         AssertInOrder(
             process,
-            "runtime.Sessions.Values.ToList()",
+            "runtime.GetSessions()",
             "CaptureSwarmBotObservers(matchingId, sessionSnapshot)",
             "Bots.PrepareMovementTick(",
             "DispatchSwarmBotMovementPlan(plan)",
             "BotTickMetrics.Record(",
             "PublishBotMovementMetrics(batch)");
-        Assert.Contains("session.Player.MapId == Config.SWARM_MATCH_MAP", process);
+        Assert.DoesNotContain("session.Player.MapId", process);
         Assert.DoesNotContain(".TrySend(", process);
         AssertInOrder(
             dispatch,

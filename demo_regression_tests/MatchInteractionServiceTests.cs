@@ -30,7 +30,7 @@ public sealed class MatchInteractionServiceTests
         state.BeginInteraction(11);
         state.ClearPendingInteractions();
         Assert.False(state.TryFinishInteraction(11));
-        Assert.Equal(0, state.PendingInteractionCount);
+        Assert.Equal(0, state.GetPendingInteractionIds().Length);
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public sealed class MatchInteractionServiceTests
             int[] canceled = MatchInteractionService.CancelPendingInteractions(runtime, state);
 
             Assert.Equal(new[] { 10, 11 }, canceled.OrderBy(id => id));
-            Assert.Equal(0, state.PendingInteractionCount);
+            Assert.Equal(0, state.GetPendingInteractionIds().Length);
             Assert.False(state.TryFinishInteraction(10));
             Assert.False(state.TryFinishDoor(11, 6000, TimeSpan.FromSeconds(3), out _));
 
@@ -116,7 +116,7 @@ public sealed class MatchInteractionServiceTests
 
         Assert.Throws<InvalidOperationException>(() =>
             MatchInteractionService.CancelPendingInteractions(runtime, state));
-        Assert.Equal(1, state.PendingInteractionCount);
+        Assert.Equal(1, state.GetPendingInteractionIds().Length);
 
         using (MatchRuntimeStore.Enter(runtime))
         {

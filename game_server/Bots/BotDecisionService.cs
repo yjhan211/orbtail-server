@@ -753,7 +753,7 @@ internal sealed class BotDecisionService(
             Consider(other.PlayerId, other.Position, other.CurrentArea);
         }
 
-        foreach (var session in matchRuntimes.GetOrThrow(matchingId).Sessions.Values.ToList())
+        foreach (var session in matchRuntimes.GetOrThrow(matchingId).GetSessions())
         {
             if (!session.PlayerId.HasValue || session.Player.IsEliminated ||
                 session.Player.LastValidatedPosition == null)
@@ -866,7 +866,7 @@ internal sealed class BotDecisionService(
             return true;
         }
 
-        foreach (var session in matchRuntimes.GetOrThrow(matchingId).Sessions.Values.ToList())
+        foreach (var session in matchRuntimes.GetOrThrow(matchingId).GetSessions())
         {
             if (session.PlayerId != playerId || session.Player.IsEliminated ||
                 session.Player.LastValidatedPosition == null) continue;

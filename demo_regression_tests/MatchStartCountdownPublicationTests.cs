@@ -35,7 +35,7 @@ public sealed class MatchStartCountdownPublicationTests
         var session = new RecordingEntrySession();
         SetSessionIdentity(server.GetMatchRuntimes(), session, 301, matchingId);
         var runtime = server.GetMatchRuntimes().GetOrCreate(matchingId);
-        if (hasSession) runtime.Sessions[301] = session;
+        if (hasSession) TestGameSessionServices.AttachSession(session);
         server.GetMatchRuntimes().GetOrThrow(matchingId).PrepareEntry(301, 302);
         try
         {
@@ -77,8 +77,8 @@ public sealed class MatchStartCountdownPublicationTests
         var second = new RecordingEntrySession();
         SetSessionIdentity(server.GetMatchRuntimes(), first, 301, matchingId);
         SetSessionIdentity(server.GetMatchRuntimes(), second, 302, matchingId);
-        runtime.Sessions[301] = first;
-        runtime.Sessions[302] = second;
+        TestGameSessionServices.AttachSession(first);
+        TestGameSessionServices.AttachSession(second);
         server.GetMatchRuntimes().GetOrThrow(matchingId).PrepareEntry(301, 302);
         server.GetMatchRuntimes().GetOrThrow(matchingId).BeginEntry(302);
         var ready = typeof(GameClientSession).GetMethod("HandleMatchStartReady", BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -126,7 +126,7 @@ public sealed class MatchStartCountdownPublicationTests
         SetSessionIdentity(server.GetMatchRuntimes(), other, playerId: 202, matchingId);
         Assert.Null(sessionRegistry.Register(101, anchor));
         Assert.Null(sessionRegistry.Register(202, other));
-        Assert.Equal(2, anchor.Match.Sessions.Values.ToList().Count);
+        Assert.Equal(2, anchor.Match.GetSessions().Count);
 
         InvokeEntryAbort(server, anchor);
 
@@ -136,7 +136,7 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.Equal(1, anchor.DisconnectCount);
         Assert.Equal(1, other.FatalCount);
         Assert.Equal(1, other.DisconnectCount);
-        Assert.Empty(anchor.Match.Sessions.Values.ToList());
+        Assert.Empty(anchor.Match.GetSessions());
         ConcurrentDictionary<long, string> playerSubjects = GetTerminalSubjects(server)[matchingId];
         Assert.Equal(MatchingLifecycleSubjects.PlayerEntryFailed, playerSubjects[101]);
         if (hasComposition)
@@ -174,8 +174,9 @@ public sealed class MatchStartCountdownPublicationTests
                 .GetValue(server));
         var completedSession = new RecordingEntrySession();
         SetSessionIdentity(server.GetMatchRuntimes(), completedSession, completedPlayerId, matchingId);
+        completedSession.Match.RegisterParticipant(completedSession.Player);
         Assert.Null(sessionRegistry.Register(completedPlayerId, completedSession));
-        Assert.Same(completedSession, Assert.Single(completedSession.Match.Sessions.Values.ToList()));
+        Assert.Same(completedSession, Assert.Single(completedSession.Match.GetSessions()));
 
         // 정상 종료가 잠금 안에서 subject를 먼저 선점하고 터미널로 끝난다.
         MatchRuntime runtime = server.GetMatchRuntimes().GetOrCreate(matchingId);

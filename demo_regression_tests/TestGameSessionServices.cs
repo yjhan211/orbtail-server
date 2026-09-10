@@ -85,6 +85,24 @@ internal static class TestGameSessionServices
         (PlayerMovementService)typeof(GameClientSession).GetField("PlayerMovement",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(session)!;
 
+    // 실제 입장처럼 참가자 등록을 마친 뒤 해당 플레이어에 연결을 붙인다.
+    public static void AttachSession(GameClientSession session)
+    {
+        var match = session.Match;
+        using (match.Enter())
+        {
+            if (match.GetParticipant(session.PlayerId!.Value) == null)
+                match.RegisterParticipant(session.Player);
+            session.Player = match.GetParticipant(session.PlayerId.Value)!;
+            session.Player.Session = session;
+        }
+    }
+
+    public static int GetPeriodicBuffCount(MatchPlayer player) =>
+        ((System.Collections.ICollection)typeof(MatchPlayer)
+            .GetField("_periodicBuffs", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(player)!).Count;
+
     public static void SetMovementProperty(GameClientSession session, string name, object? value) =>
         typeof(MatchPlayer).GetProperty(name)!.SetValue(session.Player, value);
 

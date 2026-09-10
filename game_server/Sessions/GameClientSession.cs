@@ -132,7 +132,7 @@ public partial class GameClientSession : SessionBase
 
     protected override bool ShouldSkipLogging(Protocol protocolId)
     {
-        return protocolId == Protocol.C_TO_G_HEART_BEAT || protocolId == Protocol.C_TO_G_MOVE;
+        return protocolId is Protocol.C_TO_G_HEART_BEAT or Protocol.C_TO_G_MOVE;
     }
 
     private Task HandleHeartbeat()
@@ -368,7 +368,7 @@ public partial class GameClientSession : SessionBase
             }
 
             var sessions = new List<GameClientSession>();
-            foreach (var session in match.Sessions.Values.ToList())
+            foreach (var session in match.GetSessions())
             {
                 if (!session.PlayerId.HasValue || session.PlayerId == PlayerId)
                 {
@@ -516,7 +516,7 @@ public partial class GameClientSession : SessionBase
             match.MarkPlayerReady(PlayerId.Value);
             if (!wasScheduled && match.StartsAtUtc.HasValue)
             {
-                foreach (var participant in match.Sessions.Values)
+                foreach (var participant in match.GetSessions())
                 {
                     participant.SendMatchStartCountdown(MatchingId);
                 }
@@ -677,9 +677,10 @@ public partial class GameClientSession : SessionBase
         {
             using (match.Enter())
             {
-                // 교체된 이전 연결은 같은 참가자를 쓰는 새 연결의 상태를 지우지 않는다.
-                if (PlayerId.HasValue && match.Sessions.TryGetValue(PlayerId.Value, out var current) && ReferenceEquals(current, this))
+                if (ReferenceEquals(Player?.Session, this))
+                {
                     Player?.ClearPeriodicBuffs();
+                }
             }
         }
         if (!PlayerId.HasValue)
@@ -704,7 +705,7 @@ public partial class GameClientSession : SessionBase
         {
             using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(PlayerId.Value);
             var sameAreaSessions = new List<GameClientSession>();
-            foreach (var other in Match.Sessions.Values.ToList())
+            foreach (var other in Match.GetSessions())
             {
                 if (ReferenceEquals(other, this))
                 {

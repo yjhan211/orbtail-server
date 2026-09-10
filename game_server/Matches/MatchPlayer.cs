@@ -1,30 +1,44 @@
+using game_server.sessions;
 using network.common;
 using network.common.data.models;
 
 namespace game_server.matches;
 
-/// <summary>매치 참가자 한 명의 프로필·게임 상태·탈락 결과. MatchRuntime이 보관하며 매치 잠금 안에서 변경한다.</summary>
+/// <summary>
+///     매치 내 플레이어 한 명의 프로필·체력·이동·상호작용·탈락 상태를 관리한다.
+///     MatchRuntime이 소유하며, 연결이 끊겨도 매치 정리까지 상태를 유지한다.
+///     Session은 현재 연결을 가리키며, 입장 전·봇·연결 종료 후에는 null이다.
+///     게임 상태 변경은 매치 잠금 안에서 수행하고, 패킷 전송은 세션과 서비스가 담당한다.
+/// </summary>
 public class MatchPlayer
 {
     private const double SwarmSleepWarmupSeconds = 1d;
     private const double SwarmSleepCombatLockSeconds = 3d;
     private const float SwarmSleepRecoveryRatioPerSecond = 0.05f;
-    private readonly List<PeriodicBuffEntry> _periodicBuffs = [];
-    private int _swarmSleepGrantedTicks;
-    private DateTime? _nextPeriodicBuffTickAtUtc;
 
+    private GameClientSession? _session;
     private PlayerState _state = PlayerState.IDLE;
+
+    internal long LastMoveProcessedTimestamp;
+    internal long LastMoveResponseTimestamp;
+
+    private int _swarmSleepGrantedTicks;
+    private readonly List<PeriodicBuffEntry> _periodicBuffs = [];
+    private DateTime? _nextPeriodicBuffTickAtUtc;
 
     private readonly HashSet<int> _pending = [];
     private int? _pendingDoor;
     private int _openedDoors;
     private long _doorStartedAt;
-    internal long LastMoveProcessedTimestamp;
-    internal long LastMoveResponseTimestamp;
+
+    internal GameClientSession? Session
+    {
+        get => Volatile.Read(ref _session);
+        set => Volatile.Write(ref _session, value);
+    }
 
     public long PlayerId => Profile.PlayerId;
     public required PlayerInfo Profile { get; init; }
-    public MapId MapId { get; init; } = Config.SWARM_MATCH_MAP;
     public bool IsEliminated => Status is PlayerMatchStatus.ELIMINATED or PlayerMatchStatus.SPECTATING;
     public PlayerMatchStatus Status { get; set; } = PlayerMatchStatus.ACTIVE;
     public EliminationReason EliminationReason { get; set; } = EliminationReason.NONE;
@@ -58,7 +72,11 @@ public class MatchPlayer
     public DateTime SleepStartedAtUtc { get; set; } = DateTime.MinValue;
     public DateTime LastCombatAtUtc { get; set; } = DateTime.MinValue;
     public DateTime HealLockUntilUtc { get; set; } = DateTime.MinValue;
-    public bool HasPeriodicBuffs => _periodicBuffs.Count != 0;
+
+
+    // 다른 매치 잠금을 잡지 않고 이전 연결만 해제한다. 새 연결은 지우지 않는다.
+    internal bool DetachSession(GameClientSession session) =>
+        ReferenceEquals(Interlocked.CompareExchange(ref _session, null, session), session);
 
     public HealthChange ApplyDamage(int damage)
     {
@@ -78,14 +96,6 @@ public class MatchPlayer
         int before = Health;
         Health = (int)Math.Clamp((long)Health + healthDelta, 0L, maxHealth);
         return new HealthChange(before, Health, healthDelta);
-    }
-
-    public readonly record struct HealthChange(int Before, int After, int RequestedDelta)
-    {
-        public bool Changed => Before != After;
-        public int ActualDelta => After - Before;
-        public int Recovered => Math.Max(0, ActualDelta);
-        public bool IsDepleted => After == 0;
     }
 
     public bool TryStartSleep(DateTime nowUtc)
@@ -141,7 +151,7 @@ public class MatchPlayer
 
     public void AddPeriodicBuff(BuffSubType type, int value, int interval, int duration = 0, DateTime? nowUtc = null)
     {
-        if (!HasPeriodicBuffs)
+        if (_periodicBuffs.Count == 0)
             _nextPeriodicBuffTickAtUtc = (nowUtc ?? DateTime.UtcNow).AddSeconds(1);
         _periodicBuffs.RemoveAll(buff => buff.Type == type);
         _periodicBuffs.Add(new PeriodicBuffEntry(type, value, interval, duration));
@@ -156,12 +166,12 @@ public class MatchPlayer
     /// <summary>등록 후 첫 1초부터 기존 매치 틱에서 초 단위 버프 처리를 실행한다.</summary>
     public void UpdatePeriodicBuffs(DateTime nowUtc, int maxHealth, Action<int> apply)
     {
-        while (HasPeriodicBuffs && _nextPeriodicBuffTickAtUtc is { } next && nowUtc >= next)
+        while (_periodicBuffs.Count != 0 && _nextPeriodicBuffTickAtUtc is { } next && nowUtc >= next)
         {
             _nextPeriodicBuffTickAtUtc = next.AddSeconds(1);
             TickPeriodicBuffs(maxHealth, apply);
         }
-        if (!HasPeriodicBuffs)
+        if (_periodicBuffs.Count == 0)
             _nextPeriodicBuffTickAtUtc = null;
     }
 
@@ -192,17 +202,6 @@ public class MatchPlayer
         }
     }
 
-    private sealed class PeriodicBuffEntry(BuffSubType type, int value, int interval, int duration)
-    {
-        public readonly BuffSubType Type = type;
-        public readonly int Value = value;
-        public readonly int Interval = interval;
-        public readonly int Duration = duration;
-        public int Remaining = duration;
-        public int Elapsed;
-    }
-
-    public int PendingInteractionCount => _pending.Count;
     public void BeginInteraction(int interactId) => _pending.Add(interactId);
     public bool TryFinishInteraction(int interactId) => _pending.Remove(interactId);
     public int[] GetPendingInteractionIds() => _pending.ToArray();
@@ -251,5 +250,23 @@ public class MatchPlayer
         _pendingDoor = null;
         _pending.Remove(id);
         return id;
+    }
+
+    public readonly record struct HealthChange(int Before, int After, int RequestedDelta)
+    {
+        public bool Changed => Before != After;
+        public int ActualDelta => After - Before;
+        public int Recovered => Math.Max(0, ActualDelta);
+        public bool IsDepleted => After == 0;
+    }
+
+    private sealed class PeriodicBuffEntry(BuffSubType type, int value, int interval, int duration)
+    {
+        public readonly BuffSubType Type = type;
+        public readonly int Value = value;
+        public readonly int Interval = interval;
+        public readonly int Duration = duration;
+        public int Remaining = duration;
+        public int Elapsed;
     }
 }

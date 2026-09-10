@@ -30,7 +30,7 @@ public partial class GameClientSession
             }
 
             var sameAreaSessions = new List<GameClientSession>();
-            foreach (var session in match.Sessions.Values.ToList())
+            foreach (var session in match.GetSessions())
             {
                 if (!session.Player.IsEliminated && session.Player.CurrentArea == Player.CurrentArea)
                     sameAreaSessions.Add(session);

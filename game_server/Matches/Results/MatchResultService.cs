@@ -46,7 +46,7 @@ internal sealed class MatchResultService(
             return;
         }
 
-        var sessionSnapshot = matchRuntimes.GetOrThrow(matchingId).Sessions.Values.ToList();
+        var sessionSnapshot = matchRuntimes.GetOrThrow(matchingId).GetSessions();
         var players = BuildPlayerResults(sessionSnapshot, matchingId, winnerId);
         byte[] resultPayload = MessagePackSerializer.Serialize(new G_TO_C_GAME_RESULT
         {

@@ -54,10 +54,10 @@ internal sealed class PlayerMovementService(
     public void InitializeSpawn(Cell spawnCell)
     {
         player.Player.LastValidatedCell = Cell.Clone(spawnCell);
-        player.Player.LastValidatedPosition = MapCoordinateConverter.CellToWorld(player.Player.MapId, spawnCell);
+        player.Player.LastValidatedPosition = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, spawnCell);
         player.Player.LastValidatedVelocity = new Vector3f();
         player.Player.LastValidatedRotation = 0f;
-        player.Player.CurrentArea = GameMapData.GetCurrentArea(player.Player.MapId, spawnCell);
+        player.Player.CurrentArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, spawnCell);
         player.Player.OrbOrbitPhaseDegrees = SwarmOrbOrbit.InitialPhaseDegrees(player.PlayerId ?? 0L);
     }
 
@@ -76,7 +76,7 @@ internal sealed class PlayerMovementService(
         var position = player.Player.LastValidatedPosition
             ?? throw new InvalidOperationException("Cannot publish a player before its spawn is initialized.");
         var cell = player.Player.LastValidatedCell ?? ToCell(position);
-        return new GameObjectInfo(ObjectType.PLAYER, player.PlayerId!.Value, player.Player.MapId, player.MatchingId, cell)
+        return new GameObjectInfo(ObjectType.PLAYER, player.PlayerId!.Value, Config.SWARM_MATCH_MAP, player.MatchingId, cell)
         {
             Position = new Vector3f(position.X, position.Y, position.Z),
             Velocity = new Vector3f(player.Player.LastValidatedVelocity.X, player.Player.LastValidatedVelocity.Y, player.Player.LastValidatedVelocity.Z),
@@ -96,12 +96,12 @@ internal sealed class PlayerMovementService(
     public (ValidatedMovement Movement, Cell Cell, long ServerTimestamp)? Apply(C_TO_G_MOVE msg, float deltaTime)
     {
         var validation = validationService.ValidatePosition(
-            player.PlayerId.Value, player.Player.MapId, player.Player.LastValidatedPosition, player.Player.LastValidatedCell,
+            player.PlayerId.Value, Config.SWARM_MATCH_MAP, player.Player.LastValidatedPosition, player.Player.LastValidatedCell,
             msg.Position, msg.Velocity, deltaTime);
         var validatedPosition = validation.Position;
         // 2. Area 변경 시 퇴장 조건 체크 (치팅 방지)
         var currentCell = ToCell(validatedPosition);
-        var newArea = GameMapData.GetStableCurrentArea(player.Player.MapId, currentCell, player.Player.CurrentArea);
+        var newArea = GameMapData.GetStableCurrentArea(Config.SWARM_MATCH_MAP, currentCell, player.Player.CurrentArea);
 
         // 3. Area 변경 처리 (퇴장 조건 통과한 경우만)
         long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -165,7 +165,7 @@ internal sealed class PlayerMovementService(
             logger.LogInformation("Player {PlayerId} moved from Area {OldArea} to {NewArea}", player.PlayerId, oldArea,
                 newArea);
 
-            var allSessions = player.Match.Sessions.Values.ToList();
+            var allSessions = player.Match.GetSessions();
 
             // 1. 이전 Area의 플레이어들에게 퇴장 알림 + 나에게 기존 플레이어 삭제 알림
             if (oldArea != AreaType.None)
@@ -303,7 +303,7 @@ internal sealed class PlayerMovementService(
     public void Broadcast(Packet packet)
     {
         var targetSessions = new List<GameClientSession>();
-        foreach (var other in player.Match.Sessions.Values.ToList())
+        foreach (var other in player.Match.GetSessions())
         {
             if (!other.Player.IsEliminated && other.Player.CurrentArea == player.Player.CurrentArea && other.PlayerId != player.PlayerId)
                 targetSessions.Add(other);
@@ -313,5 +313,5 @@ internal sealed class PlayerMovementService(
     }
 
     private Cell ToCell(Vector3f position) =>
-        MapCoordinateConverter.WorldToCell(player.Player.MapId, position);
+        MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, position);
 }

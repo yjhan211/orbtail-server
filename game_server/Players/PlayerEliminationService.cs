@@ -28,7 +28,7 @@ internal sealed class PlayerEliminationService(
     public void EliminatePlayer(long matchingId, long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null,
         bool deferGameOver = false, long attackerPlayerId = 0, int forcedRank = 0)
     {
-        var allSessions = _matchRuntimes.GetOrThrow(matchingId).Sessions.Values.ToList();
+        var allSessions = _matchRuntimes.GetOrThrow(matchingId).GetSessions();
         var eliminatedSession = allSessions.FirstOrDefault(session => session.PlayerId == eliminatedPlayerId);
         var eliminatedBot = _matchRuntimes.GetOrThrow(matchingId).Bots.GetBot(matchingId, eliminatedPlayerId);
         AreaType eliminatedArea = eliminatedSession?.Player.CurrentArea ?? eliminatedBot?.CurrentArea ?? AreaType.None;
@@ -109,7 +109,7 @@ internal sealed class PlayerEliminationService(
         if (outcome == null || outcome.Drop.SpawnedItems.Count == 0)
             return;
 
-        var targets = _matchRuntimes.GetOrThrow(matchingId).Sessions.Values.ToList()
+        var targets = _matchRuntimes.GetOrThrow(matchingId).GetSessions()
             .Where(session => !session.Player.IsEliminated && session.Player.CurrentArea == outcome.Bot.CurrentArea);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
             (int)outcome.Bot.CurrentArea, outcome.Drop.SpawnedItems.ToList());

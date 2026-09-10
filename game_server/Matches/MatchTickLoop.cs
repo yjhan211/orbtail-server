@@ -88,7 +88,7 @@ internal sealed class MatchTickLoop(
             return;
         }
 
-        var playerSessions = runtime.Sessions.Values.ToList();
+        var playerSessions = runtime.GetSessions();
         var activeSessions = playerSessions.Where(static session => session is { Player.IsEliminated: false, IsGameEnded: false }).ToList();
         var utcNow = (timeProvider ?? TimeProvider.System).GetUtcNow().UtcDateTime;
         if (runtime.IsEntryTimedOut(utcNow))

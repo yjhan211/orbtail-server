@@ -51,13 +51,13 @@ public sealed class MatchPlayerStateTests
             typeof(GameClientSession).GetProperty(nameof(GameClientSession.PlayerId))!.SetValue(session, 10L);
             TestGameSessionServices.BindMatch(session, match.MatchingId, store);
         }
-        match.Sessions[10] = current;
+        TestGameSessionServices.AttachSession(current);
         participant.AddPeriodicBuff(default, 1, 1);
 
         previous.OnRemoved();
 
         Assert.Same(previous.Player, current.Player);
-        Assert.True(current.Player.HasPeriodicBuffs);
+        Assert.True(TestGameSessionServices.GetPeriodicBuffCount(current.Player) > 0);
     }
 
     [Fact]
@@ -66,5 +66,51 @@ public sealed class MatchPlayerStateTests
         var session = TestGameSessionServices.CreateRecipientSession();
         Assert.Null(session.Player);
         session.OnRemoved();
+    }
+    [Fact]
+    public void NullableSession_PreservesPlayersAfterDisconnectAndClearsOnMatchCleanup()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(948003);
+        var human = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 10 } };
+        var bot = new MatchPlayer { Profile = new PlayerInfo { PlayerId = -1 } };
+        match.RegisterParticipant(human);
+        match.RegisterParticipant(bot);
+        Assert.Null(typeof(MatchPlayer).GetProperty("MapId"));
+        Assert.Null(human.Session);
+        Assert.Null(bot.Session);
+        Assert.Empty(match.GetSessions());
+
+        var previous = TestGameSessionServices.CreateRecipientSession();
+        var current = TestGameSessionServices.CreateRecipientSession();
+        foreach (var session in new[] { previous, current })
+        {
+            typeof(GameClientSession).GetProperty(nameof(GameClientSession.PlayerId))!.SetValue(session, 10L);
+            typeof(GameClientSession).GetProperty(nameof(GameClientSession.MatchingId))!.SetValue(session, match.MatchingId);
+            TestGameSessionServices.BindMatch(session, match.MatchingId, store);
+        }
+        var registry = new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance);
+        registry.Register(10, previous);
+        var snapshot = match.GetSessions();
+        Assert.Same(previous, registry.Register(10, current));
+        Assert.False(human.DetachSession(previous));
+        Assert.False(registry.Remove(previous));
+        Assert.Same(current, human.Session);
+        Assert.Same(previous, Assert.Single(snapshot));
+        Assert.Same(current, Assert.Single(match.GetSessions()));
+
+        Assert.True(registry.Remove(current));
+        Assert.Null(human.Session);
+        Assert.Empty(match.GetSessions());
+        Assert.Same(human, match.GetParticipant(10));
+        Assert.Same(bot, match.GetParticipant(-1));
+        Assert.Equal(2, match.BuildGameResult().Count);
+
+        registry.Register(10, current);
+        using (match.Enter())
+            match.TryMarkEnded();
+        Assert.Null(human.Session);
+        Assert.Empty(match.GetSessions());
+        Assert.True(registry.Remove(current));
     }
 }

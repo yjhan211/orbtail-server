@@ -3,7 +3,6 @@ using game_server.combat;
 using game_server.items;
 using game_server.monsters;
 using game_server.field;
-using System.Collections.Concurrent;
 using game_server.logging;
 using game_server.orbs;
 using game_server.sessions;
@@ -34,10 +33,6 @@ internal sealed class MatchRuntime
     // 사람·봇 참가자는 연결이 끊겨도 매치 정리까지 보관한다. MatchLock으로 보호한다.
     private readonly Dictionary<long, MatchPlayer> _participants = new();
     private int _aliveCount;
-
-    // 참가자
-    // 접속한 사람 세션만 보관한다. 등록·교체·조건부 제거는 GameSessionRegistry가 조율한다.
-    public ConcurrentDictionary<long, GameClientSession> Sessions { get; } = new();
 
     private readonly MatchRuntimeStore _runtimeStore;
     private readonly MatchSessionCleanupService _matchSessionCleanup;
@@ -135,8 +130,11 @@ internal sealed class MatchRuntime
             RegisterParticipant(new MatchPlayer { Profile = player });
             OrbUpgradeService.GrantStartingResources(this, player.PlayerId);
         }
+
         if (playerRoster.Count > 0 && playerRoster.All(player => player.PlayerId < 0))
+        {
             _startsAtUtc = DateTime.UtcNow;
+        }
         Volatile.Write(ref _isSetupComplete, true);
     }
 
@@ -205,6 +203,22 @@ internal sealed class MatchRuntime
 
             _logger.LogInformation("플레이어 탈락: MatchingId={MatchingId}, PlayerId={PlayerId}, 사유={Reason}, 생존={Alive}", MatchingId, playerId, reason, _aliveCount);
             return true;
+        }
+    }
+
+    /// <summary>사람·봇 참가자 중 현재 연결이 있는 세션만 복사해 반환한다.</summary>
+    public List<GameClientSession> GetSessions()
+    {
+        lock (MatchLock)
+        {
+            var sessions = new List<GameClientSession>();
+            foreach (var player in _participants.Values)
+            {
+                var session = player.Session;
+                if (session != null)
+                    sessions.Add(session);
+            }
+            return sessions;
         }
     }
 
@@ -348,7 +362,8 @@ internal sealed class MatchRuntime
             {
                 _cleanupStarted = true;
                 TickLoop?.Stop();
-                Sessions.Clear();
+                foreach (var player in _participants.Values)
+                    player.Session = null;
                 Doors.Clear();
                 EventLog.Release();
                 Inventory.Release();

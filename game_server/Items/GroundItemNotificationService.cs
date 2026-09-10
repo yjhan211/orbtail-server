@@ -30,7 +30,7 @@ internal static class GroundItemNotificationService
             return;
         }
         var sessions = new List<GameClientSession>();
-        foreach (var session in match.Sessions.Values.ToList())
+        foreach (var session in match.GetSessions())
         {
             if (!session.Player.IsEliminated && session.Player.CurrentArea == area)
                 sessions.Add(session);

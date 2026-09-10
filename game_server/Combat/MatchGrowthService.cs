@@ -157,7 +157,7 @@ internal sealed class MatchGrowthService(
     public int GetTopOrbCount(long matchingId)
     {
         int top = 0;
-        foreach (var session in matchRuntimes.GetOrThrow(matchingId).Sessions.Values.ToList())
+        foreach (var session in matchRuntimes.GetOrThrow(matchingId).GetSessions())
         {
             if (session.PlayerId.HasValue && !session.Player.IsEliminated)
                 top = Math.Max(top, matchRuntimes.GetOrThrow(matchingId).Inventory.GetOrbScore(session.PlayerId.Value).OrbCount);

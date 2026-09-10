@@ -39,7 +39,7 @@ public sealed class PlayerConditionTests
         condition.State = nextState;
         Assert.False(condition.IsSleeping);
         Assert.Equal(DateTime.MinValue, condition.SleepStartedAtUtc);
-        Assert.True(condition.HasPeriodicBuffs);
+        Assert.True(TestGameSessionServices.GetPeriodicBuffCount(condition) > 0);
         Assert.Equal(0, condition.GetSleepRecovery(now.AddSeconds(10), false, 100));
         condition.TickPeriodicBuffs(100, amount => condition.Recover(amount));
         Assert.Equal(52, condition.Health);
@@ -98,7 +98,7 @@ public sealed class PlayerConditionTests
         Assert.Equal(23, condition.Health);
         condition.UpdatePeriodicBuffs(now.AddSeconds(4), 100, Apply);
         Assert.Equal(26, condition.Health);
-        Assert.False(condition.HasPeriodicBuffs);
+        Assert.Equal(0, TestGameSessionServices.GetPeriodicBuffCount(condition));
         condition.UpdatePeriodicBuffs(now.AddSeconds(9), 100, Apply);
         Assert.Equal(26, condition.Health);
     }
@@ -121,7 +121,7 @@ public sealed class PlayerConditionTests
         Assert.Equal(0, applied);
         condition.UpdatePeriodicBuffs(now.AddSeconds(20), 100, Apply);
         Assert.Equal(1, applied);
-        Assert.False(condition.HasPeriodicBuffs);
+        Assert.Equal(0, TestGameSessionServices.GetPeriodicBuffCount(condition));
     }
 
     [Fact]
@@ -229,6 +229,6 @@ public sealed class PlayerConditionTests
         Assert.Equal(3, state.Health);
         state.TickPeriodicBuffs(100, Apply);
         Assert.Equal(6, state.Health);
-        Assert.False(state.HasPeriodicBuffs);
+        Assert.Equal(0, TestGameSessionServices.GetPeriodicBuffCount(state));
     }
 }

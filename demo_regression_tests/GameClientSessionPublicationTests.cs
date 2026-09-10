@@ -38,9 +38,9 @@ public sealed class GameClientSessionPublicationTests
         Assert.True(fixture.Store.Remove(70001));
 
         Assert.True(runtime.IsEnded);
-        Assert.Empty(runtime.Sessions.Values.ToList());
+        Assert.Empty(runtime.GetSessions());
         Assert.Throws<InvalidOperationException>(() => registry.Register(101, session));
-        Assert.Empty(runtime.Sessions.Values.ToList());
+        Assert.Empty(runtime.GetSessions());
         Assert.Empty(registry.GetAllSessions());
     }
 
@@ -55,20 +55,20 @@ public sealed class GameClientSessionPublicationTests
     {
         using var fixture = new SessionFixture();
         var previous = fixture.CreateSession(70001, 101, (AreaType)50);
-        var sessions = previous.Match.Sessions;
+        var match = previous.Match;
         var registry = new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance);
         registry.Register(101, previous);
-        var snapshot = sessions.Values.ToList();
+        var snapshot = match.GetSessions();
         var replacement = fixture.CreateSession(70001, 101, (AreaType)50);
         registry.Register(101, replacement);
 
         Assert.False(registry.Remove(previous));
 
-        Assert.Same(replacement, Assert.Single(sessions.Values));
+        Assert.Same(replacement, Assert.Single(match.GetSessions()));
         Assert.Same(previous, Assert.Single(snapshot));
 
         Assert.True(registry.Remove(replacement));
-        Assert.Empty(sessions);
+        Assert.Empty(match.GetSessions());
     }
 
     [Theory]
@@ -273,17 +273,17 @@ public sealed class GameClientSessionPublicationTests
 
         Assert.Null(registry.Register(101, previous));
         Assert.Null(registry.Register(101, previous));
-        Assert.Same(previous, Assert.Single(fixture.Store.GetOrThrow(70001).Sessions.Values.ToList()));
+        Assert.Same(previous, Assert.Single(fixture.Store.GetOrThrow(70001).GetSessions()));
 
         Assert.Same(previous, registry.Register(101, replacement));
 
         Assert.False(fixture.ConnectionFor(previous).IsReleased);
         Assert.True(registry.TryGetSession(101, out var current));
         Assert.Same(replacement, current);
-        Assert.Empty(fixture.Store.GetOrThrow(70001).Sessions.Values.ToList());
-        Assert.Same(replacement, Assert.Single(fixture.Store.GetOrThrow(70002).Sessions.Values.ToList()));
+        Assert.Empty(fixture.Store.GetOrThrow(70001).GetSessions());
+        Assert.Same(replacement, Assert.Single(fixture.Store.GetOrThrow(70002).GetSessions()));
         Assert.False(registry.Remove(previous));
-        Assert.Same(replacement, Assert.Single(fixture.Store.GetOrThrow(70002).Sessions.Values.ToList()));
+        Assert.Same(replacement, Assert.Single(fixture.Store.GetOrThrow(70002).GetSessions()));
     }
 
     [Theory]
@@ -299,7 +299,7 @@ public sealed class GameClientSessionPublicationTests
         var otherArea = fixture.CreateSession(70001, 104, (AreaType)51);
         var otherMatch = fixture.CreateSession(70002, 105, (AreaType)50);
 
-        Assert.Equal(4, self.Match.Sessions.Values.ToList().Count);
+        Assert.Equal(4, self.Match.GetSessions().Count);
         using (self.Match.Enter())
             self.SendPlayerState(includeSelf);
 
@@ -324,10 +324,10 @@ public sealed class GameClientSessionPublicationTests
 
         fixture.MarkTerminal(70001);
 
-        Assert.Empty(runtime.Sessions.Values.ToList());
+        Assert.Empty(runtime.GetSessions());
         Assert.Same(session, Assert.Single(registry.GetAllSessions()));
         Assert.Throws<InvalidOperationException>(() => registry.Register(101, session));
-        Assert.Empty(runtime.Sessions.Values.ToList());
+        Assert.Empty(runtime.GetSessions());
         Assert.True(registry.Remove(session));
         Assert.Empty(registry.GetAllSessions());
     }
@@ -340,8 +340,8 @@ public sealed class GameClientSessionPublicationTests
         var second = fixture.CreateSession(70002, 202, (AreaType)50);
         var firstReplacement = fixture.CreateSession(70002, 101, (AreaType)50);
         var secondReplacement = fixture.CreateSession(70001, 202, (AreaType)50);
-        firstReplacement.Match.Sessions.TryRemove(new KeyValuePair<long, GameClientSession>(101, firstReplacement));
-        secondReplacement.Match.Sessions.TryRemove(new KeyValuePair<long, GameClientSession>(202, secondReplacement));
+        firstReplacement.Player.DetachSession(firstReplacement);
+        secondReplacement.Player.DetachSession(secondReplacement);
         var registry = new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance);
         registry.Register(101, first);
         registry.Register(202, second);
@@ -355,8 +355,8 @@ public sealed class GameClientSessionPublicationTests
         });
         await Task.WhenAll(Replace(firstReplacement), Replace(secondReplacement)).WaitAsync(TimeSpan.FromSeconds(10));
 
-        Assert.Same(secondReplacement, Assert.Single(first.Match.Sessions.Values.ToList()));
-        Assert.Same(firstReplacement, Assert.Single(second.Match.Sessions.Values.ToList()));
+        Assert.Same(secondReplacement, Assert.Single(first.Match.GetSessions()));
+        Assert.Same(firstReplacement, Assert.Single(second.Match.GetSessions()));
         Assert.False(registry.Remove(first));
         Assert.False(registry.Remove(second));
         Assert.Equal(2, registry.GetAllSessions().Count);
@@ -368,7 +368,7 @@ public sealed class GameClientSessionPublicationTests
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
         var runtime = session.Match;
-        runtime.Sessions.TryRemove(new KeyValuePair<long, GameClientSession>(101, session));
+        session.Player.DetachSession(session);
         var registry = new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance);
         using var ready = new Barrier(2);
         var register = Task.Run(() =>
@@ -384,7 +384,7 @@ public sealed class GameClientSessionPublicationTests
         });
         await Task.WhenAll(register, terminate).WaitAsync(TimeSpan.FromSeconds(10));
 
-        Assert.Empty(runtime.Sessions.Values.ToList());
+        Assert.Empty(runtime.GetSessions());
         Assert.Null(fixture.Store.GetOrNull(70001));
         registry.Remove(session);
         Assert.Empty(registry.GetAllSessions());
@@ -1219,7 +1219,7 @@ public sealed class GameClientSessionPublicationTests
                 Store, removeSession);
             SetIdentity(session, matchingId, playerId, area);
             _sessions.Add(session);
-            session.Match.Sessions[playerId] = session;
+            TestGameSessionServices.AttachSession(session);
             _connections.Add(session, connection);
             return session;
         }

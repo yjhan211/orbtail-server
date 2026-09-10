@@ -16,7 +16,7 @@ internal sealed class MatchCleanupService(
 {
     public void EndBotOnlyMatchIfSettled(long matchingId, long winnerPlayerId)
     {
-        if (matchRuntimes.GetOrNull(matchingId)?.Sessions.IsEmpty == false)
+        if (matchRuntimes.GetOrNull(matchingId)?.GetSessions().Count > 0)
         {
             return;
         }
@@ -26,7 +26,7 @@ internal sealed class MatchCleanupService(
 
     public void CleanupIfNoHumanSessionsRemain(long matchingId, MatchEndReason endReason = MatchEndReason.LastHumanLeft, long winnerPlayerId = 0)
     {
-        if (matchRuntimes.GetOrNull(matchingId)?.Sessions.IsEmpty == false)
+        if (matchRuntimes.GetOrNull(matchingId)?.GetSessions().Count > 0)
         {
             return;
         }
@@ -38,7 +38,7 @@ internal sealed class MatchCleanupService(
         }
 
         using var scope = runtime.Enter();
-        if (runtime.IsEnded || !runtime.Sessions.IsEmpty)
+        if (runtime.IsEnded || runtime.GetSessions().Count > 0)
         {
             return;
         }

@@ -220,7 +220,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
             Assert.Equal(PlayerState.IDLE, session.Player.State);
             Assert.False(session.Player.IsSleeping);
-            Assert.True(session.Player.HasPeriodicBuffs);
+            Assert.True(TestGameSessionServices.GetPeriodicBuffCount(session.Player) > 0);
             Assert.Equal(PlayerState.IDLE, session.PlayerMovement.CaptureGameObjectInfo(session.Player.State).State);
 
             session.Player.State = PlayerState.EXPLORE_1;
@@ -773,7 +773,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             connection.SetSession(session);
             SetIdentity(session, matchingId, playerId);
             _sessions.Add(session);
-            session.Match.Sessions[playerId] = session;
+            TestGameSessionServices.AttachSession(session);
             _connections.Add(session, connection);
             return session;
         }

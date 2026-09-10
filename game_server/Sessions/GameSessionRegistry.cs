@@ -5,7 +5,7 @@ namespace game_server.sessions;
 
 /// <summary>
 ///     이 GameServer에 등록된 플레이어별 현재 세션을 관리한다.
-///     세션을 등록·교체·제거할 때 해당 매치의 세션 목록도 함께 갱신한다.
+///     세션을 등록·교체·제거할 때 해당 MatchPlayer의 세션 참조도 함께 갱신한다.
 ///     이전 세션의 종료 처리가 새 세션을 지우지 않도록 삭제할 때 세션 객체까지 확인한다.
 /// </summary>
 public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
@@ -22,7 +22,8 @@ public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
             throw new InvalidOperationException("Cannot register a session in a terminal match.");
         }
 
-        if (session.PlayerId != playerId || session.MatchingId != match.MatchingId)
+        if (session.PlayerId != playerId || session.MatchingId != match.MatchingId ||
+            !ReferenceEquals(match.GetParticipant(playerId), session.Player))
         {
             throw new InvalidOperationException("Session identity does not match its bound match.");
         }
@@ -31,7 +32,7 @@ public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
         {
             if (!_sessionsByPlayer.TryGetValue(playerId, out var existingSession))
             {
-                match.Sessions[playerId] = session;
+                session.Player.Session = session;
                 _sessionsByPlayer[playerId] = session;
                 logger.LogInformation("Game client session registered: PlayerId={PlayerId}", playerId);
                 return null;
@@ -42,9 +43,9 @@ public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
                 return null;
             }
 
-            match.Sessions[playerId] = session;
+            session.Player.Session = session;
             _sessionsByPlayer[playerId] = session;
-            existingSession.Match.Sessions.TryRemove(new KeyValuePair<long, GameClientSession>(playerId, existingSession));
+            existingSession.Player.DetachSession(existingSession);
             logger.LogWarning("Game client session replaced: PlayerId={PlayerId}", playerId);
             return existingSession;
         }
@@ -64,7 +65,7 @@ public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
                 .Remove(new KeyValuePair<long, GameClientSession>(session.PlayerId.Value, session));
             if (removed)
             {
-                session.Match.Sessions.TryRemove(new KeyValuePair<long, GameClientSession>(session.PlayerId.Value, session));
+                session.Player.DetachSession(session);
             }
             return removed;
         }

@@ -47,7 +47,7 @@ internal sealed class BotEliminationService(
                 reason.ToString(),
                 isBot: true,
                 attackerPlayerId: attackerPlayerId);
-            var matchingSessions = match.Sessions.Values.ToList();
+            var matchingSessions = match.GetSessions();
             DropBotInventoryAtCurrentPosition(match, botId, matchingSessions);
 
             // 1) 전체에게 봇 탈락 알림 (G_TO_C_PLAYER_ELIMINATED)

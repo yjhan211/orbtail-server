@@ -28,10 +28,9 @@ internal class BotMovementService(
             throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
         long matchingId = runtime.MatchingId;
         long tickStartedAt = Stopwatch.GetTimestamp();
-        GameClientSession[] sessionSnapshot = runtime.Sessions.Values.ToList()
+        GameClientSession[] sessionSnapshot = runtime.GetSessions()
             .Where(session =>
                 session.PlayerId is > 0 &&
-                session.Player.MapId == Config.SWARM_MATCH_MAP &&
                 session.MatchingId == matchingId)
             .ToArray();
         ImmutableArray<SwarmBotObserverSnapshot> observers =
@@ -112,7 +111,6 @@ internal class BotMovementService(
         foreach (var session in sessionSnapshot)
         {
             if (session.PlayerId is not > 0 ||
-                session.Player.MapId != Config.SWARM_MATCH_MAP ||
                 session.MatchingId != matchingId)
                 continue;
 
@@ -201,10 +199,9 @@ internal class BotMovementService(
         if (runtime.IsEnded)
             throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
         long matchingId = runtime.MatchingId;
-        GameClientSession[] sessionSnapshot = runtime.Sessions.Values.ToList()
+        GameClientSession[] sessionSnapshot = runtime.GetSessions()
             .Where(session =>
                 session.PlayerId is > 0 &&
-                session.Player.MapId == Config.SWARM_MATCH_MAP &&
                 session.MatchingId == matchingId)
             .ToArray();
         ImmutableArray<SwarmBotObserverSnapshot> observers =

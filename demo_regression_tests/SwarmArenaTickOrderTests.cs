@@ -55,7 +55,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             proximityTick,
             "using var scope = runtime.Enter();",
-            "runtime.Sessions.Values.ToList()",
+            "runtime.GetSessions()",
             "runtime.IsEntryTimedOut(utcNow)",
             "combat.ProcessTick(matchingId, activeSessions);");
         Assert.DoesNotContain("catch (", proximityTick);

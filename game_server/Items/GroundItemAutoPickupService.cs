@@ -24,9 +24,9 @@ internal sealed class GroundItemAutoPickupService(
         var candidates = GetCandidates(match, session);
         if (nextArea != session.Player.CurrentArea)
             candidates.Record(match.GroundItems, session.PlayerId.Value, session.Player.CurrentArea,
-                from, to, session.Player.MapId);
+                from, to, Config.SWARM_MATCH_MAP);
         candidates.Record(match.GroundItems, session.PlayerId.Value, nextArea,
-            from, to, nextArea != session.Player.CurrentArea ? session.Player.MapId : null);
+            from, to, nextArea != session.Player.CurrentArea ? Config.SWARM_MATCH_MAP : null);
     }
 
     public void Process(MatchRuntime match, IReadOnlyCollection<GameClientSession> sessions)
@@ -138,7 +138,7 @@ internal sealed class GroundItemAutoPickupService(
                    claimedItem.GroundItemUid, session.PlayerId.Value, pickup.AutoUsed))
         {
             var targetSessions = new List<GameClientSession>();
-            foreach (var other in session.Match.Sessions.Values.ToList())
+            foreach (var other in session.Match.GetSessions())
             {
                 if (!other.Player.IsEliminated && other.Player.CurrentArea == (AreaType)claimedItem.AreaType)
                     targetSessions.Add(other);

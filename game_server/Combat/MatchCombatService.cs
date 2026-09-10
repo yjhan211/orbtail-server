@@ -1598,7 +1598,7 @@ internal class MatchCombatService(
                 session.Player.LastValidatedPosition != null &&
                 CombatActorFactory.TryCreateSpatialActor(
                     session.PlayerId.Value,
-                    session.Player.MapId,
+                    Config.SWARM_MATCH_MAP,
                     session.Player.CurrentArea,
                     session.Player.LastValidatedPosition,
                     out var spatial))

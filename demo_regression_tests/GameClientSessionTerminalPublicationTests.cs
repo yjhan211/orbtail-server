@@ -338,7 +338,7 @@ public sealed class GameClientSessionTerminalPublicationTests
                 PrepareGameCompletion);
             SetIdentity(session, matchingId, playerId, status);
             _sessions.Add(session);
-            session.Match.Sessions[playerId] = session;
+            TestGameSessionServices.AttachSession(session);
             _connections.Add(session, connection);
             return session;
         }

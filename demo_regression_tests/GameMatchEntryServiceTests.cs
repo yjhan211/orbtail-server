@@ -43,7 +43,7 @@ public sealed class GameMatchEntryServiceTests
 
         await service.PrepareMatchAsync(runtime.MatchingId, runtime);
 
-        Assert.Empty(runtime.Sessions);
+        Assert.Empty(runtime.GetSessions());
         int humanStones = Config.SWARM_STARTING_STONE_GRANT;
         for (int index = 0; index < Config.SWARM_STARTING_ORB_GRANT_COUNT; index++)
             humanStones += Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(index));

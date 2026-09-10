@@ -24,7 +24,7 @@ internal sealed class GroundItemDropService(GameEventLogManager eventLogs)
             session.Player.CurrentArea,
             position.X,
             position.Y,
-            session.Player.MapId);
+            Config.SWARM_MATCH_MAP);
         if (drop.RemovedItems.Count == 0) return;
 
         var emptyBoard = session.Match.Inventory.GetPlayerInventory(session.PlayerId.Value);

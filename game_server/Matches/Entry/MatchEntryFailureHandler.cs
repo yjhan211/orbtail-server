@@ -76,7 +76,7 @@ internal sealed class MatchEntryFailureHandler(
             }
 
             long matchingId = runtime.MatchingId;
-            var affectedSessions = runtime.Sessions.Values.ToList();
+            var affectedSessions = runtime.GetSessions();
             foreach (var session in affectedSessions)
             {
                 session.MarkMatchEndHandledExternally();

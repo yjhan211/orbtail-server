@@ -42,7 +42,7 @@ public partial class GameClientSession
             }
 
             bool isExploreState = msg.State == PlayerState.EXPLORE_1;
-            if (!isExploreState && msg.State != PlayerState.IDLE && Player.PendingInteractionCount > 0)
+            if (!isExploreState && msg.State != PlayerState.IDLE && Player.GetPendingInteractionIds().Length > 0)
             {
                 Logger.LogWarning("Ignored state change while door opening is pending: PlayerId={PlayerId}, State={State}", PlayerId, msg.State);
                 return Task.CompletedTask;
@@ -85,7 +85,7 @@ public partial class GameClientSession
             return;
         }
         var targetSessions = new List<GameClientSession>();
-        foreach (var session in Match.Sessions.Values.ToList())
+        foreach (var session in Match.GetSessions())
         {
             if (session.Player.IsEliminated || session.Player.CurrentArea != Player.CurrentArea)
                 continue;
