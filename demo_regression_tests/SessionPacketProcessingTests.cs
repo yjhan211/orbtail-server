@@ -108,9 +108,6 @@ public sealed class SessionPacketProcessingTests
             static (_, _) => null,
 
             logs,
-            TestGameSessionServices.CreateEliminationService(store, logs,
-                new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
-                NullLogger.Instance),
             TestGameSessionServices.CreateOrbUpgradeService(store, logs),
 
             new FakeGameSessionLifecycle(),

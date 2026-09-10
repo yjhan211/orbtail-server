@@ -28,7 +28,7 @@ internal class MatchCombatService(
     MatchRuntimeStore matchRuntimes,
     GameEventLogManager eventLogs,
     MatchCleanupService matchCleanup,
-    PlayerEliminationService playerEliminations,
+    PlayerHealthService healthService,
     MatchResultService matchResults,
     GrowthService growth,
     OrbRecoveryService orbRecovery,
@@ -41,7 +41,6 @@ internal class MatchCombatService(
     ILogger<MatchCombatService> logger)
 {
     // 매치 루프마다 생성되는 서비스의 상태. 해당 매치 잠금 안에서만 접근한다.
-    private readonly PlayerHealthChangeService _healthChanges = new(eventLogs, playerEliminations, logger);
     private string? OrbRankingsSignature;
     private bool _timeoutResultProcessed;
     private DateTime? _fallbackStartedAtUtc;
@@ -200,7 +199,7 @@ internal class MatchCombatService(
         if (runtime.IsEnded)
             return;
         players.RemoveAll(player => player.IsEliminated);
-        ProcessSleepRecovery(matchingId, players, nowUtc, eventLogs, logger);
+        ProcessSleepRecovery(runtime, players, nowUtc, healthService);
 
         // 봇도 사람과 같은 문 게이지 규칙으로 잠긴 문을 연다.
 
@@ -226,7 +225,7 @@ internal class MatchCombatService(
 
         // 비행 중인 PvP 탄은 여기서 착탄 처리한다 — 매 틱 지우면 안 된다. "리졸버는 PvE 전용"이라는 전제의 청소가
         // 리졸버가 사람 표적도 내보내게 바뀐 뒤 방금 발사한 탄을 다음 틱에 통째로 삭제해 PvP가 한 발도 착탄하지 못했다.
-        runtime.CombatDamage.ProcessPendingPvpHits(playerEliminations, nowUtc, runtime.GetAlivePlayers(), sessions);
+        runtime.CombatDamage.ProcessPendingPvpHits(healthService, nowUtc, runtime.GetAlivePlayers(), sessions);
         if (runtime.IsEnded)
             return;
 
@@ -423,7 +422,7 @@ internal class MatchCombatService(
             }
 
             // PvP는 저데미지 보조다. 킬의 주 경로는 스웜이어야 한다 (#217 결합 원칙).
-            runtime.CombatDamage.ApplySwarmPvpAttack(playerEliminations, attack, runtime.GetAlivePlayers(), sessions);
+            runtime.CombatDamage.ApplySwarmPvpAttack(healthService, attack, runtime.GetAlivePlayers(), sessions);
             if (runtime.IsEnded)
                 return;
         }
@@ -483,7 +482,10 @@ internal class MatchCombatService(
             {
                 player.UpdatePeriodicBuffs(nowUtc, Config.MAX_HEALTH, health =>
                 {
-                    _healthChanges.Handle(match, player, player.ChangeHealth(health, Config.MAX_HEALTH));
+                    if (health >= 0)
+                        healthService.Recover(match, player, health);
+                    else
+                        healthService.ApplyDamage(match, player, checked(-health));
                     if (player.IsEliminated || match.IsEnded)
                         player.ClearPeriodicBuffs();
                 });
@@ -498,15 +500,14 @@ internal class MatchCombatService(
     }
 
     /// <summary>생존 플레이어의 수면 회복을 갱신한다.</summary>
-    internal static void ProcessSleepRecovery(long matchingId,
-        IEnumerable<Player> players, DateTime nowUtc, GameEventLogManager eventLogs, ILogger logger)
+    internal static void ProcessSleepRecovery(MatchRuntime match,
+        IEnumerable<Player> players, DateTime nowUtc, PlayerHealthService healthService)
     {
         foreach (var player in players)
         {
             int recovered = player.GetSleepRecovery(nowUtc, player.IsEliminated, Config.MAX_HEALTH);
             if (recovered <= 0) continue;
-            var change = player.Recover(recovered);
-            PlayerHealthChangeService.Record(matchingId, player, change, eventLogs, logger);
+            var change = healthService.Recover(match, player, recovered);
             if (player.Session == null) continue;
             using var packet = PacketMaker.G_TO_C_HEALTH_RECOVERY(new()
             {
@@ -974,7 +975,7 @@ internal class MatchCombatService(
         // 공격자 치명상 (#232): 같은 사건으로 +35. 사람은 사격 피격 경로(체력 감소·피격 숫자)를 타고
         // 8초 수면 회복 차단이 걸린다. 봇도 같은 차단을 적용한다.
         DateTime healLockUntil = nowUtc.AddSeconds(SwarmSingleCutHealLockSeconds);
-        match.CombatDamage.ApplyProximityAutoCombatHit(playerEliminations,
+        match.CombatDamage.ApplyProximityAutoCombatHit(healthService,
             cutter, cutterId, cutterArea, destroyedItem.ItemId, SwarmSingleCutHealthCost);
         cutter.BlockHealingUntil(healLockUntil);
         int cutterHealthAfter = cutter.Health;
@@ -1244,7 +1245,7 @@ internal class MatchCombatService(
 
             // 충격 면역 없음: 겹친 링에 다 맞는다 — 침수는 지속 갱신이라 중첩 무해.
             soaked++;
-            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(playerEliminations, ownerId, sourceItemId, area, participant.PlayerId,
+            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(healthService, ownerId, sourceItemId, area, participant.PlayerId,
                 "WAVE_VORTEX_HIT", players,
                 Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER);
 
@@ -1362,7 +1363,7 @@ internal class MatchCombatService(
             }
         }
 
-        match.CombatDamage.ApplySwarmAfterimageMonsterHit(playerEliminations,
+        match.CombatDamage.ApplySwarmAfterimageMonsterHit(healthService,
             victim, damage.MonsterId, damage.Damage);
     }
 

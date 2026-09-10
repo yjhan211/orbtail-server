@@ -137,6 +137,7 @@ internal static class Program
             sp.GetRequiredService<GameEventLogManager>(),
             sp.GetRequiredService<MatchResultService>(),
             sp.GetRequiredService<ILogger<PlayerEliminationService>>()));
+        services.AddSingleton<PlayerHealthService>();
         services.AddSingleton<MatchEnvironmentService>();
         services.AddSingleton<OrbUpgradeService>();
         services.AddSingleton<GrowthService>();

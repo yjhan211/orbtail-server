@@ -1,5 +1,4 @@
 using game_server.combat;
-using game_server.logging;
 using game_server.players;
 using game_server.matches;
 using Microsoft.Extensions.Logging;
@@ -15,7 +14,7 @@ namespace game_server.orbs;
 /// </summary>
 internal sealed class OrbRecoveryService(
     MatchRuntimeStore matchRuntimes,
-    GameEventLogManager eventLogs,
+    PlayerHealthService healthService,
     ILogger<OrbRecoveryService> logger)
 {
     public void Process(
@@ -73,10 +72,9 @@ internal sealed class OrbRecoveryService(
 
             var player = players.FirstOrDefault(candidate => candidate.PlayerId == playerId && !candidate.IsEliminated);
             if (player == null) continue;
-            var change = player.Recover(requestedRecovery);
+            var change = healthService.Recover(matchRuntimes.GetOrThrow(matchingId), player, requestedRecovery);
             int effectiveRecovery = change.Recovered;
             if (effectiveRecovery <= 0) continue;
-            PlayerHealthChangeService.Record(matchingId, player, change, eventLogs, logger);
 
             if (representative.WeaponItemId > 0)
             {

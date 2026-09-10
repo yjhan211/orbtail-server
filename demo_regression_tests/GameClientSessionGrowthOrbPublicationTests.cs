@@ -769,8 +769,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 static (_, _) => null,
 
                 EventLog,
-                TestGameSessionServices.CreateEliminationService(Store, EventLog, new MatchSummaryFileStore(_summaryDirectory),
-                    NullLogger.Instance),
                 growthEventLog == null ? Server.GetOrbUpgrades() : TestGameSessionServices.CreateOrbUpgradeService(Store, growthEventLog),
 
                 new FakeGameSessionLifecycle(),

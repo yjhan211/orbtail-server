@@ -671,9 +671,6 @@ public sealed class GameClientSessionConnectPublicationTests
                 static (_, _) => null,
 
                 TestGameEventLogs.Create(),
-                TestGameSessionServices.CreateEliminationService(Store, TestGameEventLogs.Create(),
-                    new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
-                    NullLogger.Instance),
                 TestGameSessionServices.CreateOrbUpgradeService(Store, TestGameEventLogs.Create()),
 
                 new FakeGameSessionLifecycle(),

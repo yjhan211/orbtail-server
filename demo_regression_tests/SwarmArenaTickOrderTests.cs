@@ -91,7 +91,7 @@ public sealed class SwarmArenaTickOrderTests
             matchingSettlement,
             "long matchingId = match.MatchingId;",
             "var players = match.GetAlivePlayers()",
-            "PlayerHealthChangeService.Record(matchingId, player, change, eventLogs, logger);",
+            "healthService.ApplyDamage(match, player, totalDelta, handleElimination: false);",
             "var eliminatedTargets = targets",
             "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
             "matchEliminations.EliminatePlayer(",
@@ -191,12 +191,13 @@ public sealed class SwarmArenaTickOrderTests
             root, "game_server", "Orbs", "OrbVisualStatePublisher.cs");
 
         string healthNotification = ReadBracedBlockAfterMarker(
-            ReadNormalizedSource(root, "game_server", "Players", "PlayerHealthChangeService.cs"),
-            "public void Handle(");
+            ReadNormalizedSource(root, "game_server", "Players", "PlayerHealthService.cs"),
+            "public void ApplyDamage(");
         AssertInOrder(
             healthNotification,
-            "if (!change.Changed) return;",
-            "Record(match.MatchingId, player, change, eventLogs, logger);",
+            "var change = player.ApplyDamage(damage);",
+            "eventLogs.LogResource(match.MatchingId,",
+            "player.Session?.SendHealth(change);",
             "eliminations.EliminatePlayer(");
 
         string applyProximityHit = ReadMethodSlice(
@@ -206,8 +207,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             applyProximityHit,
             "eventLogs.LogHit(",
-            "victim.ApplyDamage(damage);",
-            "eliminations.EliminatePlayer(runtime.MatchingId, victim.PlayerId, EliminationReason.HEALTH_ZERO, attackerPlayerId: sourcePlayerId);",
+            "healthService.ApplyDamage(runtime, victim, damage, sourcePlayerId);",
             "PacketMaker.G_TO_C_COMBAT_HIT(",
             "session.TrySend(packet);");
 

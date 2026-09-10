@@ -138,7 +138,7 @@ public class ProximityAutoCombatDataTests
         string playerSource = ReadNormalizedSource(
             repoRoot, "client", "Assets", "Scripts", "Components", "Player", "Player.cs");
 
-        Assert.Contains("ApplyProximityAutoCombatHit(eliminations, target,", sessionSource);
+        Assert.Contains("ApplyProximityAutoCombatHit(healthService, target,", sessionSource);
         Assert.Contains("attack.WeaponItemId,", gameServerSource);
         Assert.Contains("WeaponItemId = weaponItemId", sessionSource);
         Assert.Contains("Damage = damage", sessionSource);
@@ -159,8 +159,7 @@ public class ProximityAutoCombatDataTests
         string source = ReadNormalizedSource(
             FindRepositoryRoot(), "game_server", "Orbs", "OrbRecoveryService.cs");
         Assert.Contains("IReadOnlyCollection<Player> players", source);
-        Assert.Contains("var change = player.Recover(requestedRecovery);", source);
-        Assert.Contains("PlayerHealthChangeService.Record(matchingId, player, change, eventLogs, logger);", source);
+        Assert.Contains("var change = healthService.Recover(matchRuntimes.GetOrThrow(matchingId), player, requestedRecovery);", source);
         Assert.DoesNotContain("eventLogs.RecordRecovery(", source);
         Assert.DoesNotContain("matchingBots", source);
     }

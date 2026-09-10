@@ -17,6 +17,11 @@ namespace demo_regression_tests;
 
 internal static class TestGameSessionServices
 {
+    public static PlayerHealthService CreateHealthService(MatchRuntimeStore store, GameEventLogManager logs,
+        MatchSummaryFileStore? summaries = null, Microsoft.Extensions.Logging.ILogger? logger = null) =>
+        new(logs, CreateEliminationService(store, logs, summaries ?? new MatchSummaryFileStore(), logger ?? NullLogger.Instance),
+            NullLogger<PlayerHealthService>.Instance);
+
     public static OrbUpgradeService CreateOrbUpgradeService(MatchRuntimeStore store, GameEventLogManager logs) =>
         new(store, logs, NullLogger<OrbUpgradeService>.Instance);
     internal static void StartGameplay(this MatchRuntime runtime)
@@ -43,7 +48,7 @@ internal static class TestGameSessionServices
         return new GameClientSession(
             new network.core.TcpConnection(), NullLogger.Instance, new InMemoryRedisOperations(),
             static _ => false, CreateMatchCleanupService(), static (_, _) => null,
-            logs, CreateEliminationService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance),
+            logs,
             CreateOrbUpgradeService(store, logs), new FakeGameSessionLifecycle(), static () => false,
             new FakeMatchEntryFailureHandler(),
             matchEntry: CreateEntryService(null, store, NullLogger.Instance),
@@ -56,7 +61,7 @@ internal static class TestGameSessionServices
     {
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         return (runtime, clock) => TestMatchTickServices.CreateLoop(runtime, store, NullLogger<MatchTickLoop>.Instance,
-            new GroundItemAutoPickupService(logs, NullLogger<GroundItemAutoPickupService>.Instance),
+            new GroundItemAutoPickupService(logs, CreateHealthService(store, logs), NullLogger<GroundItemAutoPickupService>.Instance),
             (matchingId, _) => processTick(store.GetOrThrow(matchingId)),
             (_, _) => { }, _ => { }, (_, _) => { }, clock);
     }

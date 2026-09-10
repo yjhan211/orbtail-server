@@ -50,6 +50,47 @@ public sealed class GameClientSessionPublicationTests
         GameDataHelper.Initialize();
     }
 
+    [Fact]
+    public void HealthNotificationFailureDoesNotLoseRecoveryRecord()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, (AreaType)50);
+        fixture.SetHealth(session, Config.MAX_HEALTH - 10);
+        fixture.ConnectionFor(session).ThrowOnceOn = Protocol.G_TO_C_PLAYER_STATS_UPDATE;
+        var health = TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog);
+
+        using (session.Match.Enter())
+        {
+            var change = health.Recover(session.Match, session.Player, 10);
+            Assert.Equal(10, change.Recovered);
+            Assert.Equal(Config.MAX_HEALTH, session.Player.Health);
+            Assert.Equal(10, fixture.EventLog.GetResultStats(70001, 101).TotalRecovery);
+        }
+    }
+
+    [Fact]
+    public void HealthNotificationFailureDoesNotPreventLethalDamageSettlement()
+    {
+        using var fixture = new SessionFixture();
+        var victim = fixture.CreateSession(70001, 101, (AreaType)50);
+        fixture.CreateSession(70001, 102, (AreaType)50);
+        fixture.CreateSession(70001, 103, (AreaType)50);
+        fixture.SetHealth(victim, 5);
+        fixture.ConnectionFor(victim).ThrowOnceOn = Protocol.G_TO_C_PLAYER_STATS_UPDATE;
+        var health = TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog);
+
+        using (victim.Match.Enter())
+        {
+            health.ApplyDamage(victim.Match, victim.Player, 5, attackerId: 102);
+            Assert.Equal(0, victim.Player.Health);
+            Assert.True(victim.Player.IsEliminated);
+            Assert.Equal(102, victim.Player.AttackerPlayerId);
+            Assert.False(victim.Match.IsEnded);
+            health.Recover(victim.Match, victim.Player, 10);
+            Assert.Equal(0, victim.Player.Health);
+        }
+    }
+
     [Theory]
     [InlineData(Config.SUMMON_STONE_GROUND_ITEM_ID)]
     [InlineData(Config.BOOTS_GROUND_ITEM_ID)]
@@ -65,7 +106,7 @@ public sealed class GameClientSessionPublicationTests
         player.CurrentArea = session.Player.CurrentArea;
         match.RegisterParticipant(player);
         match.Bots.GetBots(match.MatchingId).Add(bot);
-        var pickup = new GroundItemAutoPickupService(fixture.EventLog, NullLogger<GroundItemAutoPickupService>.Instance);
+        var pickup = new GroundItemAutoPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<GroundItemAutoPickupService>.Instance);
         using (match.Enter())
         {
             player.DetachSession(session);
@@ -127,7 +168,7 @@ public sealed class GameClientSessionPublicationTests
     [Theory]
     [InlineData(20)]
     [InlineData(3)]
-    public void HealthNotificationPublishesResultWithoutApplyingRecoveryAgain(int missingHealth)
+    public void HealthServiceAppliesRecoveryOnceAndPublishesResult(int missingHealth)
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
@@ -135,10 +176,9 @@ public sealed class GameClientSessionPublicationTests
         int expectedHealth = Config.MAX_HEALTH - missingHealth + Math.Min(10, missingHealth);
         using (session.Match.Enter())
         {
-            var change = session.Player.Recover(10);
+            var change = TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog).Recover(session.Match, session.Player, 10);
             Assert.Equal(expectedHealth, session.Player.Health);
             Assert.Equal(Math.Min(10, missingHealth), change.Recovered);
-            session.HealthChanges.Handle(session.Match, session.Player, change);
         }
         Assert.Equal(expectedHealth, session.Player.Health);
         var packet = fixture.ConnectionFor(session)
@@ -201,7 +241,7 @@ public sealed class GameClientSessionPublicationTests
         using (session.Match.Enter())
         {
             var combat = session.Match.CombatDamage;
-            combat.ApplyProximityAutoCombatHit(TestGameSessionServices.CreateEliminationService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), session.Player, 101, (AreaType)50, 123, 5, isPeriodicDamage: true, sourceHealth: 73);
+            combat.ApplyProximityAutoCombatHit(TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), session.Player, 101, (AreaType)50, 123, 5, isPeriodicDamage: true, sourceHealth: 73);
         }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(101, hit.AttackerId);
@@ -225,8 +265,8 @@ public sealed class GameClientSessionPublicationTests
         int before = bot.Player.Health;
         using (match.Enter())
         {
-            match.CombatDamage.ApplyProximityAutoCombatHit(TestGameSessionServices.CreateEliminationService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), session.Player, 101, (AreaType)50, 123, 5);
-            match.CombatDamage.ApplyProximityAutoCombatHit(TestGameSessionServices.CreateEliminationService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), bot.Player, 101, (AreaType)50, 123, 5);
+            match.CombatDamage.ApplyProximityAutoCombatHit(TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), session.Player, 101, (AreaType)50, 123, 5);
+            match.CombatDamage.ApplyProximityAutoCombatHit(TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), bot.Player, 101, (AreaType)50, 123, 5);
         }
         Assert.Equal(before - 5, bot.Player.Health);
         Assert.Equal(session.Player.Health, bot.Player.Health);
@@ -252,8 +292,8 @@ public sealed class GameClientSessionPublicationTests
         using (match.Enter())
         {
             if (match.GetParticipant(bot.PlayerId) == null) match.RegisterParticipant(bot.Player);
-            match.CombatDamage.ApplySwarmAfterimageMonsterHit(TestGameSessionServices.CreateEliminationService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), session.Player, 42, 5);
-            match.CombatDamage.ApplySwarmAfterimageMonsterHit(TestGameSessionServices.CreateEliminationService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), bot.Player, 42, 5);
+            match.CombatDamage.ApplySwarmAfterimageMonsterHit(TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), session.Player, 42, 5);
+            match.CombatDamage.ApplySwarmAfterimageMonsterHit(TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), bot.Player, 42, 5);
         }
         Assert.Equal(before - 5, bot.Player.Health);
         Assert.Equal(session.Player.Health, bot.Player.Health);
@@ -270,7 +310,7 @@ public sealed class GameClientSessionPublicationTests
         using (match.Enter())
         {
             if (match.GetParticipant(bot.PlayerId) == null) match.RegisterParticipant(bot.Player);
-            match.CombatDamage.ApplySwarmAfterimageMonsterHit(TestGameSessionServices.CreateEliminationService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), bot.Player, 42, Config.MAX_HEALTH);
+            match.CombatDamage.ApplySwarmAfterimageMonsterHit(TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), bot.Player, 42, Config.MAX_HEALTH);
             Assert.Equal(0, bot.Player.Health);
             Assert.True(bot.Player.IsEliminated);
         }
@@ -300,7 +340,7 @@ public sealed class GameClientSessionPublicationTests
         using (session.Match.Enter())
         {
             var combat = session.Match.CombatDamage;
-            combat.ApplySwarmAfterimageMonsterHit(TestGameSessionServices.CreateEliminationService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), session.Player, 42, 1);
+            combat.ApplySwarmAfterimageMonsterHit(TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), session.Player, 42, 1);
         }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(CombatEntityKind.Monster, hit.AttackerKind);
@@ -332,7 +372,7 @@ public sealed class GameClientSessionPublicationTests
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
         fixture.SetHealth(session, Config.MAX_HEALTH - 3);
         var recoveryService = new OrbRecoveryService(
-            fixture.Store, fixture.EventLog, NullLogger<OrbRecoveryService>.Instance);
+            fixture.Store, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<OrbRecoveryService>.Instance);
         var actor = new ProximityCombatActor(101, (AreaType)50, new Vector3f(0, 0, 0),
             107000040, 0, 0, 0, WeaponItemUid: 1);
         var now = DateTime.UtcNow;
@@ -371,8 +411,8 @@ public sealed class GameClientSessionPublicationTests
         using (session.Match.Enter())
         {
             Assert.True(session.Player.TryStartSleep(now));
-            MatchCombatService.ProcessSleepRecovery(session.MatchingId, [session.Player], now, fixture.EventLog, NullLogger.Instance);
-            MatchCombatService.ProcessSleepRecovery(session.MatchingId, [session.Player], now.AddSeconds(1), fixture.EventLog, NullLogger.Instance);
+            MatchCombatService.ProcessSleepRecovery(session.Match, [session.Player], now, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog));
+            MatchCombatService.ProcessSleepRecovery(session.Match, [session.Player], now.AddSeconds(1), TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog));
         }
         var packet = fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_HEALTH_RECOVERY>(Protocol.G_TO_C_HEALTH_RECOVERY);
@@ -620,7 +660,7 @@ public sealed class GameClientSessionPublicationTests
         GroundItemInfo item = fixture.SpawnAtSession(session, itemId);
         int stonesBefore = fixture.Store.GetOrThrow(70001).SummonStones.GetSnapshot(101).StoneCount;
 
-        await RunPickupTickAsync(session, fixture.EventLog);
+        await RunPickupTickAsync(session, fixture.Store, fixture.EventLog);
 
         IReadOnlyList<Protocol> protocols = fixture.ConnectionFor(session).DeliveredProtocols;
         if (expectedPrefix.HasValue)
@@ -645,7 +685,7 @@ public sealed class GameClientSessionPublicationTests
         fixture.SetHealth(session, 20);
         GroundItemInfo item = fixture.SpawnAtSession(session, Config.HEART_GROUND_ITEM_ID);
 
-        await RunPickupTickAsync(session, fixture.EventLog);
+        await RunPickupTickAsync(session, fixture.Store, fixture.EventLog);
 
         Assert.Equal(
             [
@@ -667,9 +707,9 @@ public sealed class GameClientSessionPublicationTests
         RecordingSession session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
         GroundItemInfo item = fixture.SpawnAtSession(session, itemId);
 
-        await RunPickupTickAsync(session, fixture.EventLog);
+        await RunPickupTickAsync(session, fixture.Store, fixture.EventLog);
 
-        await RunPickupTickAsync(session, fixture.EventLog);
+        await RunPickupTickAsync(session, fixture.Store, fixture.EventLog);
         Assert.Empty(fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.NotNull(fixture.Store.GetOrThrow(70001).GroundItems.GetItem(item.GroundItemUid));
         Assert.DoesNotContain(fixture.Store.GetOrThrow(70001).Inventory.GetAllItems(101),
@@ -808,7 +848,7 @@ public sealed class GameClientSessionPublicationTests
             Assert.True(releaseDispatch.Wait(TimeSpan.FromSeconds(5)));
         };
 
-        Task message = Task.Run(() => RunPickupTickAsync(session, fixture.EventLog));
+        Task message = Task.Run(() => RunPickupTickAsync(session, fixture.Store, fixture.EventLog));
         Assert.True(enteredDispatch.Wait(TimeSpan.FromSeconds(5)));
 
         // 핸들러가 잠금을 쥔 채 송신 중이면 종료는 번들 전체가 끝날 때까지 기다린다.
@@ -847,7 +887,7 @@ public sealed class GameClientSessionPublicationTests
         RecordingTcpConnection connection = fixture.ConnectionFor(session);
         connection.ThrowOnceOn = Protocol.G_TO_C_GROUND_ITEM_REMOVED;
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => RunPickupTickAsync(session, fixture.EventLog));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => RunPickupTickAsync(session, fixture.Store, fixture.EventLog));
 
         Assert.Equal(1, session.Match.SummonStones.GetSnapshot(session.PlayerId!.Value).StoneCount);
         Assert.Null(fixture.Store.GetOrThrow(70001).GroundItems.GetItem(item.GroundItemUid));
@@ -870,7 +910,7 @@ public sealed class GameClientSessionPublicationTests
         GroundItemInfo item = fixture.SpawnAtSession(session, Config.HEART_GROUND_ITEM_ID);
         fixture.ConnectionFor(session).ThrowOnceOn = Protocol.G_TO_C_GROUND_ITEM_REMOVED;
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => RunPickupTickAsync(session, fixture.EventLog));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => RunPickupTickAsync(session, fixture.Store, fixture.EventLog));
 
         Assert.Equal(
             [Protocol.G_TO_C_PLAYER_STATS_UPDATE],
@@ -898,10 +938,10 @@ public sealed class GameClientSessionPublicationTests
             Assert.True(release.Wait(TimeSpan.FromSeconds(5)));
         };
 
-        Task firstTask = Task.Run(() => RunPickupTickAsync(first, fixture.EventLog));
+        Task firstTask = Task.Run(() => RunPickupTickAsync(first, fixture.Store, fixture.EventLog));
         Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
 
-        Task secondTask = RunPickupTickAsync(second, fixture.EventLog);
+        Task secondTask = RunPickupTickAsync(second, fixture.Store, fixture.EventLog);
         await secondTask.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(1, second.Match.SummonStones.GetSnapshot(second.PlayerId!.Value).StoneCount);
         Assert.False(firstTask.IsCompleted);
@@ -1211,7 +1251,7 @@ public sealed class GameClientSessionPublicationTests
         using (match.Enter())
         {
             player.DetachSession(session);
-            new GroundItemAutoPickupService(fixture.EventLog, NullLogger<GroundItemAutoPickupService>.Instance)
+            new GroundItemAutoPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<GroundItemAutoPickupService>.Instance)
                 .Process(match, player);
         }
         Assert.Equal(1, match.SummonStones.GetSnapshot(player.PlayerId).StoneCount);
@@ -1239,7 +1279,7 @@ public sealed class GameClientSessionPublicationTests
         registry.Register(101, current);
         TestGameSessionServices.SetMovementProperty(current, "Position", new Vector3f(item.PositionX + 20, item.PositionY, 0));
         using (match.Enter())
-            new GroundItemAutoPickupService(fixture.EventLog, NullLogger<GroundItemAutoPickupService>.Instance)
+            new GroundItemAutoPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<GroundItemAutoPickupService>.Instance)
                 .Process(match, new[] { current.Player });
 
         Assert.Equal(0, current.Match.SummonStones.GetSnapshot(current.PlayerId!.Value).StoneCount);
@@ -1307,17 +1347,17 @@ public sealed class GameClientSessionPublicationTests
     private static MatchTickLoop CreatePickupTickLoop(SessionFixture fixture, MatchRuntime runtime)
     {
         var loop = TestMatchTickServices.CreateLoop(runtime, fixture.Store, NullLogger.Instance,
-            new GroundItemAutoPickupService(fixture.EventLog, NullLogger<GroundItemAutoPickupService>.Instance),
+            new GroundItemAutoPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<GroundItemAutoPickupService>.Instance),
             static (_, _) => { },
             static (_, _) => { }, static _ => { }, static (_, _) => { });
         fixture.TickLoops.Add(loop);
         return loop;
     }
 
-    private static Task RunPickupTickAsync(GameClientSession session, GameEventLogManager eventLogs)
+    private static Task RunPickupTickAsync(GameClientSession session, MatchRuntimeStore store, GameEventLogManager eventLogs)
     {
         using (session.Match.Enter())
-            new GroundItemAutoPickupService(eventLogs, NullLogger<GroundItemAutoPickupService>.Instance).Process(session.Match, session.Player);
+            new GroundItemAutoPickupService(eventLogs, TestGameSessionServices.CreateHealthService(store, eventLogs), NullLogger<GroundItemAutoPickupService>.Instance).Process(session.Match, session.Player);
         return Task.CompletedTask;
     }
 
@@ -1469,7 +1509,6 @@ public sealed class GameClientSessionPublicationTests
                 static (_, _) => null,
 
                 eventLog,
-                TestGameSessionServices.CreateEliminationService(matchRuntimes, eventLog, summaries, NullLogger.Instance),
                 TestGameSessionServices.CreateOrbUpgradeService(matchRuntimes, eventLog),
                 new FakeGameSessionLifecycle(),
                 static () => false,

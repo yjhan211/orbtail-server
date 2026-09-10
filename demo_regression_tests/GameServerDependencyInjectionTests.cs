@@ -126,7 +126,6 @@ public sealed class GameServerDependencyInjectionTests
         [
             typeof(game_server.matches.MatchRuntimeStore),
             typeof(game_server.logging.GameEventLogManager),
-            typeof(game_server.players.PlayerEliminationService),
             typeof(game_server.matches.entry.GameMatchEntryService),
             typeof(game_server.players.MovementValidationService),
             typeof(game_server.matches.entry.MatchEntryFailureHandler),
@@ -139,6 +138,27 @@ public sealed class GameServerDependencyInjectionTests
             Assert.Same(provider.GetRequiredService(type), field.GetValue(server));
         }
     }
+    [Fact]
+    public void HealthServiceIsSharedWithoutOwningPlayerOrMatchState()
+    {
+        using var provider = CreateProvider();
+        var health = provider.GetRequiredService<PlayerHealthService>();
+        Assert.Same(health, provider.GetRequiredService<PlayerHealthService>());
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        foreach (var type in new[] { typeof(MatchCombatService), typeof(game_server.orbs.OrbRecoveryService),
+                     typeof(game_server.field.MatchEnvironmentService), typeof(game_server.items.GroundItemAutoPickupService) })
+        {
+            var service = provider.GetRequiredService(type);
+            var field = type.GetFields(flags).Single(field => field.FieldType == typeof(PlayerHealthService));
+            Assert.Same(health, field.GetValue(service));
+        }
+        Assert.DoesNotContain(typeof(PlayerHealthService).GetFields(flags),
+            field => field.FieldType == typeof(Player) || field.FieldType == typeof(MatchRuntime));
+        Assert.DoesNotContain(typeof(GameClientSession).GetConstructors(flags | BindingFlags.Public)
+                .SelectMany(constructor => constructor.GetParameters()),
+            parameter => parameter.ParameterType == typeof(PlayerHealthService) || parameter.ParameterType == typeof(PlayerEliminationService));
+    }
+
     [Fact]
     public void MatchResultServiceDoesNotOwnAConnectionOrDependOnGameServer()
     {

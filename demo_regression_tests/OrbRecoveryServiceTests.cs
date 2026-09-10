@@ -27,7 +27,7 @@ public sealed class OrbRecoveryServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947301);
         var service = new OrbRecoveryService(store,
-            new GameEventLogManager(id => store.GetOrNull(id)?.EventLog), NullLogger<OrbRecoveryService>.Instance);
+            TestGameSessionServices.CreateHealthService(store, store.EventLogs), NullLogger<OrbRecoveryService>.Instance);
         var bot = new BotPlayerState { PlayerId = 11, Player = { Health = Config.MAX_HEALTH - 12 } };
         var first = new ProximityCombatActor(11, AreaType.None, new Vector3f(0, 0, 0),
             107000040, 0, 0, 0, WeaponItemUid: 1);
@@ -54,7 +54,7 @@ public sealed class OrbRecoveryServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948021);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = new OrbRecoveryService(store, logs, NullLogger<OrbRecoveryService>.Instance);
+        var service = new OrbRecoveryService(store, TestGameSessionServices.CreateHealthService(store, logs), NullLogger<OrbRecoveryService>.Instance);
         var player = new Player { Profile = new PlayerInfo { PlayerId = playerId }, Health = Config.MAX_HEALTH - 1 };
         var actor = new ProximityCombatActor(playerId, AreaType.None, new Vector3f(),
             107000040, 0, 0, 0, WeaponItemUid: 1);
@@ -81,7 +81,7 @@ public sealed class OrbRecoveryServiceTests
         var firstMatch = store.GetOrCreate(947302);
         var secondMatch = store.GetOrCreate(947303);
         var service = new OrbRecoveryService(store,
-            new GameEventLogManager(id => store.GetOrNull(id)?.EventLog), NullLogger<OrbRecoveryService>.Instance);
+            TestGameSessionServices.CreateHealthService(store, store.EventLogs), NullLogger<OrbRecoveryService>.Instance);
         var actor = new ProximityCombatActor(11, AreaType.None, new Vector3f(0, 0, 0),
             107000040, 0, 0, 0, WeaponItemUid: 1);
         var now = DateTime.UtcNow;

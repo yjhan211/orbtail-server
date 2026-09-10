@@ -15,6 +15,7 @@ namespace game_server.field;
 /// </summary>
 internal class MatchEnvironmentService(
     GameEventLogManager eventLogs,
+    PlayerHealthService healthService,
     MatchCleanupService matchCleanup,
     PlayerEliminationService matchEliminations,
     MatchResultService matchResults,
@@ -63,8 +64,7 @@ internal class MatchEnvironmentService(
                 continue;
 
             var player = target.Player;
-            var change = player.ApplyDamage(totalDelta);
-            PlayerHealthChangeService.Record(matchingId, player, change, eventLogs, logger);
+            healthService.ApplyDamage(match, player, totalDelta, handleElimination: false);
         }
         var eliminatedTargets = targets
             .Where(target => target.FieldDamage > 0 && target.PreDamageHealth - target.FieldDamage <= 0)

@@ -49,14 +49,34 @@ public sealed class PlayerServiceStateTests
         }
     }
     [Fact]
+    public void SettlementDamageDefersEliminationAndRequiresMatchLock()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(948012);
+        var health = TestGameSessionServices.CreateHealthService(store, store.EventLogs);
+        var player = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 5 };
+        Assert.Throws<InvalidOperationException>(() => health.ApplyDamage(match, player, 5, handleElimination: false));
+        Assert.Equal(5, player.Health);
+
+        using (match.Enter())
+        {
+            match.RegisterParticipant(player);
+            health.ApplyDamage(match, player, 5, handleElimination: false);
+            Assert.Equal(0, player.Health);
+            Assert.False(player.IsEliminated);
+            Assert.False(match.IsEnded);
+        }
+    }
+
+    [Fact]
     public void HealthChange_RecordsRecoveryWithoutConnection_AndKeepsPlayersSeparate()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948010);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = new PlayerHealthChangeService(logs,
+        var service = new PlayerHealthService(logs,
             TestGameSessionServices.CreateEliminationService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance),
-            NullLogger.Instance);
+            NullLogger<PlayerHealthService>.Instance);
         var player = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 50 };
         var other = new Player { Profile = new PlayerInfo { PlayerId = 2 }, Health = 40 };
         match.RegisterParticipant(player);
@@ -64,8 +84,8 @@ public sealed class PlayerServiceStateTests
 
         using (match.Enter())
         {
-            service.Handle(match, player, player.Recover(10));
-            service.Handle(match, other, other.ApplyDamage(5));
+            service.Recover(match, player, 10);
+            service.ApplyDamage(match, other, 5);
 
             Assert.Null(player.Session);
             Assert.Null(other.Session);

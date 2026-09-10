@@ -20,7 +20,7 @@ namespace game_server.orbs;
 /// </summary>
 internal sealed class WindOrbAttackService(
     MatchRuntimeStore matchRuntimes,
-    PlayerEliminationService playerEliminations,
+    PlayerHealthService healthService,
     OrbTrailService orbTrails,
     GameEventLogManager eventLogs)
 {
@@ -136,7 +136,7 @@ internal sealed class WindOrbAttackService(
 
                         shocks++;
                         // 충격 먼저, 상처는 그다음 — 상처를 낸 그 틱이 자기 충격에 치명타를 걸지 않게.
-                        matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(playerEliminations, owner.PlayerId, item.ItemId, owner.CurrentArea, participant.PlayerId,
+                        matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(healthService, owner.PlayerId, item.ItemId, owner.CurrentArea, participant.PlayerId,
                             $"WIND_BLADE_HIT ordinal={ordinal}", players);
                         if (matchRuntimes.GetOrThrow(matchingId).IsEnded) return;
                         ApplyWindOrbWound(

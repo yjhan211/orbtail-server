@@ -42,7 +42,7 @@ internal static class TestMatchTickServices
             _runtime = runtime;
 
             _loop = CreateLoop(runtime, store, NullLogger.Instance,
-                new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
+                new GroundItemAutoPickupService(store.EventLogs, TestGameSessionServices.CreateHealthService(store, store.EventLogs), NullLogger<GroundItemAutoPickupService>.Instance),
                 (_, _) => { },
                 (match, _) =>
                 {
@@ -124,7 +124,7 @@ internal static class TestMatchTickServices
     }
 
     private sealed class Environment(Action<MatchRuntime, List<GameClientSession>> run)
-        : MatchEnvironmentService(null!, null!, null!, null!, NullLogger<MatchEnvironmentService>.Instance)
+        : MatchEnvironmentService(null!, null!, null!, null!, null!, NullLogger<MatchEnvironmentService>.Instance)
     {
         public override void ProcessTick(MatchRuntime runtime) => run(runtime, runtime.GetSessions());
     }

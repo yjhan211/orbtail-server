@@ -62,7 +62,6 @@ public partial class GameClientSession : SessionBase
         MatchCleanupService matchCleanup,
         Func<long, GameClientSession, GameClientSession?> registerSessionCallback,
         GameEventLogManager gameEventLogManager,
-        PlayerEliminationService matchEliminations,
         OrbUpgradeService orbUpgrades,
         IMatchSessionCleanup matchSessionCleanup,
         Func<bool> isServerStopping,
@@ -78,7 +77,6 @@ public partial class GameClientSession : SessionBase
         _registerSessionCallback = registerSessionCallback;
 
         _gameEventLogManager = gameEventLogManager;
-        HealthChanges = new PlayerHealthChangeService(gameEventLogManager, matchEliminations, logger);
         _orbUpgrades = orbUpgrades;
 
         _matchEntry = matchEntry;
@@ -97,7 +95,6 @@ public partial class GameClientSession : SessionBase
     public long MatchingId { get; private set; }
 
     internal MatchRuntime Match => Volatile.Read(ref _match) ?? throw new InvalidOperationException("Session has not entered a match.");
-    internal PlayerHealthChangeService HealthChanges { get; }
 
     internal bool IsGameEnded => Volatile.Read(ref _isGameEnded);
     internal bool IsConnectionReleased => Connection.IsReleased;

@@ -148,7 +148,7 @@ public sealed class MatchEnvironmentServiceTests
         var eliminations = TestGameSessionServices.CreateEliminationService(
             store, logs, new MatchSummaryFileStore(), NullLogger.Instance);
         var results = new MatchResultService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance);
-        return new MatchEnvironmentService(logs,
+        return new MatchEnvironmentService(logs, TestGameSessionServices.CreateHealthService(store, logs),
             new MatchCleanupService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance),
             eliminations, results,
             NullLogger<MatchEnvironmentService>.Instance);

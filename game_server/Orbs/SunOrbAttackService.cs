@@ -21,7 +21,7 @@ namespace game_server.orbs;
 /// </summary>
 internal sealed class SunOrbAttackService(
     MatchRuntimeStore matchRuntimes,
-    PlayerEliminationService playerEliminations,
+    PlayerHealthService healthService,
     GameEventLogManager eventLogs)
 {
     private static readonly bool SwarmCrossfireEnabled = true;
@@ -313,7 +313,7 @@ internal sealed class SunOrbAttackService(
                     continue;
 
                 shape.HitVictims.Add(participant.PlayerId);
-                matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(playerEliminations,
+                matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(healthService,
                     shape.OwnerId, shape.WeaponItemId, shape.Area, participant.PlayerId,
                     $"ORB_CROSSFIRE_HIT event={shape.EventId} shape=pierce anchor={shape.AnchorMonsterId}",
                     players);
@@ -552,7 +552,7 @@ internal sealed class SunOrbAttackService(
             nowUtc,
             Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS,
             (victimId, burn) =>
-                matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(playerEliminations, burn.OwnerId, burn.WeaponItemId, burn.Area,
+                matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(healthService, burn.OwnerId, burn.WeaponItemId, burn.Area,
                     victimId, "SUN_BURN_TICK", players,
                     Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER, isPeriodicDamage: true));
     }

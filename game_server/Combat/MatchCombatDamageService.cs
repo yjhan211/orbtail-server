@@ -41,7 +41,7 @@ internal sealed class MatchCombatDamageService(
     public void SchedulePvpHit(ProximityCombatAttack attack, DateTime dueAtUtc) =>
         _pendingPvpHits.Add((attack, dueAtUtc));
 
-    public void ProcessPendingPvpHits(PlayerEliminationService eliminations, DateTime nowUtc, IReadOnlyList<Player> players, List<GameClientSession> sessions)
+    public void ProcessPendingPvpHits(PlayerHealthService healthService, DateTime nowUtc, IReadOnlyList<Player> players, List<GameClientSession> sessions)
     {
         for (int index = _pendingPvpHits.Count - 1; index >= 0; index--)
         {
@@ -49,7 +49,7 @@ internal sealed class MatchCombatDamageService(
             if (nowUtc < pending.DueAtUtc)
                 continue;
             _pendingPvpHits.RemoveAt(index);
-            ApplySwarmPvpAttack(eliminations, pending.Attack, players, sessions, broadcastVfx: false);
+            ApplySwarmPvpAttack(healthService, pending.Attack, players, sessions, broadcastVfx: false);
             if (runtime.IsEnded)
                 return;
         }
@@ -103,7 +103,7 @@ internal sealed class MatchCombatDamageService(
     }
 
     /// <summary>일반 피격의 로그·체력 변경·결과 전송을 매치 잠금 안에서 처리한다.</summary>
-    public void ApplyProximityAutoCombatHit(PlayerEliminationService eliminations,
+    public void ApplyProximityAutoCombatHit(PlayerHealthService healthService,
         Player victim, long sourcePlayerId, AreaType area, int weaponItemId,
         int damage, bool isPeriodicDamage = false, int sourceHealth = -1)
     {
@@ -114,11 +114,8 @@ internal sealed class MatchCombatDamageService(
             victim.Health > 0 && victim.Health - damage <= 0,
             BotPlayerManager.IsBotPlayerId(sourcePlayerId), DateTimeOffset.UtcNow);
 
-        var change = victim.ApplyDamage(damage);
         var session = victim.Session;
-        PlayerHealthChangeService.Record(runtime.MatchingId, victim, change, eventLogs, logger);
-        if (change.IsDepleted)
-            eliminations.EliminatePlayer(runtime.MatchingId, victim.PlayerId, EliminationReason.HEALTH_ZERO, attackerPlayerId: sourcePlayerId);
+        healthService.ApplyDamage(runtime, victim, damage, sourcePlayerId);
 
         if (session == null) return;
         using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
@@ -155,7 +152,7 @@ internal sealed class MatchCombatDamageService(
     }
 
     /// <summary>몬스터 피해를 적용하고 같은 피해량을 클라이언트에 알린다.</summary>
-    public void ApplySwarmAfterimageMonsterHit(PlayerEliminationService eliminations, Player victim, int monsterId, int damage)
+    public void ApplySwarmAfterimageMonsterHit(PlayerHealthService healthService, Player victim, int monsterId, int damage)
     {
         if (runtime.IsEnded || victim.IsEliminated || monsterId <= 0 || damage <= 0) return;
 
@@ -186,11 +183,8 @@ internal sealed class MatchCombatDamageService(
             "Monster attack: MatchingId={MatchingId}, MonsterId={MonsterId}, Target={Target}, IsBot={IsBot}, Damage={Damage}, HealthBefore={HealthBefore}, HealthAfter={HealthAfter}, Killed={Killed}",
             runtime.MatchingId, monsterId, victim.PlayerId, isBot, damage, healthBefore, healthAfter, isLethal);
 
-        var change = victim.ApplyDamage(damage);
         var session = victim.Session;
-        PlayerHealthChangeService.Record(runtime.MatchingId, victim, change, eventLogs, logger);
-        if (change.IsDepleted)
-            eliminations.EliminatePlayer(runtime.MatchingId, victim.PlayerId, EliminationReason.HEALTH_ZERO);
+        healthService.ApplyDamage(runtime, victim, damage);
 
         if (session == null) return;
         using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
@@ -342,7 +336,7 @@ internal sealed class MatchCombatDamageService(
     ///     플레이어 충격 (고정값, 티어 무관): 사격 피격 경로를 재사용해 체력 감소·피격 숫자·탈락 흐름이 그대로
     ///     따라온다. 봇도 같은 값. 소유자 화면에는 사격 피드백을 보낸다. label은 로그용(어느 모양이 때렸나).
     /// </summary>
-    public void ApplySwarmShock(PlayerEliminationService eliminations,
+    public void ApplySwarmShock(PlayerHealthService healthService,
         long ownerId,
         int weaponItemId,
         AreaType area,
@@ -367,7 +361,7 @@ internal sealed class MatchCombatDamageService(
         var owner = runtime.GetParticipant(ownerId);
         int ownerHealth = owner?.Health ?? -1;
         int healthBefore = victim.Health;
-        ApplyProximityAutoCombatHit(eliminations, victim, ownerId, area, weaponItemId, shock, isPeriodicDamage, ownerHealth);
+        ApplyProximityAutoCombatHit(healthService, victim, ownerId, area, weaponItemId, shock, isPeriodicDamage, ownerHealth);
         int healthAfter = victim.Health;
 
         SendPlayerHitNotification(owner, victimId, area, weaponItemId, shock, healthAfter, isPeriodicDamage);
@@ -407,7 +401,7 @@ internal sealed class MatchCombatDamageService(
         }
     }
 
-    public int ApplySwarmPvpAttack(PlayerEliminationService eliminations,
+    public int ApplySwarmPvpAttack(PlayerHealthService healthService,
         ProximityCombatAttack attack,
         IReadOnlyList<Player> players,
         List<GameClientSession> allSessions,
@@ -440,7 +434,7 @@ internal sealed class MatchCombatDamageService(
         if (target == null || target.IsEliminated) return 0;
 
         if (healthDamage > 0)
-            ApplyProximityAutoCombatHit(eliminations, target, attack.AttackerPlayerId, attack.Area,
+            ApplyProximityAutoCombatHit(healthService, target, attack.AttackerPlayerId, attack.Area,
                 attack.WeaponItemId, healthDamage, sourceHealth: attackerHealth);
         else
             RecordCombatContact(target, attack.AttackerPlayerId);

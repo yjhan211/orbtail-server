@@ -16,6 +16,7 @@ namespace game_server.items;
 /// </summary>
 internal sealed class GroundItemAutoPickupService(
     GameEventLogManager eventLogs,
+    PlayerHealthService healthService,
     ILogger<GroundItemAutoPickupService> logger)
 {
     public static void RecordMovement(MatchRuntime match, Player player, Vector3f from, Vector3f to, AreaType nextArea)
@@ -129,7 +130,7 @@ internal sealed class GroundItemAutoPickupService(
             int effectiveHealthRecovery = Math.Min(pickup.HealthRecovery, Math.Max(0, Config.MAX_HEALTH - player.Health));
             int requestedRecovery = pickup.HealthRecovery;
             int effectiveRecovery = effectiveHealthRecovery;
-            PlayerHealthChangeService.Record(match.MatchingId, player, player.Recover(pickup.HealthRecovery), eventLogs, logger);
+            healthService.Recover(match, player, pickup.HealthRecovery);
             eventLogs.LogRecoveryUse(
                 match.MatchingId, player.PlayerId, claimedItem.ItemId,
                 effectiveRecovery, source: "ground_auto_use", isBot: player.PlayerId < 0);

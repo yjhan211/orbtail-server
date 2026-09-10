@@ -66,28 +66,29 @@ internal static class GameServerTestAccess
         var cleanup = new MatchCleanupService(runtimes, logs, summaries, logger);
         var matchEliminations = TestGameSessionServices.CreateEliminationService(
             runtimes, logs, summaries, logger);
+        var health = TestGameSessionServices.CreateHealthService(runtimes, logs, summaries, logger);
         var results = new MatchResultService(runtimes, logs, summaries, logger);
         var growth = new GrowthService(runtimes, logs, orbUpgrades);
         var movement = new BotMovementService( logs,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotMovementService>.Instance);
         var decisions = new BotDecisionService(runtimes, logs, growth, orbTrails,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotDecisionService>.Instance);
-        var environment = new MatchEnvironmentService(logs,
+        var environment = new MatchEnvironmentService(logs, health,
             cleanup, matchEliminations, results,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchEnvironmentService>.Instance);
-        var groundPickup = new GroundItemAutoPickupService(logs,
+        var groundPickup = new GroundItemAutoPickupService(logs, health,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<GroundItemAutoPickupService>.Instance);
         Func<MatchRuntime, TimeProvider, MatchTickLoop> createLoop = (runtime, clock) =>
         {
         var field = new MatchZoneService(runtimes, logs, orbTrails,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchZoneService>.Instance);
         var combat = new MatchCombatService(runtimes, logs, cleanup,
-            matchEliminations, results, growth,
-            new OrbRecoveryService(runtimes, logs,
+            health, results, growth,
+            new OrbRecoveryService(runtimes, health,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbRecoveryService>.Instance),
             new OrbVisualStatePublisher(runtimes), orbTrails,
-            new WindOrbAttackService(runtimes, TestGameSessionServices.CreateEliminationService(runtimes, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), orbTrails, logs),
-            new SunOrbAttackService(runtimes, TestGameSessionServices.CreateEliminationService(runtimes, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), logs), field, decisions,
+            new WindOrbAttackService(runtimes, TestGameSessionServices.CreateHealthService(runtimes, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), orbTrails, logs),
+            new SunOrbAttackService(runtimes, TestGameSessionServices.CreateHealthService(runtimes, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), logs), field, decisions,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatService>.Instance);
 
             return new MatchTickLoop(runtime, runtimes, logger, groundPickup,
@@ -106,7 +107,7 @@ internal static class GameServerTestAccess
                 NodeId = "game-server-test",
                 PublicHost = "127.0.0.1"
             },
-            sessions: sessions, matchRuntimes: runtimes, eventLogs: logs, matchEliminations: matchEliminations,
+            sessions: sessions, matchRuntimes: runtimes, eventLogs: logs,
             matchEntry: TestGameSessionServices.CreateEntryService(new InMemoryRedisOperations(), runtimes, logger),
             movementValidation: new MovementValidationService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MovementValidationService>.Instance),
             orbInventory: new OrbInventoryService(logs),
