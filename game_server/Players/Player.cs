@@ -76,6 +76,8 @@ public class Player
     public DateTime SleepStartedAtUtc { get; set; } = DateTime.MinValue;
     public DateTime LastCombatAtUtc { get; set; } = DateTime.MinValue;
     public DateTime HealLockUntilUtc { get; set; } = DateTime.MinValue;
+    /// <summary>파도 오브 감속이 끝나는 시각.</summary>
+    public DateTime WaveSlowUntilUtc { get; set; }
 
 
     // 다른 매치 잠금을 잡지 않고 이전 연결만 해제한다. 새 연결은 지우지 않는다.

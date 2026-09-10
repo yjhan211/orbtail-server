@@ -166,7 +166,7 @@ internal class MatchCombatService(
             ProcessSwarmRetaliationWindows(matchingId, nowUtc, participants);
         }
 
-        ProcessWaveOrbAttacks(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+        ProcessWaveOrbAttacks(matchingId, nowUtc, players, sessions);
         if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
             return;
 
@@ -1097,12 +1097,10 @@ internal class MatchCombatService(
 
     // 오브별 독립 시계("다같이 터지는 게 어색"). 파도 폭탄 상태(위상·대기열)는 matchRuntimes.GetOrThrow(matchingId).TrailCombat.
 
-    private void ProcessWaveOrbAttacks(
+    internal void ProcessWaveOrbAttacks(
         long matchingId,
         DateTime nowUtc,
-        List<SwarmParticipantSpatial> participants,
-        List<GameClientSession> aliveSessions,
-        List<BotPlayerState> aliveBots,
+        IReadOnlyList<Player> players,
         List<GameClientSession> allSessions)
     {
         // 1) 기폭: 예약된 소용돌이 정산.
@@ -1114,14 +1112,16 @@ internal class MatchCombatService(
             matchRuntimes.GetOrThrow(matchingId).TrailCombat.PendingWaveOrbAttacks.RemoveAt(index);
             DetonateWaveOrbVortex(matchingId, vortex.OwnerId, vortex.Area, vortex.Position,
                 vortex.Damage, vortex.Radius, vortex.SourceItemId, nowUtc,
-                participants, aliveSessions, aliveBots, allSessions);
+                players, allSessions);
+            if (IsMatchTerminal(matchingId)) return;
         }
 
         // 2) 생성: 파도 오브 각각이 자기 시계(2초)로 자기 열 위치에 소용돌이를 깐다.
         // 오브 uid 기반 위상으로 첫 발동이 흩어져 일제사가 되지 않는다. 비무장은 쉰다.
         IReadOnlyList<SwarmArenaCombatTarget>? vortexTargets = null;
-        foreach (var owner in participants)
+        foreach (var owner in players)
         {
+            if (owner.IsEliminated || owner.Position == null) continue;
             var trailOrbs = GetSwarmTrailOrbs(matchingId, owner.PlayerId);
             if (trailOrbs.Count == 0)
                 continue;
@@ -1158,12 +1158,12 @@ internal class MatchCombatService(
                 // 대기 — 표적이 들어오는 순간 바로 발동한다.
                 tiers ??= orbTrails.GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
                 var orbPosition = orbTrails.GetSwarmOrbTrailPosition(
-                    matchingId, owner.PlayerId, ordinal, owner.Position, tiers);
+                    matchingId, owner.PlayerId, ordinal, owner.Position!, tiers);
                 vortexTargets ??= matchRuntimes.GetOrThrow(matchingId).Monsters.GetCombatTargets(matchingId);
                 bool hasTarget = false;
                 foreach (var target in vortexTargets)
                 {
-                    if (target.Area != owner.Area ||
+                    if (target.Area != owner.CurrentArea ||
                         !SwarmCombatGeometry.IsWithinGroundRadius(
                             orbPosition, target.Position, radius + SwarmCombatGeometry.MonsterRadius))
                         continue;
@@ -1173,9 +1173,9 @@ internal class MatchCombatService(
 
                 if (!hasTarget)
                 {
-                    foreach (var participant in participants)
+                    foreach (var participant in players)
                     {
-                        if (participant.PlayerId == owner.PlayerId || participant.Area != owner.Area ||
+                        if (participant.IsEliminated || participant.Position == null || participant.PlayerId == owner.PlayerId || participant.CurrentArea != owner.CurrentArea ||
                             !SwarmCombatGeometry.IsWithinGroundRadius(
                                 orbPosition, participant.Position, radius + SwarmBotDodgePolicy.SwarmCrossfirePlayerRadius))
                             continue;
@@ -1199,13 +1199,13 @@ internal class MatchCombatService(
                 matchRuntimes.GetOrThrow(matchingId).TrailCombat.PendingWaveOrbAttacks.Add((
                     matchingId,
                     owner.PlayerId,
-                    owner.Area,
+                    owner.CurrentArea,
                     orbPosition,
                     damage,
                     radius,
                     item.ItemId,
                     nowUtc.AddSeconds(WaveOrbDetonationDelaySeconds)));
-                SendOrbRingEffect(owner.Area, owner.PlayerId, orbPosition.X, orbPosition.Y,
+                SendOrbRingEffect(owner.CurrentArea, owner.PlayerId, orbPosition.X, orbPosition.Y,
                     radius, allSessions, OrbRingEffectKindWaveOrb,
                     victimId: 0, fromOrdinal: ordinal);
                 eventLogs.LogSystem(
@@ -1222,7 +1222,7 @@ internal class MatchCombatService(
     ///     기각(유저 판정). 플레이어는 충격 면역 창(0.9초)이 연쇄 피격을 막는다 —
     ///     면역이면 감속·피해 전부 없음.
     /// </summary>
-    private void DetonateWaveOrbVortex(
+    internal void DetonateWaveOrbVortex(
         long matchingId,
         long ownerId,
         AreaType area,
@@ -1231,9 +1231,7 @@ internal class MatchCombatService(
         float radius,
         int sourceItemId,
         DateTime nowUtc,
-        List<SwarmParticipantSpatial> participants,
-        List<GameClientSession> aliveSessions,
-        List<BotPlayerState> aliveBots,
+        IReadOnlyList<Player> players,
         List<GameClientSession> allSessions)
     {
         var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
@@ -1270,9 +1268,9 @@ internal class MatchCombatService(
 
         // 플레이어: 같은 반경(바닥면 타원) + 몸통 여유. 소유자 제외 — 침수 디버프 + 피해.
         int soaked = 0;
-        foreach (var participant in participants)
+        foreach (var participant in players)
         {
-            if (participant.PlayerId == ownerId || participant.Area != area || participant.Position == null)
+            if (participant.IsEliminated || participant.PlayerId == ownerId || participant.CurrentArea != area || participant.Position == null)
                 continue;
             if (!SwarmCombatGeometry.IsWithinGroundRadius(position, participant.Position, radius + SwarmBotDodgePolicy.SwarmCrossfirePlayerRadius))
                 continue;
@@ -1280,32 +1278,25 @@ internal class MatchCombatService(
             // 충격 면역 없음: 겹친 링에 다 맞는다 — 침수는 지속 갱신이라 중첩 무해.
             soaked++;
             matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(playerEliminations, ownerId, sourceItemId, area, participant.PlayerId,
-                "WAVE_VORTEX_HIT", matchRuntimes.GetOrThrow(matchingId).GetAlivePlayers(), allSessions,
+                "WAVE_VORTEX_HIT", players, allSessions,
                 Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER);
 
-            var victimSession = aliveSessions.FirstOrDefault(
-                session => session.PlayerId == participant.PlayerId);
-            if (victimSession != null)
+            if (IsMatchTerminal(matchingId)) return;
+            if (participant.IsEliminated) continue;
+            participant.WaveSlowUntilUtc = nowUtc.AddSeconds(OrbData.WaveSlowSeconds);
+            var victimSession = participant.Session;
+            if (victimSession != null && ownerId != 0)
             {
-                // 사람: 클라가 감속을 적용하고 디버프 창에 침수를 띄운다.
-                if (ownerId != 0)
+                using var packet = PacketMaker.G_TO_C_STATUS_EFFECT(new()
                 {
-                    using var packet = PacketMaker.G_TO_C_STATUS_EFFECT(new()
-                    {
-                        SourcePlayerId = ownerId,
-                        TargetPlayerId = participant.PlayerId,
-                        AreaType = area,
-                        Effect = CombatStatusEffectKind.WaveOrbSlow,
-                        DurationMs = (int)(OrbData.WaveSlowSeconds * 1000f)
-                    });
-                    victimSession.TrySend(packet);
-                }
-                continue;
+                    SourcePlayerId = ownerId,
+                    TargetPlayerId = participant.PlayerId,
+                    AreaType = area,
+                    Effect = CombatStatusEffectKind.WaveOrbSlow,
+                    DurationMs = (int)(OrbData.WaveSlowSeconds * 1000f)
+                });
+                victimSession.TrySend(packet);
             }
-
-            var bot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == participant.PlayerId);
-            if (bot != null)
-                bot.WaveSlowUntilUtc = nowUtc.AddSeconds(OrbData.WaveSlowSeconds);
         }
 
         if (hitCount > 0 || soaked > 0)

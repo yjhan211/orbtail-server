@@ -56,7 +56,7 @@ public partial class BotPlayerManager
 
     private static float GetBotWaveSlowMultiplier(BotPlayerState bot)
     {
-        return DateTime.UtcNow < bot.WaveSlowUntilUtc
+        return DateTime.UtcNow < bot.Player.WaveSlowUntilUtc
             ? OrbData.WaveSlowMoveSpeedMultiplier
             : 1f;
     }
