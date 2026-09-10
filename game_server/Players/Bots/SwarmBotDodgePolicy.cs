@@ -3,7 +3,7 @@ using game_server.orbs;
 using network.common;
 using network.common.data.models;
 
-namespace game_server.bots;
+namespace game_server.players.bots;
 
 /// <summary>
 ///     봇 투사체 회피 반사 (#232 §9, 2026-08-18 유저 제보 "봇이 투사체를 안 피하고 그대로 맞고 있어").

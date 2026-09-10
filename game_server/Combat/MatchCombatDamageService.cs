@@ -1,6 +1,6 @@
 using game_server.players;
 using game_server.matches;
-using game_server.bots;
+using game_server.players.bots;
 using game_server.items;
 using game_server.logging;
 using game_server.monsters;

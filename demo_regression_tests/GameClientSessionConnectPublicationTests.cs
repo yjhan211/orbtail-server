@@ -48,7 +48,7 @@ public sealed class GameClientSessionConnectPublicationTests
                 initialPackets.Add((protocol, Monitor.IsEntered(runtime.MatchLock)));
             if (protocol == Protocol.G_TO_C_ORB_LIST)
             {
-                spawnInitialized = session.Player.LastValidatedPosition != null;
+                spawnInitialized = session.Player.Position != null;
                 if (failInitialSend)
                     throw new IOException("Initial state send failed.");
             }
@@ -103,7 +103,7 @@ public sealed class GameClientSessionConnectPublicationTests
         }
         await request.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Null(fixture.Store.GetOrNull(74010));
-        Assert.Null(session.Player.LastValidatedPosition);
+        Assert.Null(session.Player.Position);
     }
 
     [Fact]
@@ -171,15 +171,15 @@ public sealed class GameClientSessionConnectPublicationTests
         {
             movement.InitializeSpawn(first.Player, spawn);
             spawn.X = 999;
-            Assert.Equal(10, first.Player.LastValidatedCell!.X);
-            Assert.Equal(0f, first.Player.LastValidatedVelocity.Magnitude());
-            Assert.Equal(0f, first.Player.LastValidatedRotation);
-            Assert.Same(first.Player.LastValidatedPosition, first.Player.LastValidatedPosition);
+            Assert.Equal(10, first.Player.Cell!.X);
+            Assert.Equal(0f, first.Player.Velocity.Magnitude());
+            Assert.Equal(0f, first.Player.Rotation);
+            Assert.Same(first.Player.Position, first.Player.Position);
             Assert.Equal(first.Player.CurrentArea, first.Player.CurrentArea);
-            Assert.Null(second.Player.LastValidatedPosition);
-            Assert.Null(second.Player.LastValidatedCell);
+            Assert.Null(second.Player.Position);
+            Assert.Null(second.Player.Cell);
         }
-        Assert.Null(typeof(GameClientSession).GetProperty("LastValidatedPosition"));
+        Assert.Null(typeof(GameClientSession).GetProperty("Position"));
         Assert.Null(typeof(GameClientSession).GetProperty("CurrentArea"));
     }
 
@@ -214,9 +214,9 @@ public sealed class GameClientSessionConnectPublicationTests
         var position = new Vector3f(10.25f, 20.75f, 0f);
         var velocity = new Vector3f(2f, 3f, 0f);
         var cell = new Cell(10, 20);
-        TestGameSessionServices.SetMovementProperty(session, "LastValidatedPosition", position);
-        TestGameSessionServices.SetMovementProperty(session, "LastValidatedVelocity", velocity);
-        TestGameSessionServices.SetMovementProperty(session, "LastValidatedCell", cell);
+        TestGameSessionServices.SetMovementProperty(session, "Position", position);
+        TestGameSessionServices.SetMovementProperty(session, "Velocity", velocity);
+        TestGameSessionServices.SetMovementProperty(session, "Cell", cell);
         var snapshot = session.PlayerMovement.CaptureGameObjectInfo(session.Match, session.Player, session.Player.State);
         position.X = 999;
         velocity.X = 999;

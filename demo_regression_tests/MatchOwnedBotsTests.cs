@@ -1,4 +1,4 @@
-using game_server.bots;
+using game_server.players.bots;
 using game_server.logging;
 using game_server.matches;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -70,6 +70,44 @@ public sealed class MatchOwnedBotsTests
             Assert.Equal(Config.MAX_HEALTH - 15, bot.Player.Health);
             Assert.Equal(Config.MAX_HEALTH, match.GetParticipant(1)!.Health);
             Assert.Null(bot.Player.Session);
+        }
+    }
+    [Fact]
+    public void BotSpatialStateIsSharedWithTheRosterAndPublishedObject()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(948021);
+        using (match.Enter())
+        {
+            var cells = network.common.data.MatchSpawnData.CreatePhaseRoomAssignments(match.MatchingId, [1L, -1L]);
+            match.Bots.RegisterBots(match.MatchingId, Config.SWARM_MATCH_MAP, [-1L], cells);
+            var bot = match.Bots.GetBot(match.MatchingId, -1)!;
+            var profile = match.Bots.CreatePlayerInfo(match.MatchingId, -1)!;
+            match.InitializeMatch(MatchMode.Normal, cells, [new PlayerInfo { PlayerId = 1 }, profile]);
+            var player = match.GetParticipant(-1)!;
+            Assert.Same(bot.Player, player);
+            Assert.Equal(cells[-1].X, player.Cell!.X);
+            Assert.Equal(cells[-1].Y, player.Cell.Y);
+            Assert.NotNull(player.Position);
+            Assert.NotEqual(AreaType.None, player.CurrentArea);
+
+            player.Position = new Vector3f(12, 34, 0);
+            player.Cell = new Cell(3, 4);
+            player.Velocity = new Vector3f(6, 0, 0);
+            player.Rotation = 180;
+            player.CurrentArea = Config.SWARM_MATCH_GROUND_AREA;
+            var snapshot = match.Bots.SynthesizeGameObjectInfo(match.MatchingId, -1)!;
+            Assert.Equal(12, snapshot.Position.X);
+            Assert.Equal(34, snapshot.Position.Y);
+            Assert.Equal(180, snapshot.Rotation);
+            Assert.Equal(3, bot.Player.Cell!.X);
+            Assert.Equal(6, bot.Player.Velocity.X);
+            Assert.Equal(Config.SWARM_MATCH_GROUND_AREA, bot.Player.CurrentArea);
+            Assert.NotSame(player.Position, snapshot.Position);
+            Assert.Null(match.GetParticipant(1)!.Position);
+            foreach (string field in new[] { "Position", "Cell", "WalkVelocity", "Rotation", "CurrentArea" })
+                Assert.Null(typeof(BotPlayerState).GetProperty(field));
         }
     }
     [Fact]

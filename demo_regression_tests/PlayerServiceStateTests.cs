@@ -27,7 +27,7 @@ public sealed class PlayerServiceStateTests
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var service = new PlayerMovementService(
             new MovementValidationService(NullLogger<MovementValidationService>.Instance), logs, NullLogger.Instance);
-        var player = new MatchPlayer { Profile = new PlayerInfo { PlayerId = playerId } };
+        var player = new Player { Profile = new PlayerInfo { PlayerId = playerId } };
         match.RegisterParticipant(player);
         var spawn = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, MatchSpawnData.GetPhaseRoomCandidates()[0]);
         using (match.Enter())
@@ -36,14 +36,14 @@ public sealed class PlayerServiceStateTests
             player.State = PlayerState.SLEEP;
             var result = service.Apply(match, player, new C_TO_G_MOVE
             {
-                Position = player.LastValidatedPosition!,
+                Position = player.Position!,
                 Velocity = new Vector3f(),
                 Rotation = 45f
             }, 0.05f);
             Assert.NotNull(result);
             Assert.Null(player.Session);
             Assert.False(player.IsSleeping);
-            Assert.Equal(45f, player.LastValidatedRotation);
+            Assert.Equal(45f, player.Rotation);
             var snapshot = service.CaptureGameObjectInfo(match, player, player.State);
             Assert.Equal(45f, snapshot.Rotation);
         }
@@ -57,8 +57,8 @@ public sealed class PlayerServiceStateTests
         var service = new PlayerHealthChangeService(logs,
             TestGameSessionServices.CreateEliminationService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance),
             NullLogger.Instance);
-        var player = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 }, Health = 50 };
-        var other = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 2 }, Health = 40 };
+        var player = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 50 };
+        var other = new Player { Profile = new PlayerInfo { PlayerId = 2 }, Health = 40 };
         match.RegisterParticipant(player);
         match.RegisterParticipant(other);
 

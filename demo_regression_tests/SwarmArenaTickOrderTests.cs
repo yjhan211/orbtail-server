@@ -1,4 +1,4 @@
-using game_server.bots;
+using game_server.players.bots;
 using game_server.monsters;
 using game_server.orbs;
 using game_server.combat;
@@ -229,7 +229,7 @@ public sealed class SwarmArenaTickOrderTests
             elimination,
             "TryEliminatePlayer(",
             "eliminatedBot.Path.Clear();",
-            "EliminationInventoryDropper.DropBotInventoryWithLogs(",
+            "EliminationInventoryDropper.DropAll(",
             "session.TrySend(eliminatedPacket);",
             "CheckGameOver()");
 
@@ -399,8 +399,8 @@ public sealed class SwarmArenaTickOrderTests
         Assert.Contains("public SunOrbAttackState SunOrbAttacks { get; }", botDodge);
 
         Assert.Contains("new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks, eventLogs)", botDodge);
-        string botMovement = ReadNormalizedSource(root, "game_server", "Bots", "BotPlayerManager.Movement.cs");
-        Assert.Contains("_sunOrbAttacks.DodgeSnapshot, matchingId, bot.PlayerId, bot.Position, bot.CurrentArea, now", botMovement);
+        string botMovement = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotPlayerManager.Movement.cs");
+        Assert.Contains("_sunOrbAttacks.DodgeSnapshot, matchingId, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now", botMovement);
         Assert.DoesNotContain("matchRuntimes.GetOrThrow(matchingId).Swarm", botDodge);
         Assert.False(File.Exists(Path.Combine(root, "game_server", "GameServer.SwarmBotDodge.cs")));
     }

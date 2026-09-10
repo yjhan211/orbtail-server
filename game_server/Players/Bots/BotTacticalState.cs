@@ -2,7 +2,7 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 
-namespace game_server.bots;
+namespace game_server.players.bots;
 
 /// <summary>봇 전술 상태 — 도주·부상·구역 기억·캠프 순례·회복 페이싱.</summary>
 public sealed class BotTacticalState

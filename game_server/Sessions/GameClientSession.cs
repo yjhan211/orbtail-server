@@ -43,7 +43,7 @@ public partial class GameClientSession : SessionBase
     private readonly GameEventLogManager _gameEventLogManager;
 
     private MatchRuntime? _match;
-    internal MatchPlayer Player = null!;
+    internal Player Player = null!;
 
     private int _entryCompleted;
     private int _entryFailureReported;
@@ -280,8 +280,8 @@ public partial class GameClientSession : SessionBase
 
                 Logger.LogInformation(
                     "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
-                    PlayerId, Player.CurrentArea, Player.LastValidatedPosition?.X, Player.LastValidatedPosition?.Y, Player.LastValidatedCell?.X,
-                    Player.LastValidatedCell?.Y);
+                    PlayerId, Player.CurrentArea, Player.Position?.X, Player.Position?.Y, Player.Cell?.X,
+                    Player.Cell?.Y);
 
 
 
@@ -395,7 +395,7 @@ public partial class GameClientSession : SessionBase
                 }
             }
 
-            var bots = match.Bots.GetBots(MatchingId).Where(bot => !bot.Player.IsEliminated && bot.CurrentArea == Player.CurrentArea).ToList();
+            var bots = match.Bots.GetBots(MatchingId).Where(bot => !bot.Player.IsEliminated && bot.Player.CurrentArea == Player.CurrentArea).ToList();
             var objects = bots.Select(bot => match.Bots.SynthesizeGameObjectInfo(MatchingId, bot.PlayerId)).OfType<GameObjectInfo>().ToList();
             if (objects.Count <= 0)
             {

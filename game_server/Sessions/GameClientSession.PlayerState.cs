@@ -72,7 +72,7 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
-    internal void SendHealth(MatchPlayer.HealthChange change)
+    internal void SendHealth(Player.HealthChange change)
     {
         using var packet = PacketMaker.G_TO_C_PLAYER_STATS_UPDATE(change.After, change.RequestedDelta);
         TrySend(packet);

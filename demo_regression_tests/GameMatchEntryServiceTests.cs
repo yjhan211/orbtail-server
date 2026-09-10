@@ -212,8 +212,8 @@ public sealed class GameMatchEntryServiceTests
         var bot = Assert.Single(runtime.Bots.GetBots(runtime.MatchingId));
         Assert.True(spawn.IsBot);
         Assert.Equal(bot.PlayerId, spawn.PlayerId);
-        Assert.Equal(bot.Cell.X, spawn.CellX);
-        Assert.Equal(bot.Cell.Y, spawn.CellY);
+        Assert.Equal(bot.Player.Cell!.X, spawn.CellX);
+        Assert.Equal(bot.Player.Cell!.Y, spawn.CellY);
 
         await service.PrepareMatchAsync(runtime.MatchingId, runtime);
         Assert.Equal(events.Select(entry => entry.Seq), logs.GetRecent(runtime.MatchingId).Select(entry => entry.Seq));

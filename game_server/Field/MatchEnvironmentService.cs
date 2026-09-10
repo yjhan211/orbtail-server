@@ -1,7 +1,7 @@
 using game_server.players;
 using game_server.matches;
 using game_server;
-using game_server.bots;
+using game_server.players.bots;
 using game_server.logging;
 using game_server.matches.results;
 using game_server.sessions;
@@ -69,7 +69,7 @@ internal class MatchEnvironmentService(
 
         foreach (var session in humans)
         {
-            int fieldDamage = MatchPressureFieldPolicy.GetDamagePerTick(match, session.Player.LastValidatedPosition, DateTime.UtcNow);
+            int fieldDamage = MatchPressureFieldPolicy.GetDamagePerTick(match, session.Player.Position, DateTime.UtcNow);
             targets.Add(new EnvironmentalTarget(
                 session.PlayerId!.Value,
                 session.Player.Health,
@@ -80,7 +80,7 @@ internal class MatchEnvironmentService(
 
         foreach (var bot in bots)
         {
-            int fieldDamage = MatchPressureFieldPolicy.GetDamagePerTick(match, bot.Position, DateTime.UtcNow);
+            int fieldDamage = MatchPressureFieldPolicy.GetDamagePerTick(match, bot.Player.Position!, DateTime.UtcNow);
             targets.Add(new EnvironmentalTarget(
                 bot.PlayerId,
                 bot.Player.Health,

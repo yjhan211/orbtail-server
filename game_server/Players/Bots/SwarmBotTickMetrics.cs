@@ -1,7 +1,7 @@
 using game_server.matches;
 using System.Collections.Immutable;
 
-namespace game_server.bots;
+namespace game_server.players.bots;
 
 /// <summary>
 ///     봇 이동 틱 계측 창 — 매치 하나가 소유한다(<see cref="game_server.matches.MatchRuntime"/>). 샘플 기록은 그 매치의

@@ -16,7 +16,7 @@ public sealed class PlayerMovementTimingTests
     public void MoveDelta_UsesPreviousProcessingTimeAndClampsLongGaps()
     {
         var movement = Create();
-        var player = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 } };
+        var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
         long timestamp = Stopwatch.Frequency;
         Assert.Equal(0.05f, movement.CalculateMoveDeltaTime(player, timestamp));
         Assert.Equal(0.125f, movement.CalculateMoveDeltaTime(player, timestamp + Stopwatch.Frequency / 8));
@@ -28,8 +28,8 @@ public sealed class PlayerMovementTimingTests
     public void ResponseInterval_IsRecordedSeparatelyAndIsolatedPerPlayer()
     {
         var movement = Create();
-        var player = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 } };
-        var other = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 2 } };
+        var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
+        var other = new Player { Profile = new PlayerInfo { PlayerId = 2 } };
         long timestamp = Stopwatch.Frequency;
         Assert.True(movement.ShouldSendMoveResponse(player, timestamp));
         movement.RecordMoveResponse(player, timestamp);

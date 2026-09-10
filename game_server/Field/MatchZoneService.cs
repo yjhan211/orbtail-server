@@ -307,14 +307,14 @@ internal class MatchZoneService(
         foreach (var session in sessions)
         {
             if (session.PlayerId.HasValue && !session.Player.IsEliminated &&
-                session.Player.LastValidatedPosition != null)
-                owners.Add((session.PlayerId.Value, session.Player.LastValidatedPosition, session));
+                session.Player.Position != null)
+                owners.Add((session.PlayerId.Value, session.Player.Position, session));
         }
 
         foreach (var bot in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
         {
             if (!bot.Player.IsEliminated)
-                owners.Add((bot.PlayerId, bot.Position, null));
+                owners.Add((bot.PlayerId, bot.Player.Position!, null));
         }
 
         foreach (var (playerId, ownerPosition, ownerSession) in owners)

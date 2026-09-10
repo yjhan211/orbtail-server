@@ -21,7 +21,7 @@ internal sealed class OrbRecoveryService(
     public void Process(
         long matchingId,
         IReadOnlyCollection<ProximityCombatActor> actors,
-        IReadOnlyCollection<MatchPlayer> players,
+        IReadOnlyCollection<Player> players,
         DateTime nowUtc)
     {
         if (matchRuntimes.GetOrNull(matchingId)?.OrbRecovery is not { } recovery)

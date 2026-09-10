@@ -1,5 +1,5 @@
 using game_server;
-using game_server.bots;
+using game_server.players.bots;
 using game_server.items;
 using game_server.logging;
 using game_server.orbs;
@@ -806,11 +806,11 @@ public sealed class GameClientSessionPublicationTests
         string doors = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Doors.cs");
         string connection = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Combat", "MatchCombatService.cs");
-        string bots = ReadNormalizedSource(root, "game_server", "Bots", "BotDecisionService.cs");
+        string bots = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotDecisionService.cs");
         string botPickup = ReadNormalizedSource(
             root,
             "game_server",
-            "Bots",
+            "Players", "Bots",
             "BotPlayerManager.ProximityAutoCombat.cs");
 
         Assert.DoesNotContain("AsyncLocal", session);
@@ -1037,7 +1037,7 @@ public sealed class GameClientSessionPublicationTests
         var first = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
         var second = fixture.CreateSession(70001, 102, Config.SWARM_MATCH_GROUND_AREA);
         var item = fixture.SpawnAtSession(first, Config.SUMMON_STONE_GROUND_ITEM_ID);
-        TestGameSessionServices.SetMovementProperty(second, "LastValidatedPosition", first.Player.LastValidatedPosition);
+        TestGameSessionServices.SetMovementProperty(second, "Position", first.Player.Position);
         fixture.Store.GetOrThrow(first.MatchingId).StartGameplay();
 
         CreatePickupTickLoop(fixture, first.Match).ProcessTick();
@@ -1074,7 +1074,7 @@ public sealed class GameClientSessionPublicationTests
         using (match.Enter())
         {
             GroundItemAutoPickupService.RecordMovement(session,
-                session.Player.LastValidatedPosition!, session.Player.LastValidatedPosition!, session.Player.CurrentArea);
+                session.Player.Position!, session.Player.Position!, session.Player.CurrentArea);
             Assert.Single(match.GroundItemPickupCandidates);
         }
 
@@ -1091,10 +1091,10 @@ public sealed class GameClientSessionPublicationTests
         var match = previous.Match;
         using (match.Enter())
             GroundItemAutoPickupService.RecordMovement(previous,
-                previous.Player.LastValidatedPosition!, previous.Player.LastValidatedPosition!, previous.Player.CurrentArea);
+                previous.Player.Position!, previous.Player.Position!, previous.Player.CurrentArea);
 
         var current = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
-        TestGameSessionServices.SetMovementProperty(current, "LastValidatedPosition", new Vector3f(item.PositionX + 20, item.PositionY, 0));
+        TestGameSessionServices.SetMovementProperty(current, "Position", new Vector3f(item.PositionX + 20, item.PositionY, 0));
         using (match.Enter())
             new GroundItemAutoPickupService(fixture.EventLog, NullLogger<GroundItemAutoPickupService>.Instance)
                 .Process(match, [current]);
@@ -1296,7 +1296,7 @@ public sealed class GameClientSessionPublicationTests
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.SetValue(session, value);
 
         private static void SetPosition(GameClientSession session, Vector3f position) =>
-            TestGameSessionServices.SetMovementProperty(session, "LastValidatedPosition", position);
+            TestGameSessionServices.SetMovementProperty(session, "Position", position);
 
         private static void Activate(TcpConnection connection)
         {

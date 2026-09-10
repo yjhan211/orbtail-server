@@ -1,4 +1,5 @@
-using game_server.bots;
+using game_server.players;
+using game_server.players.bots;
 using game_server.combat;
 using game_server.items;
 using game_server.monsters;
@@ -31,7 +32,7 @@ internal sealed class MatchRuntime
     public IReadOnlyDictionary<long, Cell> SpawnCells { get; private set; } = new Dictionary<long, Cell>();
 
     // 사람·봇 참가자는 연결이 끊겨도 매치 정리까지 보관한다. MatchLock으로 보호한다.
-    private readonly Dictionary<long, MatchPlayer> _participants = new();
+    private readonly Dictionary<long, Player> _participants = new();
     private int _aliveCount;
 
     private readonly MatchRuntimeStore _runtimeStore;
@@ -127,7 +128,7 @@ internal sealed class MatchRuntime
         SpawnCells = spawnCells;
         foreach (var player in playerRoster)
         {
-            var participant = Bots.GetBot(MatchingId, player.PlayerId)?.Player ?? new MatchPlayer { Profile = player };
+            var participant = Bots.GetBot(MatchingId, player.PlayerId)?.Player ?? new Player { Profile = player };
             RegisterParticipant(participant);
             OrbUpgradeService.GrantStartingResources(this, player.PlayerId);
         }
@@ -140,7 +141,7 @@ internal sealed class MatchRuntime
     }
 
     // 참가자 등록·조회·탈락 처리는 모두 MatchLock으로 보호한다.
-    public void RegisterParticipant(MatchPlayer participant)
+    public void RegisterParticipant(Player participant)
     {
         lock (MatchLock)
         {
@@ -160,7 +161,7 @@ internal sealed class MatchRuntime
         }
     }
 
-    public MatchPlayer? GetParticipant(long playerId)
+    public Player? GetParticipant(long playerId)
     {
         lock (MatchLock)
         {

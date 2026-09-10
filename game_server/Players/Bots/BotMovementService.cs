@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.packets;
 
-namespace game_server.bots;
+namespace game_server.players.bots;
 
 /// <summary>
 ///     전달받은 매치의 봇 이동 계획을 실행하고 수신자 스냅샷에 패킷을 보낸 뒤 처리 시간을 기록한다.
@@ -114,9 +114,9 @@ internal class BotMovementService(
                 session.MatchingId != matchingId)
                 continue;
 
-            SwarmVectorSnapshot? position = session.Player.LastValidatedPosition == null
+            SwarmVectorSnapshot? position = session.Player.Position == null
                 ? null
-                : SwarmVectorSnapshot.Capture(session.Player.LastValidatedPosition);
+                : SwarmVectorSnapshot.Capture(session.Player.Position);
             observers.Add(new SwarmBotObserverSnapshot(
                 session,
                 session.PlayerId.Value,

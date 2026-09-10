@@ -1,4 +1,4 @@
-using game_server.bots;
+using game_server.players.bots;
 using game_server.combat;
 using game_server.matches.results;
 using game_server.players;
@@ -114,7 +114,7 @@ public class SwarmDamagePathTests
         string source = File.ReadAllText(
             Path.Combine(FindRepositoryRoot(), "game_server", "Combat", "MatchCombatService.cs"));
         string botSource = File.ReadAllText(
-            Path.Combine(FindRepositoryRoot(), "game_server", "Bots", "BotDecisionService.cs"));
+            Path.Combine(FindRepositoryRoot(), "game_server", "Players", "Bots", "BotDecisionService.cs"));
 
         // ① 절단 자제: 봇 전용, 래치 앞에서 걸린다.
         Assert.Contains("SwarmBotCutMinHealthRatio = 0.5f", botSource);
@@ -148,7 +148,7 @@ public class SwarmDamagePathTests
     {
         string root = FindRepositoryRoot();
         string condition = File.ReadAllText(
-            Path.Combine(root, "game_server", "Matches", "MatchPlayer.cs"));
+            Path.Combine(root, "game_server", "Players", "Player.cs"));
 
         // 수치 계약: 1초 준비 · 1초 틱당 최대 HP 5% · 가해·피해 뒤 3초 진입 잠금.
         Assert.Contains("SwarmSleepWarmupSeconds = 1d", condition);
@@ -172,7 +172,7 @@ public class SwarmDamagePathTests
         Assert.Contains("ProcessSwarmSleepRecovery(aliveSessions, nowUtc)", combat);
         // 봇 파셜(#312)도 같은 계약을 진다.
         Assert.DoesNotContain("BreakSwarmSleep", File.ReadAllText(
-            Path.Combine(root, "game_server", "Bots", "BotDecisionService.cs")));
+            Path.Combine(root, "game_server", "Players", "Bots", "BotDecisionService.cs")));
     }
 
     /// <summary>

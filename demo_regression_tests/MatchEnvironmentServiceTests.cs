@@ -1,5 +1,5 @@
 using game_server;
-using game_server.bots;
+using game_server.players.bots;
 using game_server.logging;
 using game_server.field;
 using game_server.matches.results;
@@ -82,7 +82,7 @@ public sealed class MatchEnvironmentServiceTests
         var bots = match.Bots.GetBots(match.MatchingId).ToList();
         var healthBefore = bots.Select(bot => bot.Player.Health).ToArray();
         foreach (var bot in bots)
-            Assert.Equal(0, MatchPressureFieldPolicy.GetDamagePerTick(match, bot.Position, DateTime.UtcNow));
+            Assert.Equal(0, MatchPressureFieldPolicy.GetDamagePerTick(match, bot.Player.Position!, DateTime.UtcNow));
 
         lock (match.MatchLock)
             CreateService().ProcessTick(match, []);

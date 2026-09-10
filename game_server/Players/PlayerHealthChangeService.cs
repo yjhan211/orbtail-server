@@ -15,7 +15,7 @@ internal sealed class PlayerHealthChangeService(
     PlayerEliminationService eliminations,
     ILogger logger)
 {
-    public void Handle(MatchRuntime match, MatchPlayer player, MatchPlayer.HealthChange change, long attackerPlayerId = 0,
+    public void Handle(MatchRuntime match, Player player, Player.HealthChange change, long attackerPlayerId = 0,
         bool deferElimination = false)
     {
         // 값이 변경되지 않았으면 패킷 전송 안함
@@ -31,7 +31,7 @@ internal sealed class PlayerHealthChangeService(
         }
     }
     /// <summary>사람·봇의 실제 체력 변화량을 기록하고 연결이 있으면 알린다. 탈락 시점은 호출 경로가 결정한다.</summary>
-    internal static void Record(long matchingId, MatchPlayer player, MatchPlayer.HealthChange change, GameEventLogManager eventLogs, ILogger logger)
+    internal static void Record(long matchingId, Player player, Player.HealthChange change, GameEventLogManager eventLogs, ILogger logger)
     {
         if (!change.Changed) return;
         logger.LogInformation(

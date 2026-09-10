@@ -23,7 +23,7 @@ public sealed class MatchInteractionServiceTests
     [Fact]
     public void FinishIsSingleUseAndCancellationInvalidatesPending()
     {
-        var state = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 } };
+        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
         state.BeginInteraction(10);
         Assert.True(state.TryFinishInteraction(10));
         Assert.False(state.TryFinishInteraction(10));
@@ -36,7 +36,7 @@ public sealed class MatchInteractionServiceTests
     [Fact]
     public void FirstDoorSurvivesHitButLaterDoorDoesNot()
     {
-        var state = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 } };
+        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
         state.BeginDoor(10, 0);
         Assert.Null(state.InterruptDoor());
         Assert.True(state.TryFinishDoor(10, 3000, TimeSpan.FromSeconds(3), out _));
@@ -51,7 +51,7 @@ public sealed class MatchInteractionServiceTests
     [InlineData(12)]
     public void DoorFinishRequiresServerElapsedTimeAndIsSingleUse(int seconds)
     {
-        var state = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 } };
+        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
         var duration = TimeSpan.FromSeconds(seconds);
         state.BeginDoor(10, 1000);
         Assert.False(state.TryFinishDoor(10, 1000, duration, out var error));
@@ -69,7 +69,7 @@ public sealed class MatchInteractionServiceTests
     [Fact]
     public void DoorRestartResetsTimeAndCancelInvalidatesFinish()
     {
-        var state = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 } };
+        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
         var duration = TimeSpan.FromSeconds(3);
         state.BeginDoor(10, 0);
         state.BeginDoor(10, 2000);
@@ -88,7 +88,7 @@ public sealed class MatchInteractionServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984403);
-        var state = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 } };
+        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
         using (MatchRuntimeStore.Enter(runtime))
         {
             state.BeginInteraction(10);
@@ -111,7 +111,7 @@ public sealed class MatchInteractionServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984404);
-        var state = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 } };
+        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
         state.BeginInteraction(10);
 
         Assert.Throws<InvalidOperationException>(() =>

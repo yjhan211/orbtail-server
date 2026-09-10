@@ -55,14 +55,14 @@ internal sealed class GroundItemAutoPickupService(
         var match = session.Match;
         RequireMatchLock(match);
         if (match.IsEnded || !session.PlayerId.HasValue || session.MatchingId <= 0 ||
-            session.Player.IsEliminated || session.IsGameEnded || session.IsConnectionReleased || session.Player.LastValidatedPosition == null)
+            session.Player.IsEliminated || session.IsGameEnded || session.IsConnectionReleased || session.Player.Position == null)
         {
             match.GroundItemPickupCandidates.Remove(session);
             return;
         }
         var candidates = GetCandidates(match, session);
         candidates.Record(match.GroundItems, session.PlayerId.Value, session.Player.CurrentArea,
-            session.Player.LastValidatedPosition, session.Player.LastValidatedPosition);
+            session.Player.Position, session.Player.Position);
         match.GroundItemPickupCandidates.Remove(session);
         foreach (var candidate in candidates.Take())
         {

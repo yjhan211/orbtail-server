@@ -353,14 +353,14 @@ public sealed class GameClientSessionTerminalPublicationTests
         {
             Assert.True(totalEntries >= humanSessions.Count);
             var entries = humanSessions
-                .Select(session => new MatchPlayer {
+                .Select(session => new Player {
                     Profile = new network.common.data.models.PlayerInfo { PlayerId = session.PlayerId!.Value },
                     Status = session.Player.Status
                 })
                 .ToList();
             for (int index = entries.Count; index < totalEntries; index++)
             {
-                entries.Add(new MatchPlayer {
+                entries.Add(new Player {
                     Profile = new network.common.data.models.PlayerInfo { PlayerId = 80_000 + index },
                     Status = PlayerMatchStatus.ACTIVE
                 });
@@ -369,7 +369,7 @@ public sealed class GameClientSessionTerminalPublicationTests
             Store.GetOrCreate(matchingId);
             for (int index = 0; index < entries.Count; index++)
             {
-                MatchPlayer entry = entries[index];
+                Player entry = entries[index];
                 string name = useLongProfiles
                     ? $"Player{entry.PlayerId}_{new string('x', 300)}"
                     : $"Player{entry.PlayerId}";

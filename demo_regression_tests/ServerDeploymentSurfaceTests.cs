@@ -16,7 +16,7 @@ public sealed class ServerDeploymentSurfaceTests
                 Assert.DoesNotContain(flag, source);
         }
         Assert.DoesNotContain("SetupSwarmCutDummy", Read("game_server/Combat/MatchCombatService.cs"));
-        Assert.DoesNotContain("IsSwarmCutDummy", Read("game_server/Bots/BotPlayerManager.cs"));
+        Assert.DoesNotContain("IsSwarmCutDummy", Read("game_server/Players/Bots/BotPlayerManager.cs"));
     }
 
     [Fact]

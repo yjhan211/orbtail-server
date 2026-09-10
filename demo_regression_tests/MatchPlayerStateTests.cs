@@ -1,3 +1,4 @@
+using game_server.players;
 using game_server.matches;
 using game_server.sessions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -14,7 +15,7 @@ public sealed class MatchPlayerStateTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948001);
-        var participant = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 10 } };
+        var participant = new Player { Profile = new PlayerInfo { PlayerId = 10 } };
         match.RegisterParticipant(participant);
         var session = TestGameSessionServices.CreateRecipientSession();
         typeof(GameClientSession).GetProperty(nameof(GameClientSession.PlayerId))!.SetValue(session, 10L);
@@ -33,7 +34,7 @@ public sealed class MatchPlayerStateTests
             Assert.True(session.Player.IsEliminated);
         }
 
-        foreach (string name in new[] { "CurrentHealth", "Health", "CurrentArea", "CurrentMapId", "LastValidatedPosition", "Condition", "Movement", "PlayerMatchStatus", "IsEliminated" })
+        foreach (string name in new[] { "CurrentHealth", "Health", "CurrentArea", "CurrentMapId", "Position", "Condition", "Movement", "PlayerMatchStatus", "IsEliminated" })
             Assert.Null(typeof(GameClientSession).GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic));
     }
 
@@ -42,7 +43,7 @@ public sealed class MatchPlayerStateTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948002);
-        var participant = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 10 } };
+        var participant = new Player { Profile = new PlayerInfo { PlayerId = 10 } };
         match.RegisterParticipant(participant);
         var previous = TestGameSessionServices.CreateRecipientSession();
         var current = TestGameSessionServices.CreateRecipientSession();
@@ -72,11 +73,11 @@ public sealed class MatchPlayerStateTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948003);
-        var human = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 10 } };
-        var bot = new MatchPlayer { Profile = new PlayerInfo { PlayerId = -1 } };
+        var human = new Player { Profile = new PlayerInfo { PlayerId = 10 } };
+        var bot = new Player { Profile = new PlayerInfo { PlayerId = -1 } };
         match.RegisterParticipant(human);
         match.RegisterParticipant(bot);
-        Assert.Null(typeof(MatchPlayer).GetProperty("MapId"));
+        Assert.Null(typeof(Player).GetProperty("MapId"));
         Assert.Null(human.Session);
         Assert.Null(bot.Session);
         Assert.Empty(match.GetSessions());

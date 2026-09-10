@@ -1,3 +1,4 @@
+using game_server.players;
 using game_server.matches.results;
 using game_server.matches;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -132,7 +133,7 @@ public sealed class MatchRosterTests
     public void EndMatch_ClearsParticipantsAndRejectsFurtherRegistration()
     {
         var roster = MatchTestServices.Runtime(1, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
-        roster.RegisterParticipant(new MatchPlayer { Profile = new network.common.data.models.PlayerInfo { PlayerId = 10, Name = "player", WearItemIdList = [1] } });
+        roster.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 10, Name = "player", WearItemIdList = [1] } });
 
         using (roster.Enter())
             roster.TryMarkEnded();
@@ -145,7 +146,7 @@ public sealed class MatchRosterTests
         Assert.Equal((false, (long?)null), roster.CheckGameOver());
         Assert.False(roster.TryEliminatePlayer(10, EliminationReason.HEALTH_ZERO));
         Assert.Throws<InvalidOperationException>(() =>
-            roster.RegisterParticipant(new MatchPlayer { Profile = new network.common.data.models.PlayerInfo { PlayerId = 20  }}));
+            roster.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 20  }}));
     }
     [Fact]
     public void Participant_OwnsTheProfileUsedByPacketsAndResults()
@@ -155,7 +156,7 @@ public sealed class MatchRosterTests
         {
             PlayerId = 10, Name = "player", WearItemIdList = [123]
         };
-        var participant = new MatchPlayer { Profile = profile };
+        var participant = new Player { Profile = profile };
         roster.RegisterParticipant(participant);
 
         Assert.Same(participant, roster.GetParticipant(10));
@@ -194,7 +195,7 @@ public sealed class MatchRosterTests
         Assert.Empty(match.GetPlayerProfiles());
     }
 
-    private static MatchPlayer CreateLink(long playerId, long _) => new()
+    private static Player CreateLink(long playerId, long _) => new()
     {
         Profile = new network.common.data.models.PlayerInfo { PlayerId = playerId }
     };

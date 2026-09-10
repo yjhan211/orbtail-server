@@ -9,7 +9,7 @@ using network.common.data;
 using network.common.data.models;
 using network.helpers;
 
-namespace game_server.bots;
+namespace game_server.players.bots;
 
 /// <summary>
 ///     봇 이동 AI: 셀 단위 walk + 영역 경계 통과 BFS 경로탐색, 폐쇄·자기장 회피. 영역 전환/영역 내 셀 이동은
@@ -102,7 +102,7 @@ public partial class BotPlayerManager
         // 전체 플레이어(인간 + 봇) 현재 영역 맵 — 봇 타겟 추적/떠보기 인원수 계산용.
         var playerAreas = new Dictionary<long, AreaType>(humanAreas);
         foreach (var b in activeBots)
-            playerAreas[b.PlayerId] = b.CurrentArea;
+            playerAreas[b.PlayerId] = b.Player.CurrentArea;
 
         return ProcessSwarmBotMovement(
             matchingId,
@@ -171,8 +171,8 @@ public partial class BotPlayerManager
                 bot.MovementDestination = currentDirective.DestinationArea;
                 bot.Path = BotPathfinder.FindPath(
                                GetMatchingMapId(matchingId),
-                               bot.CurrentArea,
-                               bot.Cell,
+                               bot.Player.CurrentArea,
+                               bot.Player.Cell!,
                                currentDirective.DestinationArea,
                                currentDirective.DestinationCell)
                            ?? [];
@@ -215,10 +215,10 @@ public partial class BotPlayerManager
     {
         const float movedThresholdSquared = 0.01f;
         if (bot.IdleWatchLastPosition == null ||
-            DistanceSquared(bot.IdleWatchLastPosition, bot.Position.X, bot.Position.Y) >
+            DistanceSquared(bot.IdleWatchLastPosition, bot.Player.Position!.X, bot.Player.Position!.Y) >
             movedThresholdSquared)
         {
-            bot.IdleWatchLastPosition = new Vector3f(bot.Position.X, bot.Position.Y, 0f);
+            bot.IdleWatchLastPosition = new Vector3f(bot.Player.Position!.X, bot.Player.Position!.Y, 0f);
             bot.IdleWatchLastMovedAtUtc = nowUtc;
             return;
         }
@@ -233,7 +233,7 @@ public partial class BotPlayerManager
             "Mode={Mode}, DirectiveArea={DirectiveArea}, PathRemaining={PathRemaining}, " +
             "InInteraction={InInteraction}",
             bot.PlayerId,
-            bot.CurrentArea,
+            bot.Player.CurrentArea,
             (nowUtc - bot.IdleWatchLastMovedAtUtc).TotalSeconds,
             directive.Mode,
             directive.DestinationArea,
@@ -254,15 +254,15 @@ public partial class BotPlayerManager
         for (int attempt = 0; attempt < 6; attempt++)
         {
             var candidate = new Cell(
-                bot.Cell.X + Random.Shared.Next(-3, 4),
-                bot.Cell.Y + Random.Shared.Next(-3, 4));
-            if (candidate.X == bot.Cell.X && candidate.Y == bot.Cell.Y)
+                bot.Player.Cell!.X + Random.Shared.Next(-3, 4),
+                bot.Player.Cell!.Y + Random.Shared.Next(-3, 4));
+            if (candidate.X == bot.Player.Cell!.X && candidate.Y == bot.Player.Cell!.Y)
                 continue;
             if (!GameMapData.IsMoveablePosition(mapId, candidate) ||
-                GameMapData.GetCurrentArea(mapId, candidate) != bot.CurrentArea)
+                GameMapData.GetCurrentArea(mapId, candidate) != bot.Player.CurrentArea)
                 continue;
 
-            var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, bot.CurrentArea, candidate);
+            var path = BotPathfinder.FindPath(mapId, bot.Player.CurrentArea, bot.Player.Cell!, bot.Player.CurrentArea, candidate);
             if (path == null || path.Count == 0)
                 continue;
 
@@ -304,7 +304,7 @@ public partial class BotPlayerManager
                     ? other.EvacuationDestination
                     : other.MovementDestination != AreaType.None
                         ? other.MovementDestination
-                        : other.CurrentArea;
+                        : other.Player.CurrentArea;
                 return committedArea == area;
             });
     }
@@ -342,19 +342,19 @@ public partial class BotPlayerManager
             else
             {
                 // 첫 진입 시 velocity 0 패킷 1회 발행 (이전 walking 패킷의 velocity가 그대로면 클라 발소리 잔존)
-                if (bot.WalkVelocity.X != 0f || bot.WalkVelocity.Y != 0f)
+                if (bot.Player.Velocity.X != 0f || bot.Player.Velocity.Y != 0f)
                 {
-                    bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
+                    bot.Player.Velocity = new Vector3f(0f, 0f, 0f);
                     return new BotMovementEvent
                     {
                         BotPlayerId = bot.PlayerId,
-                        FromArea = bot.CurrentArea,
-                        ToArea = bot.CurrentArea,
-                        FromCell = bot.Cell,
-                        ToCell = bot.Cell,
-                        Position = bot.Position,
+                        FromArea = bot.Player.CurrentArea,
+                        ToArea = bot.Player.CurrentArea,
+                        FromCell = bot.Player.Cell!,
+                        ToCell = bot.Player.Cell!,
+                        Position = bot.Player.Position!,
                         Velocity = new Vector3f(0f, 0f, 0f),
-                        Rotation = bot.Rotation,
+                        Rotation = bot.Player.Rotation,
                         IsAreaTransition = false
                     };
                 }
@@ -370,19 +370,19 @@ public partial class BotPlayerManager
 
         if (now < bot.RestUntil)
         {
-            if (bot.WalkVelocity.X != 0f || bot.WalkVelocity.Y != 0f)
+            if (bot.Player.Velocity.X != 0f || bot.Player.Velocity.Y != 0f)
             {
-                bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
+                bot.Player.Velocity = new Vector3f(0f, 0f, 0f);
                 return new BotMovementEvent
                 {
                     BotPlayerId = bot.PlayerId,
-                    FromArea = bot.CurrentArea,
-                    ToArea = bot.CurrentArea,
-                    FromCell = bot.Cell,
-                    ToCell = bot.Cell,
-                    Position = bot.Position,
+                    FromArea = bot.Player.CurrentArea,
+                    ToArea = bot.Player.CurrentArea,
+                    FromCell = bot.Player.Cell!,
+                    ToCell = bot.Player.Cell!,
+                    Position = bot.Player.Position!,
                     Velocity = new Vector3f(0f, 0f, 0f),
-                    Rotation = bot.Rotation,
+                    Rotation = bot.Player.Rotation,
                     IsAreaTransition = false
                 };
             }
@@ -425,17 +425,17 @@ public partial class BotPlayerManager
 
         var nextStep = bot.Path[bot.PathIndex];
         var mapId = GetMatchingMapId(matchingId);
-        var fromArea = bot.CurrentArea;
-        var fromCell = bot.Cell;
+        var fromArea = bot.Player.CurrentArea;
+        var fromCell = bot.Player.Cell!;
         bool reachedStep = false;
 
 
         // 잠긴 문 통과 차단 (유저 제보: 봇이 문 열리기 전에 들어온다).
         // 사람과 같은 판정을 쓴다 — 이 전이를 관장하는 문 하나만 보고, 그 문이 닫혀 있으면 버린다.
-        if (nextStep.Area != bot.CurrentArea)
+        if (nextStep.Area != bot.Player.CurrentArea)
         {
             var transitionDoor = GameDoorData.GetDoorForTransition(
-                bot.CurrentArea, nextStep.Area, bot.Cell, nextStep.Cell);
+                bot.Player.CurrentArea, nextStep.Area, bot.Player.Cell!, nextStep.Cell);
             if (transitionDoor != null && !_doors.IsDoorOpen(transitionDoor.DoorId))
             {
                 bot.Path.Clear();
@@ -450,7 +450,7 @@ public partial class BotPlayerManager
                     _logger.LogInformation(
                         "Bot blocked at closed door: MatchingId={MatchingId}, BotId={BotId}, " +
                         "From={From}, To={To}, DoorId={DoorId}",
-                        matchingId, bot.PlayerId, bot.CurrentArea, nextStep.Area, transitionDoor.DoorId);
+                        matchingId, bot.PlayerId, bot.Player.CurrentArea, nextStep.Area, transitionDoor.DoorId);
                 }
 
                 return null;
@@ -459,8 +459,8 @@ public partial class BotPlayerManager
 
         // Walk every waypoint at the same speed. An area transition is just the adjacent cell across a door.
         var targetPos = CellToWorldPosition(mapId, nextStep.Cell);
-        float dx = targetPos.X - bot.Position.X;
-        float dy = targetPos.Y - bot.Position.Y;
+        float dx = targetPos.X - bot.Player.Position!.X;
+        float dy = targetPos.Y - bot.Player.Position!.Y;
         float dist = (float)Math.Sqrt(dx * dx + dy * dy);
         float maxDist = BotWalkSpeed * GetBotMovementSpeedMultiplier(bot) * deltaSec;
         if (dist >= 0.01f)
@@ -474,7 +474,7 @@ public partial class BotPlayerManager
         // 다음 웨이포인트가 비보행이면 그 경로는 이미 틀린 것이므로 버리고 다시 짠다.
         // 이미 벽 안에 서 있는 개체는 막지 않는다 — 막으면 영영 못 빠져나온다.
         if (!GameMapData.IsMoveablePosition(mapId, nextStep.Cell) &&
-            GameMapData.IsMoveablePosition(mapId, bot.Cell))
+            GameMapData.IsMoveablePosition(mapId, bot.Player.Cell!))
         {
             bot.Path.Clear();
             bot.PathIndex = 0;
@@ -487,8 +487,8 @@ public partial class BotPlayerManager
         {
             // 도달 → 다음 인덱스
             newPosition = targetPos;
-            bot.Cell = nextStep.Cell;
-            bot.Position = newPosition;
+            bot.Player.Cell = nextStep.Cell;
+            bot.Player.Position = newPosition;
             bot.PathIndex++;
             reachedStep = true;
             velocity = new Vector3f(0f, 0f, 0f);
@@ -516,7 +516,7 @@ public partial class BotPlayerManager
                             newPosition.X + nextDx / nextDist * carry,
                             newPosition.Y + nextDy / nextDist * carry,
                             0f);
-                        bot.Position = newPosition;
+                        bot.Player.Position = newPosition;
                     }
                 }
             }
@@ -526,42 +526,42 @@ public partial class BotPlayerManager
             float dirX = dx / dist;
             float dirY = dy / dist;
             newPosition = new Vector3f(
-                bot.Position.X + dirX * maxDist,
-                bot.Position.Y + dirY * maxDist,
+                bot.Player.Position!.X + dirX * maxDist,
+                bot.Player.Position!.Y + dirY * maxDist,
                 0f);
             velocity = ScaledWalkVelocity(dirX, dirY, GetBotMovementSpeedMultiplier(bot));
-            bot.Position = newPosition;
+            bot.Player.Position = newPosition;
         }
 
         bool areaChanged = false;
         if (reachedStep)
         {
-            var resolvedArea = GameMapData.GetCurrentArea(mapId, bot.Cell);
-            if (resolvedArea != AreaType.None && resolvedArea != bot.CurrentArea)
+            var resolvedArea = GameMapData.GetCurrentArea(mapId, bot.Player.Cell!);
+            if (resolvedArea != AreaType.None && resolvedArea != bot.Player.CurrentArea)
             {
-                bot.CurrentArea = resolvedArea;
+                bot.Player.CurrentArea = resolvedArea;
                 areaChanged = true;
             }
         }
 
-        bot.WalkVelocity = velocity;
+        bot.Player.Velocity = velocity;
 
         // velocity.X 부호에 따라 Rotation 갱신 (실제 플레이어 PlayerMovement.cs와 동일 규칙).
         // shouldFlip = velocity.X > 0 → rotation = 180 (오른쪽 보기), 아니면 0 (왼쪽 보기).
         // |velocity.X| < 0.1 시에는 직전 Rotation 유지(떨림 방지 — 클라 IsFlip 갱신 가드와 일치).
-        if (velocity.X > 0.1f) bot.Rotation = 180f;
-        else if (velocity.X < -0.1f) bot.Rotation = 0f;
+        if (velocity.X > 0.1f) bot.Player.Rotation = 180f;
+        else if (velocity.X < -0.1f) bot.Player.Rotation = 0f;
 
         return new BotMovementEvent
         {
             BotPlayerId = bot.PlayerId,
             FromArea = fromArea,
-            ToArea = bot.CurrentArea,
+            ToArea = bot.Player.CurrentArea,
             FromCell = fromCell,
             ToCell = nextStep.Cell,
             Position = newPosition,
             Velocity = velocity,
-            Rotation = bot.Rotation,
+            Rotation = bot.Player.Rotation,
             IsAreaTransition = areaChanged
         };
     }
@@ -578,30 +578,30 @@ public partial class BotPlayerManager
         BotPlayerState bot, long matchingId, DateTime now, float deltaSec, out BotMovementEvent? movement)
     {
         movement = null;
-        if (bot.CurrentArea == AreaType.None)
+        if (bot.Player.CurrentArea == AreaType.None)
             return false;
 
         bool committed = now < bot.SwarmDodgeHoldUntilUtc;
         var advice = SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(
-            _sunOrbAttacks.DodgeSnapshot, matchingId, bot.PlayerId, bot.Position, bot.CurrentArea, now);
+            _sunOrbAttacks.DodgeSnapshot, matchingId, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now);
         if (advice == null)
         {
             if (!committed)
                 return false;
             // 띠 밖, 위협은 아직 안 지남 — 서서 기다린다. 걷기 패킷을 한 번 0으로 끊어 발소리·걷기 애니를 멈춘다.
-            if (bot.WalkVelocity.X != 0f || bot.WalkVelocity.Y != 0f)
+            if (bot.Player.Velocity.X != 0f || bot.Player.Velocity.Y != 0f)
             {
-                bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
+                bot.Player.Velocity = new Vector3f(0f, 0f, 0f);
                 movement = new BotMovementEvent
                 {
                     BotPlayerId = bot.PlayerId,
-                    FromArea = bot.CurrentArea,
-                    ToArea = bot.CurrentArea,
-                    FromCell = bot.Cell,
-                    ToCell = bot.Cell,
-                    Position = bot.Position,
-                    Velocity = bot.WalkVelocity,
-                    Rotation = bot.Rotation,
+                    FromArea = bot.Player.CurrentArea,
+                    ToArea = bot.Player.CurrentArea,
+                    FromCell = bot.Player.Cell!,
+                    ToCell = bot.Player.Cell!,
+                    Position = bot.Player.Position!,
+                    Velocity = bot.Player.Velocity,
+                    Rotation = bot.Player.Rotation,
                     IsAreaTransition = false
                 };
             }
@@ -641,29 +641,29 @@ public partial class BotPlayerManager
                 bot.SwarmDodgeDirectionY = dirY;
             }
             float step = ScaledWalkSpeed(dirX, dirY, multiplier) * deltaSec;
-            var candidate = new Vector3f(bot.Position.X + dirX * step, bot.Position.Y + dirY * step, 0f);
+            var candidate = new Vector3f(bot.Player.Position!.X + dirX * step, bot.Player.Position!.Y + dirY * step, 0f);
             var candidateCell = WorldToCell(candidate);
             if (!GameMapData.IsMoveablePosition(mapId, candidateCell) ||
-                GameMapData.GetCurrentArea(mapId, candidateCell) != bot.CurrentArea)
+                GameMapData.GetCurrentArea(mapId, candidateCell) != bot.Player.CurrentArea)
                 continue;
 
-            var fromCell = bot.Cell;
-            bot.Position = candidate;
-            bot.Cell = candidateCell;
+            var fromCell = bot.Player.Cell!;
+            bot.Player.Position = candidate;
+            bot.Player.Cell = candidateCell;
             var velocity = ScaledWalkVelocity(dirX, dirY, multiplier);
-            bot.WalkVelocity = velocity;
-            if (velocity.X > 0.1f) bot.Rotation = 180f;
-            else if (velocity.X < -0.1f) bot.Rotation = 0f;
+            bot.Player.Velocity = velocity;
+            if (velocity.X > 0.1f) bot.Player.Rotation = 180f;
+            else if (velocity.X < -0.1f) bot.Player.Rotation = 0f;
             movement = new BotMovementEvent
             {
                 BotPlayerId = bot.PlayerId,
-                FromArea = bot.CurrentArea,
-                ToArea = bot.CurrentArea,
+                FromArea = bot.Player.CurrentArea,
+                ToArea = bot.Player.CurrentArea,
                 FromCell = fromCell,
                 ToCell = candidateCell,
                 Position = candidate,
                 Velocity = velocity,
-                Rotation = bot.Rotation,
+                Rotation = bot.Player.Rotation,
                 IsAreaTransition = false
             };
             return true;
@@ -694,14 +694,14 @@ public partial class BotPlayerManager
         // 복도는 통로다. 잔상 분포로 목적지를 정할 수 있으면 그것이 우선이고,
         // 못 정할 때만 가장 가까운 방으로 나간다. 이전에는 복도 탈출이 먼저 걸려
         // 잔상 사냥 판단에 도달하지 못했고, 봇이 잔상 없는 방과 복도를 왕복했다.
-        if (bot.CurrentArea.IsCorridor() && !needsGuardianOrb &&
+        if (bot.Player.CurrentArea.IsCorridor() && !needsGuardianOrb &&
             Config.MONSTER_SUMMON_ECONOMY_ENABLED &&
             TryStartAfterimageHuntPath(bot, matchingId, mapId, closureManager, inventoryManager, pveTargets))
         {
             return;
         }
 
-        if (bot.CurrentArea.IsCorridor() &&
+        if (bot.Player.CurrentArea.IsCorridor() &&
             TryStartCorridorExitPath(bot, matchingId, mapId, closureManager))
         {
             return;
@@ -723,7 +723,7 @@ public partial class BotPlayerManager
 
         var destination = ChooseSwarmWanderDestination(bot, matchingId, mapId, playerAreas, closureManager);
         if (destination == AreaType.None) return;
-        if (destination == bot.CurrentArea)
+        if (destination == bot.Player.CurrentArea)
         {
             // 이미 원하는 방에 있음 → 잠시 머물며 회복/기척.
             // (즉시 재결정 시 흩어지기 확률이 매 틱 굴러 곧바로 나가버리는 문제 방지)
@@ -731,17 +731,17 @@ public partial class BotPlayerManager
             return;
         }
 
-        var targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, destination)
+        var targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.Player.CurrentArea, destination)
             ?? GameMapData.GetAreaSpawnCell(mapId, destination);
 
-        var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
+        var path = BotPathfinder.FindPath(mapId, bot.Player.CurrentArea, bot.Player.Cell!,
             destination, targetCell,
             a => IsAreaClosingOrClosed(closureManager, matchingId, a));
         if (path == null || path.Count == 0)
         {
             bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.6);
             _logger.LogDebug("봇 배회 경로 실패: BotId={Bot}, {From} → {To}",
-                bot.PlayerId, bot.CurrentArea, destination);
+                bot.PlayerId, bot.Player.CurrentArea, destination);
             return;
         }
 
@@ -751,7 +751,7 @@ public partial class BotPlayerManager
         bot.LoopWaitUntil = RandomizedDelayFromNow(0.25, 0.6);
         _logger.LogInformation(
             "Bot wander move: BotId={Bot}, {From}->{To}, Steps={Steps}",
-            bot.PlayerId, bot.CurrentArea, destination, path.Count);
+            bot.PlayerId, bot.Player.CurrentArea, destination, path.Count);
     }
 
 
@@ -771,7 +771,7 @@ public partial class BotPlayerManager
     {
         // 복도에서도 목적지를 고를 수 있어야 한다. 복도에 서 있는 봇에게는 방만 후보로
         // 남으므로 "현재 지역 사냥" 분기를 타지 않고 경로만 받는다.
-        if (bot.CurrentArea == AreaType.None || pveTargets.Count == 0)
+        if (bot.Player.CurrentArea == AreaType.None || pveTargets.Count == 0)
             return false;
 
         var closure = closureManager.GetClientStateSnapshot();
@@ -787,7 +787,7 @@ public partial class BotPlayerManager
         var areaGroups = pveTargets
             .Where(target => target.MapId == mapId &&
                              target.Area != AreaType.None &&
-                             !(target.Area.IsCorridor() && bot.CurrentArea.IsCorridor()) &&
+                             !(target.Area.IsCorridor() && bot.Player.CurrentArea.IsCorridor()) &&
                              !unavailable.Contains(target.Area))
             .GroupBy(target => target.Area)
             .ToList();
@@ -800,8 +800,8 @@ public partial class BotPlayerManager
         // 정보를 쓰는 것 자체는 규칙에 맞지만, 맵 반대편까지 직행할 필요는 없다. 인접
         // 이동을 반복하면 결국 도달하고, 가까운 곳부터 훑는 편이 사람의 판단에 가깝다.
         var nearbyGroups = areaGroups
-            .Where(group => group.Key == bot.CurrentArea ||
-                            GameAreaConnectionData.IsAdjacent(mapId, bot.CurrentArea, group.Key))
+            .Where(group => group.Key == bot.Player.CurrentArea ||
+                            GameAreaConnectionData.IsAdjacent(mapId, bot.Player.CurrentArea, group.Key))
             .ToList();
         // 인접한 곳에 잔상이 하나도 없을 때만 전체 지역으로 넓힌다.
         if (nearbyGroups.Count > 0)
@@ -812,16 +812,16 @@ public partial class BotPlayerManager
             {
                 var preferredTarget = group
                     .OrderByDescending(target => target.IsCore)
-                    .ThenBy(target => DistanceSquared(bot.Position, target.Position.X, target.Position.Y))
+                    .ThenBy(target => DistanceSquared(bot.Player.Position!, target.Position.X, target.Position.Y))
                     .First();
                 var targetCell = WorldToCell(preferredTarget.Position);
-                var pathTargetCell = group.Key == bot.CurrentArea
+                var pathTargetCell = group.Key == bot.Player.CurrentArea
                     ? targetCell
-                    : GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, group.Key) ?? targetCell;
+                    : GameAreaConnectionData.GetSpawnCell(mapId, bot.Player.CurrentArea, group.Key) ?? targetCell;
                 int coreCount = group.Count(target => target.IsCore);
                 float affinityScore = CalculateBotPveAffinityScore(boardItemIds, preferredTarget.RewardItemId);
-                int estimatedSteps = Math.Abs(bot.Cell.X - pathTargetCell.X) +
-                                     Math.Abs(bot.Cell.Y - pathTargetCell.Y);
+                int estimatedSteps = Math.Abs(bot.Player.Cell!.X - pathTargetCell.X) +
+                                     Math.Abs(bot.Player.Cell!.Y - pathTargetCell.Y);
                 return new
                 {
                     Area = group.Key,
@@ -833,9 +833,9 @@ public partial class BotPlayerManager
                     EstimatedSteps = estimatedSteps
                 };
             })
-            .OrderByDescending(candidate => candidate.Area == bot.CurrentArea)
+            .OrderByDescending(candidate => candidate.Area == bot.Player.CurrentArea)
             .ThenByDescending(candidate => candidate.Score - candidate.EstimatedSteps * 0.2)
-            .ThenBy(candidate => candidate.Area == bot.CurrentArea ? 0 : 1)
+            .ThenBy(candidate => candidate.Area == bot.Player.CurrentArea ? 0 : 1)
             .ThenBy(candidate => Math.Abs((int)(bot.PlayerId % 97) - (int)candidate.Area))
             .Take(MaxHuntPathCandidates)
             .ToList();
@@ -845,14 +845,14 @@ public partial class BotPlayerManager
         for (int index = 0; index < candidates.Count; index++)
         {
             var candidate = candidates[index];
-            var path = candidate.Area == bot.CurrentArea
-                ? BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, bot.CurrentArea,
+            var path = candidate.Area == bot.Player.CurrentArea
+                ? BotPathfinder.FindPath(mapId, bot.Player.CurrentArea, bot.Player.Cell!, bot.Player.CurrentArea,
                     candidate.PathTargetCell,
-                    area => area != bot.CurrentArea || unavailable.Contains(area))
-                : BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, candidate.Area,
+                    area => area != bot.Player.CurrentArea || unavailable.Contains(area))
+                : BotPathfinder.FindPath(mapId, bot.Player.CurrentArea, bot.Player.Cell!, candidate.Area,
                     candidate.PathTargetCell,
                     unavailable.Contains);
-            if (path is not { Count: > 0 } && candidate.Area != bot.CurrentArea)
+            if (path is not { Count: > 0 } && candidate.Area != bot.Player.CurrentArea)
                 continue;
 
             selectedIndex = index;
@@ -870,7 +870,7 @@ public partial class BotPlayerManager
 
         // The bot already owns this room's hunt. Let the automatic combat and lateral
         // kite logic work instead of immediately replacing the local objective.
-        if (selected.Area == bot.CurrentArea && selectedPath is not { Count: > 0 })
+        if (selected.Area == bot.Player.CurrentArea && selectedPath is not { Count: > 0 })
         {
             bot.LoopWaitUntil = RandomizedDelayFromNow(0.45, 0.9);
             return true;
@@ -884,7 +884,7 @@ public partial class BotPlayerManager
             "Bot afterimage hunt route: MatchingId={MatchingId}, BotId={BotId}, {From}->{To}, PackMembers={PackMembers}, Core={Core}, Affinity={Affinity}, Steps={Steps}",
             matchingId,
             bot.PlayerId,
-            bot.CurrentArea,
+            bot.Player.CurrentArea,
             selected.Area,
             pveTargets.Count(target => target.Area == selected.Area),
             selected.Target.IsCore,
@@ -915,14 +915,14 @@ public partial class BotPlayerManager
         AreaClosureManager closureManager)
     {
         var exitAreas = GetOpenBotDestinationAreas(matchingId, mapId, closureManager)
-            .Where(area => area != bot.CurrentArea)
+            .Where(area => area != bot.Player.CurrentArea)
             .ToList();
 
         // 복도에서는 인접한 방으로 나가면 충분하다. 열린 지역 전체에 길을 찾으면 봇마다
         // A*가 지역 수만큼 돌아 이동 틱이 200ms 넘게 튀고, 그 사이 틱이 스킵되어 봇 위치
         // 브로드캐스트가 끊긴다. 인접한 곳이 없을 때만 전체로 넓힌다.
         var adjacentExitAreas = exitAreas
-            .Where(area => GameAreaConnectionData.IsAdjacent(mapId, bot.CurrentArea, area))
+            .Where(area => GameAreaConnectionData.IsAdjacent(mapId, bot.Player.CurrentArea, area))
             .ToList();
         if (adjacentExitAreas.Count > 0)
             exitAreas = adjacentExitAreas;
@@ -933,10 +933,10 @@ public partial class BotPlayerManager
                 Area = area,
                 Path = BotPathfinder.FindPath(
                     mapId,
-                    bot.CurrentArea,
-                    bot.Cell,
+                    bot.Player.CurrentArea,
+                    bot.Player.Cell!,
                     area,
-                    GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, area)
+                    GameAreaConnectionData.GetSpawnCell(mapId, bot.Player.CurrentArea, area)
                     ?? GameMapData.GetAreaSpawnCell(mapId, area),
                     candidate => IsAreaClosingOrClosed(closureManager, matchingId, candidate))
             })
@@ -955,7 +955,7 @@ public partial class BotPlayerManager
         bot.LoopWaitUntil = DateTime.MinValue;
         _logger.LogDebug(
             "Bot corridor exit: BotId={Bot}, {From}->{To}, Steps={Steps}",
-            bot.PlayerId, bot.CurrentArea, exit.Area, exit.Path.Count);
+            bot.PlayerId, bot.Player.CurrentArea, exit.Area, exit.Path.Count);
         return true;
     }
 
@@ -988,7 +988,7 @@ public partial class BotPlayerManager
         }
 
         // 현재와 다른 임의 방
-        var others = rooms.Where(a => a != bot.CurrentArea).ToList();
+        var others = rooms.Where(a => a != bot.Player.CurrentArea).ToList();
         return others.Count > 0 ? others[_rng.Next(others.Count)] : AreaType.None;
     }
 
@@ -1024,7 +1024,7 @@ public partial class BotPlayerManager
 
         var mapId = GetMatchingMapId(matchingId);
         var targetCell = new Cell(info.CellX, info.CellY);
-        if (bot.CurrentArea == area && bot.Cell.Equals(targetCell))
+        if (bot.Player.CurrentArea == area && bot.Player.Cell!.Equals(targetCell))
         {
             bot.Path.Clear();
             bot.PathIndex = 0;
@@ -1035,7 +1035,7 @@ public partial class BotPlayerManager
             bot.PendingForcedInteractArea = AreaType.None;
             bot.PendingForcedInteractId = 0;
             bot.LoopWaitUntil = DateTime.MinValue;
-            bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
+            bot.Player.Velocity = new Vector3f(0f, 0f, 0f);
 
             _logger.LogInformation(
                 "Bot gift pickup queued at current cell: BotId={Bot}, Area={Area}, InteractId={InteractId}",
@@ -1043,7 +1043,7 @@ public partial class BotPlayerManager
             return true;
         }
 
-        var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
+        var path = BotPathfinder.FindPath(mapId, bot.Player.CurrentArea, bot.Player.Cell!,
             area, targetCell,
             a => IsAreaClosingOrClosed(closureManager, matchingId, a));
         if (path == null || path.Count == 0) return false;

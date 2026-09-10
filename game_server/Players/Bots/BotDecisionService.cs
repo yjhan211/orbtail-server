@@ -13,7 +13,7 @@ using network.common.data.models;
 using network.helpers;
 using network.packets;
 
-namespace game_server.bots;
+namespace game_server.players.bots;
 
 /// <summary>
 ///     봇의 대피·추격·아이템 회수·문 열기·회복과 절단 가능 여부를 판단한다.
@@ -91,8 +91,8 @@ internal sealed class BotDecisionService(
         float best = float.MaxValue;
         // 폐쇄 문 규칙은 사람과 같다: 밖에서 폐쇄 구역으로 들어가는 문은 못 따고,
         // 내가 폐쇄 구역 안이면 어느 문이든 따서 나간다.
-        bool insideClosed = matchRuntimes.GetOrThrow(matchingId).Closures.IsAreaClosed(bot.CurrentArea);
-        foreach (var door in GameDoorData.GetByAreaType(bot.CurrentArea))
+        bool insideClosed = matchRuntimes.GetOrThrow(matchingId).Closures.IsAreaClosed(bot.Player.CurrentArea);
+        foreach (var door in GameDoorData.GetByAreaType(bot.Player.CurrentArea))
         {
             if (!GameInteractableData.IsGaugeGatedDoor(door.DoorId)) continue;
             if (matchRuntimes.GetOrNull(matchingId)?.Doors.IsDoorOpen(door.DoorId) == true) continue;
@@ -100,7 +100,7 @@ internal sealed class BotDecisionService(
             // 놓인 쪽(안쪽)에서만 딴다 — 사람은 게이지 노출 규칙이 이미 막고 있고, 봇도 같은
             // 표를 따른다. 폐쇄 구역 탈출은 예외 (사람 규칙과 동일).
             if (!insideClosed &&
-                !GameInteractableData.IsGaugeDoorOperableFrom(door.DoorId, (int)bot.CurrentArea))
+                !GameInteractableData.IsGaugeDoorOperableFrom(door.DoorId, (int)bot.Player.CurrentArea))
                 continue;
             if (!insideClosed &&
                 (matchRuntimes.GetOrThrow(matchingId).Closures.IsAreaClosed(door.AreaType) ||
@@ -110,8 +110,8 @@ internal sealed class BotDecisionService(
             // door_info의 좌표는 셀 단위다 — 봇 위치(월드)와 직접 비교하면 절대 닿지 않는다.
             var doorWorld = BotPlayerManager.CellToWorldPosition(
                 Config.SWARM_MATCH_MAP, new Cell((int)door.PositionX, (int)door.PositionY));
-            float dx = doorWorld.X - bot.Position.X;
-            float dy = doorWorld.Y - bot.Position.Y;
+            float dx = doorWorld.X - bot.Player.Position!.X;
+            float dy = doorWorld.Y - bot.Player.Position!.Y;
             float distanceSquared = dx * dx + dy * dy;
             if (distanceSquared > SwarmBotDoorUnlockRange * SwarmBotDoorUnlockRange) continue;
             if (distanceSquared >= best) continue;
@@ -194,19 +194,19 @@ internal sealed class BotDecisionService(
         var directive = DecideMovementCore(matchingId, botPlayerId);
         var bot = matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId)
             .FirstOrDefault(candidate => candidate.PlayerId == botPlayerId);
-        if (bot == null || bot.Player.IsEliminated || bot.CurrentArea == AreaType.None)
+        if (bot == null || bot.Player.IsEliminated || bot.Player.CurrentArea == AreaType.None)
             return directive;
 
         var key = (matchingId, botPlayerId);
         if (!matchRuntimes.GetOrThrow(matchingId).BotTactics.AreaMemory.TryGetValue(key, out var memory))
         {
-            matchRuntimes.GetOrThrow(matchingId).BotTactics.AreaMemory[key] = (bot.CurrentArea, AreaType.None, DateTime.MinValue);
+            matchRuntimes.GetOrThrow(matchingId).BotTactics.AreaMemory[key] = (bot.Player.CurrentArea, AreaType.None, DateTime.MinValue);
             return directive;
         }
 
-        if (memory.Area != bot.CurrentArea)
+        if (memory.Area != bot.Player.CurrentArea)
         {
-            memory = (bot.CurrentArea, memory.Area, DateTime.UtcNow);
+            memory = (bot.Player.CurrentArea, memory.Area, DateTime.UtcNow);
             matchRuntimes.GetOrThrow(matchingId).BotTactics.AreaMemory[key] = memory;
         }
 
@@ -218,15 +218,15 @@ internal sealed class BotDecisionService(
             return directive;
 
         if (directive.DestinationArea == memory.PreviousArea &&
-            directive.DestinationArea != bot.CurrentArea &&
+            directive.DestinationArea != bot.Player.CurrentArea &&
             (DateTime.UtcNow - memory.LeftAtUtc).TotalSeconds < SwarmBotAreaReturnCooldownSeconds)
         {
             // 복귀 지시 강등: 쿨다운 동안 현 구역 제자리 — 자동 전투·픽업은 계속 돈다.
             return new SwarmBotDirective(
                 SwarmBotMode.Escort,
-                bot.CurrentArea,
-                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, bot.Position),
-                bot.Position);
+                bot.Player.CurrentArea,
+                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!),
+                bot.Player.Position!);
         }
 
         return directive;
@@ -251,11 +251,11 @@ internal sealed class BotDecisionService(
 
         // 0) 경계 밖 탈출 최우선 — 자기장에서는 안쪽으로 걷는 것 자체가 대피 경로다.
         //    목적지는 자기장 안쪽 대피 구역 (#272 수리: 옛 사냥터 후보는 외곽 방이라 다음 희생양).
-        if (IsSwarmAreaOutside(matchingId, bot.CurrentArea))
+        if (IsSwarmAreaOutside(matchingId, bot.Player.CurrentArea))
         {
             matchRuntimes.GetOrThrow(matchingId).BotTactics.FleeDirective.Add((matchingId, botPlayerId));
             var (evacuationArea, evacuationCell) =
-                ResolveSwarmFieldEvacuationTarget(matchingId, bot.Position);
+                ResolveSwarmFieldEvacuationTarget(matchingId, bot.Player.Position!);
             return new SwarmBotDirective(
                 SwarmBotMode.Escort,
                 evacuationArea,
@@ -274,13 +274,13 @@ internal sealed class BotDecisionService(
             //       남아 420 사망): 경고(15초 전) 기반 철수는 큰 방·문 경유 이동에 너무 늦다 —
             //       내 구역이 잠기기까지 25초 안이면 지금 나간다. 수축은 선형이라 시각이 정확하다.
             double shrinkRatePerSecond = SwarmPressureField.MaxDistance / MatchPressureFieldPolicy.ShrinkSeconds;
-            int currentAreaMinDistance = SwarmPressureField.GetAreaMinDistance(bot.CurrentArea);
+            int currentAreaMinDistance = SwarmPressureField.GetAreaMinDistance(bot.Player.CurrentArea);
             double secondsUntilAreaOutside =
                 (fieldSafeDistance - currentAreaMinDistance) / shrinkRatePerSecond;
             if (secondsUntilAreaOutside < SwarmBotAreaExitLeadSeconds)
             {
                 matchRuntimes.GetOrThrow(matchingId).BotTactics.FleeDirective.Add((matchingId, botPlayerId));
-                var (exitArea, exitCell) = ResolveSwarmFieldEvacuationTarget(matchingId, bot.Position);
+                var (exitArea, exitCell) = ResolveSwarmFieldEvacuationTarget(matchingId, bot.Player.Position!);
                 return new SwarmBotDirective(
                     SwarmBotMode.Escort,
                     exitArea,
@@ -288,7 +288,7 @@ internal sealed class BotDecisionService(
                     BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, exitCell));
             }
 
-            var botCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, bot.Position);
+            var botCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!);
             if (SwarmPressureField.GetDistance(botCell) >
                 fieldSafeDistance - SwarmBotFieldEvacuateMarginCells)
             {
@@ -298,13 +298,13 @@ internal sealed class BotDecisionService(
                 // 같은 구역에서 여유 두 배(6셀)까지 안전한 셀 중 가장 가까운 곳으로.
                 Cell? retreatCell = null;
                 float retreatBestSq = float.MaxValue;
-                foreach (var entry in MatchZoneService.GetSwarmAreaCellsByDistance(bot.CurrentArea))
+                foreach (var entry in MatchZoneService.GetSwarmAreaCellsByDistance(bot.Player.CurrentArea))
                 {
                     if (entry.Distance > fieldSafeDistance - SwarmBotFieldEvacuateMarginCells * 2)
                         break;
                     var candidate = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, entry.Cell);
-                    float candidateDx = candidate.X - bot.Position.X;
-                    float candidateDy = candidate.Y - bot.Position.Y;
+                    float candidateDx = candidate.X - bot.Player.Position!.X;
+                    float candidateDy = candidate.Y - bot.Player.Position!.Y;
                     float candidateSq = candidateDx * candidateDx + candidateDy * candidateDy;
                     if (candidateSq >= retreatBestSq) continue;
                     retreatBestSq = candidateSq;
@@ -314,13 +314,13 @@ internal sealed class BotDecisionService(
                 if (retreatCell != null)
                     return new SwarmBotDirective(
                         SwarmBotMode.Escort,
-                        bot.CurrentArea,
+                        bot.Player.CurrentArea,
                         retreatCell,
                         BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, retreatCell));
 
                 // 이 방엔 이제 설 자리가 없다 — 자기장 안쪽 대피 구역으로.
                 var (fieldEvacuationArea, fieldEvacuationCell) =
-                    ResolveSwarmFieldEvacuationTarget(matchingId, bot.Position);
+                    ResolveSwarmFieldEvacuationTarget(matchingId, bot.Player.Position!);
                 return new SwarmBotDirective(
                     SwarmBotMode.Escort,
                     fieldEvacuationArea,
@@ -331,7 +331,7 @@ internal sealed class BotDecisionService(
 
         // 0.3) 폐쇄 조기 철수 (#226 F): 경고 구역에서는 꼬리 길이에 비례해 일찍 나간다.
         var closureSnapshot = matchRuntimes.GetOrThrow(matchingId).Closures.GetClientStateSnapshot();
-        if (closureSnapshot.WarningAreas.Contains(bot.CurrentArea))
+        if (closureSnapshot.WarningAreas.Contains(bot.Player.CurrentArea))
         {
             int trailOrbCount = orbTrails.CountSwarmSquadOrbs(matchingId, botPlayerId);
             double evacuateLeadSeconds = SwarmBotClosureEvacuateBaseSeconds +
@@ -343,7 +343,7 @@ internal sealed class BotDecisionService(
                 // 목적지는 자기장 안쪽 대피 구역 (#272 수리): 전 구역 최근접 후보는 곧 경고가
                 // 뜰 바깥 방을 고를 수 있다 — 원형 자기장에서 안전은 항상 안쪽이다.
                 var (closureEvacuationArea, closureEvacuationCell) =
-                    ResolveSwarmFieldEvacuationTarget(matchingId, bot.Position);
+                    ResolveSwarmFieldEvacuationTarget(matchingId, bot.Player.Position!);
                 return new SwarmBotDirective(
                     SwarmBotMode.Escort,
                     closureEvacuationArea,
@@ -403,8 +403,8 @@ internal sealed class BotDecisionService(
                 // 우세 피격 반응 (#226 재수리): 수직 와리가리는 버킷을 늘려도 촐싹거렸다 —
                 // 이긴다고 판단한 봇은 공격자를 향해 압박 전진한다 (이동 중 공격이라 화력 손실 없음).
                 // 이미 붙어 있으면(1.5 이내) 지시 없이 통과 — 교전은 자동전투가 맡는다.
-                float pressDx = recentAttackerPosition.X - bot.Position.X;
-                float pressDy = recentAttackerPosition.Y - bot.Position.Y;
+                float pressDx = recentAttackerPosition.X - bot.Player.Position!.X;
+                float pressDy = recentAttackerPosition.Y - bot.Player.Position!.Y;
                 if (pressDx * pressDx + pressDy * pressDy > 2.25f)
                 {
                     Cell pressCell = ProximityCombatLineOfSight.WorldPositionToCell(
@@ -427,8 +427,8 @@ internal sealed class BotDecisionService(
             // 위협 앞에서는 채집 채널 홀드도 끊고 뛴다 — 홀드 채로 맞다 죽는 사고 방지 (매치 2372 봇 -78).
             matchRuntimes.GetOrThrow(matchingId).BotTactics.FleeDirective.Add((matchingId, botPlayerId));
             bot.CancelChannelHold();
-            float fleeDx = bot.Position.X - strongerPosition.X;
-            float fleeDy = bot.Position.Y - strongerPosition.Y;
+            float fleeDx = bot.Player.Position!.X - strongerPosition.X;
+            float fleeDy = bot.Player.Position!.Y - strongerPosition.Y;
             float fleeLength = MathF.Sqrt(fleeDx * fleeDx + fleeDy * fleeDy);
             if (fleeLength < 0.001f)
             {
@@ -439,8 +439,8 @@ internal sealed class BotDecisionService(
 
             // 위협 반대 방향의 이동 가능한 셀로 도주한다.
             var fleeProbe = new Vector3f(
-                bot.Position.X + fleeDx / fleeLength * SwarmBotFleeProbeDistance,
-                bot.Position.Y + fleeDy / fleeLength * SwarmBotFleeProbeDistance,
+                bot.Player.Position!.X + fleeDx / fleeLength * SwarmBotFleeProbeDistance,
+                bot.Player.Position!.Y + fleeDy / fleeLength * SwarmBotFleeProbeDistance,
                 0f);
 
             // 폴백 (#222): 도주 방향에 열린 스팟이 없어도 무조건 이탈한다 — 스팟 부재로
@@ -493,7 +493,7 @@ internal sealed class BotDecisionService(
         {
             return new SwarmBotDirective(
                 SwarmBotMode.Escort,
-                bot.CurrentArea,
+                bot.Player.CurrentArea,
                 ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, lootPosition),
                 lootPosition);
         }
@@ -530,7 +530,7 @@ internal sealed class BotDecisionService(
         {
             return new SwarmBotDirective(
                 SwarmBotMode.Escort,
-                bot.CurrentArea,
+                bot.Player.CurrentArea,
                 ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, stonePosition),
                 stonePosition);
         }
@@ -542,9 +542,9 @@ internal sealed class BotDecisionService(
         {
             return new SwarmBotDirective(
                 SwarmBotMode.Escort,
-                bot.CurrentArea,
-                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, bot.Position),
-                bot.Position);
+                bot.Player.CurrentArea,
+                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!),
+                bot.Player.Position!);
         }
 
         // 다음 오브 성장 비용이 부족하면 사냥을 나간다.
@@ -569,7 +569,7 @@ internal sealed class BotDecisionService(
         // 마른 방 탈출: 현재 구역에 살아있는 몹이 없으면
         //    몹이 남은 공급 구역으로 이주 — 스폰이 멈춘 종반에는 지시 없이 배회(디렉터 몫).
         bool currentAreaHasSupply = matchRuntimes.GetOrThrow(matchingId).Monsters.GetVisualStates(matchingId)
-            .Any(monster => monster.IsAlive && monster.AreaType == bot.CurrentArea);
+            .Any(monster => monster.IsAlive && monster.AreaType == bot.Player.CurrentArea);
         if (!currentAreaHasSupply &&
             TryFindNearestSwarmSupplyMonster(matchingId, bot, out var migrateArea,
                 out var migratePosition))
@@ -599,8 +599,8 @@ internal sealed class BotDecisionService(
         {
             if (!monster.IsAlive || IsSwarmAreaOutside(matchingId, monster.AreaType))
                 continue;
-            float dx = monster.PositionX - bot.Position.X;
-            float dy = monster.PositionY - bot.Position.Y;
+            float dx = monster.PositionX - bot.Player.Position!.X;
+            float dy = monster.PositionY - bot.Player.Position!.Y;
             float distanceSquared = dx * dx + dy * dy;
             if (distanceSquared >= bestSquared)
                 continue;
@@ -626,8 +626,8 @@ internal sealed class BotDecisionService(
 
     private static bool IsFarEnoughSwarmFleeTarget(BotPlayerState bot, Vector3f target)
     {
-        float dx = target.X - bot.Position.X;
-        float dy = target.Y - bot.Position.Y;
+        float dx = target.X - bot.Player.Position!.X;
+        float dy = target.Y - bot.Player.Position!.Y;
         return dx * dx + dy * dy >=
                SwarmBotMinFleeTargetDistance * SwarmBotMinFleeTargetDistance;
     }
@@ -726,8 +726,8 @@ internal sealed class BotDecisionService(
 
         void Consider(long rivalPlayerId, Vector3f position, AreaType area)
         {
-            float dx = position.X - bot.Position.X;
-            float dy = position.Y - bot.Position.Y;
+            float dx = position.X - bot.Player.Position!.X;
+            float dy = position.Y - bot.Player.Position!.Y;
             float distanceSquared = dx * dx + dy * dy;
             if (distanceSquared >= radiusSquared) return;
 
@@ -751,15 +751,15 @@ internal sealed class BotDecisionService(
         foreach (var other in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
         {
             if (other.PlayerId == bot.PlayerId || other.Player.IsEliminated) continue;
-            Consider(other.PlayerId, other.Position, other.CurrentArea);
+            Consider(other.PlayerId, other.Player.Position!, other.Player.CurrentArea);
         }
 
         foreach (var session in matchRuntimes.GetOrThrow(matchingId).GetSessions())
         {
             if (!session.PlayerId.HasValue || session.Player.IsEliminated ||
-                session.Player.LastValidatedPosition == null)
+                session.Player.Position == null)
                 continue;
-            Consider(session.PlayerId.Value, session.Player.LastValidatedPosition, session.Player.CurrentArea);
+            Consider(session.PlayerId.Value, session.Player.Position, session.Player.CurrentArea);
         }
 
         if (includeMonstersAsStronger)
@@ -767,8 +767,8 @@ internal sealed class BotDecisionService(
             foreach (var monster in matchRuntimes.GetOrThrow(matchingId).Monsters.GetVisualStates(matchingId))
             {
                 if (!monster.IsAlive) continue;
-                float dx = monster.PositionX - bot.Position.X;
-                float dy = monster.PositionY - bot.Position.Y;
+                float dx = monster.PositionX - bot.Player.Position!.X;
+                float dy = monster.PositionY - bot.Player.Position!.Y;
                 float distanceSquared = dx * dx + dy * dy;
                 if (distanceSquared >= bestStrongerDistanceSquared) continue;
                 bestStrongerDistanceSquared = distanceSquared;
@@ -785,10 +785,10 @@ internal sealed class BotDecisionService(
         float rangeSquared = Config.SWARM_ORB_ATTACK_RANGE * Config.SWARM_ORB_ATTACK_RANGE;
         foreach (var target in matchRuntimes.GetOrThrow(matchingId).Monsters.GetCombatTargets(matchingId))
         {
-            if (target.Area != bot.CurrentArea)
+            if (target.Area != bot.Player.CurrentArea)
                 continue;
-            float dx = target.Position.X - bot.Position.X;
-            float dy = target.Position.Y - bot.Position.Y;
+            float dx = target.Position.X - bot.Player.Position!.X;
+            float dy = target.Position.Y - bot.Player.Position!.Y;
             if (dx * dx + dy * dy <= rangeSquared)
                 return true;
         }
@@ -830,15 +830,15 @@ internal sealed class BotDecisionService(
     {
         position = null!;
         float bestDistanceSquared = float.MaxValue;
-        foreach (var item in matchRuntimes.GetOrThrow(matchingId).GroundItems.GetSnapshot(bot.CurrentArea))
+        foreach (var item in matchRuntimes.GetOrThrow(matchingId).GroundItems.GetSnapshot(bot.Player.CurrentArea))
         {
             if (item.ItemId != Config.SUMMON_STONE_GROUND_ITEM_ID ||
                 matchRuntimes.GetOrThrow(matchingId).GroundItems.IsYoungerThan(
                     item.GroundItemUid, BotPlayerManager.SummonStoneBotReactionDelay))
                 continue;
 
-            float dx = item.PositionX - bot.Position.X;
-            float dy = item.PositionY - bot.Position.Y;
+            float dx = item.PositionX - bot.Player.Position!.X;
+            float dy = item.PositionY - bot.Player.Position!.Y;
             float distanceSquared = dx * dx + dy * dy;
             if (distanceSquared >= bestDistanceSquared)
                 continue;
@@ -864,15 +864,15 @@ internal sealed class BotDecisionService(
         foreach (var other in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
         {
             if (other.PlayerId != playerId || other.Player.IsEliminated) continue;
-            position = other.Position;
+            position = other.Player.Position!;
             return true;
         }
 
         foreach (var session in matchRuntimes.GetOrThrow(matchingId).GetSessions())
         {
             if (session.PlayerId != playerId || session.Player.IsEliminated ||
-                session.Player.LastValidatedPosition == null) continue;
-            position = session.Player.LastValidatedPosition;
+                session.Player.Position == null) continue;
+            position = session.Player.Position;
             return true;
         }
 

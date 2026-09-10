@@ -11,7 +11,7 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 
-namespace game_server.bots;
+namespace game_server.players.bots;
 
 /// <summary>
 ///     매치 잠금 안에서 자신이 속한 매치의 봇 이동과 송신 계획을 만든다. 다른 매치는 조회하지 않는다. 패킷 생성·전송은

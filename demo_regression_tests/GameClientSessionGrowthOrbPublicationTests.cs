@@ -1,4 +1,4 @@
-using game_server.bots;
+using game_server.players.bots;
 using game_server.logging;
 using game_server.orbs;
 using game_server.combat;
@@ -237,7 +237,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var spawnCell = GameMapData.GetMapInfo(Config.SWARM_MATCH_MAP)!.GetInitialPosition().Item1;
         var spawnArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, spawnCell);
         TestGameSessionServices.SetMovementProperty(session, "CurrentArea", spawnArea);
-        TestGameSessionServices.SetMovementProperty(session, "LastValidatedPosition", MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, spawnCell));
+        TestGameSessionServices.SetMovementProperty(session, "Position", MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, spawnCell));
         using var matchLock = runtime.Enter();
         Assert.True(runtime.Inventory.TryAddItemWithCapacity(
             FirstPlayerId, 107000010, Config.SWARM_ORB_CAPACITY, out _));
@@ -816,7 +816,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
             TestGameSessionServices.BindMatch(session, matchingId);
             TestGameSessionServices.SetMovementProperty(session, "CurrentArea", Config.SWARM_MATCH_GROUND_AREA);
-            TestGameSessionServices.SetMovementProperty(session, "LastValidatedPosition", new Vector3f(0f, 0f, 0f));
+            TestGameSessionServices.SetMovementProperty(session, "Position", new Vector3f(0f, 0f, 0f));
         }
 
         private static void SetProperty(GameClientSession session, string name, object? value) =>

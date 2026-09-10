@@ -1,3 +1,4 @@
+using game_server.players;
 using game_server.orbs;
 using game_server.combat;
 using game_server.matches;
@@ -157,7 +158,7 @@ public class ProximityAutoCombatDataTests
     {
         string source = ReadNormalizedSource(
             FindRepositoryRoot(), "game_server", "Orbs", "OrbRecoveryService.cs");
-        Assert.Contains("IReadOnlyCollection<MatchPlayer> players", source);
+        Assert.Contains("IReadOnlyCollection<Player> players", source);
         Assert.Contains("var change = player.Recover(requestedRecovery);", source);
         Assert.Contains("PlayerHealthChangeService.Record(matchingId, player, change, eventLogs, logger);", source);
         Assert.DoesNotContain("eventLogs.RecordRecovery(", source);

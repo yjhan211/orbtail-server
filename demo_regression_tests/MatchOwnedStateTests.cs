@@ -1,5 +1,6 @@
+using game_server.players;
 using game_server;
-using game_server.bots;
+using game_server.players.bots;
 using game_server.items;
 using game_server.logging;
 using game_server.field;
@@ -43,7 +44,7 @@ public sealed class MatchOwnedStateTests
 
         inventory.AddItem(11, 107000010);
         stones.AddStones(11, 9);
-        roster.RegisterParticipant(new MatchPlayer { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11  }});
+        roster.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11  }});
 
         Assert.Same(inventory.GetPlayerInventory(11),
             store.GetOrThrow(first.MatchingId).Inventory.GetPlayerInventory(11));
@@ -72,7 +73,7 @@ public sealed class MatchOwnedStateTests
         sibling.SummonStones.AddStones(11, 7);
         inventory.AddItem(11, 107000010);
         ground.SpawnItems(area, 0, 0, [107000010]);
-        roster.RegisterParticipant(new MatchPlayer { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11  }});
+        roster.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11  }});
         closures.InitializeMatching();
 
         using (MatchRuntimeStore.Enter(runtime))
@@ -158,7 +159,7 @@ public sealed class MatchOwnedStateTests
             runtime.Bots.RegisterBots(runtime.MatchingId, Config.SWARM_MATCH_MAP,
                 [botId], new Dictionary<long, Cell> { [botId] = new(0, 0) });
             runtime.RegisterParticipant(runtime.Bots.GetBot(runtime.MatchingId, botId)!.Player);
-            runtime.RegisterParticipant(new MatchPlayer { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11  }});
+            runtime.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11  }});
             runtime.Inventory.AddItem(botId, 107000010);
         }
         var bot = match.Bots.GetBot(match.MatchingId, botId)!;
@@ -178,11 +179,11 @@ public sealed class MatchOwnedStateTests
             Assert.Equal(0, bot.PendingRngInteractId);
             Assert.Equal(DateTime.MinValue, bot.LoopWaitUntil);
             Assert.Empty(match.Inventory.GetPlayerInventory(botId).GetAllItems());
-            int drops = match.GroundItems.GetSnapshot(bot.CurrentArea).Count;
+            int drops = match.GroundItems.GetSnapshot(bot.Player.CurrentArea).Count;
             var eliminatedAt = entry.eliminatedAt;
 
             service.EliminatePlayer(match.MatchingId, botId, EliminationReason.HEALTH_ZERO, attackerPlayerId: 99);
-            Assert.Equal(drops, match.GroundItems.GetSnapshot(bot.CurrentArea).Count);
+            Assert.Equal(drops, match.GroundItems.GetSnapshot(bot.Player.CurrentArea).Count);
             Assert.Equal(eliminatedAt, match.BuildGameResult().Single(row => row.playerId == botId).eliminatedAt);
             Assert.Equal(11, match.BuildGameResult().Single(row => row.playerId == botId).attackerPlayerId);
         }
@@ -197,7 +198,7 @@ public sealed class MatchOwnedStateTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(941103);
-        var player = new MatchPlayer { Profile = new PlayerInfo { PlayerId = playerId } };
+        var player = new Player { Profile = new PlayerInfo { PlayerId = playerId } };
         if (playerId < 0)
         {
             match.Bots.RegisterBots(match.MatchingId, Config.SWARM_MATCH_MAP,
@@ -205,7 +206,7 @@ public sealed class MatchOwnedStateTests
             player = match.Bots.GetBot(match.MatchingId, playerId)!.Player;
         }
         match.RegisterParticipant(player);
-        match.RegisterParticipant(new MatchPlayer { Profile = new PlayerInfo { PlayerId = 11 } });
+        match.RegisterParticipant(new Player { Profile = new PlayerInfo { PlayerId = 11 } });
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var service = TestGameSessionServices.CreateEliminationService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance);
         using (match.Enter())
@@ -232,11 +233,11 @@ public sealed class MatchOwnedStateTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(941104);
-        var player = new MatchPlayer
+        var player = new Player
         {
             Profile = new PlayerInfo { PlayerId = 42 },
             CurrentArea = Config.SWARM_MATCH_GROUND_AREA,
-            LastValidatedPosition = new Vector3f(0, 0, 0)
+            Position = new Vector3f(0, 0, 0)
         };
         match.RegisterParticipant(player);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);

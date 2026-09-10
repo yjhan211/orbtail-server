@@ -1,6 +1,6 @@
 using game_server.players;
 using game_server;
-using game_server.bots;
+using game_server.players.bots;
 using game_server.logging;
 using game_server.monsters;
 using game_server.orbs;
@@ -123,11 +123,11 @@ internal class MatchCombatService(
         var aliveSessions = sessions.Where(session => !session.Player.IsEliminated).ToList();
         var aliveBots = bots.Where(bot => !bot.Player.IsEliminated).ToList();
         var participants = aliveSessions
-            .Where(session => session.Player.LastValidatedPosition != null)
+            .Where(session => session.Player.Position != null)
             .Select(session => new SwarmParticipantSpatial(
-                session.PlayerId!.Value, session.Player.CurrentArea, session.Player.LastValidatedPosition!))
+                session.PlayerId!.Value, session.Player.CurrentArea, session.Player.Position!))
             .Concat(aliveBots.Select(bot =>
-                new SwarmParticipantSpatial(bot.PlayerId, bot.CurrentArea, bot.Position)))
+                new SwarmParticipantSpatial(bot.PlayerId, bot.Player.CurrentArea, bot.Player.Position!)))
             .ToList();
 
         var tick = matchRuntimes.GetOrThrow(matchingId).Monsters.Tick(matchingId, participants, matchRuntimes.GetOrThrow(matchingId).IsGameplayActive(), nowUtc);
@@ -1594,12 +1594,12 @@ internal class MatchCombatService(
         foreach (var session in aliveSessions)
         {
             if (session.PlayerId.HasValue &&
-                session.Player.LastValidatedPosition != null &&
+                session.Player.Position != null &&
                 CombatActorFactory.TryCreateSpatialActor(
                     session.PlayerId.Value,
                     Config.SWARM_MATCH_MAP,
                     session.Player.CurrentArea,
-                    session.Player.LastValidatedPosition,
+                    session.Player.Position,
                     out var spatial))
             {
                 AddSwarmParticipantCombatActors(actors, matchingId, spatial, nowUtc);
@@ -1609,7 +1609,7 @@ internal class MatchCombatService(
         MapId botMapId = matchRuntimes.GetOrThrow(matchingId).Bots.GetMatchingMapId(matchingId);
         foreach (var bot in aliveBots)
         {
-            if (CombatActorFactory.TryCreateSpatialActor(bot.PlayerId, botMapId, bot.CurrentArea, bot.Position, out var botSpatial))
+            if (CombatActorFactory.TryCreateSpatialActor(bot.PlayerId, botMapId, bot.Player.CurrentArea, bot.Player.Position!, out var botSpatial))
                 AddSwarmParticipantCombatActors(actors, matchingId, botSpatial, nowUtc);
         }
 

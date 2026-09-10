@@ -2,7 +2,7 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 
-namespace game_server.bots;
+namespace game_server.players.bots;
 
 /// <summary>
 ///     #127: 봇 셀 단위 walking을 위한 pathfinding.

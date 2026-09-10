@@ -6,7 +6,7 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 
-namespace game_server.bots;
+namespace game_server.players.bots;
 
 public partial class BotPlayerManager
 {
@@ -25,12 +25,12 @@ public partial class BotPlayerManager
         out BotGroundItemPickup? pickup)
     {
         pickup = null;
-        if (bot.Player.IsEliminated || bot.CurrentArea == AreaType.None)
+        if (bot.Player.IsEliminated || bot.Player.CurrentArea == AreaType.None)
             return false;
 
         var inventory = inventoryManager.GetPlayerInventory(bot.PlayerId);
-        foreach (var candidate in groundItemManager.GetSnapshot(bot.CurrentArea)
-                     .OrderBy(item => DistanceSquared(bot.Position, item.PositionX, item.PositionY)))
+        foreach (var candidate in groundItemManager.GetSnapshot(bot.Player.CurrentArea)
+                     .OrderBy(item => DistanceSquared(bot.Player.Position!, item.PositionX, item.PositionY)))
         {
             GroundItemPickupDisposition disposition = GroundItemPickupDisposition.LeaveOnGround;
             int healthRecovery = 0;
@@ -49,9 +49,9 @@ public partial class BotPlayerManager
             var status = groundItemManager.TryClaim(
                 candidate.GroundItemUid,
                 bot.PlayerId,
-                bot.CurrentArea,
-                bot.Position.X,
-                bot.Position.Y,
+                bot.Player.CurrentArea,
+                bot.Player.Position!.X,
+                bot.Player.Position!.Y,
                 item =>
                 {
                     if (item.ItemId is Config.SUMMON_STONE_GROUND_ITEM_ID

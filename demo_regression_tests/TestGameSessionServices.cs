@@ -98,13 +98,13 @@ internal static class TestGameSessionServices
         }
     }
 
-    public static int GetPeriodicBuffCount(MatchPlayer player) =>
-        ((System.Collections.ICollection)typeof(MatchPlayer)
+    public static int GetPeriodicBuffCount(Player player) =>
+        ((System.Collections.ICollection)typeof(Player)
             .GetField("_periodicBuffs", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .GetValue(player)!).Count;
 
     public static void SetMovementProperty(GameClientSession session, string name, object? value) =>
-        typeof(MatchPlayer).GetProperty(name)!.SetValue(session.Player, value);
+        typeof(Player).GetProperty(name)!.SetValue(session.Player, value);
 
     // 입장 프로토콜을 생략하는 단위 테스트에서도 실제 입장과 같은 런타임을 세션에 연결한다.
     public static void BindMatch(GameClientSession session, long matchingId, MatchRuntimeStore? store = null)
@@ -114,7 +114,7 @@ internal static class TestGameSessionServices
         typeof(GameClientSession).GetField("_match", flags)!.SetValue(session,
             matchingId > 0 ? (store?.GetOrCreate(matchingId) ?? entry!.GetOrCreateMatch(matchingId)) : null);
         session.Player = (matchingId > 0 ? session.Match.GetParticipant(session.PlayerId ?? 0) : null)
-            ?? new MatchPlayer { Profile = new network.common.data.models.PlayerInfo { PlayerId = session.PlayerId ?? 0 } };
+            ?? new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = session.PlayerId ?? 0 } };
     }
 
     public static GameMatchEntryService CreateEntryService(

@@ -1,5 +1,5 @@
 using game_server.matches;
-using game_server.bots;
+using game_server.players.bots;
 using game_server.logging;
 using game_server.orbs;
 using game_server.sessions;
@@ -183,7 +183,7 @@ internal sealed class MatchGrowthService(
 
         foreach (var session in aliveSessions)
         {
-            if (session.PlayerId.HasValue && session.Player.CurrentArea == bot.CurrentArea &&
+            if (session.PlayerId.HasValue && session.Player.CurrentArea == bot.Player.CurrentArea &&
                 matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(session.PlayerId.Value).GetOrbPower() *
                 BotPreyPowerAdvantage <= myPower)
                 return true;
@@ -192,7 +192,7 @@ internal sealed class MatchGrowthService(
         foreach (var other in aliveBots)
         {
             if (other.PlayerId != bot.PlayerId &&
-                other.CurrentArea == bot.CurrentArea &&
+                other.Player.CurrentArea == bot.Player.CurrentArea &&
                 matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(other.PlayerId).GetOrbPower() *
                 BotPreyPowerAdvantage <= myPower)
                 return true;

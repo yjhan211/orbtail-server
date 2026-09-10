@@ -1,4 +1,4 @@
-using game_server.bots;
+using game_server.players.bots;
 using game_server.combat;
 using game_server.matches;
 using System.Collections.Immutable;
@@ -101,8 +101,8 @@ public sealed class SwarmBotMovementPlanTests
     {
         string root = FindRepositoryRoot();
         string coordinator = ReadNormalizedSource(
-            root, "game_server", "Bots", "BotPlayerManager.MovementPlan.cs");
-        string server = ReadNormalizedSource(root, "game_server", "Bots", "BotMovementService.cs");
+            root, "game_server", "Players", "Bots", "BotPlayerManager.MovementPlan.cs");
+        string server = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotMovementService.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs");
         string tick = ReadMethodSlice(
             combat,

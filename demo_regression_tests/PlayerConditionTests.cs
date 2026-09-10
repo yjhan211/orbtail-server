@@ -1,6 +1,6 @@
 using network.common.data.models;
 using game_server.matches;
-using game_server.bots;
+using game_server.players.bots;
 using game_server.items;
 using game_server.players;
 using game_server.sessions;
@@ -12,7 +12,7 @@ public sealed class PlayerConditionTests
     [Fact]
     public void RecoveryResultDistinguishesRequestedAndActualAmount()
     {
-        var condition = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 }, Health = Config.MAX_HEALTH - 3 };
+        var condition = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = Config.MAX_HEALTH - 3 };
         var change = condition.Recover(10);
         Assert.Equal(Config.MAX_HEALTH - 3, change.Before);
         Assert.Equal(Config.MAX_HEALTH, change.After);
@@ -29,7 +29,7 @@ public sealed class PlayerConditionTests
     public void LeavingSleepResetsRecoveryButPreservesPeriodicBuffs(PlayerState nextState)
     {
         var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var condition = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 }, Health = 50 };
+        var condition = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 50 };
         condition.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 2, 1, 10);
         Assert.True(condition.TryStartSleep(now));
         Assert.Equal(PlayerState.SLEEP, condition.State);
@@ -52,7 +52,7 @@ public sealed class PlayerConditionTests
     [Fact]
     public void DamageResultClampsAtZeroAndDoesNotOverflow()
     {
-        var condition = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 }, Health = 7 };
+        var condition = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 7 };
         var change = condition.ApplyDamage(int.MaxValue);
         Assert.Equal(0, change.After);
         Assert.Equal(-7, change.ActualDelta);
@@ -69,7 +69,7 @@ public sealed class PlayerConditionTests
     public void StartSleepChecksCombatAndHealingLocksAndDoesNotRestartSleep()
     {
         var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var condition = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 }, Health = 50, LastCombatAtUtc = now };
+        var condition = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 50, LastCombatAtUtc = now };
         Assert.False(condition.TryStartSleep(now.AddSeconds(2)));
         condition.HealLockUntilUtc = now.AddSeconds(5);
         Assert.False(condition.TryStartSleep(now.AddSeconds(4)));
@@ -84,7 +84,7 @@ public sealed class PlayerConditionTests
     public void MatchTicksPreservePeriodicBuffScheduleAndExpiry()
     {
         var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var condition = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 }, Health = 20 };
+        var condition = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 20 };
         condition.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 3, 2, 4, now);
         void Apply(int amount) => condition.ChangeHealth(amount, 100);
 
@@ -107,7 +107,7 @@ public sealed class PlayerConditionTests
     public void ClearingBuffsResetsScheduleAndCancellationStopsCatchUp()
     {
         var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var condition = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 }, Health = 20 };
+        var condition = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 20 };
         condition.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 3, 1, 10, now);
         condition.ClearPeriodicBuffs();
         condition.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 3, 1, 10, now.AddSeconds(10));
@@ -152,14 +152,14 @@ public sealed class PlayerConditionTests
     [Fact]
     public void PlayersAndBotsStartAtFullHealth()
     {
-        Assert.Equal(Config.MAX_HEALTH, new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 } }.Health);
+        Assert.Equal(Config.MAX_HEALTH, new Player { Profile = new PlayerInfo { PlayerId = 1 } }.Health);
         Assert.Equal(Config.MAX_HEALTH, new BotPlayerState().Player.Health);
     }
 
     [Fact]
     public void HealthDamageAndRecoveryClampToResourceBounds()
     {
-        var state = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 }, Health = 80 };
+        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 80 };
         state.ChangeHealth(-30, 100);
         Assert.Equal(50, state.Health);
         state.ChangeHealth(70, 100);
@@ -171,7 +171,7 @@ public sealed class PlayerConditionTests
     [Fact]
     public void PeriodicHealingAddsHealthAndDamageRemovesHealth()
     {
-        var state = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 }, Health = 50 };
+        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 50 };
         void Apply(int health) => state.ChangeHealth(health, 100);
         state.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 10, 1, 1);
         state.TickPeriodicBuffs(100, Apply);
@@ -184,7 +184,7 @@ public sealed class PlayerConditionTests
     [Fact]
     public void SleepOnlyRecoversMissingHealth()
     {
-        var state = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 }, Health = 99, State = PlayerState.SLEEP };
+        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 99, State = PlayerState.SLEEP };
         var now = DateTime.UtcNow;
         state.GetSleepRecovery(now, false, 100);
         Assert.Equal(1, state.GetSleepRecovery(now.AddSeconds(1), false, 100));
@@ -195,17 +195,17 @@ public sealed class PlayerConditionTests
     [Fact]
     public void HealthChangesDoNotAffectOtherPlayers()
     {
-        var state = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 }, Health = 100 };
+        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 100 };
         state.ChangeHealth(-1, 100);
         Assert.Equal(99, state.Health);
-        Assert.Equal(Config.MAX_HEALTH, new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 } }.Health);
+        Assert.Equal(Config.MAX_HEALTH, new Player { Profile = new PlayerInfo { PlayerId = 1 } }.Health);
     }
 
     [Fact]
     public void SleepWaitsForWarmupAndDoesNotReplayBlockedTicks()
     {
         var start = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var state = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 }, State = PlayerState.SLEEP, Health = 80 };
+        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 }, State = PlayerState.SLEEP, Health = 80 };
         Assert.Equal(0, state.GetSleepRecovery(start, false, 100));
         Assert.Equal(0, state.GetSleepRecovery(start.AddMilliseconds(999), false, 100));
         Assert.Equal(5, state.GetSleepRecovery(start.AddSeconds(1), false, 100));
@@ -221,7 +221,7 @@ public sealed class PlayerConditionTests
     [Fact]
     public void PeriodicBuffReplacementAndExpiryKeepOneEffect()
     {
-        var state = new MatchPlayer { Profile = new PlayerInfo { PlayerId = 1 }, Health = 0 };
+        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 0 };
         state.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 10, 1, 2);
         state.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 3, 1, 2);
         void Apply(int health) => state.ChangeHealth(health, 100);

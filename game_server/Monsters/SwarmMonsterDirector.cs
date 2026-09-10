@@ -1,4 +1,4 @@
-using game_server.bots;
+using game_server.players.bots;
 using game_server.combat;
 using game_server.items;
 using game_server.field;

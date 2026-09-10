@@ -28,7 +28,7 @@ internal sealed class PlayerEliminationService(
         var eliminatedPlayer = runtime.GetParticipant(eliminatedPlayerId);
         var eliminatedSession = eliminatedPlayer?.Session;
         var eliminatedBot = runtime.Bots.GetBot(matchingId, eliminatedPlayerId);
-        var eliminatedArea = eliminatedBot?.CurrentArea ?? eliminatedPlayer?.CurrentArea ?? AreaType.None;
+        var eliminatedArea = eliminatedPlayer?.CurrentArea ?? AreaType.None;
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
 
         int finalOrbTier = runtime.Inventory.GetHighestOrbTier(eliminatedPlayerId);
@@ -50,54 +50,36 @@ internal sealed class PlayerEliminationService(
         runtime.GroundItems.ReleaseClaimReservationsForPlayer(eliminatedPlayerId);
         gameEventLogManager.LogElimination(matchingId, eliminatedPlayerId, reason.ToString(), isBot: eliminatedBot != null, attackerPlayerId: resolvedAttackerPlayerId);
 
-        if (eliminatedBot != null)
+        var position = eliminatedPlayer?.Position;
+        if (position != null && eliminatedArea != AreaType.None)
         {
-            var outcome = EliminationInventoryDropper.DropBotInventoryWithLogs(
-                runtime.Bots, runtime.Inventory, runtime.GroundItems, gameEventLogManager,
-                matchingId, eliminatedPlayerId);
-            if (outcome is { Drop.SpawnedItems.Count: > 0 })
+            var drop = EliminationInventoryDropper.DropAll(
+                runtime.Inventory, runtime.GroundItems, matchingId, eliminatedPlayerId,
+                eliminatedArea, position.X, position.Y, Config.SWARM_MATCH_MAP);
+            if (drop.RemovedItems.Count > 0)
             {
-                var targets = runtime.GetSessions()
-                    .Where(session => !session.Player.IsEliminated && session.Player.CurrentArea == outcome.Bot.CurrentArea);
-                using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
-                    (int)outcome.Bot.CurrentArea, outcome.Drop.SpawnedItems.ToList());
-                foreach (var session in targets)
-                    session.TrySend(packet);
-            }
-        }
-        else
-        {
-            var position = eliminatedPlayer?.LastValidatedPosition;
-            if (position != null && eliminatedArea != AreaType.None)
-            {
-                var drop = EliminationInventoryDropper.DropAll(
-                    runtime.Inventory, runtime.GroundItems, matchingId, eliminatedPlayerId,
-                    eliminatedArea, position.X, position.Y, Config.SWARM_MATCH_MAP);
-                if (drop.RemovedItems.Count > 0)
+                var emptyBoard = runtime.Inventory.GetPlayerInventory(eliminatedPlayerId);
+                gameEventLogManager.LogOrbBoardTransition(
+                    matchingId, eliminatedPlayerId, emptyBoard.GetAllItems(), 0,
+                    eliminatedArea.ToString(), "elimination_drop", isBot: eliminatedBot != null);
+                foreach (var item in drop.RemovedItems)
                 {
-                    var emptyBoard = runtime.Inventory.GetPlayerInventory(eliminatedPlayerId);
-                    gameEventLogManager.LogOrbBoardTransition(
-                        matchingId, eliminatedPlayerId, emptyBoard.GetAllItems(), 0,
-                        eliminatedArea.ToString(), "elimination_drop", isBot: false);
-                    foreach (var item in drop.RemovedItems)
+                    eliminatedSession?.SendOrbUpdate(new InGameItemInfo
                     {
-                        eliminatedSession?.SendOrbUpdate(new InGameItemInfo
-                        {
-                            ItemUid = item.ItemUid,
-                            ItemId = item.ItemId,
-                            Count = 0,
-                            GiftState = item.GiftState
-                        });
-                    }
+                        ItemUid = item.ItemUid,
+                        ItemId = item.ItemId,
+                        Count = 0,
+                        GiftState = item.GiftState
+                    });
                 }
-                if (drop.DroppedItemIds.Count > 0)
-                {
-                    gameEventLogManager.LogEliminationDrop(
-                        matchingId, eliminatedPlayerId, eliminatedArea.ToString(),
-                        drop.DroppedItemIds, drop.SpawnedItems,
-                        GameEventLogManager.CalculateDropRecoveryTotal(drop.DroppedItemIds), isBot: false);
-                    GroundItemNotificationService.BroadcastSpawned(runtime, eliminatedArea, drop.SpawnedItems);
-                }
+            }
+            if (drop.DroppedItemIds.Count > 0)
+            {
+                gameEventLogManager.LogEliminationDrop(
+                    matchingId, eliminatedPlayerId, eliminatedArea.ToString(),
+                    drop.DroppedItemIds, drop.SpawnedItems,
+                    GameEventLogManager.CalculateDropRecoveryTotal(drop.DroppedItemIds), isBot: eliminatedBot != null);
+                GroundItemNotificationService.BroadcastSpawned(runtime, eliminatedArea, drop.SpawnedItems);
             }
         }
 

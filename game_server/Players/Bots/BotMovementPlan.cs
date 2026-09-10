@@ -3,7 +3,7 @@ using System.Collections.Immutable;
 using network.common;
 using network.common.data.models;
 
-namespace game_server.bots;
+namespace game_server.players.bots;
 
 internal readonly record struct SwarmVectorSnapshot(float X, float Y, float Z)
 {

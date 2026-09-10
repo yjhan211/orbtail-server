@@ -1,4 +1,4 @@
-using game_server.bots;
+using game_server.players.bots;
 using network.common.data.models;
 
 namespace game_server.combat;

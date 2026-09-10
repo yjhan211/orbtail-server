@@ -16,7 +16,7 @@ internal static class MatchInteractionService
     ///     진행 중인 문 상호작용을 정리하고 취소한 ID를 반환한다.
     ///     호출자는 매치 잠금을 유지한 채 반환된 ID로 로그와 취소 알림을 보낸다.
     /// </summary>
-    public static int[] CancelPendingInteractions(MatchRuntime runtime, MatchPlayer state)
+    public static int[] CancelPendingInteractions(MatchRuntime runtime, Player state)
     {
         RequireLock(runtime);
         int[] canceledIds = state.GetPendingInteractionIds();
@@ -34,7 +34,7 @@ internal static class MatchInteractionService
         return ErrorCode.SUCCESS;
     }
 
-    public static bool FinishDoor(MatchRuntime runtime, MatchPlayer state, int doorId)
+    public static bool FinishDoor(MatchRuntime runtime, Player state, int doorId)
     {
         RequireLock(runtime);
         state.CompleteDoor();

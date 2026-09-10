@@ -1,4 +1,4 @@
-using game_server.bots;
+using game_server.players.bots;
 using game_server.logging;
 using game_server.players;
 using game_server.combat;
@@ -68,7 +68,7 @@ public sealed class GameServerDependencyInjectionTests
                 [
                     typeof(MatchCombatService),
                     typeof(game_server.field.MatchEnvironmentService),
-                    typeof(game_server.bots.BotMovementService), typeof(game_server.bots.BotDecisionService),
+                    typeof(game_server.players.bots.BotMovementService), typeof(game_server.players.bots.BotDecisionService),
                     typeof(game_server.field.MatchZoneService)
                 ];
                 foreach (var type in dependencyTypes)

@@ -1,4 +1,5 @@
-using game_server.bots;
+using game_server.players;
+using game_server.players.bots;
 using game_server.combat;
 using game_server.logging;
 using game_server.orbs;
@@ -54,7 +55,7 @@ public sealed class OrbRecoveryServiceTests
         var match = store.GetOrCreate(948021);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var service = new OrbRecoveryService(store, logs, NullLogger<OrbRecoveryService>.Instance);
-        var player = new MatchPlayer { Profile = new PlayerInfo { PlayerId = playerId }, Health = Config.MAX_HEALTH - 1 };
+        var player = new Player { Profile = new PlayerInfo { PlayerId = playerId }, Health = Config.MAX_HEALTH - 1 };
         var actor = new ProximityCombatActor(playerId, AreaType.None, new Vector3f(),
             107000040, 0, 0, 0, WeaponItemUid: 1);
         var now = DateTime.UtcNow;

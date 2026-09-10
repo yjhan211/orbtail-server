@@ -2,7 +2,7 @@ using game_server.sessions;
 using network.common;
 using network.common.data.models;
 
-namespace game_server.matches;
+namespace game_server.players;
 
 /// <summary>
 ///     매치 내 플레이어 한 명의 프로필·체력·이동·상호작용·탈락 상태를 관리한다.
@@ -10,7 +10,7 @@ namespace game_server.matches;
 ///     Session은 현재 연결을 가리키며, 입장 전·봇·연결 종료 후에는 null이다.
 ///     게임 상태 변경은 매치 잠금 안에서 수행하고, 패킷 전송은 세션과 서비스가 담당한다.
 /// </summary>
-public class MatchPlayer
+public class Player
 {
     private const double SwarmSleepWarmupSeconds = 1d;
     private const double SwarmSleepCombatLockSeconds = 3d;
@@ -48,10 +48,11 @@ public class MatchPlayer
     public int EliminationRank { get; set; }
     public int FinalOrbTier { get; set; }
 
-    public Vector3f? LastValidatedPosition { get; internal set; }
-    public Cell? LastValidatedCell { get; internal set; }
-    public Vector3f LastValidatedVelocity { get; internal set; } = new();
-    public float LastValidatedRotation { get; internal set; }
+    // 서버가 확정한 공통 위치. 사람은 입장 초기화 전까지 위치와 셀이 없을 수 있다.
+    public Vector3f? Position { get; internal set; }
+    public Cell? Cell { get; internal set; }
+    public Vector3f Velocity { get; internal set; } = new();
+    public float Rotation { get; internal set; }
     public AreaType CurrentArea { get; internal set; } = AreaType.None;
     public float OrbOrbitPhaseDegrees { get; internal set; }
 
