@@ -24,6 +24,8 @@ public sealed class WindOrbAttackServiceTests
         var now = DateTime.UtcNow;
         var owner = new BotPlayerState { PlayerId = 11 };
         var victim = new BotPlayerState { PlayerId = 12 };
+        match.RegisterParticipant(owner.Player);
+        match.RegisterParticipant(victim.Player);
         using (MatchRuntimeStore.Enter(match))
         {
             match.Inventory.GetPlayerInventory(11).AddItem(107000020, forceSeparateStack: true);
@@ -64,6 +66,7 @@ public sealed class WindOrbAttackServiceTests
         {
             match.Inventory.GetPlayerInventory(11).AddItem(itemId, forceSeparateStack: true);
             var victim = new BotPlayerState { PlayerId = 12 };
+            match.RegisterParticipant(victim.Player);
             var origin = trails.GetSwarmOrbTrailPosition(match.MatchingId, 11, 0, new Vector3f(0, 0, 0));
             List<SwarmParticipantSpatial> participants =
                 [new(11, AreaType.None, new Vector3f(0, 0, 0)), new(12, otherArea ? (AreaType)1 : AreaType.None, origin)];

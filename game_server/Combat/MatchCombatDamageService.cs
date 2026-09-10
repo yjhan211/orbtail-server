@@ -41,8 +41,7 @@ internal sealed class MatchCombatDamageService(
     public void SchedulePvpHit(ProximityCombatAttack attack, DateTime dueAtUtc) =>
         _pendingPvpHits.Add((attack, dueAtUtc));
 
-    public void ProcessPendingPvpHits(PlayerEliminationService eliminations, DateTime nowUtc, List<GameClientSession> aliveSessions,
-        List<BotPlayerState> aliveBots, List<GameClientSession> sessions)
+    public void ProcessPendingPvpHits(PlayerEliminationService eliminations, DateTime nowUtc, IReadOnlyList<Player> players, List<GameClientSession> sessions)
     {
         for (int index = _pendingPvpHits.Count - 1; index >= 0; index--)
         {
@@ -50,8 +49,8 @@ internal sealed class MatchCombatDamageService(
             if (nowUtc < pending.DueAtUtc)
                 continue;
             _pendingPvpHits.RemoveAt(index);
-            ApplySwarmPvpAttack(eliminations, pending.Attack, aliveSessions, aliveBots, sessions, broadcastVfx: false);
-            if (runtime.IsEnded || sessions.Any(session => session.IsGameEnded))
+            ApplySwarmPvpAttack(eliminations, pending.Attack, players, sessions, broadcastVfx: false);
+            if (runtime.IsEnded)
                 return;
         }
     }
@@ -337,8 +336,7 @@ internal sealed class MatchCombatDamageService(
         AreaType area,
         long victimId,
         string label,
-        List<GameClientSession> aliveSessions,
-        List<BotPlayerState> aliveBots,
+        IReadOnlyList<Player> players,
         List<GameClientSession> allSessions,
         float damageScale = 1f,
         bool isPeriodicDamage = false)
@@ -352,12 +350,11 @@ internal sealed class MatchCombatDamageService(
         if (runtime.WindOrbAttacks.IsWounded(victimId, DateTime.UtcNow) &&
             RollCritical(Config.SWARM_WIND_WOUND_CRIT_CHANCE))
             shock = Math.Max(shock + 1, (int)MathF.Round(shock * SwarmCriticalMultiplier));
-        var victim = aliveSessions.FirstOrDefault(session => session.PlayerId == victimId)?.Player
-            ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == victimId)?.Player;
+        var victim = players.FirstOrDefault(player => player.PlayerId == victimId);
         if (victim == null || victim.IsEliminated) return;
 
         var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
-        int ownerHealth = ownerSession?.Player.Health ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == ownerId)?.Player.Health ?? -1;
+        int ownerHealth = runtime.GetParticipant(ownerId)?.Health ?? -1;
         int healthBefore = victim.Health;
         ApplyProximityAutoCombatHit(eliminations, victim, ownerId, area, weaponItemId, shock, isPeriodicDamage, ownerHealth);
         int healthAfter = victim.Health;
@@ -401,8 +398,7 @@ internal sealed class MatchCombatDamageService(
 
     public int ApplySwarmPvpAttack(PlayerEliminationService eliminations,
         ProximityCombatAttack attack,
-        List<GameClientSession> aliveSessions,
-        List<BotPlayerState> aliveBots,
+        IReadOnlyList<Player> players,
         List<GameClientSession> allSessions,
         bool broadcastVfx = true,
         bool sendAttackerFeedback = true)
@@ -428,9 +424,8 @@ internal sealed class MatchCombatDamageService(
 
         int healthDamage = ConsumeSwarmPvpDamage(attack.TargetPlayerId, attack.Damage);
         var attackerSession = allSessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId);
-        int attackerHealth = attackerSession?.Player.Health ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == attack.AttackerPlayerId)?.Player.Health ?? -1;
-        var target = aliveSessions.FirstOrDefault(session => session.PlayerId == attack.TargetPlayerId)?.Player
-            ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == attack.TargetPlayerId)?.Player;
+        int attackerHealth = runtime.GetParticipant(attack.AttackerPlayerId)?.Health ?? -1;
+        var target = players.FirstOrDefault(player => player.PlayerId == attack.TargetPlayerId);
         if (target == null || target.IsEliminated) return 0;
 
         if (healthDamage > 0)

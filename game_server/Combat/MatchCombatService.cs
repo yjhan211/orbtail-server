@@ -233,7 +233,7 @@ internal class MatchCombatService(
 
         // 비행 중인 PvP 탄은 여기서 착탄 처리한다 — 매 틱 지우면 안 된다. "리졸버는 PvE 전용"이라는 전제의 청소가
         // 리졸버가 사람 표적도 내보내게 바뀐 뒤 방금 발사한 탄을 다음 틱에 통째로 삭제해 PvP가 한 발도 착탄하지 못했다.
-        matchRuntimes.GetOrThrow(matchingId).CombatDamage.ProcessPendingPvpHits(playerEliminations, nowUtc, aliveSessions, aliveBots, sessions);
+        matchRuntimes.GetOrThrow(matchingId).CombatDamage.ProcessPendingPvpHits(playerEliminations, nowUtc, matchRuntimes.GetOrThrow(matchingId).GetAlivePlayers(), sessions);
         if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
             return;
 
@@ -431,7 +431,7 @@ internal class MatchCombatService(
             }
 
             // PvP는 저데미지 보조다. 킬의 주 경로는 스웜이어야 한다 (#217 결합 원칙).
-            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmPvpAttack(playerEliminations, attack, aliveSessions, aliveBots, sessions);
+            matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmPvpAttack(playerEliminations, attack, matchRuntimes.GetOrThrow(matchingId).GetAlivePlayers(), sessions);
             if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
                 return;
         }
@@ -1280,7 +1280,7 @@ internal class MatchCombatService(
             // 충격 면역 없음: 겹친 링에 다 맞는다 — 침수는 지속 갱신이라 중첩 무해.
             soaked++;
             matchRuntimes.GetOrThrow(matchingId).CombatDamage.ApplySwarmShock(playerEliminations, ownerId, sourceItemId, area, participant.PlayerId,
-                "WAVE_VORTEX_HIT", aliveSessions, aliveBots, allSessions,
+                "WAVE_VORTEX_HIT", matchRuntimes.GetOrThrow(matchingId).GetAlivePlayers(), allSessions,
                 Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER);
 
             var victimSession = aliveSessions.FirstOrDefault(

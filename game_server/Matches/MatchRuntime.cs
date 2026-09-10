@@ -174,6 +174,15 @@ internal sealed class MatchRuntime
         }
     }
 
+    /// <summary>연결 유무와 관계없이 생존한 사람·봇 참가자의 스냅샷을 반환한다.</summary>
+    public List<Player> GetAlivePlayers()
+    {
+        lock (MatchLock)
+        {
+            return _participants.Values.Where(player => !player.IsEliminated).ToList();
+        }
+    }
+
     public List<PlayerInfo> GetPlayerProfiles()
     {
         lock (MatchLock)

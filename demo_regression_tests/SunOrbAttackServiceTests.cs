@@ -21,6 +21,8 @@ public sealed class SunOrbAttackServiceTests
         var now = DateTime.UtcNow;
         var owner = new BotPlayerState { PlayerId = 11 };
         var victim = new BotPlayerState { PlayerId = 12 };
+        match.RegisterParticipant(owner.Player);
+        match.RegisterParticipant(victim.Player);
         using (MatchRuntimeStore.Enter(match))
         {
             var shape = new SwarmCrossfireShape
@@ -78,6 +80,7 @@ public sealed class SunOrbAttackServiceTests
         using (MatchRuntimeStore.Enter(second))
         {
             var victim = new BotPlayerState { PlayerId = 12 };
+            second.RegisterParticipant(victim.Player);
             service.ProcessSwarmSunBurns(second.MatchingId, due, [], [victim], []);
             Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
             second.TryMarkEnded();
@@ -85,6 +88,7 @@ public sealed class SunOrbAttackServiceTests
         using (MatchRuntimeStore.Enter(first))
         {
             var victim = new BotPlayerState { PlayerId = 12 };
+            first.RegisterParticipant(victim.Player);
             service.ProcessSwarmSunBurns(first.MatchingId, now, [], [victim], []);
             Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
             service.ProcessSwarmSunBurns(first.MatchingId, due, [], [victim], []);

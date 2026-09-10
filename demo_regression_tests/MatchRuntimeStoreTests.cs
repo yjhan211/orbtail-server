@@ -11,6 +11,24 @@ namespace demo_regression_tests;
 public sealed class MatchRuntimeStoreTests
 {
     [Fact]
+    public void AlivePlayersIncludesDisconnectedHumansAndBotsButNotEliminatedPlayers()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(90000);
+        var human = new game_server.players.Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 1 } };
+        var bot = new game_server.players.Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = -1 } };
+        using (match.Enter())
+        {
+            match.RegisterParticipant(human);
+            match.RegisterParticipant(bot);
+            Assert.Equal(new[] { human, bot }, match.GetAlivePlayers());
+            Assert.Null(human.Session);
+            match.TryEliminatePlayer(bot.PlayerId, network.common.EliminationReason.HEALTH_ZERO);
+            Assert.Same(human, Assert.Single(match.GetAlivePlayers()));
+        }
+    }
+
+    [Fact]
     public void Constructor_RejectsMissingLifecycleService()
     {
         Assert.Throws<ArgumentNullException>(() => new MatchRuntimeStore(NullLogger<MatchRuntime>.Instance, null!, Microsoft.Extensions.Logging.Abstractions.NullLogger<game_server.combat.MatchCombatDamageService>.Instance));
