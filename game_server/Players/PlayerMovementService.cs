@@ -13,7 +13,7 @@ internal sealed class PlayerMovementService(
     GameEventLogManager eventLog,
     ILogger logger)
 {
-    public GameObjectInfo CaptureGameObjectInfo(MatchRuntime match, Player player, PlayerState state)
+    public GameObjectInfo CreateGameObjectInfo(MatchRuntime match, Player player, PlayerState state)
     {
         if (!Monitor.IsEntered(match.MatchLock))
         {

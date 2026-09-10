@@ -378,11 +378,11 @@ public partial class GameClientSession : SessionBase
 
             if (sessions.Count > 0)
             {
-                using var others = PacketMaker.G_TO_C_OBJECT_INFO(sessions.Select(s => s.PlayerMovement.CaptureGameObjectInfo(s.Match, s.Player, s.Player.State)).ToList());
+                using var others = PacketMaker.G_TO_C_OBJECT_INFO(sessions.Select(s => s.PlayerMovement.CreateGameObjectInfo(s.Match, s.Player, s.Player.State)).ToList());
                 TrySend(others);
             }
 
-            using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([PlayerMovement.CaptureGameObjectInfo(Match, Player, Player.State)]))
+            using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([PlayerMovement.CreateGameObjectInfo(Match, Player, Player.State)]))
             {
                 foreach (var session in sessions)
                 {

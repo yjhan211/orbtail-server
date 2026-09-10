@@ -45,7 +45,7 @@ public sealed class PlayerServiceStateTests
             Assert.Null(player.Session);
             Assert.False(player.IsSleeping);
             Assert.Equal(45f, player.Rotation);
-            var snapshot = service.CaptureGameObjectInfo(match, player, player.State);
+            var snapshot = service.CreateGameObjectInfo(match, player, player.State);
             Assert.Equal(45f, snapshot.Rotation);
         }
     }

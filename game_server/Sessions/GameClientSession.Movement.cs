@@ -142,7 +142,7 @@ public partial class GameClientSession
                     }
 
                 }
-                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(PlayerMovement.CaptureGameObjectInfo(Match, Player, Player.State));
+                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(PlayerMovement.CreateGameObjectInfo(Match, Player, Player.State));
                 foreach (var session in newAreaSessions)
                 {
                     session.TrySend(enterPacket);
@@ -155,7 +155,7 @@ public partial class GameClientSession
                         continue;
                     }
 
-                    using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(session.PlayerMovement.CaptureGameObjectInfo(session.Match, session.Player, session.Player.State));
+                    using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(session.PlayerMovement.CreateGameObjectInfo(session.Match, session.Player, session.Player.State));
                     TrySend(otherEnterPacket);
                 }
 
