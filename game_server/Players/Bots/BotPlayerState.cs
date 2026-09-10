@@ -69,7 +69,5 @@ public class BotPlayerState
     // 빈손인 내내 빠르면 "패배 직전"이 아니라 도주 특화 상태가 된다.
     public DateTime SwarmBareSpeedUntilUtc { get; set; } = DateTime.MinValue;
 
-    /// <summary>Server-authoritative movement multiplier from currently living Wind orbs.</summary>
-    public float WindMoveSpeedMultiplier { get; set; } = 1f;
 
 }

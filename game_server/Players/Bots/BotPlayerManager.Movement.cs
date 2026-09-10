@@ -54,9 +54,9 @@ public partial class BotPlayerManager
         return tileFactor > 0.0001f ? baseSpeed / tileFactor : baseSpeed;
     }
 
-    private static float GetBotMovementSpeedMultiplier(BotPlayerState bot)
+    internal static float GetBotMovementSpeedMultiplier(BotPlayerState bot, InGameInventoryManager inventoryManager)
     {
-        float wind = Math.Max(1f, bot.WindMoveSpeedMultiplier);
+        float wind = OrbData.GetWindMoveSpeedMultiplier(inventoryManager.GetAllItems(bot.PlayerId));
         // 부츠 (#222 M4): 사람과 같은 10초 이속 버프.
         float boots = DateTime.UtcNow < bot.BootsSpeedUntilUtc
             ? Config.BOOTS_MOVE_SPEED_MULTIPLIER
@@ -357,7 +357,7 @@ public partial class BotPlayerManager
         // 투사체 회피 반사 (#232 §9): 경로·휴식·대기보다 먼저 — 이 자리를 지나갈 태양 투사체가
         // 있으면 그 직선의 수직으로 한 걸음 비켜선다. 경로는 버리지 않는다: 다음 틱에 비켜선 자리에서
         // 다음 웨이포인트로 이어 걷는다.
-        if (TryDodgeStep(bot, matchingId, now, deltaSec, out var dodgeMovement))
+        if (TryDodgeStep(bot, matchingId, now, deltaSec, inventoryManager, out var dodgeMovement))
             return dodgeMovement;
 
         // issue22 디버그: 도착 후 대기 중이면 walking 스킵
@@ -417,9 +417,9 @@ public partial class BotPlayerManager
         float dx = targetPos.X - bot.Player.Position!.X;
         float dy = targetPos.Y - bot.Player.Position!.Y;
         float dist = (float)Math.Sqrt(dx * dx + dy * dy);
-        float maxDist = BotWalkSpeed * GetBotMovementSpeedMultiplier(bot) * deltaSec;
+        float maxDist = BotWalkSpeed * GetBotMovementSpeedMultiplier(bot, inventoryManager) * deltaSec;
         if (dist >= 0.01f)
-            maxDist = ScaledWalkSpeed(dx / dist, dy / dist, GetBotMovementSpeedMultiplier(bot)) * deltaSec;
+            maxDist = ScaledWalkSpeed(dx / dist, dy / dist, GetBotMovementSpeedMultiplier(bot, inventoryManager)) * deltaSec;
 
         Vector3f newPosition;
         Vector3f velocity;
@@ -458,7 +458,7 @@ public partial class BotPlayerManager
                     velocity = ScaledWalkVelocity(
                         nextDx / nextDist,
                         nextDy / nextDist,
-                        GetBotMovementSpeedMultiplier(bot));
+                        GetBotMovementSpeedMultiplier(bot, inventoryManager));
 
                     // 웨이포인트에 스냅하면 이번 틱에 갈 수 있었던 거리가 버려져 그 틱만 느려진다.
                     // 셀을 지날 때마다 반복되므로 이동이 움찔거려 보인다. 남은 몫을 다음
@@ -484,7 +484,7 @@ public partial class BotPlayerManager
                 bot.Player.Position!.X + dirX * maxDist,
                 bot.Player.Position!.Y + dirY * maxDist,
                 0f);
-            velocity = ScaledWalkVelocity(dirX, dirY, GetBotMovementSpeedMultiplier(bot));
+            velocity = ScaledWalkVelocity(dirX, dirY, GetBotMovementSpeedMultiplier(bot, inventoryManager));
             bot.Player.Position = newPosition;
         }
 
@@ -530,7 +530,7 @@ public partial class BotPlayerManager
     /// </summary>
     /// <returns>true면 이번 틱은 회피 층이 처리했다(경로 걸음 없음). movement는 보낼 이벤트, 없으면 null.</returns>
     private bool TryDodgeStep(
-        BotPlayerState bot, long matchingId, DateTime now, float deltaSec, out BotMovementEvent? movement)
+        BotPlayerState bot, long matchingId, DateTime now, float deltaSec, InGameInventoryManager inventoryManager, out BotMovementEvent? movement)
     {
         movement = null;
         if (bot.Player.CurrentArea == AreaType.None)
@@ -583,7 +583,7 @@ public partial class BotPlayerManager
             bot.SwarmDodgeHoldUntilUtc = holdUntil;
 
         var mapId = GetMatchingMapId(matchingId);
-        float multiplier = GetBotMovementSpeedMultiplier(bot);
+        float multiplier = GetBotMovementSpeedMultiplier(bot, inventoryManager);
         for (int attempt = 0; attempt < 2; attempt++)
         {
             float sign = attempt == 0 ? 1f : -1f;

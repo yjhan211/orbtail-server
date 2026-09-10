@@ -10,6 +10,27 @@ namespace demo_regression_tests;
 public sealed class MatchOwnedBotsTests
 {
     [Fact]
+    public void BotMovementUsesCurrentWindOrbs()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var inventory = new game_server.items.InGameInventoryManager(948023, NullLogger.Instance);
+        var bot = new BotPlayerState { PlayerId = -1 };
+
+        Assert.Equal(1f, BotPlayerManager.GetBotMovementSpeedMultiplier(bot, inventory));
+        Assert.True(inventory.TryAddItemWithCapacity(-1, 107000020, 8, out _));
+        Assert.Equal(1.06f, BotPlayerManager.GetBotMovementSpeedMultiplier(bot, inventory));
+        Assert.True(inventory.TryAddItemWithCapacity(-1, 107000022, 8, out _));
+        Assert.Equal(1.08f, BotPlayerManager.GetBotMovementSpeedMultiplier(bot, inventory));
+
+        bot.BootsSpeedUntilUtc = DateTime.UtcNow.AddMinutes(1);
+        Assert.Equal(1.08f * Config.BOOTS_MOVE_SPEED_MULTIPLIER,
+            BotPlayerManager.GetBotMovementSpeedMultiplier(bot, inventory));
+        inventory.TakeAllItems(-1);
+        Assert.Equal(Config.BOOTS_MOVE_SPEED_MULTIPLIER,
+            BotPlayerManager.GetBotMovementSpeedMultiplier(bot, inventory));
+    }
+
+    [Fact]
     public void ProfileLookupDoesNotReinitializeBotProfile()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
