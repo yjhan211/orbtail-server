@@ -13,6 +13,32 @@ public sealed class MatchGameplayServiceTests
     [Theory]
     [InlineData(101)]
     [InlineData(-101)]
+    public void ResultsReadHealthAndProfileFromParticipantWithoutSession(long playerId)
+    {
+        using var provider = GameServerDependencyInjectionTests.CreateProvider();
+        var service = provider.GetRequiredService<game_server.matches.results.MatchResultService>();
+        var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947804);
+        var player = new game_server.players.Player
+        {
+            Profile = new PlayerInfo { PlayerId = playerId, Name = "Participant" },
+            Health = 37
+        };
+        using (match.Enter())
+        {
+            match.RegisterParticipant(player);
+            Assert.Empty(match.GetSessions());
+            Assert.Null(match.Bots.GetBot(match.MatchingId, playerId));
+            var result = Assert.Single(service.BuildPlayerResults(match.MatchingId, playerId));
+            Assert.Equal(playerId, result.PlayerId);
+            Assert.Equal("Participant", result.Name);
+            Assert.Equal(37, result.Health);
+            Assert.Equal(1, result.Rank);
+        }
+    }
+
+    [Theory]
+    [InlineData(101)]
+    [InlineData(-101)]
     public void ScoreTimeoutIncludesDisconnectedPlayersAndFinalizesOnlyOnce(long winnerId)
     {
         TestGameData.EnsureBattleItemCombatLoaded();

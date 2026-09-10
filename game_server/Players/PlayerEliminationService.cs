@@ -83,7 +83,7 @@ internal sealed class PlayerEliminationService(
             }
         }
 
-        var eliminatedResultPlayers = matchResults.BuildPlayerResults(allSessions, matchingId, 0);
+        var eliminatedResultPlayers = matchResults.BuildPlayerResults(matchingId, 0);
         foreach (var session in allSessions)
         {
             using var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED);

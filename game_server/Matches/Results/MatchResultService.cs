@@ -1,5 +1,4 @@
 using game_server.logging;
-using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -47,7 +46,7 @@ internal sealed class MatchResultService(
         }
 
         var sessionSnapshot = matchRuntimes.GetOrThrow(matchingId).GetSessions();
-        var players = BuildPlayerResults(sessionSnapshot, matchingId, winnerId);
+        var players = BuildPlayerResults(matchingId, winnerId);
         byte[] resultPayload = MessagePackSerializer.Serialize(new G_TO_C_GAME_RESULT
         {
             WinnerId = winnerId,
@@ -166,7 +165,7 @@ internal sealed class MatchResultService(
         }
     }
 
-    public List<GameResultPlayerInfo> BuildPlayerResults(List<GameClientSession> allSessions, long matchingId, long winnerId)
+    public List<GameResultPlayerInfo> BuildPlayerResults(long matchingId, long winnerId)
     {
         var runtime = matchRuntimes.GetOrThrow(matchingId);
         var endedAtUtc = DateTime.UtcNow;
@@ -188,9 +187,8 @@ internal sealed class MatchResultService(
         foreach (var row in resultRows)
         {
             long playerId = row.playerId;
-            var session = allSessions.FirstOrDefault(session => session.PlayerId == playerId);
-            var bot = runtime.Bots.GetBot(matchingId, playerId);
-            var playerProfile = runtime.GetParticipant(playerId)?.Profile;
+            var player = runtime.GetParticipant(playerId)!;
+            var playerProfile = player.Profile;
             var stats = gameEventLogManager.GetResultStats(matchingId, playerId);
 
             string? name = playerProfile?.Name;
@@ -198,7 +196,7 @@ internal sealed class MatchResultService(
             {
                 name = $"Player{Math.Abs(playerId)}";
             }
-            int health = session?.Player.Health ?? bot?.Player.Health ?? 0;
+            int health = player.Health;
             var wearItemIds = new List<int>();
             if (playerProfile?.WearItemIdList is { Count: > 0 })
             {
