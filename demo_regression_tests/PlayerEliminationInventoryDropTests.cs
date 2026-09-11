@@ -52,7 +52,7 @@ public sealed class PlayerEliminationInventoryDropTests
         Assert.Empty(TestGameSessionServices.Orbs(match, playerId).GetAllItems());
         Assert.Equal(
             new[] { HopeOrbT1, ForgetOrbT1 },
-            match.GroundItems.GetSnapshot(player.CurrentArea)
+            match.GroundItems.GetItemsInArea(player.CurrentArea)
                 .Select(item => item.ItemId)
                 .OrderBy(itemId => itemId)
                 .ToArray());
@@ -90,7 +90,7 @@ public sealed class PlayerEliminationInventoryDropTests
         }
 
         Assert.Empty(TestGameSessionServices.Orbs(match, botPlayerId).GetAllItems());
-        Assert.Single(match.GroundItems.GetSnapshot(player.CurrentArea));
+        Assert.Single(match.GroundItems.GetItemsInArea(player.CurrentArea));
         Assert.Single(
             eventLogs.GetRecent(matchingId),
             entry => entry.Type == GameEventType.EliminationDrop);

@@ -60,7 +60,7 @@ internal sealed class PlayerEliminationService(
             var droppedItemIds = new List<int>();
             foreach (var item in removedItems)
             {
-                if (!MatchGroundItemState.ShouldDropOnElimination(item.ItemId))
+                if (!PlayerPickupService.ShouldDropOnElimination(item.ItemId))
                 {
                     continue;
                 }
@@ -75,9 +75,7 @@ internal sealed class PlayerEliminationService(
                 eliminatedArea,
                 position.X,
                 position.Y,
-                droppedItemIds,
-                mapId: Config.SWARM_MATCH_MAP,
-                layout: GroundItemSpawnLayout.EliminationScatter);
+                droppedItemIds);
 
             if (removedItems.Count > 0)
             {

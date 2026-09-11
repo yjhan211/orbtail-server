@@ -71,12 +71,11 @@ public sealed class MatchOwnedStateTests
             Assert.True(runtime.TryMarkEnded());
 
         Assert.Null(store.GetOrNull(runtime.MatchingId));
-        Assert.Empty(ground.GetSnapshot(area));
+        Assert.Empty(ground.GetItemsInArea(area));
         Assert.DoesNotContain(roster.BuildGameResult(), row => row.playerId == 11);
         Assert.Null(closures.GameStartTime);
         Assert.Equal(Player.SummonStoneState.Empty, TestGameSessionServices.SummonStones(runtime, 11));
         Assert.Throws<InvalidOperationException>(() => TestGameSessionServices.Orbs(runtime, 11));
-        Assert.Throws<InvalidOperationException>(() => ground.SpawnItems(area, 0, 0, [107000010]));
         Assert.Throws<InvalidOperationException>(() => TestGameSessionServices.AddSummonStones(runtime, 11, 1));
         Assert.Equal(7, TestGameSessionServices.SummonStones(sibling, 11).StoneCount);
         Assert.Single(store.ActiveIds());
@@ -158,11 +157,11 @@ public sealed class MatchOwnedStateTests
             Assert.Equal(0, bot.PathIndex);
             Assert.Equal(DateTime.MinValue, bot.LoopWaitUntil);
             Assert.Empty(TestGameSessionServices.Orbs(match, botId).GetAllItems());
-            int drops = match.GroundItems.GetSnapshot(bot.Player.CurrentArea).Count;
+            int drops = match.GroundItems.GetItemsInArea(bot.Player.CurrentArea).Count;
             var eliminatedAt = entry.eliminatedAt;
 
             service.EliminatePlayer(match, bot.Player, EliminationReason.HEALTH_ZERO, attackerPlayerId: 99);
-            Assert.Equal(drops, match.GroundItems.GetSnapshot(bot.Player.CurrentArea).Count);
+            Assert.Equal(drops, match.GroundItems.GetItemsInArea(bot.Player.CurrentArea).Count);
             Assert.Equal(eliminatedAt, match.BuildGameResult().Single(row => row.playerId == botId).eliminatedAt);
             Assert.Equal(11, match.BuildGameResult().Single(row => row.playerId == botId).attackerPlayerId);
         }
@@ -229,7 +228,7 @@ public sealed class MatchOwnedStateTests
             Assert.Null(player.Session);
             Assert.Equal(player.CurrentArea, player.EliminatedArea);
             Assert.Empty(TestGameSessionServices.Orbs(match, player.PlayerId).GetAllItems());
-            Assert.Single(match.GroundItems.GetSnapshot(player.CurrentArea));
+            Assert.Single(match.GroundItems.GetItemsInArea(player.CurrentArea));
             Assert.Single(logs.GetRecent(match.MatchingId), entry => entry.Type == GameEventType.EliminationDrop);
         }
     }

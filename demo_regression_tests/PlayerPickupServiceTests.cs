@@ -162,27 +162,44 @@ public sealed class PlayerPickupServiceTests
     }
 
     [Fact]
-    public void SourceBlockedItemIsNotRememberedWhenPlayerMovesAway()
+    public void HeartStaysOnGroundAtFullHealthAndHealsWhenDamaged()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
-        var match = store.GetOrCreate(984305);
+        var match = store.GetOrCreate(984303);
         using (match.Enter())
         {
-            var item = Spawn(match, sourcePlayerId: 1);
-            var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
-            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, Config.SWARM_MATCH_GROUND_AREA, At(item, 0, 0), At(item, 5, 0));
-            match.GroundItems.ReleaseSourcePickupBlocks(1, Config.SWARM_MATCH_GROUND_AREA, item.PositionX + 5, item.PositionY);
-            Assert.Empty(PlayerPickupService.TakeReachableItems(player));
-            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, Config.SWARM_MATCH_GROUND_AREA, At(item, 5, 0), At(item, 0, 0));
-            Assert.Single(PlayerPickupService.TakeReachableItems(player));
+            var item = Assert.Single(match.GroundItems.SpawnItems(Config.SWARM_MATCH_GROUND_AREA, 0, 0,
+                [PlayerPickupService.HeartItemId]));
+            TestGroundItemLanding.Complete(match.GroundItems);
+            var player = new Player
+            {
+                Profile = new PlayerInfo { PlayerId = 1 },
+                CurrentArea = Config.SWARM_MATCH_GROUND_AREA,
+                Position = At(item, 0, 0),
+                Health = Config.MAX_HEALTH
+            };
+            match.RegisterParticipant(player);
+            var service = CreateService(store);
+
+            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, player.CurrentArea, player.Position, player.Position);
+            service.PickUp(match, player);
+            Assert.NotNull(match.GroundItems.GetItem(item.GroundItemUid));
+            Assert.Equal(Config.MAX_HEALTH, player.Health);
+
+            player.Health = Config.MAX_HEALTH - 1;
+            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, player.CurrentArea, player.Position, player.Position);
+            service.PickUp(match, player);
+            Assert.Null(match.GroundItems.GetItem(item.GroundItemUid));
+            Assert.Equal(Config.MAX_HEALTH, player.Health);
+            Assert.Empty(TestGameSessionServices.Orbs(match, 1).GetAllItems());
             match.TryMarkEnded();
         }
     }
 
-    private static GroundItemInfo Spawn(MatchRuntime match, long sourcePlayerId = 0)
+    private static GroundItemInfo Spawn(MatchRuntime match)
     {
         var item = Assert.Single(match.GroundItems.SpawnItems(Config.SWARM_MATCH_GROUND_AREA, 0, 0,
-            [Config.SUMMON_STONE_GROUND_ITEM_ID], sourcePlayerId));
+            [Config.SUMMON_STONE_GROUND_ITEM_ID]));
         TestGroundItemLanding.Complete(match.GroundItems);
         return item;
     }

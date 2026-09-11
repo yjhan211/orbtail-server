@@ -226,9 +226,7 @@ internal sealed class MatchCombatDamageService(
             defeatedWave.AreaType,
             defeatedWave.PositionX,
             defeatedWave.PositionY,
-            itemIds,
-            mapId: Config.SWARM_MATCH_MAP,
-            layout: GroundItemSpawnLayout.EliminationScatter);
+            itemIds);
 
         foreach (var item in spawned)
         {

@@ -855,10 +855,10 @@ internal sealed class BotDecisionService(
     {
         position = null!;
         float bestDistanceSquared = float.MaxValue;
-        foreach (var item in runtime.GroundItems.GetSnapshot(bot.Player.CurrentArea))
+        foreach (var item in runtime.GroundItems.GetItemsInArea(bot.Player.CurrentArea))
         {
             if (item.ItemId != Config.SUMMON_STONE_GROUND_ITEM_ID ||
-                runtime.GroundItems.IsYoungerThan(
+                runtime.GroundItems.WasSpawnedWithin(
                     item.GroundItemUid, BotPlayerManager.SummonStoneBotReactionDelay))
                 continue;
 

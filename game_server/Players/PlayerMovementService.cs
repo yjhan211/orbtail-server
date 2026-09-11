@@ -134,7 +134,7 @@ internal sealed class PlayerMovementService(
         if (newArea != oldArea && newArea != AreaType.None)
         {
             var transitionDoor = GameDoorData.GetDoorForTransition(oldArea, newArea, previousCell, currentCell);
-            if (transitionDoor != null && match.Doors?.IsDoorOpen(transitionDoor.DoorId) != true)
+            if (transitionDoor != null && match.Doors.IsDoorOpen(transitionDoor.DoorId) != true)
             {
                 logger.LogWarning("Player {PlayerId} blocked crossing {CurrentArea}→{NewArea} (locked door: {DoorId})", playerId, oldArea, newArea, transitionDoor.DoorId);
                 blockedCell = transitionDoor.AreaType == oldArea
@@ -152,7 +152,6 @@ internal sealed class PlayerMovementService(
         var pickupArea = newArea == AreaType.None ? oldArea : newArea;
         PlayerPickupService.AddReachableItemsForMovement(match, player, player.Position ?? validatedPosition, validatedPosition, pickupArea);
         player.ApplyValidatedMovement(validation, msg.Rotation);
-        match.GroundItems.ReleaseSourcePickupBlocks(player.PlayerId, pickupArea, validatedPosition.X, validatedPosition.Y);
 
         if (newArea != oldArea && newArea != AreaType.None)
         {

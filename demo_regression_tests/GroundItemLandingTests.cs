@@ -16,14 +16,19 @@ public sealed class GroundItemLandingTests
         var items = new MatchGroundItemState(clock);
         var item = Assert.Single(items.SpawnItems(Config.SWARM_MATCH_GROUND_AREA, 0, 0, [itemId]));
         clock.Advance(TimeSpan.FromSeconds(1));
-        Assert.Equal(GroundItemClaimStatus.TooFar, items.TryClaim(item.GroundItemUid, 1,
-            Config.SWARM_MATCH_GROUND_AREA, item.PositionX + radius + 0.01f, item.PositionY, _ => true, out _));
-        Assert.Equal(GroundItemClaimStatus.Success, items.TryClaim(item.GroundItemUid, 1,
-            Config.SWARM_MATCH_GROUND_AREA, item.PositionX + radius - 0.01f, item.PositionY, _ => true, out _));
+        var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
+
+        var outside = new Vector3f(item.PositionX + radius + 0.01f, item.PositionY, 0);
+        PlayerPickupService.AddReachableItemsInArea(player, items, Config.SWARM_MATCH_GROUND_AREA, outside, outside);
+        Assert.Empty(PlayerPickupService.TakeReachableItems(player));
+
+        var inside = new Vector3f(item.PositionX + radius - 0.01f, item.PositionY, 0);
+        PlayerPickupService.AddReachableItemsInArea(player, items, Config.SWARM_MATCH_GROUND_AREA, inside, inside);
+        Assert.Single(PlayerPickupService.TakeReachableItems(player));
     }
 
     [Fact]
-    public void LandingBlocksBothCandidatesAndClaimUntilExactDeadline()
+    public void LandingBlocksCandidatesUntilExactDeadline()
     {
         var clock = new Clock();
         var items = new MatchGroundItemState(clock);
@@ -36,16 +41,13 @@ public sealed class GroundItemLandingTests
         clock.Advance(duration - TimeSpan.FromTicks(1));
         PlayerPickupService.AddReachableItemsInArea(player, items, Config.SWARM_MATCH_GROUND_AREA, at, at);
         Assert.Empty(PlayerPickupService.TakeReachableItems(player));
-        Assert.Equal(GroundItemClaimStatus.Landing, items.TryClaim(item.GroundItemUid, 1,
-            Config.SWARM_MATCH_GROUND_AREA, at.X, at.Y, _ => throw new Exception("Must not apply before landing"), out _));
+        Assert.True(items.IsLanding(item.GroundItemUid));
 
         clock.Advance(TimeSpan.FromTicks(1));
         Assert.False(items.IsLanding(item.GroundItemUid));
         Assert.Empty(PlayerPickupService.TakeReachableItems(player)); // 공중에서 지나친 기록이 착지 뒤 살아나지 않는다.
         PlayerPickupService.AddReachableItemsInArea(player, items, Config.SWARM_MATCH_GROUND_AREA, at, at);
         Assert.Single(PlayerPickupService.TakeReachableItems(player));
-        Assert.Equal(GroundItemClaimStatus.Success, items.TryClaim(item.GroundItemUid, 1,
-            Config.SWARM_MATCH_GROUND_AREA, at.X, at.Y, _ => true, out _));
     }
 
     private sealed class Clock : TimeProvider

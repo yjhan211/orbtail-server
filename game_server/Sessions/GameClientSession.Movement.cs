@@ -100,7 +100,7 @@ public partial class GameClientSession
             throw new InvalidOperationException("Ground item snapshots require the match lock.");
         }
 
-        var items = match.GroundItems.GetSnapshot(area);
+        var items = match.GroundItems.GetItemsInArea(area);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, items);
         TrySend(packet);
     }

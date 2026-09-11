@@ -15,21 +15,20 @@ namespace game_server.players;
 ///     획득한 아이템의 효과를 적용하고 결과를 전송하며, 이벤트 로그를 남긴다.
 ///     획득 후보는 Player가 보관하며, 호출자는 해당 매치 잠금을 보유해야 한다.
 /// </summary>
-internal sealed class PlayerPickupService(
-    GameEventLogManager eventLogs,
-    PlayerHealthService healthService,
-    ILogger<PlayerPickupService> logger)
+internal sealed class PlayerPickupService(GameEventLogManager eventLogs, PlayerHealthService healthService, ILogger<PlayerPickupService> logger)
 {
     private const int MaximumReachableItems = 1024;
+    private const float PickupRadius = Config.GROUND_ITEM_PICKUP_RADIUS;
+    private const float SummonStonePickupRadius = Config.SUMMON_STONE_PICKUP_RADIUS;
+    public const int BandageItemId = 201000008;
+    public const int FirstAidKitItemId = 201000018;
+    public const int BandageRecovery = 15;
+    public const int FirstAidKitRecovery = 35;
+    public const int HeartItemId = Config.HEART_GROUND_ITEM_ID;
+    private const int HeartRecovery = 105;
 
-    private static Vector3f ClosestPointOnSegment(Vector3f from, Vector3f to, float x, float y)
-    {
-        float dx = to.X - from.X;
-        float dy = to.Y - from.Y;
-        float lengthSquared = dx * dx + dy * dy;
-        float t = lengthSquared > 0 ? Math.Clamp(((x - from.X) * dx + (y - from.Y) * dy) / lengthSquared, 0f, 1f) : 0f;
-        return new Vector3f(from.X + dx * t, from.Y + dy * t, 0);
-    }
+    private static bool IsImmediateUseItem(int itemId) => itemId is BandageItemId or HeartItemId;
+    public static bool ShouldDropOnElimination(int itemId) => !IsImmediateUseItem(itemId);
 
     public static void AddReachableItemsForMovement(MatchRuntime match, Player player, Vector3f from, Vector3f to, AreaType nextArea)
     {
@@ -57,25 +56,26 @@ internal sealed class PlayerPickupService(
             return;
         }
         var reachable = player.ReachableItems;
-        foreach (var item in items.GetSnapshot(area))
+        float pathDx = to.X - from.X;
+        float pathDy = to.Y - from.Y;
+        float pathLengthSquared = pathDx * pathDx + pathDy * pathDy;
+        foreach (var item in items.GetItemsInArea(area))
         {
             if (items.IsLanding(item.GroundItemUid))
             {
                 continue;
             }
 
-            if (item.SourcePlayerId == player.PlayerId && player.PlayerId != 0)
-            {
-                continue;
-            }
-            var position = ClosestPointOnSegment(from, to, item.PositionX, item.PositionY);
-            if (transitionMap is { } map &&
-                GameMapData.GetCurrentArea(map, MapCoordinateConverter.WorldToCell(map, position)) != area)
+            float t = pathLengthSquared > 0
+                ? Math.Clamp(((item.PositionX - from.X) * pathDx + (item.PositionY - from.Y) * pathDy) / pathLengthSquared, 0f, 1f)
+                : 0f;
+            var position = new Vector3f(from.X + pathDx * t, from.Y + pathDy * t, 0);
+            if (transitionMap is { } map && GameMapData.GetCurrentArea(map, MapCoordinateConverter.WorldToCell(map, position)) != area)
             {
                 continue;
             }
 
-            float radius = item.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID ? MatchGroundItemState.SummonStonePickupRadius : MatchGroundItemState.PickupRadius;
+            float radius = item.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID ? SummonStonePickupRadius : PickupRadius;
             float dx = item.PositionX - position.X;
             float dy = item.PositionY - position.Y;
             if (dx * dx + dy * dy > radius * radius)
@@ -161,65 +161,60 @@ internal sealed class PlayerPickupService(
 
     private bool TryPickUpItem(MatchRuntime match, Player player, Player.ReachableItem reachable)
     {
-        var item = match.GroundItems.GetItem(reachable.GroundItemUid);
-        if (player.PlayerId < 0 &&
-            item is { ItemId: Config.SUMMON_STONE_GROUND_ITEM_ID or Config.BOOTS_GROUND_ITEM_ID } &&
-            match.GroundItems.IsYoungerThan(item.GroundItemUid, BotPlayerManager.SummonStoneBotReactionDelay))
+        var items = match.GroundItems;
+        var item = items.GetItem(reachable.GroundItemUid);
+        if (item == null || items.IsLanding(item.GroundItemUid))
         {
             return false;
         }
-
-        InGameItemInfo? addedItem = null;
+        if (player.PlayerId < 0 &&
+            item.ItemId is Config.SUMMON_STONE_GROUND_ITEM_ID or Config.BOOTS_GROUND_ITEM_ID &&
+            items.WasSpawnedWithin(item.GroundItemUid, BotPlayerManager.SummonStoneBotReactionDelay))
+        {
+            return false;
+        }
+        if (item.AreaType != (int)reachable.Area)
+        {
+            return false;
+        }
+        float dx = item.PositionX - reachable.Position.X;
+        float dy = item.PositionY - reachable.Position.Y;
+        float pickupRadius = item.ItemId is Config.SUMMON_STONE_GROUND_ITEM_ID ? SummonStonePickupRadius : PickupRadius;
+        if (dx * dx + dy * dy > pickupRadius * pickupRadius)
+        {
+            return false;
+        }
+        bool summonStonePickup = item.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID;
+        bool bootsPickup = item.ItemId == Config.BOOTS_GROUND_ITEM_ID;
         bool autoUsed = false;
-        bool summonStonePickup = false;
-        bool bootsPickup = false;
         int healthRecovery = 0;
-
-        var status = match.GroundItems.TryClaim(
-            reachable.GroundItemUid,
-            player.PlayerId,
-            reachable.Area,
-            reachable.Position.X,
-            reachable.Position.Y,
-            groundItem =>
+        InGameItemInfo? addedItem = null;
+        if (!summonStonePickup && !bootsPickup)
+        {
+            if (item.ItemId is Config.KEY_GROUND_ITEM_ID or Config.JAM_GROUND_ITEM_ID)
             {
-                if (groundItem.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
-                {
-                    summonStonePickup = true;
-                    return true;
-                }
+                return false;
+            }
+            healthRecovery = item.ItemId switch
+            {
+                BandageItemId => BandageRecovery,
+                FirstAidKitItemId => FirstAidKitRecovery,
+                HeartItemId => HeartRecovery,
+                _ => 0
+            };
+            if (item.ItemId == HeartItemId && player.Health >= Config.MAX_HEALTH)
+            {
+                return false;
+            }
+            autoUsed = healthRecovery > 0 && IsImmediateUseItem(item.ItemId);
+            if (!autoUsed && !match.GetOrbs(player.PlayerId).TryAddItemWithCapacity(item.ItemId, Config.GetOrbCapacity(), out addedItem))
+            {
+                return false;
+            }
+        }
 
-                if (groundItem.ItemId == Config.BOOTS_GROUND_ITEM_ID)
-                {
-                    bootsPickup = true;
-                    return true;
-                }
-
-                if (groundItem.ItemId == Config.KEY_GROUND_ITEM_ID)
-                {
-                    return false;
-                }
-
-                var disposition = MatchGroundItemState.ResolveDisposition(groundItem.ItemId, player.Health, out healthRecovery);
-                if (disposition == GroundItemDisposition.LeaveOnGround)
-                {
-                    return false;
-                }
-
-                if (disposition == GroundItemDisposition.AutoUse)
-                {
-                    autoUsed = true;
-                    return true;
-                }
-
-                return match.GetOrbs(player.PlayerId).TryAddItemWithCapacity(
-                    groundItem.ItemId,
-                    Config.GetOrbCapacity(),
-                    out addedItem);
-            },
-            out var claimedItem);
-
-        if (status != GroundItemClaimStatus.Success || claimedItem == null)
+        var claimedItem = items.TakeItem(item.GroundItemUid);
+        if (claimedItem == null)
         {
             return false;
         }

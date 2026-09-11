@@ -1331,7 +1331,7 @@ public sealed class GameClientSessionPublicationTests
             eliminations.EliminatePlayer(match, eliminated.Player, EliminationReason.HEALTH_ZERO, deferGameOver: true);
 
             Assert.Empty(TestGameSessionServices.Orbs(match, 101).GetAllItems());
-            Assert.Single(match.GroundItems.GetSnapshot(eliminated.Player.CurrentArea));
+            Assert.Single(match.GroundItems.GetItemsInArea(eliminated.Player.CurrentArea));
         }
         Assert.Equal([Protocol.G_TO_C_ORB_UPDATE, Protocol.G_TO_C_PLAYER_ELIMINATED, Protocol.G_TO_C_AREA_PLAYER_LEAVE], fixture.ConnectionFor(eliminated).DeliveredProtocols);
         Assert.Equal([Protocol.G_TO_C_GROUND_ITEM_SPAWN, Protocol.G_TO_C_PLAYER_ELIMINATED, Protocol.G_TO_C_AREA_PLAYER_LEAVE], fixture.ConnectionFor(observer).DeliveredProtocols);
@@ -1468,8 +1468,7 @@ public sealed class GameClientSessionPublicationTests
                 session.Player.CurrentArea,
                 0f,
                 0f,
-                [itemId],
-                mapId: Config.SWARM_MATCH_MAP).Single();
+                [itemId]).Single();
             SetPosition(session, new Vector3f(item.PositionX, item.PositionY, 0f));
             TestGroundItemLanding.Complete(session.Match.GroundItems);
             return item;

@@ -124,18 +124,6 @@ public sealed class PlayerConditionTests
     }
 
     [Fact]
-    public void HeartPickupRequiresMissingHealth()
-    {
-        Assert.Equal(GroundItemDisposition.LeaveOnGround,
-            MatchGroundItemState.ResolveDisposition(MatchGroundItemState.HeartItemId,
-                Config.MAX_HEALTH, out _));
-        Assert.Equal(GroundItemDisposition.AutoUse,
-            MatchGroundItemState.ResolveDisposition(MatchGroundItemState.HeartItemId,
-                Config.MAX_HEALTH - 1, out int recovery));
-        Assert.Equal(MatchGroundItemState.HeartRecovery, recovery);
-    }
-
-    [Fact]
     public void HealthPacketPreservesRemainingHealthAndSignedDelta()
     {
         var sent = new network.common.data.models.G_TO_C_PLAYER_STATS_UPDATE

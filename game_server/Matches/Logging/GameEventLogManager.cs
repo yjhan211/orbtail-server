@@ -3,6 +3,7 @@ using System.Globalization;
 using game_server.matches;
 using game_server.matches.combat;
 using game_server.matches.results;
+using game_server.players;
 using game_server.players.bots;
 using network.common;
 using network.common.data;
@@ -736,8 +737,8 @@ public class GameEventLogManager
     public static int CalculateDropRecoveryTotal(IEnumerable<int> itemIds) =>
         itemIds.Sum(itemId => itemId switch
         {
-            MatchGroundItemState.BandageItemId => MatchGroundItemState.BandageRecovery,
-            MatchGroundItemState.FirstAidKitItemId => MatchGroundItemState.FirstAidKitRecovery,
+            PlayerPickupService.BandageItemId => PlayerPickupService.BandageRecovery,
+            PlayerPickupService.FirstAidKitItemId => PlayerPickupService.FirstAidKitRecovery,
             _ => 0
         });
 
