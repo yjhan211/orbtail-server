@@ -138,7 +138,7 @@ public partial class GameClientSession
                 }
 
                 // 나에게 이전 Area의 봇들 삭제 알림 (봇은 TCP 세션이 없어 별도 처리)
-                var oldAreaBots = Match.Bots.GetBots(MatchingId).Where(b => !b.Player.IsEliminated && b.Player.CurrentArea == oldArea).ToList();
+                var oldAreaBots = Match.Bots.GetBots().Where(b => !b.Player.IsEliminated && b.Player.CurrentArea == oldArea).ToList();
                 foreach (var bot in oldAreaBots)
                 {
                     using var botLeavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(bot.PlayerId);
@@ -176,10 +176,10 @@ public partial class GameClientSession
                     TrySend(otherEnterPacket);
                 }
 
-                var newAreaBots = Match.Bots.GetBots(MatchingId).Where(b => !b.Player.IsEliminated && b.Player.CurrentArea == newArea).ToList();
+                var newAreaBots = Match.Bots.GetBots().Where(b => !b.Player.IsEliminated && b.Player.CurrentArea == newArea).ToList();
                 foreach (var bot in newAreaBots)
                 {
-                    var objectInfo = Match.Bots.SynthesizeGameObjectInfo(MatchingId, bot.PlayerId);
+                    var objectInfo = Match.Bots.SynthesizeGameObjectInfo(bot.PlayerId);
                     if (objectInfo == null)
                     {
                         continue;

@@ -45,8 +45,8 @@ internal sealed class MatchResultService(
             return;
         }
 
-        var sessionSnapshot = matchRuntimes.GetOrThrow(matchingId).GetSessions();
-        var players = BuildPlayerResults(matchingId, winnerId);
+        var sessionSnapshot = runtime.GetSessions();
+        var players = BuildPlayerResults(runtime, winnerId);
         byte[] resultPayload = MessagePackSerializer.Serialize(new G_TO_C_GAME_RESULT
         {
             WinnerId = winnerId,
@@ -165,9 +165,8 @@ internal sealed class MatchResultService(
         }
     }
 
-    public List<GameResultPlayerInfo> BuildPlayerResults(long matchingId, long winnerId)
+    public List<GameResultPlayerInfo> BuildPlayerResults(MatchRuntime runtime, long winnerId)
     {
-        var runtime = matchRuntimes.GetOrThrow(matchingId);
         var endedAtUtc = DateTime.UtcNow;
         var startedAtUtc = runtime.StartsAtUtc ?? endedAtUtc;
         var resultRows = runtime.BuildGameResult();
@@ -189,7 +188,7 @@ internal sealed class MatchResultService(
             long playerId = row.playerId;
             var player = runtime.GetParticipant(playerId)!;
             var playerProfile = player.Profile;
-            var stats = gameEventLogManager.GetResultStats(matchingId, playerId);
+            var stats = gameEventLogManager.GetResultStats(runtime.MatchingId, playerId);
 
             string? name = playerProfile?.Name;
             if (string.IsNullOrEmpty(name))

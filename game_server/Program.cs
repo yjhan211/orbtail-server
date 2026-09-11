@@ -1,7 +1,6 @@
 using game_server.matches;
 using game_server.matches.combat;
 using game_server.matches.entry;
-using game_server.matches.field;
 using game_server.matches.logging;
 using game_server.matches.results;
 using game_server.players;
@@ -132,7 +131,7 @@ internal static class Program
             sp.GetRequiredService<ILogger<PlayerEliminationService>>()));
         services.AddSingleton<PlayerHealthService>();
         services.AddSingleton<MatchCombatDamageService>();
-        services.AddSingleton<MatchEnvironmentService>();
+        services.AddSingleton<MatchFieldService>();
         services.AddSingleton<PlayerOrbGrowthService>();
         services.AddSingleton<PlayerMovementService>();
         services.AddSingleton<PlayerInteractionService>();
@@ -142,15 +141,13 @@ internal static class Program
         services.AddSingleton<PlayerOrbTrailService>();
         services.AddSingleton<SunOrbAttackService>();
         services.AddSingleton<WaveOrbAttackService>();
-        services.AddSingleton<MatchZoneService>();
         services.AddSingleton<BotMovementService>();
         services.AddSingleton<BotDecisionService>();
         services.AddSingleton<MatchCombatService>();
         // 루프만 매치마다 만든다. 전투·자기장 서비스는 싱글턴이고 진행 표시는 MatchRuntime이 소유한다.
         services.AddSingleton<Func<MatchRuntime, TimeProvider, MatchTickLoop>>(sp =>
         {
-            var environment = sp.GetRequiredService<MatchEnvironmentService>();
-            var zones = sp.GetRequiredService<MatchZoneService>();
+            var field = sp.GetRequiredService<MatchFieldService>();
             var combat = sp.GetRequiredService<MatchCombatService>();
             var botMovement = sp.GetRequiredService<BotMovementService>();
             var botDecisions = sp.GetRequiredService<BotDecisionService>();
@@ -163,7 +160,7 @@ internal static class Program
                 return new MatchTickLoop(
                     runtime,
                     runtimes, loopLogger, pickup,
-                    entryFailureHandler, combat, environment, botMovement, botDecisions, zones, clock);
+                    entryFailureHandler, combat, field, botMovement, botDecisions, clock);
             };
         });
         services.AddSingleton<MatchTickService>();

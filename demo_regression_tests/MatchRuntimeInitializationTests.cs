@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.field;
 using game_server.matches.items;
 using game_server.matches.monsters;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -14,7 +13,7 @@ public sealed class MatchRuntimeInitializationTests
     [Fact]
     public void MonsterDependenciesAreRequiredAtConstruction()
     {
-        var closures = new AreaClosureManager(940001, NullLogger.Instance);
+        var closures = new AreaClosureState();
         Assert.Throws<ArgumentNullException>(() => new SwarmMonsterDirector(940001, null!, _ => false));
         Assert.Throws<ArgumentNullException>(() => new SwarmMonsterDirector(940001, closures, null!));
     }

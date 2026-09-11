@@ -20,6 +20,9 @@ namespace network.common.data
         private static readonly object InitLock = new object();
         private static Dictionary<(int X, int Y), int>? _distanceByCell;
         private static Dictionary<AreaType, int> _minDistanceByArea = new Dictionary<AreaType, int>();
+        private static Dictionary<AreaType, IReadOnlyList<(Cell Cell, int Distance)>> _cellsByAreaByDistance =
+            new Dictionary<AreaType, IReadOnlyList<(Cell Cell, int Distance)>>();
+        private static readonly IReadOnlyList<(Cell Cell, int Distance)> EmptyCells = new List<(Cell Cell, int Distance)>();
         private static int _maxDistance;
         private static float _centerX;
         private static float _centerY;
@@ -78,10 +81,42 @@ namespace network.common.data
             return Math.Pow(ratio, 1d / Config.SWARM_FIELD_SHRINK_EXPONENT);
         }
 
+        /// <summary>매치 시작 뒤 전 맵이 안전한 유예(초). 그 뒤 매치 종료까지 수축한다.</summary>
+        public static double HoldSeconds => Config.SWARM_FIELD_HOLD_SECONDS;
+
+        public static double ShrinkSeconds => Config.SWARM_MATCH_DURATION_SECONDS - HoldSeconds;
+
+        /// <summary>
+        ///     매치 경과 시간(초)의 안전 반경. 서버 판정과 클라 경계 렌더가 같은 시계를 읽는다.
+        ///     자기장이 꺼졌거나 유예 중이면 전 맵이 안전(double.MaxValue)이다.
+        /// </summary>
+        public static double GetSafeDistanceAtElapsed(double elapsedSeconds)
+        {
+            if (!Config.SWARM_PRESSURE_FIELD_ENABLED) return double.MaxValue;
+            double shrinkElapsed = elapsedSeconds - HoldSeconds;
+            if (shrinkElapsed <= 0) return double.MaxValue;
+            double progress = Math.Min(1d, shrinkElapsed / ShrinkSeconds);
+            return GetSafeDistanceAtProgress(progress);
+        }
+
+        /// <summary>구역이 완전히 경계 밖이 되는 매치 경과 시각(초, 올림) — 파생 폐쇄 시간표의 폐쇄 시각.</summary>
+        public static int GetAreaClosureSeconds(AreaType area)
+        {
+            double progress = GetProgressAtSafeDistance(GetAreaMinDistance(area));
+            return (int)Math.Ceiling(HoldSeconds + ShrinkSeconds * progress);
+        }
+
         public static IReadOnlyCollection<AreaType> GetKnownAreas()
         {
             EnsureInitialized();
             return _minDistanceByArea.Keys;
+        }
+
+        /// <summary>구역의 이동 가능 셀을 중심 거리 오름차순으로. 봇 대피·몬스터 스폰 띠가 쓴다.</summary>
+        public static IReadOnlyList<(Cell Cell, int Distance)> GetAreaCellsByDistance(AreaType area)
+        {
+            EnsureInitialized();
+            return _cellsByAreaByDistance.TryGetValue(area, out var cells) ? cells : EmptyCells;
         }
 
         private static readonly Dictionary<(int X, int Y), int> EmptyDistances = new Dictionary<(int X, int Y), int>();
@@ -139,6 +174,7 @@ namespace network.common.data
 
                 var distances = new Dictionary<(int X, int Y), int>();
                 var minByArea = new Dictionary<AreaType, int>();
+                var cellsByArea = new Dictionary<AreaType, List<(Cell Cell, int Distance)>>();
                 int maxDistance = 1;
                 for (int y = minY; y <= maxY; y++)
                 {
@@ -157,9 +193,20 @@ namespace network.common.data
                         if (area == AreaType.None) continue;
                         if (!minByArea.TryGetValue(area, out int currentMin) || distance < currentMin)
                             minByArea[area] = distance;
+                        if (!cellsByArea.TryGetValue(area, out var areaCells))
+                            cellsByArea[area] = areaCells = new List<(Cell Cell, int Distance)>();
+                        areaCells.Add((cell, distance));
                     }
                 }
 
+                var sortedByArea = new Dictionary<AreaType, IReadOnlyList<(Cell Cell, int Distance)>>();
+                foreach (var pair in cellsByArea)
+                {
+                    pair.Value.Sort((left, right) => left.Distance.CompareTo(right.Distance));
+                    sortedByArea[pair.Key] = pair.Value.AsReadOnly();
+                }
+
+                _cellsByAreaByDistance = sortedByArea;
                 _minDistanceByArea = minByArea;
                 _maxDistance = maxDistance;
                 _distanceByCell = distances;

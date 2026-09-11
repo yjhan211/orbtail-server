@@ -57,9 +57,8 @@ public sealed class GameServerDependencyInjectionTests
                 Type[] dependencyTypes =
                 [
                     typeof(MatchCombatService),
-                    typeof(game_server.matches.field.MatchEnvironmentService),
-                    typeof(game_server.players.bots.BotMovementService), typeof(game_server.players.bots.BotDecisionService),
-                    typeof(game_server.matches.field.MatchZoneService)
+                    typeof(game_server.matches.MatchFieldService),
+                    typeof(game_server.players.bots.BotMovementService), typeof(game_server.players.bots.BotDecisionService)
                 ];
                 foreach (var type in dependencyTypes)
                 {
@@ -74,15 +73,6 @@ public sealed class GameServerDependencyInjectionTests
                 }
                 Assert.DoesNotContain(typeof(MatchTickLoop).GetFields(flags),
                     field => typeof(Delegate).IsAssignableFrom(field.FieldType));
-            }
-            foreach (var loop in new[] { firstLoop, secondLoop })
-            {
-                var combat = typeof(MatchTickLoop).GetFields(flags)
-                    .Single(field => field.FieldType == typeof(MatchCombatService)).GetValue(loop)!;
-                var zone = typeof(MatchTickLoop).GetFields(flags)
-                    .Single(field => field.FieldType == typeof(game_server.matches.field.MatchZoneService)).GetValue(loop);
-                Assert.Same(zone, typeof(MatchCombatService).GetFields(flags)
-                    .Single(field => field.FieldType == typeof(game_server.matches.field.MatchZoneService)).GetValue(combat));
             }
             Assert.DoesNotContain(typeof(GameServer).GetConstructors().Single().GetParameters(),
                 parameter => parameter.ParameterType == typeof(MatchCombatService));
@@ -132,7 +122,7 @@ public sealed class GameServerDependencyInjectionTests
         Assert.Same(health, provider.GetRequiredService<PlayerHealthService>());
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
         foreach (var type in new[] { typeof(MatchCombatService), typeof(game_server.players.PlayerOrbService),
-                     typeof(game_server.matches.field.MatchEnvironmentService), typeof(game_server.players.PlayerPickupService) })
+                     typeof(game_server.matches.MatchFieldService), typeof(game_server.players.PlayerPickupService) })
         {
             var service = provider.GetRequiredService(type);
             var field = type.GetFields(flags).Single(field => field.FieldType == typeof(PlayerHealthService));

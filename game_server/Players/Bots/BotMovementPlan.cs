@@ -94,14 +94,4 @@ internal sealed record SwarmBotMovementDispatch(
     float OrbOrbitPhaseDegrees,
     ImmutableArray<GameClientSession> LeaveRecipients,
     ImmutableArray<GameClientSession> DestinationRecipients,
-    SwarmBotPlayerInfoSnapshot? EnteringBot,
-    SwarmBotEncounterDispatch? Encounter);
-
-internal sealed record SwarmBotEncounterDispatch(
-    GameClientSession? TargetSession,
-    long TargetPlayerId,
-    long BotPlayerId,
-    AreaType Area,
-    int EventType,
-    int CooldownSeconds,
-    int RevealDelayMs);
+    SwarmBotPlayerInfoSnapshot? EnteringBot);

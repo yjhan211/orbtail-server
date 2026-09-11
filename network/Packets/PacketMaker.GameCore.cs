@@ -90,22 +90,6 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_ENCOUNTER_REVEAL(
-        long playerId,
-        AreaType areaType,
-        int eventType,
-        int cooldownSeconds,
-        int revealDelayMs = 0)
-    {
-        var packet = Packet.Create((int)Protocol.G_TO_C_ENCOUNTER_REVEAL);
-        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ENCOUNTER_REVEAL
-        {
-            PlayerId = playerId, AreaType = areaType, EventType = eventType,
-            CooldownSeconds = cooldownSeconds, RevealDelayMs = revealDelayMs
-        }));
-        return packet;
-    }
-
     public static Packet G_TO_C_COMBAT_HIT(G_TO_C_COMBAT_HIT body)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_COMBAT_HIT);

@@ -76,7 +76,7 @@ public sealed class GameMatchEntryServiceTests
         var bot = Assert.Single(runtime.GetPlayerProfiles(), profile => profile.PlayerId == botId);
         Assert.False(string.IsNullOrWhiteSpace(bot.Name));
         Assert.NotEmpty(bot.WearItemIdList);
-        Assert.Equal(runtime.Bots.GetPlayerProfile(runtime.MatchingId, botId)!.WearItemIdList, bot.WearItemIdList);
+        Assert.Equal(runtime.Bots.GetPlayerProfile(botId)!.WearItemIdList, bot.WearItemIdList);
 
         var restored = MessagePackSerializer.Deserialize<G_TO_C_MATCH_ROSTER>(
             MessagePackSerializer.Serialize(new G_TO_C_MATCH_ROSTER
@@ -203,13 +203,13 @@ public sealed class GameMatchEntryServiceTests
         await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(runtime.IsSetupComplete);
         Assert.Single(runtime.GetPlayerProfiles(), player => player.PlayerId < 0);
-        Assert.Single(runtime.Bots.GetBots(runtime.MatchingId));
+        Assert.Single(runtime.Bots.GetBots());
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var events = logs.GetRecent(runtime.MatchingId);
         Assert.Single(events, entry => entry.Type == GameEventType.MatchStarted);
         Assert.Equal(runtime.GetPlayerProfiles().Count, events.Count(entry => entry.Type == GameEventType.SpawnAssignment));
         var spawn = Assert.Single(events, entry => entry.Type == GameEventType.SpawnAssignment && entry.IsBot);
-        var bot = Assert.Single(runtime.Bots.GetBots(runtime.MatchingId));
+        var bot = Assert.Single(runtime.Bots.GetBots());
         Assert.True(spawn.IsBot);
         Assert.Equal(bot.PlayerId, spawn.PlayerId);
         Assert.Equal(bot.Player.Cell!.X, spawn.CellX);

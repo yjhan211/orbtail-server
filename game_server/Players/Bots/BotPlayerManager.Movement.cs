@@ -1,6 +1,6 @@
 using System.Diagnostics;
+using game_server.matches;
 using game_server.matches.combat;
-using game_server.matches.field;
 using game_server.matches.items;
 using game_server.matches.monsters;
 using Microsoft.Extensions.Logging;
@@ -97,14 +97,15 @@ public partial class BotPlayerManager
     ///     #127: 봇 walking 틱(50ms). legacy mode 비활성 시 BotPathfinder 경로를 따라 셀 단위 이동.
     ///     Uses the same fixed movement speed 6.0 as the player and emits an equivalent G_TO_C_MOVE event each tick.
     /// </summary>
-    public BotWalkingTickResult ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager,
+    public BotWalkingTickResult ProcessBotMovementTick(AreaClosureState closureManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
         GroundItemManager groundItemManager,
         IReadOnlyCollection<MonsterCombatTarget>? pveTargets,
-        Func<long, long, SwarmBotDirective> spotArenaDirectiveProvider)
+        Func<long, SwarmBotDirective> spotArenaDirectiveProvider)
     {
+        long matchingId = GetActiveMatchingId();
         var result = new BotWalkingTickResult();
-        var bots = GetBots(matchingId);
+        var bots = GetBots();
 
         var activeBots = bots.Where(bot => !bot.Player.IsEliminated).ToList();
         if (activeBots.Count == 0) return result;
@@ -126,11 +127,11 @@ public partial class BotPlayerManager
         long matchingId,
         IReadOnlyList<BotPlayerState> activeBots,
         BotWalkingTickResult result,
-        AreaClosureManager closureManager,
+        AreaClosureState closureManager,
         GroundItemManager groundItemManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
         IReadOnlyCollection<MonsterCombatTarget> pveTargets,
-        Func<long, long, SwarmBotDirective> directiveProvider)
+        Func<long, SwarmBotDirective> directiveProvider)
     {
         DateTime nowUtc = DateTime.UtcNow;
         foreach (var bot in activeBots)
@@ -159,7 +160,7 @@ public partial class BotPlayerManager
             }
 
 
-            SwarmBotDirective currentDirective = directiveProvider(matchingId, bot.PlayerId);
+            SwarmBotDirective currentDirective = directiveProvider(bot.PlayerId);
             if (currentDirective.Mode == SwarmBotMode.None)
             {
                 bot.SwarmMode = SwarmBotMode.None;
@@ -188,7 +189,7 @@ public partial class BotPlayerManager
 
                 bot.MovementDestination = currentDirective.DestinationArea;
                 bot.Path = BotPathfinder.FindPath(
-                               GetMatchingMapId(matchingId),
+                               MapId,
                                bot.Player.CurrentArea,
                                bot.Player.Cell!,
                                currentDirective.DestinationArea,
@@ -263,7 +264,7 @@ public partial class BotPlayerManager
             return;
 
         bot.NextIdleWanderAtUtc = nowUtc.AddSeconds(3d);
-        MapId mapId = GetMatchingMapId(matchingId);
+        MapId mapId = MapId;
         for (int attempt = 0; attempt < 6; attempt++)
         {
             var candidate = new Cell(
@@ -291,11 +292,11 @@ public partial class BotPlayerManager
         return activeBots[cursor % activeBots.Count].PlayerId;
     }
 
-    private bool HasOpenNonCorridorRefuge(long matchingId, AreaClosureManager closureManager)
+    private bool HasOpenNonCorridorRefuge(long matchingId, AreaClosureState closureManager)
     {
         var closure = closureManager.GetClientStateSnapshot();
         var unavailableAreas = closure.ClosedAreas.Concat(closure.WarningAreas).ToHashSet();
-        return GameMapData.GetAreas(GetMatchingMapId(matchingId))
+        return GameMapData.GetAreas(MapId)
             .Select(region => region.AreaType)
             .Distinct()
             .Any(area => area != AreaType.None && !area.IsCorridor() && !unavailableAreas.Contains(area));
@@ -307,7 +308,7 @@ public partial class BotPlayerManager
     /// </summary>
     private int CountAreaPressure(long matchingId, AreaType area, long excludeBotPlayerId = 0)
     {
-        return GetBots(matchingId).Count(other =>
+        return GetBots().Count(other =>
             {
                 if (other.Player.IsEliminated || (excludeBotPlayerId != 0 && other.PlayerId == excludeBotPlayerId))
                     return false;
@@ -323,7 +324,7 @@ public partial class BotPlayerManager
     }
 
 
-    private static bool IsAreaClosingOrClosed(AreaClosureManager closureManager, long matchingId, AreaType area)
+    private static bool IsAreaClosingOrClosed(AreaClosureState closureManager, long matchingId, AreaType area)
     {
         if (area == AreaType.None)
             return false;
@@ -336,7 +337,7 @@ public partial class BotPlayerManager
     ///     영역 경계도 인접 셀까지 연속 보행하며, 도착 셀을 기준으로 영역 변경 이벤트를 반환한다.
     ///     일반 셀 walk는 진행 방향 + 속도 포함 MOVE 이벤트 반환.
     /// </summary>
-    private BotMovementEvent? WalkStep(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
+    private BotMovementEvent? WalkStep(BotPlayerState bot, long matchingId, AreaClosureState closureManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
         IReadOnlyCollection<MonsterCombatTarget> pveTargets,
         bool allowPathPlanning)
@@ -371,7 +372,7 @@ public partial class BotPlayerManager
         }
 
         var nextStep = bot.Path[bot.PathIndex];
-        var mapId = GetMatchingMapId(matchingId);
+        var mapId = MapId;
         var fromArea = bot.Player.CurrentArea;
         var fromCell = bot.Player.Cell!;
         bool reachedStep = false;
@@ -574,7 +575,7 @@ public partial class BotPlayerManager
         if (holdUntil > bot.SwarmDodgeHoldUntilUtc)
             bot.SwarmDodgeHoldUntilUtc = holdUntil;
 
-        var mapId = GetMatchingMapId(matchingId);
+        var mapId = MapId;
         float multiplier = GetBotMovementSpeedMultiplier(bot);
         for (int attempt = 0; attempt < 2; attempt++)
         {
@@ -626,11 +627,11 @@ public partial class BotPlayerManager
     ///     잔상 사냥 경로가 우선이고, 실패 시 배회 폴백(ChooseSwarmWanderDestination):
     ///     따라가기(타겟 방)·흩어지기(최저 인원 방)·임의 방. 복도는 목적지가 아니라 통과만(transit).
     /// </summary>
-    private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
+    private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureState closureManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
         IReadOnlyCollection<MonsterCombatTarget> pveTargets)
     {
-        var mapId = GetMatchingMapId(matchingId);
+        var mapId = MapId;
         bot.Path.Clear();
         bot.PathIndex = 0;
 
@@ -710,7 +711,7 @@ public partial class BotPlayerManager
         BotPlayerState bot,
         long matchingId,
         MapId mapId,
-        AreaClosureManager closureManager,
+        AreaClosureState closureManager,
         IReadOnlyCollection<MonsterCombatTarget> pveTargets)
     {
         // 복도에서도 목적지를 고를 수 있어야 한다. 복도에 서 있는 봇에게는 방만 후보로
@@ -856,7 +857,7 @@ public partial class BotPlayerManager
     }
 
     private bool TryStartCorridorExitPath(BotPlayerState bot, long matchingId, MapId mapId,
-        AreaClosureManager closureManager)
+        AreaClosureState closureManager)
     {
         var exitAreas = GetOpenBotDestinationAreas(matchingId, mapId, closureManager)
             .Where(area => area != bot.Player.CurrentArea)
@@ -904,7 +905,7 @@ public partial class BotPlayerManager
     }
 
     private List<AreaType> GetOpenBotDestinationAreas(long matchingId, MapId mapId,
-        AreaClosureManager closureManager)
+        AreaClosureState closureManager)
     {
         return GameMapData.GetAreas(mapId)
             .Select(region => region.AreaType)
@@ -919,7 +920,7 @@ public partial class BotPlayerManager
     ///     확률적으로 최저 인원 방으로 흩어지고(뭉침 방지), 아니면 현재와 다른 임의 방.
     /// </summary>
     private AreaType ChooseSwarmWanderDestination(BotPlayerState bot, long matchingId, MapId mapId,
-        IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
+        IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureState closureManager)
     {
         var rooms = GetOpenBotDestinationAreas(matchingId, mapId, closureManager);
         if (rooms.Count == 0) return AreaType.None;

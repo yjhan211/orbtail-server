@@ -12,77 +12,9 @@ namespace demo_regression_tests;
 
 public sealed class SwarmBotMovementPlanTests
 {
-    [Theory]
-    [InlineData(101)]
-    [InlineData(-101)]
-    public void EncounterUsesParticipantsEvenWithoutObservers(long targetId)
-    {
-        var match = CreateMatch();
-        var target = new game_server.players.Player
-        {
-            Profile = new PlayerInfo { PlayerId = targetId },
-            Position = new Vector3f(0, 0, 0),
-            CurrentArea = AreaType.S2Corridor1
-        };
-        var movement = new BotMovementEvent
-        {
-            BotPlayerId = -10, FromArea = AreaType.S2Corridor1, ToArea = AreaType.S2Corridor1,
-            FromCell = new Cell(0, 0), ToCell = new Cell(0, 0),
-            Position = new Vector3f(0, 0, 0), Velocity = new Vector3f(0, 0, 0)
-        };
-        using (match.Enter())
-        {
-            match.RegisterParticipant(target);
-            var plan = match.Bots.PrepareExternalMovement(match.Encounters,
-                TestGameEventLogs.Create(), movement, match.GetAlivePlayers(), []);
-            var dispatch = Assert.Single(plan.Movements);
-            var encounter = Assert.IsType<SwarmBotEncounterDispatch>(dispatch.Encounter);
-            Assert.Equal(targetId, encounter.TargetPlayerId);
-            Assert.Null(encounter.TargetSession);
-            Assert.Equal(game_server.matches.field.EncounterRevealManager.CorridorRevealEventType, encounter.EventType);
-            Assert.Empty(dispatch.DestinationRecipients);
-
-            // 연결 없는 대상과의 조우도 쌍별 쿨다운을 기록한다.
-            var next = match.Encounters.ResolveCorridorEncounter(-10, movement.Position,
-                [(targetId, target.Position!)]);
-            Assert.NotEqual(game_server.matches.field.EncounterRevealManager.CorridorRevealEventType, next.EventType);
-        }
-    }
-
-    [Fact]
-    public void EncounterIgnoresSelfEliminatedOtherAreaAndMissingPosition()
-    {
-        var match = CreateMatch();
-        var movement = new BotMovementEvent
-        {
-            BotPlayerId = -10, FromArea = AreaType.S2Corridor1, ToArea = AreaType.S2Corridor1,
-            FromCell = new Cell(0, 0), ToCell = new Cell(0, 0),
-            Position = new Vector3f(0, 0, 0), Velocity = new Vector3f(0, 0, 0)
-        };
-        var players = new List<game_server.players.Player>();
-        foreach (long id in new long[] { -10, 101, 102, 103 })
-        {
-            players.Add(new game_server.players.Player
-            {
-                Profile = new PlayerInfo { PlayerId = id },
-                Position = new Vector3f(0, 0, 0), CurrentArea = AreaType.S2Corridor1
-            });
-        }
-        players[1].Status = PlayerMatchStatus.ELIMINATED;
-        players[2].CurrentArea = AreaType.S2Corridor2;
-        players[3].Position = null;
-        using (match.Enter())
-        {
-            var plan = match.Bots.PrepareExternalMovement(match.Encounters,
-                TestGameEventLogs.Create(), movement, players, []);
-            Assert.Null(Assert.Single(plan.Movements).Encounter);
-        }
-    }
-
     [Fact]
     public void PrepareExternalMovement_FreezesMutableMovementAndRecipientOrder()
     {
-        const long matchingId = 44_001;
         var position = new Vector3f(10f, 20f, 0f);
         var velocity = new Vector3f(3f, 4f, 0f);
         var fromCell = new Cell(1, 2);
@@ -110,7 +42,6 @@ public sealed class SwarmBotMovementPlanTests
 
         var match = CreateMatch();
         SwarmBotMovementPlan plan = match.Bots.PrepareExternalMovement(
-            match.Encounters,
             TestGameEventLogs.Create(),
             movement,
             [],
@@ -205,8 +136,8 @@ public sealed class SwarmBotMovementPlanTests
             "runtime.IsEnded",
             "combat.ProcessTick(runtime);",
             "!isGameplayActive",
-            "!runtime.Bots.HasBots(matchingId)",
-            "botMovement.ProcessTick(runtime, botDecisions.DecideMovement);");
+            "!runtime.Bots.HasBots()",
+            "botMovement.ProcessTick(runtime, botPlayerId => botDecisions.DecideMovement(runtime, botPlayerId));");
         AssertInOrder(
             process,
             "runtime.GetSessions()",
@@ -221,8 +152,7 @@ public sealed class SwarmBotMovementPlanTests
             dispatch,
             "G_TO_C_AREA_PLAYER_LEAVE",
             "G_TO_C_AREA_PLAYER_ENTER",
-            "G_TO_C_MOVE",
-            "G_TO_C_ENCOUNTER_REVEAL");
+            "G_TO_C_MOVE");
         Assert.DoesNotContain("G_TO_C_GROUND_ITEM_REMOVED", dispatch);
         Assert.Contains("playerPickups.PickUp(runtime, runtime.GetAlivePlayers())", tick);
         Assert.DoesNotContain("plan.AutoEquips", dispatch);

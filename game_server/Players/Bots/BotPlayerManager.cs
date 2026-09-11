@@ -1,6 +1,5 @@
 using game_server.matches;
 using game_server.matches.combat;
-using game_server.matches.field;
 using game_server.matches.logging;
 using game_server.players;
 using game_server.sessions;
@@ -66,17 +65,15 @@ public partial class BotPlayerManager
     /// <summary>
     ///     매치 구성이 정한 봇 ID와 스폰으로 봇 상태를 만든다. 스폰은 MatchSpawnData가 사람과 함께 배정한 값이다.
     /// </summary>
-    public void RegisterBots(long matchingId, MapId mapId, IReadOnlyList<long> botPlayerIds,
+    public void RegisterBots(MapId mapId, IReadOnlyList<long> botPlayerIds,
         IReadOnlyDictionary<long, Cell> spawnCells)
     {
-        if (matchingId != _matchingId)
-            throw new InvalidOperationException("Cannot register bots from another match.");
         _mapId = mapId;
 
         var bots = botPlayerIds.Select(botPlayerId =>
         {
             if (!spawnCells.TryGetValue(botPlayerId, out Cell? assignedSpawn))
-                throw new InvalidOperationException($"Bot {botPlayerId} has no spawn assignment in match {matchingId}.");
+                throw new InvalidOperationException($"Bot {botPlayerId} has no spawn assignment in match {_matchingId}.");
             var startCell = Cell.Clone(assignedSpawn);
             var startArea = GameMapData.GetCurrentArea(mapId, startCell);
             if (startArea == AreaType.None)
@@ -111,7 +108,7 @@ public partial class BotPlayerManager
 
         _logger.LogInformation(
             "Bots registered: Count={Count}, MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]",
-            bots.Count, matchingId, mapId,
+            bots.Count, _matchingId, mapId,
             string.Join(",", bots.Select(b => $"{b.PlayerId}@{b.Player.CurrentArea}")));
     }
 
@@ -133,10 +130,7 @@ public partial class BotPlayerManager
 
 
 
-    public MapId GetMatchingMapId(long matchingId)
-    {
-        return matchingId == _matchingId ? _mapId : Config.SWARM_MATCH_MAP;
-    }
+    public MapId MapId => _mapId;
 
     private static readonly int[] BotDefaultWearItemIds =
     {
@@ -165,15 +159,15 @@ public partial class BotPlayerManager
     }
 
     /// <summary>생성 시 초기화한 봇 프로필을 변경 없이 조회한다.</summary>
-    public PlayerInfo? GetPlayerProfile(long matchingId, long botPlayerId) =>
-        GetBot(matchingId, botPlayerId)?.Player.Profile;
+    public PlayerInfo? GetPlayerProfile(long botPlayerId) =>
+        GetBot(botPlayerId)?.Player.Profile;
 
-    public GameObjectInfo? SynthesizeGameObjectInfo(long matchingId, long botPlayerId)
+    public GameObjectInfo? SynthesizeGameObjectInfo(long botPlayerId)
     {
-        var bot = GetBot(matchingId, botPlayerId);
+        var bot = GetBot(botPlayerId);
         if (bot == null) return null;
         var state = bot.Player.State;
-        return new GameObjectInfo(ObjectType.PLAYER, bot.PlayerId, GetMatchingMapId(matchingId), matchingId, bot.Player.Cell!)
+        return new GameObjectInfo(ObjectType.PLAYER, bot.PlayerId, _mapId, _matchingId, bot.Player.Cell!)
         {
             Position = new Vector3f(bot.Player.Position!.X, bot.Player.Position!.Y, bot.Player.Position!.Z),
             Rotation = bot.Player.Rotation,
@@ -184,17 +178,11 @@ public partial class BotPlayerManager
     internal static Vector3f CellToWorldPosition(MapId mapId, Cell cell) =>
         MapCoordinateConverter.CellToWorld(mapId, cell);
 
-    public List<BotPlayerState> GetBots(long matchingId)
-    {
-        return matchingId == _matchingId ? _bots : [];
-    }
+    public List<BotPlayerState> GetBots() => _bots;
 
-    public BotPlayerState? GetBot(long matchingId, long playerId)
-    {
-        return GetBots(matchingId).FirstOrDefault(b => b.PlayerId == playerId);
-    }
+    public BotPlayerState? GetBot(long playerId) => _bots.FirstOrDefault(b => b.PlayerId == playerId);
 
-    public bool HasBots(long matchingId) => matchingId == _matchingId && _registered;
+    public bool HasBots() => _registered;
 
     internal void Release()
     {

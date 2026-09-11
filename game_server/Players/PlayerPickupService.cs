@@ -233,7 +233,7 @@ internal sealed class PlayerPickupService(
 
         if (bootsPickup)
         {
-            if (match.Bots.GetBot(match.MatchingId, player.PlayerId) is { } bot)
+            if (match.Bots.GetBot(player.PlayerId) is { } bot)
             {
                 bot.BootsSpeedUntilUtc = DateTime.UtcNow.AddSeconds(Config.BOOTS_SPEED_DURATION_SECONDS);
             }

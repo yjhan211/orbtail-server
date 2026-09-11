@@ -82,7 +82,7 @@ internal sealed class PlayerOrbTrailService
             throw new InvalidOperationException("Orb trail operations require the match lock.");
         }
 
-        if (!runtime.TrailCombat.OrbTrails.TryGetValue((runtime.MatchingId, player.PlayerId), out var points) || points.Count == 0)
+        if (!runtime.TrailCombat.OrbTrails.TryGetValue(player.PlayerId, out var points) || points.Count == 0)
         {
             return new Vector3f(anchor.X, anchor.Y - targetDistance * 0.2f, 0f);
         }

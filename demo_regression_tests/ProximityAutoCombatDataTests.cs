@@ -169,7 +169,7 @@ public class ProximityAutoCombatDataTests
             "public void Publish(",
             "private List<OrbVisual> BuildOrbVisuals(");
 
-        Assert.Contains("orbVisuals.Publish(matchingId, actors, sessions);", combat);
+        Assert.Contains("orbVisuals.Publish(runtime, actors, sessions);", combat);
         AssertInOrder(
             publish,
             "var visuals = BuildOrbVisuals(runtime, actors, matchingSessions);",

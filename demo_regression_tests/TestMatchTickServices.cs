@@ -2,7 +2,6 @@ using game_server;
 using game_server.matches;
 using game_server.matches.combat;
 using game_server.matches.entry;
-using game_server.matches.field;
 using game_server.players;
 using game_server.players.bots;
 using game_server.sessions;
@@ -18,15 +17,15 @@ internal static class TestMatchTickServices
         MatchRuntime runtime, MatchRuntimeStore store, ILogger logger,
         PlayerPickupService pickup,
         Action<long, List<GameClientSession>> combat,
-        Action<MatchRuntime, List<GameClientSession>> environment,
+        Action<MatchRuntime, List<GameClientSession>> damage,
         Action<MatchRuntime> movement,
-        Action<long, GameClientSession[]> field,
+        Action<MatchRuntime> closure,
         TimeProvider? clock = null) =>
         new(runtime, store, logger, pickup,
-            new MatchEntryFailureHandler(store, new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance), new game_server.matches.MatchSessionCleanupService(new InMemoryRedisOperations(), new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger), logger), new Combat(combat), new Environment(environment),
+            new MatchEntryFailureHandler(store, new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance), new game_server.matches.MatchSessionCleanupService(new InMemoryRedisOperations(), new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger), logger), new Combat(combat), new Field(damage, closure),
             new Movement(movement),
-            new BotDecisionService(store, null!, null!, null!, null!, NullLogger<BotDecisionService>.Instance),
-            new Field(field), clock);
+            new BotDecisionService(null!, null!, null!, null!, NullLogger<BotDecisionService>.Instance),
+            clock);
 
     // 실제 ProcessTick을 실행해 시간 조건과 단계별 호출 여부를 검증한다.
     internal sealed class ScheduleProbe : IDisposable
@@ -48,7 +47,7 @@ internal static class TestMatchTickServices
                 {
                     Assert.True(Monitor.IsEntered(match.MatchLock));
                     _environmentCalls++;
-                }, _ => { }, (_, _) =>
+                }, _ => { }, runtime =>
                 {
                     Assert.True(Monitor.IsEntered(runtime.MatchLock));
                     _closureCalls++;
@@ -117,27 +116,22 @@ internal static class TestMatchTickServices
 
 
     private sealed class Combat(Action<long, List<GameClientSession>> run)
-        : MatchCombatService(null!, null!, null!, null!, null!,
-            null!, null!, null!, null!, null!, null!, null!, null!, NullLogger<MatchCombatService>.Instance)
+        : MatchCombatService(null!, null!, null!, null!,
+            null!, null!, null!, null!, null!, null!, null!, NullLogger<MatchCombatService>.Instance)
     {
         public override void ProcessTick(MatchRuntime runtime) => run(runtime.MatchingId, runtime.GetSessions());
-    }
-
-    private sealed class Environment(Action<MatchRuntime, List<GameClientSession>> run)
-        : MatchEnvironmentService(null!, null!, null!, null!, null!, NullLogger<MatchEnvironmentService>.Instance)
-    {
-        public override void ProcessTick(MatchRuntime runtime) => run(runtime, runtime.GetSessions());
     }
 
     private sealed class Movement(Action<MatchRuntime> run)
         : BotMovementService(null!, NullLogger<BotMovementService>.Instance)
     {
-        public override void ProcessTick(MatchRuntime runtime, Func<long, long, SwarmBotDirective> resolveDirective) => run(runtime);
+        public override void ProcessTick(MatchRuntime runtime, Func<long, SwarmBotDirective> resolveDirective) => run(runtime);
     }
 
-    private sealed class Field(Action<long, GameClientSession[]> run)
-        : MatchZoneService(null!, null!, null!, NullLogger<MatchZoneService>.Instance)
+    private sealed class Field(Action<MatchRuntime, List<GameClientSession>> damage, Action<MatchRuntime> closure)
+        : MatchFieldService(null!, null!, null!, null!, null!, null!)
     {
-        public override void ProcessTick(long id, GameClientSession[] sessions) => run(id, sessions);
+        public override void ProcessDamageTick(MatchRuntime runtime) => damage(runtime, runtime.GetSessions());
+        public override void ProcessClosureTick(MatchRuntime runtime) => closure(runtime);
     }
 }

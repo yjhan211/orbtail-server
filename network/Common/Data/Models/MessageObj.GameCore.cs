@@ -106,18 +106,6 @@ namespace network.common.data.models
         [Key("playerId")] public long PlayerId { get; set; }
     }
 
-    [MessagePackObject]
-    public class G_TO_C_ENCOUNTER_REVEAL : IMessagePackObject
-    {
-        /// <summary>수신자 기준으로 감지/드러낼 상대 PlayerId.</summary>
-        [Key("playerId")] public long PlayerId { get; set; }
-        [Key("areaType")] public AreaType AreaType { get; set; }
-        /// <summary>1=복도 인기척, 2=복도 조우, 3=방 탐색 조우.</summary>
-        [Key("eventType")] public int EventType { get; set; }
-        [Key("cooldownSeconds")] public int CooldownSeconds { get; set; }
-        [Key("revealDelayMs")] public int RevealDelayMs { get; set; }
-    }
-
     /// <summary>
     /// 자동 전투 당사자가 아닌 같은 구역 관전자에게만 보내는 월드 이펙트 이벤트다.
     /// HUD 피해, 카메라 흔들기, 탈락 사유 표시는 이 메시지로 처리하지 않는다.

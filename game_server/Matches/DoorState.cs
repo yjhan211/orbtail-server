@@ -1,7 +1,7 @@
 using network.common;
 using network.common.data;
 
-namespace game_server.matches.field;
+namespace game_server.matches;
 
 /// <summary>
 ///     매치 하나의 열린 문을 보관한다. MatchRuntime이 생성과 종료를 책임진다.

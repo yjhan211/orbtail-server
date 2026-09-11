@@ -136,13 +136,13 @@ internal sealed class MatchCombatDamageService(
                 victim.CurrentArea.ToString(), "door_unlock_hit", isBot: victim.PlayerId < 0);
             victim.Session?.SendDoorOpenInterrupted(interactId);
         }
-        var bot = runtime.Bots.GetBots(runtime.MatchingId).FirstOrDefault(bot => ReferenceEquals(bot.Player, victim));
+        var bot = runtime.Bots.GetBots().FirstOrDefault(bot => ReferenceEquals(bot.Player, victim));
         if (bot == null) return;
 
         // 피격 후 도주·문 열기 중단을 판단하는 봇 AI 입력만 별도로 남긴다.
         bot.LastProximityAttackerPlayerId = attackerId;
         bot.LastDamagedAtUtc = nowUtc;
-        runtime.BotTactics.LastDamagedAtUtc[(runtime.MatchingId, victim.PlayerId)] = nowUtc;
+        runtime.BotTactics.LastDamagedAtUtc[victim.PlayerId] = nowUtc;
     }
 
     /// <summary>몬스터 피해를 적용하고 같은 피해량을 클라이언트에 알린다.</summary>
@@ -159,11 +159,11 @@ internal sealed class MatchCombatDamageService(
                 victim.CurrentArea.ToString(), "door_unlock_hit", isBot: victim.PlayerId < 0);
             victim.Session?.SendDoorOpenInterrupted(interactId);
         }
-        var bot = runtime.Bots.GetBots(runtime.MatchingId).FirstOrDefault(bot => ReferenceEquals(bot.Player, victim));
+        var bot = runtime.Bots.GetBots().FirstOrDefault(bot => ReferenceEquals(bot.Player, victim));
         if (bot != null)
         {
             bot.LastDamagedAtUtc = nowUtc;
-            runtime.BotTactics.LastDamagedAtUtc[(runtime.MatchingId, victim.PlayerId)] = nowUtc;
+            runtime.BotTactics.LastDamagedAtUtc[victim.PlayerId] = nowUtc;
         }
 
         int healthBefore = victim.Health;
@@ -266,7 +266,7 @@ internal sealed class MatchCombatDamageService(
         bool critical,
         List<GameClientSession> allSessions)
     {
-        var damageResult = runtime.Monsters.ApplyMonsterDamage(runtime.MatchingId, combatTargetId, attackerId, damage);
+        var damageResult = runtime.Monsters.ApplyMonsterDamage(combatTargetId, attackerId, damage);
         if (!damageResult.Applied)
             return;
 
@@ -364,8 +364,7 @@ internal sealed class MatchCombatDamageService(
                 continue;
 
             runtime.CombatDamage.PendingMonsterHits.RemoveAt(index);
-            var damageResult = runtime.Monsters.ApplyMonsterDamage(
-                matchingId, hit.CombatTargetId, hit.AttackerId, hit.Damage);
+            var damageResult = runtime.Monsters.ApplyMonsterDamage(hit.CombatTargetId, hit.AttackerId, hit.Damage);
 
             // 결과 집계 (#229): 스웜 전투는 전부 여기를 지난다. 여기서 안 세면
             // 결과 화면이 수백 킬을 "처치 0회"로 표시한다.
@@ -395,7 +394,7 @@ internal sealed class MatchCombatDamageService(
         // 제3자·잔상·폐쇄는 이 경로를 타지 않아 종전대로 들어간다.
         var nowUtc = DateTime.UtcNow;
         if (runtime.TrailCombat.CutRetaliationWindows.TryGetValue(
-                (matchingId, attack.AttackerPlayerId, attack.TargetPlayerId), out var guardWindow) &&
+                (attack.AttackerPlayerId, attack.TargetPlayerId), out var guardWindow) &&
             nowUtc < guardWindow.ExpiresAtUtc)
         {
             guardWindow.BlockedHits++;

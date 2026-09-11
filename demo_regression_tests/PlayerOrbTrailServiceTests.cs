@@ -35,7 +35,7 @@ public sealed class PlayerOrbTrailServiceTests
         var anchor = new Vector3f(0, 0, 0);
         using (MatchRuntimeStore.Enter(first))
         {
-            first.TrailCombat.OrbTrails[(first.MatchingId, 11)] =
+            first.TrailCombat.OrbTrails[11] =
                 [new Vector3f(2, 0, 0), new Vector3f(4, 0, 0)];
             var middle = service.GetPositionAtDistance(first, firstPlayer, 3, anchor);
             var beyond = service.GetPositionAtDistance(first, firstPlayer, 6, anchor);
@@ -93,26 +93,5 @@ public sealed class PlayerOrbTrailServiceTests
         Assert.Throws<InvalidOperationException>(() => service.GetOrbPosition(match, player, 0, anchor));
         Assert.Throws<InvalidOperationException>(() => service.GetPositionAtDistance(match, player, 1, anchor));
         Assert.Throws<InvalidOperationException>(() => service.DestroyOrbsFromOrdinal(match, player, 0));
-    }
-
-    [Fact]
-    public void MonsterSpawnCallback_BelongsToEachMatch()
-    {
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
-        var first = store.GetOrCreate(947404);
-        var second = store.GetOrCreate(947405);
-        using (MatchRuntimeStore.Enter(first))
-            first.Monsters.FieldSpawnCellResolver = (_, _) => (new Cell(1, 2), new Cell(3, 4));
-        using (MatchRuntimeStore.Enter(second))
-        {
-            Assert.Null(second.Monsters.FieldSpawnCellResolver);
-            second.Monsters.FieldSpawnCellResolver = (_, _) => null;
-            second.TryMarkEnded();
-        }
-        using (MatchRuntimeStore.Enter(first))
-        {
-            Assert.NotNull(first.Monsters.FieldSpawnCellResolver!(first.MatchingId, AreaType.None));
-            first.TryMarkEnded();
-        }
     }
 }

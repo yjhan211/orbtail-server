@@ -67,14 +67,7 @@ public readonly record struct ProximityCombatAttack(
 /// </summary>
 public sealed class AutoAttackController
 {
-    private readonly long _matchingId;
     private bool _released;
-
-    public AutoAttackController(long matchingId)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
-        _matchingId = matchingId;
-    }
 
     /// <summary>
     ///     조준 지연. 다른 구역 대상에게 "알 수 없는 피해"가 들어가던 문제를 임시로 덮으려고
@@ -86,21 +79,20 @@ public sealed class AutoAttackController
     public static readonly TimeSpan AimDuration = TimeSpan.FromMilliseconds(100);
     public static readonly TimeSpan TargetReacquireGraceDuration = TimeSpan.FromSeconds(1.5);
 
-    private readonly ConcurrentDictionary<(long MatchingId, long PlayerId, long ItemUid, int StackIndex), CombatState>
+    private readonly ConcurrentDictionary<(long PlayerId, long ItemUid, int StackIndex), CombatState>
         _combatStates = new();
-    private readonly ConcurrentDictionary<(long MatchingId, long PlayerId, long ItemUid, int StackIndex), DateTime>
+    private readonly ConcurrentDictionary<(long PlayerId, long ItemUid, int StackIndex), DateTime>
         _burstRechargeReadyAtUtc = new();
-    private readonly ConcurrentDictionary<(long MatchingId, long PlayerId, long ItemUid, int StackIndex),
+    private readonly ConcurrentDictionary<(long PlayerId, long ItemUid, int StackIndex),
         SuspendedCombatState>
         _recentlyLostCombatStates = new();
 
     public IReadOnlyList<ProximityCombatAttack> ResolveAttacks(
-        long matchingId,
         IReadOnlyList<ProximityCombatActor> actors,
         DateTime nowUtc,
         Func<ProximityCombatActor, ProximityCombatActor, bool>? hasLineOfSight = null)
     {
-        if (_released || matchingId != _matchingId)
+        if (_released)
             return [];
 
         var attacks = new List<ProximityCombatAttack>();
@@ -109,7 +101,7 @@ public sealed class AutoAttackController
         foreach (var attacker in actors)
         {
             var attackerKey = (attacker.PlayerId, attacker.WeaponItemUid, attacker.WeaponStackIndex);
-            var stateKey = (matchingId, attacker.PlayerId, attacker.WeaponItemUid, attacker.WeaponStackIndex);
+            var stateKey = attackerKey;
             if (attacker.WeaponItemId <= 0 || attacker.Area == AreaType.None ||
                 attacker.AttackRange <= 0f || attacker.Damage <= 0 || attacker.AttackIntervalSeconds <= 0f)
             {
@@ -292,8 +284,7 @@ public sealed class AutoAttackController
 
         foreach (var key in _combatStates.Keys)
         {
-            if (key.MatchingId != matchingId ||
-                activeAttackers.Contains((key.PlayerId, key.ItemUid, key.StackIndex)))
+            if (activeAttackers.Contains(key))
                 continue;
             if (_combatStates.TryRemove(key, out var previousState))
             {
@@ -307,9 +298,6 @@ public sealed class AutoAttackController
 
         foreach (var key in _recentlyLostCombatStates.Keys)
         {
-            if (key.MatchingId != matchingId)
-                continue;
-
             // 시간 기준 정리 (#226 케이던스 수리): 비활성 즉시 삭제는 위의 유예 보존을
             // 무효화한다 — 재획득 유예(1.5초)를 넘긴 것만 지운다.
             if (_recentlyLostCombatStates.TryGetValue(key, out var suspended) &&
@@ -380,12 +368,12 @@ public sealed class AutoAttackController
     ///     되돌린다 — 쿨다운을 소모하지 않고 다음 틱에 다시 시도한다(필터가 자리를 열어 줄 때까지).
     ///     조준·표적은 유지한다. 같은 무기 uid의 모든 스택에 적용한다.
     /// </summary>
-    public void RefundAttack(long matchingId, long playerId, long itemUid, DateTime nowUtc)
+    public void RefundAttack(long playerId, long itemUid, DateTime nowUtc)
     {
-        if (_released || matchingId != _matchingId) return;
+        if (_released) return;
         foreach (var key in _combatStates.Keys)
         {
-            if (key.MatchingId != matchingId || key.PlayerId != playerId || key.ItemUid != itemUid)
+            if (key.PlayerId != playerId || key.ItemUid != itemUid)
                 continue;
             if (_combatStates.TryGetValue(key, out var state))
                 _combatStates[key] = state with { NextAttackAtUtc = nowUtc };

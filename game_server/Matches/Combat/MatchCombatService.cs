@@ -2,7 +2,6 @@ using System.Collections.Immutable;
 using game_server;
 using game_server.matches;
 using game_server.matches.entry;
-using game_server.matches.field;
 using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.matches.results;
@@ -24,7 +23,6 @@ namespace game_server.matches.combat;
 ///     봇 판단과 개별 무기·성장·피해 규칙은 각 서비스에 위임한다.
 /// </summary>
 internal class MatchCombatService(
-    MatchRuntimeStore matchRuntimes,
     GameEventLogManager eventLogs,
     MatchCleanupService matchCleanup,
     PlayerHealthService healthService,
@@ -35,7 +33,6 @@ internal class MatchCombatService(
     PlayerOrbTrailService orbTrails,
     SunOrbAttackService sunOrbAttacks,
     WaveOrbAttackService waveOrbAttacks,
-    MatchZoneService zones,
     BotDecisionService botDecisions,
     ILogger<MatchCombatService> logger)
 {
@@ -58,8 +55,8 @@ internal class MatchCombatService(
     private static int GetSquadOrbMaxHp(int tier) => OrbData.GetSquadOrbMaxHp(tier);
 
     /// <summary>매치 잠금 밖에서도 읽을 수 있는 터미널 게이트 — 색인에 없는 매치도 터미널로 본다.</summary>
-    private bool IsMatchTerminal(long matchingId) =>
-        matchRuntimes.GetOrNull(matchingId) is not { IsEnded: false };
+    private bool IsMatchTerminal(MatchRuntime runtime) =>
+        runtime is not { IsEnded: false };
 
     /// <summary>
     ///     #217 8인 맵 역할 검증(M1). 매치 수명(탈락·최후 1인·타이머)은 기존 서바이버 로얄
@@ -70,36 +67,31 @@ internal class MatchCombatService(
     {
         if (runtime.IsEnded)
             return;
-
-        long matchingId = runtime.MatchingId;
         if (runtime.Mode == MatchMode.SoloMapValidation)
             return;
 
         // 참가자는 게임 규칙의 대상이고, 세션은 결과를 받을 연결만 나타낸다.
         var sessions = runtime.GetSessions().Where(session => !session.IsGameEnded).ToList();
-        var bots = runtime.Bots.GetBots(matchingId).ToList();
+        var bots = runtime.Bots.GetBots().ToList();
         var players = runtime.GetAlivePlayers();
         if (players.Count == 0)
             return;
 
-        if (!runtime.Monsters.HasMatching(matchingId))
+        if (!runtime.Monsters.HasMatching())
         {
             long initialPlayerId = players[0].PlayerId;
-            if (!runtime.Monsters.InitializeMatching(matchingId, initialPlayerId, DateTime.UtcNow))
+            if (!runtime.Monsters.InitializeMatching(initialPlayerId, DateTime.UtcNow))
                 return;
-
-            // 자기장 경계 스폰 규칙을 이 매치의 몬스터 처리기에 연결한다.
-            runtime.Monsters.FieldSpawnCellResolver ??= zones.ResolveSpawn;
-            LogSwarmPairZoneDistances(matchingId);
-            // #272 자기장: 수축 시계는 폐쇄 시계와 같은 앵커(AreaClosureManager.GameStartTime)를 쓴다 —
+            LogSwarmPairZoneDistances(runtime);
+            // #272 자기장: 수축 시계는 폐쇄 시계와 같은 앵커(AreaClosureState.GameStartTime)를 쓴다 —
             // 무장은 폐쇄 틱(PrepareSwarmScheduledClosureTick)의 최초 InitializeMatching이 담당한다.
             logger.LogInformation(
                 "Swarm pressure field armed: MatchingId={MatchingId}, MaxDistance={MaxDistance}, " +
                 "HoldSeconds={Hold}, ShrinkSeconds={Shrink}",
-                matchingId, SwarmPressureField.MaxDistance, MatchPressureFieldPolicy.HoldSeconds, MatchPressureFieldPolicy.ShrinkSeconds);
+                runtime.MatchingId, SwarmPressureField.MaxDistance, SwarmPressureField.HoldSeconds, SwarmPressureField.ShrinkSeconds);
             logger.LogInformation(
                 "Swarm arena initialized: MatchingId={MatchingId}, Humans={HumanCount}, Bots={BotCount}",
-                matchingId, players.Count(player => player.PlayerId > 0), bots.Count);
+                runtime.MatchingId, players.Count(player => player.PlayerId > 0), bots.Count);
         }
 
         DateTime nowUtc = DateTime.UtcNow;
@@ -113,20 +105,20 @@ internal class MatchCombatService(
             participants.Add(new SwarmParticipantSpatial(player.PlayerId, player.CurrentArea, player.Position));
         }
 
-        var tick = runtime.Monsters.Tick(matchingId, participants, runtime.IsGameplayActive(), nowUtc);
+        var tick = runtime.Monsters.Tick(participants, runtime.IsGameplayActive(), nowUtc);
 
         // 정지 감시: 8초 이상 제자리인 몹을 매치 로그로 남긴다 — 회귀 감지선.
         foreach (string report in tick.StuckReports)
-            eventLogs.LogSystem(matchingId, report);
+            eventLogs.LogSystem(runtime.MatchingId, report);
 
         // 공급 스폰 계측 (#229 4단계): 공급지·페이즈·마릿수·석 보상 + 스폰 직후 전역 생존 수.
         // alive는 상한 48 준수와 구역 목표 유지를 한 줄로 읽기 위한 값이다.
         if (tick.SupplyPackSpawns.Count > 0)
         {
-            int aliveAfter = runtime.Monsters.GetVisualStates(matchingId).Count(state => state.IsAlive);
+            int aliveAfter = runtime.Monsters.GetVisualStates().Count(state => state.IsAlive);
             foreach (var supplySpawn in tick.SupplyPackSpawns)
                 eventLogs.LogSystem(
-                    matchingId,
+                    runtime.MatchingId,
                     $"supply_pack area={supplySpawn.Area} phase={supplySpawn.PackIndex} " +
                     $"monsters={supplySpawn.MonsterCount} stones={supplySpawn.StoneTotal} " +
                     $"alive={aliveAfter}");
@@ -138,18 +130,18 @@ internal class MatchCombatService(
         if (!runtime.IsGameplayActive())
         {
             MonsterSnapshotPublisher.Broadcast(
-                runtime, sessions, runtime.Monsters.GetVisualStates(matchingId));
+                runtime, sessions, runtime.Monsters.GetVisualStates());
             return;
         }
 
         // 오브열 (#226 α/C/B): 경로 기록 → 이동 선분의 상대 열 절단.
         // 경로 기록은 #232에서도 산다 — 꼬리 오브의 월드 좌표가 곧 각 공격의 발사 원점이다.
-        UpdateSwarmOrbTrails(matchingId, participants);
+        UpdateSwarmOrbTrails(runtime, participants);
         if (SwarmTrailCutEnabled)
         {
-            ProcessSwarmTrailCuts(matchingId, nowUtc, participants, sessions);
+            ProcessSwarmTrailCuts(runtime, nowUtc, participants, sessions);
             // 반격 보호 창 결산 (#227 7단계) — 만료된 쌍만 CUT_RETALIATION_WINDOW로 남긴다.
-            ProcessSwarmRetaliationWindows(matchingId, nowUtc, participants);
+            ProcessSwarmRetaliationWindows(runtime, nowUtc, participants);
         }
 
         waveOrbAttacks.ProcessTick(runtime, nowUtc);
@@ -177,7 +169,7 @@ internal class MatchCombatService(
             int toBots = tick.PlayerDamage.Count(entry => entry.TargetPlayerId < 0);
             int toHumans = tick.PlayerDamage.Count - toBots;
             eventLogs.LogSystem(
-                matchingId,
+                runtime.MatchingId,
                 $"contact_probe damage={tick.PlayerDamage.Count} toBots={toBots} toHumans={toHumans} " +
                 $"aliveBots={aliveBots.Count} aliveHumans={aliveHumanCount} " +
                 $"participants={participants.Count}");
@@ -185,7 +177,7 @@ internal class MatchCombatService(
 
         foreach (var damage in tick.PlayerDamage)
         {
-            ApplySwarmParticipantDamage(matchingId, damage, sessions);
+            ApplySwarmParticipantDamage(runtime, damage, sessions);
             if (runtime.IsEnded)
                 return;
         }
@@ -200,18 +192,18 @@ internal class MatchCombatService(
 
         // 봇도 사람과 같은 문 게이지 규칙으로 잠긴 문을 연다.
 
-        botDecisions.ProcessSwarmBotDoorUnlocks(matchingId, aliveBots, sessions, nowUtc);
+        botDecisions.ProcessSwarmBotDoorUnlocks(runtime, aliveBots, sessions, nowUtc);
 
         if (MonsterSnapshotPublisher.TryConsumeBroadcastSlot(runtime, nowUtc))
-            MonsterSnapshotPublisher.Broadcast(runtime, sessions, runtime.Monsters.GetVisualStates(matchingId));
+            MonsterSnapshotPublisher.Broadcast(runtime, sessions, runtime.Monsters.GetVisualStates());
 
-        var actors = BuildSwarmArenaCombatActors(matchingId, players, nowUtc);
+        var actors = BuildSwarmArenaCombatActors(runtime, players, nowUtc);
         playerOrbs.ProcessOrbRecovery(runtime, actors, nowUtc);
-        orbVisuals.Publish(matchingId, actors, sessions);
-        BroadcastSwarmOrbRankings(matchingId, sessions);
+        orbVisuals.Publish(runtime, actors, sessions);
+        BroadcastSwarmOrbRankings(runtime, sessions);
         // 봇은 현재 소환·계열 강화 중 하나에 소환석을 투자한다.
-        botDecisions.ProcessBotOrbGrowth(matchingId, aliveBots);
-        if (ProcessSwarmScoreTimeout(matchingId, nowUtc))
+        botDecisions.ProcessBotOrbGrowth(runtime, aliveBots);
+        if (ProcessSwarmScoreTimeout(runtime, nowUtc))
             return;
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.
         combatDamage.ProcessPendingMonsterHits(runtime, nowUtc, sessions);
@@ -244,7 +236,6 @@ internal class MatchCombatService(
         var crossfireAnchoredTargets = sunOrbAttacks.CollectSwarmCrossfireAnchoredTargets(runtime);
 
         var attacks = runtime.AutoAttack.ResolveAttacks(
-            matchingId,
             actors,
             nowUtc,
             // 유저간 공격도 같은 리졸버가 담당한다(몹이랑 똑같이 유도탄으로 결정). 아래 루프의 태양·바람 분기가
@@ -304,7 +295,7 @@ internal class MatchCombatService(
         {
             if (runtime.GetParticipant(attack.AttackerPlayerId)?.IsEliminated == true)
                 continue;
-            int monsterId = runtime.Monsters.GetMonsterIdForCombatTarget(matchingId, attack.TargetPlayerId);
+            int monsterId = runtime.Monsters.GetMonsterIdForCombatTarget(attack.TargetPlayerId);
             // 유령 발사 가드 (#226 진단): 같은 틱에 죽은 몬스터의 CombatTargetId(-4e18대)가 몬스터 분기를
             // 통과해 PvP 분기로 새던 문제 — 음수 대역 차단. 태양 분기보다 먼저 건다.
             if (monsterId <= 0 && attack.TargetPlayerId < -1_000_000_000_000L)
@@ -326,8 +317,7 @@ internal class MatchCombatService(
                     !playerOrbs.TryStartSunCrossfire(runtime, sunOwner, attack, nowUtc))
                 {
                     // 로그는 남기지 않는다 — 상한이 찬 동안 매 틱 되풀이되는 정상 대기라 이벤트 흐름만 메운다.
-                    runtime.AutoAttack.RefundAttack(
-                        matchingId, attack.AttackerPlayerId, attack.AttackerItemUid, nowUtc);
+                    runtime.AutoAttack.RefundAttack(attack.AttackerPlayerId, attack.AttackerItemUid, nowUtc);
                 }
                 continue;
             }
@@ -371,11 +361,10 @@ internal class MatchCombatService(
                     OrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, distance);
                 // 발사 즉시 예약 (#229): 착탄까지 기다리면 그 사이 다른 오브가 같은 몹을 또
                 // 고른다. 예약분으로 이미 죽는 몹은 표적 후보에서 빠지므로 사격이 흩어진다.
-                runtime.Monsters.ReserveMonsterDamage(
-                    matchingId, attack.TargetPlayerId, monsterDamage);
+                runtime.Monsters.ReserveMonsterDamage(attack.TargetPlayerId, monsterDamage);
                 // 기준점 계측 + 잠금 (#232 1단계): 발사 순간 몹의 공격 사건 수를 올리고,
                 // 원점·기준 위치·무기를 박제해 착탄 정산까지 들고 간다.
-                runtime.Monsters.RecordMonsterAttackEvent(matchingId, attack.TargetPlayerId);
+                runtime.Monsters.RecordMonsterAttackEvent(attack.TargetPlayerId);
                 combatDamage.ScheduleMonsterHit(runtime, new PendingMonsterHit(
                     attack.TargetPlayerId, attack.AttackerPlayerId,
                     monsterDamage, nowUtc.AddSeconds(delaySeconds),
@@ -437,7 +426,7 @@ internal class MatchCombatService(
     ///     쌍별 시작방→만남 구역 경로 길이를 매치 시작 시 한 번 로그로 남긴다.
     ///     공정성 판정(편차가 첫 성장 시각을 가르는지)의 계측 기준이다.
     /// </summary>
-    private void LogSwarmPairZoneDistances(long matchingId)
+    private void LogSwarmPairZoneDistances(MatchRuntime runtime)
     {
         foreach (var (startRoom, pairZone) in SwarmPairZones)
         {
@@ -447,17 +436,17 @@ internal class MatchCombatService(
                 pairZone, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, pairZone));
             logger.LogInformation(
                 "Swarm pair distance: MatchingId={MatchingId}, StartRoom={StartRoom}, PairZone={PairZone}, Steps={Steps}",
-                matchingId, startRoom, pairZone, path?.Count ?? -1);
+                runtime.MatchingId, startRoom, pairZone, path?.Count ?? -1);
         }
     }
 
 
     /// <summary>매치 잠금 안에서 플레이어별 버프 실행 시각을 확인하고 체력 변경을 적용한다.</summary>
-    internal void ProcessPeriodicBuffs(MatchRuntime match, IReadOnlyList<Player> players, DateTime nowUtc)
+    internal void ProcessPeriodicBuffs(MatchRuntime runtime, IReadOnlyList<Player> players, DateTime nowUtc)
     {
         foreach (var player in players)
         {
-            if (match.IsEnded) return;
+            if (runtime.IsEnded) return;
             if (player.IsEliminated)
             {
                 player.ClearPeriodicBuffs();
@@ -469,10 +458,10 @@ internal class MatchCombatService(
                 player.UpdatePeriodicBuffs(nowUtc, Config.MAX_HEALTH, health =>
                 {
                     if (health >= 0)
-                        healthService.Recover(match, player, health);
+                        healthService.Recover(runtime, player, health);
                     else
-                        healthService.ApplyDamage(match, player, checked(-health));
-                    if (player.IsEliminated || match.IsEnded)
+                        healthService.ApplyDamage(runtime, player, checked(-health));
+                    if (player.IsEliminated || runtime.IsEnded)
                         player.ClearPeriodicBuffs();
                 });
             }
@@ -480,20 +469,20 @@ internal class MatchCombatService(
             {
                 player.ClearPeriodicBuffs();
                 logger.LogWarning(ex, "Periodic buff processing failed: MatchingId={MatchingId}, PlayerId={PlayerId}",
-                    match.MatchingId, player.PlayerId);
+                    runtime.MatchingId, player.PlayerId);
             }
         }
     }
 
     /// <summary>생존 플레이어의 수면 회복을 갱신한다.</summary>
-    internal static void ProcessSleepRecovery(MatchRuntime match,
+    internal static void ProcessSleepRecovery(MatchRuntime runtime,
         IEnumerable<Player> players, DateTime nowUtc, PlayerHealthService healthService)
     {
         foreach (var player in players)
         {
             int recovered = player.GetSleepRecovery(nowUtc, player.IsEliminated, Config.MAX_HEALTH);
             if (recovered <= 0) continue;
-            var change = healthService.Recover(match, player, recovered);
+            var change = healthService.Recover(runtime, player, recovered);
             if (player.Session == null) continue;
             using var packet = PacketMaker.G_TO_C_HEALTH_RECOVERY(new()
             {
@@ -506,9 +495,8 @@ internal class MatchCombatService(
         }
     }
     /// <summary>상자 시간 등급 (#222 M3): 개전 앵커(게이트, 봇 전용은 스웜 첫 틱) 경과로 티어 결정.</summary>
-    private int GetSwarmDraftTier(long matchingId)
+    private int GetSwarmDraftTier(MatchRuntime runtime)
     {
-        var runtime = matchRuntimes.GetOrThrow(matchingId);
         var startedAtUtc = runtime.StartsAtUtc ?? runtime.FallbackStartedAtUtc;
         return OrbData.GetDraftTierByElapsed((DateTime.UtcNow - startedAtUtc)?.TotalSeconds);
     }
@@ -545,12 +533,12 @@ internal class MatchCombatService(
     // 절단 파열 플래시 반경 — 포위 링과 같은 원형을 작게 띄운다.
     private const float SwarmTrailCutFlashRadius = PlayerOrbTrailService.CutFlashRadius;
 
-    // 오브 트레일·절단 래치·반격 창 상태는 matchRuntimes.GetOrThrow(matchingId).TrailCombat (#294 상태 홀더).
+    // 오브 트레일·절단 래치·반격 창 상태는 runtime.TrailCombat (#294 상태 홀더).
 
     /// <summary>이 절단자가 이 피해자에게 손댈 수 없는 상태인가 — 절단·본체 피해 공통 관문.</summary>
-    private bool IsSwarmRetaliationGuarded(long matchingId, long cutterId, long victimId, DateTime nowUtc)
+    private bool IsSwarmRetaliationGuarded(MatchRuntime runtime, long cutterId, long victimId, DateTime nowUtc)
     {
-        return matchRuntimes.GetOrThrow(matchingId).TrailCombat.CutRetaliationWindows.TryGetValue((matchingId, cutterId, victimId), out var window) &&
+        return runtime.TrailCombat.CutRetaliationWindows.TryGetValue((cutterId, victimId), out var window) &&
                nowUtc < window.ExpiresAtUtc;
     }
 
@@ -559,38 +547,38 @@ internal class MatchCombatService(
     ///     반대 방향 창이 살아 있으면 = 방금 나를 자른 사람을 내가 잘랐다 = 역절단 성립이다.
     /// </summary>
     private void OpenSwarmRetaliationWindow(
-        long matchingId, long cutterId, long victimId, AreaType area, DateTime nowUtc,
+        MatchRuntime runtime, long cutterId, long victimId, AreaType area, DateTime nowUtc,
         List<GameClientSession> allSessions)
     {
-        if (matchRuntimes.GetOrThrow(matchingId).TrailCombat.CutRetaliationWindows.TryGetValue((matchingId, victimId, cutterId), out var opposite) &&
+        if (runtime.TrailCombat.CutRetaliationWindows.TryGetValue((victimId, cutterId), out var opposite) &&
             nowUtc < opposite.ExpiresAtUtc)
             opposite.Retaliated = true;
 
-        var key = (matchingId, cutterId, victimId);
-        if (!matchRuntimes.GetOrThrow(matchingId).TrailCombat.CutRetaliationWindows.TryGetValue(key, out var window))
+        var key = (cutterId, victimId);
+        if (!runtime.TrailCombat.CutRetaliationWindows.TryGetValue(key, out var window))
         {
             window = new SwarmRetaliationWindow { OpenedAtUtc = nowUtc, OpenedArea = area };
-            matchRuntimes.GetOrThrow(matchingId).TrailCombat.CutRetaliationWindows[key] = window;
+            runtime.TrailCombat.CutRetaliationWindows[key] = window;
         }
 
         window.ExpiresAtUtc = nowUtc.AddSeconds(SwarmCutRetaliationWindowSeconds);
 
         // 잔광은 피해자 본인과 그 절단자에게만 — 제3자는 정상 공격할 수 있으니 보지 않는다.
-        combatDamage.SendSwarmRetaliationVfx(matchRuntimes.GetOrThrow(matchingId),
+        combatDamage.SendSwarmRetaliationVfx(runtime,
             cutterId, victimId, area, SwarmRingVfxKindRetaliationGuard,
             (float)SwarmCutRetaliationWindowSeconds, allSessions);
     }
 
     /// <summary>만료된 창을 결산해 CUT_RETALIATION_WINDOW로 남긴다 — 매 틱 호출.</summary>
     private void ProcessSwarmRetaliationWindows(
-        long matchingId, DateTime nowUtc, List<SwarmParticipantSpatial> participants)
+        MatchRuntime runtime, DateTime nowUtc, List<SwarmParticipantSpatial> participants)
     {
-        var expired = matchRuntimes.GetOrThrow(matchingId).TrailCombat.CutRetaliationWindows
-            .Where(pair => pair.Key.MatchingId == matchingId && nowUtc >= pair.Value.ExpiresAtUtc)
+        var expired = runtime.TrailCombat.CutRetaliationWindows
+            .Where(pair => nowUtc >= pair.Value.ExpiresAtUtc)
             .ToList();
         foreach (var (key, window) in expired)
         {
-            matchRuntimes.GetOrThrow(matchingId).TrailCombat.CutRetaliationWindows.Remove(key);
+            runtime.TrailCombat.CutRetaliationWindows.Remove(key);
 
             // 양측 이탈: 창이 닫히는 시점에 둘이 같은 구역에 없다 = 싸움을 접고 갈라섰다.
             SwarmParticipantSpatial? cutter = participants
@@ -607,7 +595,7 @@ internal class MatchCombatService(
                 cutter.Value.Area != victim.Value.Area;
 
             eventLogs.LogSwarmRetaliationWindow(
-                matchingId, key.CutterId, key.VictimId,
+                runtime.MatchingId, key.CutterId, key.VictimId,
                 window.BlockedDamage, window.BlockedHits, window.BlockedCuts,
                 window.Retaliated, bothDisengaged, window.OpenedArea.ToString());
         }
@@ -617,16 +605,15 @@ internal class MatchCombatService(
 
 
     /// <summary>클라 PlayerTool.UpdateOrbTrail과 같은 규칙 — 정지하면 경로가 얼어 열이 남는다.</summary>
-    private void UpdateSwarmOrbTrails(long matchingId, List<SwarmParticipantSpatial> participants)
+    private void UpdateSwarmOrbTrails(MatchRuntime runtime, List<SwarmParticipantSpatial> participants)
     {
-        var runtime = matchRuntimes.GetOrThrow(matchingId);
         foreach (var participant in participants)
         {
-            var key = (matchingId, participant.PlayerId);
-            if (!matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbTrails.TryGetValue(key, out var points))
+            var key = participant.PlayerId;
+            if (!runtime.TrailCombat.OrbTrails.TryGetValue(key, out var points))
             {
                 points = new List<Vector3f>();
-                matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbTrails[key] = points;
+                runtime.TrailCombat.OrbTrails[key] = points;
             }
 
             var center = participant.Position;
@@ -675,12 +662,11 @@ internal class MatchCombatService(
     ///     절단 불가. 한 이동 선분당 가장 먼저 교차한 링크 하나만 처리한다.
     /// </summary>
     private void ProcessSwarmTrailCuts(
-        long matchingId,
+        MatchRuntime runtime,
         DateTime nowUtc,
         List<SwarmParticipantSpatial> participants,
         List<GameClientSession> allSessions)
     {
-        var runtime = matchRuntimes.GetOrThrow(matchingId);
         // 소유자별 열 좌표·개체 uid는 틱당 1회만 계산한다.
         // 몹(잔상) 절단은 P0에서 비활성 (단계 A 확정) — 절단은 플레이어의 동사다.
         // 머리 보호 제거 (단계 A 마감): 첫 오브·본체-첫 오브 링크도 절단 대상 — 1오브 열도 잘린다.
@@ -689,7 +675,7 @@ internal class MatchCombatService(
                 List<long> Uids, List<int> ItemIds)>();
         foreach (var owner in participants)
         {
-            var orbs = matchRuntimes.GetOrThrow(matchingId).GetOrbs(owner.PlayerId)
+            var orbs = runtime.GetOrbs(owner.PlayerId)
                 .GetAllItems()
                 .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
                 .OrderBy(item => item.ItemUid)
@@ -714,9 +700,9 @@ internal class MatchCombatService(
 
         foreach (var cutter in participants)
         {
-            var positionKey = (matchingId, cutter.PlayerId);
-            bool hasPrevious = matchRuntimes.GetOrThrow(matchingId).TrailCombat.TrailLastTickPositions.TryGetValue(positionKey, out var previous);
-            matchRuntimes.GetOrThrow(matchingId).TrailCombat.TrailLastTickPositions[positionKey] =
+            var positionKey = cutter.PlayerId;
+            bool hasPrevious = runtime.TrailCombat.TrailLastTickPositions.TryGetValue(positionKey, out var previous);
+            runtime.TrailCombat.TrailLastTickPositions[positionKey] =
                 new Vector3f(cutter.Position.X, cutter.Position.Y, 0f);
             if (!hasPrevious)
                 continue;
@@ -727,7 +713,7 @@ internal class MatchCombatService(
             // chains는 오브가 있는 사람만 담으므로 이 검사가 곧 보유 검사다.
             if (!chains.ContainsKey(cutter.PlayerId))
                 continue;
-            TryPerformSwarmTrailCut(matchingId, cutter.PlayerId, cutter.PlayerId, cutter.Area,
+            TryPerformSwarmTrailCut(runtime, cutter.PlayerId, cutter.PlayerId, cutter.Area,
                 previous!, cutter.Position, chains, nowUtc, allSessions);
         }
     }
@@ -743,9 +729,9 @@ internal class MatchCombatService(
     }
 
     /// <summary>열 순서대로의 아이템 ID — 절단 후 재조회용.</summary>
-    private List<int> GetSwarmOrbItemIdsInOrder(long matchingId, long playerId)
+    private List<int> GetSwarmOrbItemIdsInOrder(MatchRuntime runtime, long playerId)
     {
-        return matchRuntimes.GetOrThrow(matchingId).GetOrbs(playerId)
+        return runtime.GetOrbs(playerId)
             .GetAllItems()
             .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
             .OrderBy(item => item.ItemUid)
@@ -758,13 +744,13 @@ internal class MatchCombatService(
     ///     절단 한 건당 1회만 부르므로 전수 조회를 그대로 쓴다.
     /// </summary>
     private int GetSwarmPlayerRank(
-        long matchingId, long playerId)
+        MatchRuntime runtime, long playerId)
     {
-        var entries = matchRuntimes.GetOrThrow(matchingId).GetAlivePlayers()
+        var entries = runtime.GetAlivePlayers()
             .Select(player => player.PlayerId)
             .Select(id =>
             {
-                var (orbCount, tierSum) = GetSwarmOrbScore(matchingId, id);
+                var (orbCount, tierSum) = GetSwarmOrbScore(runtime, id);
                 return (Id: id, Orbs: orbCount, TierSum: tierSum);
             })
             .OrderByDescending(entry => entry.Orbs)
@@ -809,7 +795,7 @@ internal class MatchCombatService(
     }
 
     private void TryPerformSwarmTrailCut(
-        long matchingId,
+        MatchRuntime runtime,
         long cutterId,
         long creditPlayerId,
         AreaType cutterArea,
@@ -820,9 +806,8 @@ internal class MatchCombatService(
         DateTime nowUtc,
         List<GameClientSession> allSessions)
     {
-        var match = matchRuntimes.GetOrThrow(matchingId);
-        var cutter = match.GetParticipant(cutterId);
-        if (match.IsEnded || cutter == null || cutter.IsEliminated) return;
+        var cutter = runtime.GetParticipant(cutterId);
+        if (runtime.IsEnded || cutter == null || cutter.IsEliminated) return;
 
         float segmentDx = current.X - previous.X;
         float segmentDy = current.Y - previous.Y;
@@ -841,12 +826,12 @@ internal class MatchCombatService(
         foreach (var (ownerId, chain) in chains)
         {
             if (ownerId == cutterId || chain.Area != cutterArea ||
-                match.GetParticipant(ownerId) is not { IsEliminated: false })
+                runtime.GetParticipant(ownerId) is not { IsEliminated: false })
                 continue;
             // 반격 보호 (#227 7단계): 방금 이 피해자를 자른 '그 절단자'만 막힌다 —
             // 제3자는 정상적으로 자를 수 있다(전역 면역 퇴역).
             // 막힌 쪽도 교차 판정까지는 돌린다: 실제로 끊었을 교차만 세야 계측이 의미를 갖는다.
-            bool guarded = IsSwarmRetaliationGuarded(matchingId, cutterId, ownerId, nowUtc);
+            bool guarded = IsSwarmRetaliationGuarded(runtime, cutterId, ownerId, nowUtc);
 
             // 절단 판정: 오브 관통(반경 0.35, 중심 위 0.15) 또는 링크(오브 i-1 ↔ i)
             // 가로지르기 — 둘 다 그 오브(i)에 귀속. 머리 보호 제거(단계 A 마감): 첫 오브도
@@ -860,8 +845,8 @@ internal class MatchCombatService(
 
                 // ItemUid별 래치 (단계 A): 0.12초 내부 중복 억제 + 이탈 재무장 —
                 // 선분 시작점이 아직 판정 타원 안이면(겹친 채 체류) 같은 오브 재타는 없다.
-                if (matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbCutLatches.TryGetValue(
-                        (matchingId, cutterId, chain.Uids[ordinal]), out var lastHitAtUtc) &&
+                if (runtime.TrailCombat.OrbCutLatches.TryGetValue(
+                        (cutterId, chain.Uids[ordinal]), out var lastHitAtUtc) &&
                     ((nowUtc - lastHitAtUtc).TotalSeconds < SwarmTrailCutSameOrbDebounceSeconds ||
                      IsInsideOrbHitEllipse(previous, hitPoint)))
                     continue;
@@ -878,8 +863,8 @@ internal class MatchCombatService(
                 if (guarded)
                 {
                     // 이 교차는 보호 창이 삼켰다 — 한 번의 통과당 1회만 센다.
-                    if (matchRuntimes.GetOrThrow(matchingId).TrailCombat.CutRetaliationWindows.TryGetValue(
-                            (matchingId, cutterId, ownerId), out var guardWindow))
+                    if (runtime.TrailCombat.CutRetaliationWindows.TryGetValue(
+                            (cutterId, ownerId), out var guardWindow))
                         guardWindow.BlockedCuts++;
                     break;
                 }
@@ -900,12 +885,12 @@ internal class MatchCombatService(
 
         // 비용 선결 (#232 단일 절단): +35를 감당할 수 없으면(만충 = 탈락) 절단도 비용도 없다.
         // 래치도 안 찍는다 — 다음 틱에 사정이 달라져 있으면(회복) 그때 다시 판정한다.
-        var cutterBot = match.Bots.GetBot(matchingId, cutterId);
+        var cutterBot = runtime.Bots.GetBot(cutterId);
         int cutterHealthBefore = cutter.Health;
         if (cutterHealthBefore - SwarmSingleCutHealthCost <= 0)
         {
             eventLogs.LogSystem(
-                matchingId,
+                runtime.MatchingId,
                 $"ORB_SINGLE_CUT_REFUSED attacker={creditPlayerId} victim={bestOwnerId} targetOrbUid={bestOrbUid} " +
                 $"targetIndex={bestTailOrdinal} reason=cost attackerHealth={cutterHealthBefore}");
             return;
@@ -914,13 +899,13 @@ internal class MatchCombatService(
         // 봇 절단 자제: 봇은 체력이 절반 이상일 때, 봇 1인당 6초에 한 번만 자른다. 봇끼리 몇 초 간격으로 서로 자르며
         // 자해로 죽어 나가면 사람 카메라에 남는 긴 꼬리가 없다 — 봇의 절단은 '한 번 지르는 사건'으로 읽혀야 한다.
         // 거절된 통과는 래치를 찍어 같은 오브를 이번 통과에서 다시 판정하지 않는다 — 사람의 절단은 이 규칙과 무관하다.
-        if (cutterBot != null && !botDecisions.IsSwarmBotCutAllowed(matchingId, cutterId, cutterHealthBefore, nowUtc, SwarmSingleCutHealthCost))
+        if (cutterBot != null && !botDecisions.IsSwarmBotCutAllowed(runtime, cutterId, cutterHealthBefore, nowUtc, SwarmSingleCutHealthCost))
         {
-            matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
+            runtime.TrailCombat.OrbCutLatches[(cutterId, bestOrbUid)] = nowUtc;
             return;
         }
 
-        matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
+        runtime.TrailCombat.OrbCutLatches[(cutterId, bestOrbUid)] = nowUtc;
 
         // #229 6단계: 절단은 내가 몸으로 지르는 가해다 — 교전 잠금을 찍어 절단하고 바로 눕는
         // 도주 회복을 막는다. 수면 해제는 안 건다 — 절단하러 움직인 순간 이동이 이미 깨웠다.
@@ -929,7 +914,7 @@ internal class MatchCombatService(
         // 절단 진입 계측 (#227 3·6단계): 공격자·피해자·후보 ordinal·그 자리를 덮던 적 오브
         // 사거리 수(국소 화망). 내구 1·즉시 파괴, 손실 = 후보 순번부터 꼬리 끝까지.
         eventLogs.LogSwarmCutAttempt(
-            matchingId, creditPlayerId, bestOwnerId, bestTailOrdinal,
+            runtime.MatchingId, creditPlayerId, bestOwnerId, bestTailOrdinal,
             CountSwarmOrbGunsCovering(chains, cutterId, cutterArea, current),
             CountSwarmOrbGunsCovering(chains, cutterId, cutterArea, current, bestOwnerId),
             durabilityBeforeHit: 1,
@@ -939,17 +924,17 @@ internal class MatchCombatService(
 
         // 접미 절단 (스네이크 문법, "오브 절단면 다 깨지게" 결정): 밟힌 오브(몸체) 또는
         // 링크 뒤쪽 첫 오브부터 꼬리 끝까지 전부 사라진다. 절단 지점이 머리에 가까울수록 손실이 크다.
-        var owner = match.GetParticipant(bestOwnerId)!;
-        var destroyedItems = orbTrails.DestroyOrbsFromOrdinal(match, owner, bestTailOrdinal);
+        var owner = runtime.GetParticipant(bestOwnerId)!;
+        var destroyedItems = orbTrails.DestroyOrbsFromOrdinal(runtime, owner, bestTailOrdinal);
         if (destroyedItems.Count == 0)
             return;
         var destroyedItem = destroyedItems[0];
         // 반격 보호 개시 (#227 7단계): 방금 자른 그 사람은 1.2초 동안 이 피해자를 다시 못 자른다.
-        OpenSwarmRetaliationWindow(matchingId, creditPlayerId, bestOwnerId, bestArea, nowUtc, allSessions);
+        OpenSwarmRetaliationWindow(runtime, creditPlayerId, bestOwnerId, bestArea, nowUtc, allSessions);
         var ownerChain = chains[bestOwnerId];
         foreach (var lost in destroyedItems)
         {
-            matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbDurabilityBonus.Remove((matchingId, bestOwnerId, lost.ItemUid));
+            runtime.TrailCombat.OrbDurabilityBonus.Remove((bestOwnerId, lost.ItemUid));
             owner.Session?.SendOrbUpdate(lost);
         }
         // 절단 낙수 없음 (#232): 소환석·드롭·점수·웨이브 기여를 지급하지 않는다. 잃은 것은 그냥 사라진다.
@@ -963,23 +948,23 @@ internal class MatchCombatService(
         // 공격자 치명상 (#232): 같은 사건으로 +35. 사람은 사격 피격 경로(체력 감소·피격 숫자)를 타고
         // 8초 수면 회복 차단이 걸린다. 봇도 같은 차단을 적용한다.
         DateTime healLockUntil = nowUtc.AddSeconds(SwarmSingleCutHealLockSeconds);
-        combatDamage.ApplyProximityAutoCombatHit(match, healthService,
+        combatDamage.ApplyProximityAutoCombatHit(runtime, healthService,
             cutter, cutterId, cutterArea, destroyedItem.ItemId, SwarmSingleCutHealthCost);
         cutter.BlockHealingUntil(healLockUntil);
         int cutterHealthAfter = cutter.Health;
         if (cutterBot != null)
         {
             // 봇 AI가 읽는 절단 자제·회수 시각만 별도로 기록한다.
-            match.BotTactics.LastTrailCutAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
+            runtime.BotTactics.LastTrailCutAtUtc[cutterBot.PlayerId] = nowUtc;
         }
 
-        var ownerBot = match.Bots.GetBot(matchingId, bestOwnerId);
+        var ownerBot = runtime.Bots.GetBot(bestOwnerId);
         if (ownerBot != null)
         {
             // 절단당한 봇은 피격 반응(도주 판단)으로 즉시 넘어간다.
             ownerBot.LastProximityAttackerPlayerId = creditPlayerId;
             ownerBot.LastDamagedAtUtc = nowUtc;
-            matchRuntimes.GetOrThrow(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, ownerBot.PlayerId)] = nowUtc;
+            runtime.BotTactics.LastDamagedAtUtc[ownerBot.PlayerId] = nowUtc;
             ownerBot.Player.MarkSwarmCombat(nowUtc);
         }
 
@@ -988,24 +973,24 @@ internal class MatchCombatService(
         // 전략이 먹혔는지 로그만으로 판정할 수 있다. 전은 파괴 직전 체인, 후는 재조회다.
         int attackOrbsBefore = CountSwarmAttackOrbs(ownerChain.ItemIds);
         int orbsBefore = ownerChain.ItemIds.Count;
-        int orbsAfter = orbTrails.CountOrbs(match, owner);
-        int attackOrbsAfter = CountSwarmAttackOrbs(GetSwarmOrbItemIdsInOrder(matchingId, bestOwnerId));
-        int rankAfter = GetSwarmPlayerRank(matchingId, bestOwnerId);
+        int orbsAfter = orbTrails.CountOrbs(runtime, owner);
+        int attackOrbsAfter = CountSwarmAttackOrbs(GetSwarmOrbItemIdsInOrder(runtime, bestOwnerId));
+        int rankAfter = GetSwarmPlayerRank(runtime, bestOwnerId);
 
         eventLogs.LogSwarmTrailCut(
-            matchingId, creditPlayerId, bestOwnerId, bestTailOrdinal, destroyedItems.Count,
+            runtime.MatchingId, creditPlayerId, bestOwnerId, bestTailOrdinal, destroyedItems.Count,
             orbsBefore, orbsAfter, attackOrbsBefore, attackOrbsAfter, rankAfter,
             bestArea.ToString());
         // 필수 로그 (#232 §11): 절단 한 건 = 공격자·피해자·절단 순번·잃은 수·공격자 오염 전후·회복 차단 만료.
         eventLogs.LogSystem(
-            matchingId,
+            runtime.MatchingId,
             $"ORB_TAIL_CUT attacker={creditPlayerId} victim={bestOwnerId} cutIndex={bestTailOrdinal} " +
             $"lostOrbs={destroyedItems.Count} firstOrbUid={destroyedItem.ItemUid} " +
             $"attackerHealthBefore={cutterHealthBefore} attackerHealthAfter={cutterHealthAfter} " +
             $"healLockUntil={healLockUntil:O} victimOrbsBefore={orbsBefore} victimOrbsAfter={orbsAfter} area={bestArea}");
         logger.LogInformation(
             "Swarm tail cut: MatchingId={MatchingId}, CutterId={CutterId}, OwnerId={OwnerId}, TailOrdinal={TailOrdinal}, Lost={Lost}, AttackerHealth={Before}->{After}",
-            matchingId, cutterId, bestOwnerId, bestTailOrdinal, destroyedItems.Count,
+            runtime.MatchingId, cutterId, bestOwnerId, bestTailOrdinal, destroyedItems.Count,
             cutterHealthBefore, cutterHealthAfter);
     }
 
@@ -1099,13 +1084,12 @@ internal class MatchCombatService(
     /// </summary>
 
     internal void ApplySwarmParticipantDamage(
-        long matchingId,
+        MatchRuntime runtime,
         SwarmPlayerDamage damage,
         List<GameClientSession> allSessions)
     {
-        var match = matchRuntimes.GetOrThrow(matchingId);
-        var victim = match.GetParticipant(damage.TargetPlayerId);
-        if (match.IsEnded || victim == null || victim.IsEliminated) return;
+        var victim = runtime.GetParticipant(damage.TargetPlayerId);
+        if (runtime.IsEnded || victim == null || victim.IsEliminated) return;
 
         // 받는 피해 배율(봇·플레이어 전부 1/3만 받게 결정): 사람·봇·로그가 전부 같은 값을 보게 진입점에서 한 번
         // 줄인다. 페이즈 곡선은 그대로 두고 배율만 곱한다 — 곡선을 고치면 "위협이 세지는 리듬"까지 다시 잡아야 한다.
@@ -1113,7 +1097,7 @@ internal class MatchCombatService(
 
         // 파도 문양 몹 공격 연출: 접촉 강타가 주변까지 튀므로 같은 구역 전원에게 공격 VFX를 쏴
         // 몸 기울임이 출처를 말하게 한다 (보스 투사체 분기는 #335에서 삭제 — 보스 스폰 경로 없음).
-        if (match.Monsters.IsWavePatternMonster(matchingId, damage.MonsterId))
+        if (runtime.Monsters.IsWavePatternMonster(damage.MonsterId))
         {
             using var vfxPacket = Packet.Create((int)Protocol.G_TO_C_MONSTER_ATTACK_VFX);
             vfxPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_ATTACK_VFX
@@ -1129,7 +1113,7 @@ internal class MatchCombatService(
             }
         }
 
-        combatDamage.ApplySwarmAfterimageMonsterHit(match, healthService,
+        combatDamage.ApplySwarmAfterimageMonsterHit(runtime, healthService,
             victim, damage.MonsterId, damage.Damage);
     }
 
@@ -1138,11 +1122,10 @@ internal class MatchCombatService(
     ///     연결 유무와 관계없이 같은 결과 확정 경로를 사용한다.
     /// </summary>
     internal bool ProcessSwarmScoreTimeout(
-        long matchingId,
+        MatchRuntime runtime,
         DateTime nowUtc)
     {
-        var runtime = matchRuntimes.GetOrNull(matchingId);
-        if (runtime == null || runtime.TimeoutResultProcessed || IsMatchTerminal(matchingId))
+        if (runtime.TimeoutResultProcessed || IsMatchTerminal(runtime))
             return false;
 
         var startedAtUtc = runtime.StartsAtUtc;
@@ -1160,19 +1143,18 @@ internal class MatchCombatService(
         if ((nowUtc - startedAtUtc.Value).TotalSeconds < Config.SWARM_MATCH_DURATION_SECONDS)
             return false;
 
-        var candidates = matchRuntimes.GetOrThrow(matchingId).GetAlivePlayers()
+        var candidates = runtime.GetAlivePlayers()
             .Select(candidate =>
             {
-                var (orbCount, tierSum) = GetSwarmOrbScore(matchingId, candidate.PlayerId);
+                var (orbCount, tierSum) = GetSwarmOrbScore(runtime, candidate.PlayerId);
                 return (candidate.PlayerId, OrbCount: orbCount, TierSum: tierSum,
                     candidate.Health);
             })
             .OrderByDescending(candidate => candidate.OrbCount)
             .ThenByDescending(candidate => candidate.TierSum)
             // 철갑(내구 보너스 합) 3차 키 (#226): 같은 열이면 방어 투자한 쪽이 앞선다.
-            .ThenByDescending(candidate => matchRuntimes.GetOrThrow(matchingId).TrailCombat.OrbDurabilityBonus
-                .Where(pair => pair.Key.MatchingId == matchingId &&
-                               pair.Key.PlayerId == candidate.PlayerId)
+            .ThenByDescending(candidate => runtime.TrailCombat.OrbDurabilityBonus
+                .Where(pair => pair.Key.PlayerId == candidate.PlayerId)
                 .Sum(pair => pair.Value))
             .ThenByDescending(candidate => candidate.Health)
             .ThenBy(candidate => candidate.PlayerId)
@@ -1181,18 +1163,18 @@ internal class MatchCombatService(
         runtime.TimeoutResultProcessed = true;
         // 최종 점수표 (#226 F 계측): 순위 순 pid:오브:티어합 — 300초 목표(1위 11~15) 검증 근거.
         eventLogs.LogSystem(
-            matchingId,
+            runtime.MatchingId,
             "match_score_result " + string.Join(",", candidates.Select(candidate =>
                 $"{candidate.PlayerId}:{candidate.OrbCount}:{candidate.TierSum}")));
         logger.LogInformation(
             "Swarm score timeout: MatchingId={MatchingId}, WinnerId={WinnerId}, WinnerOrbs={WinnerOrbs}, WinnerTierSum={WinnerTierSum}, Alive={AliveCount}",
-            matchingId, winnerId,
+            runtime.MatchingId, winnerId,
             candidates.Count > 0 ? candidates[0].OrbCount : 0,
             candidates.Count > 0 ? candidates[0].TierSum : 0,
             candidates.Count);
 
-        matchResults.FinalizeMatch(matchingId, winnerId, MatchEndReason.OrbScoreTimeout);
-        matchRuntimes.GetOrNull(matchingId)?.AutoAttack.Clear();
+        matchResults.FinalizeMatch(runtime.MatchingId, winnerId, MatchEndReason.OrbScoreTimeout);
+        runtime?.AutoAttack.Clear();
         return true;
     }
 
@@ -1200,8 +1182,8 @@ internal class MatchCombatService(
     ///     오브 점수 헬퍼 (#226 단계 B): 궤도 열의 오브 수와 총 티어 합. 사람·봇 공통
     ///     (봇도 같은 인게임 인벤토리를 쓴다).
     /// </summary>
-    private (int OrbCount, int TierSum) GetSwarmOrbScore(long matchingId, long playerId) =>
-        matchRuntimes.GetOrThrow(matchingId).GetOrbs(playerId).GetOrbScore();
+    private (int OrbCount, int TierSum) GetSwarmOrbScore(MatchRuntime runtime, long playerId) =>
+        runtime.GetOrbs(playerId).GetOrbScore();
 
     /// <summary>
     ///     오브 순위 브로드캐스트 (#226 단계 B): 오브 수가 곧 점수다. 패킷은 잼 순위 시절의
@@ -1209,12 +1191,12 @@ internal class MatchCombatService(
     ///     이름·수치·본인 순위를 그대로 비춘다.
     /// </summary>
     private void BroadcastSwarmOrbRankings(
-        long matchingId, List<GameClientSession> sessions)
+        MatchRuntime runtime, List<GameClientSession> sessions)
     {
-        var entries = matchRuntimes.GetOrThrow(matchingId).GetPlayers()
+        var entries = runtime.GetPlayers()
             .Select(entry =>
             {
-                var (orbCount, tierSum) = GetSwarmOrbScore(matchingId, entry.PlayerId);
+                var (orbCount, tierSum) = GetSwarmOrbScore(runtime, entry.PlayerId);
                 // 탈락자는 0점 — 순위표에서 자연히 바닥으로 내려간다.
                 return (entry.PlayerId,
                     Orbs: entry.IsEliminated ? 0 : orbCount,
@@ -1228,7 +1210,6 @@ internal class MatchCombatService(
             return;
 
         string signature = string.Join("|", entries.Select(entry => $"{entry.PlayerId}:{entry.Orbs}"));
-        var runtime = matchRuntimes.GetOrThrow(matchingId);
         bool isFirstBroadcast = runtime.OrbRankingsSignature == null;
         if (!isFirstBroadcast && runtime.OrbRankingsSignature == signature)
             return;
@@ -1237,7 +1218,7 @@ internal class MatchCombatService(
         if (isFirstBroadcast)
             logger.LogInformation(
                 "Orb rankings broadcast armed: MatchingId={MatchingId}, Participants={Count}, Sessions={Sessions}",
-                matchingId, entries.Count, sessions.Count);
+                runtime.MatchingId, entries.Count, sessions.Count);
         var message = new G_TO_C_JAM_RANKINGS
         {
             PlayerIds = entries.Select(entry => entry.PlayerId).ToList(),
@@ -1250,8 +1231,8 @@ internal class MatchCombatService(
     }
 
     /// <summary>열 순서의 오브 목록 — 강화·철갑의 "가장 앞" 판정과 트레일 순번의 단일 출처.</summary>
-    private List<InGameItemInfo> GetSwarmTrailOrbs(long matchingId, long playerId) =>
-        matchRuntimes.GetOrThrow(matchingId).GetOrbs(playerId).GetOrderedOrbs();
+    private List<InGameItemInfo> GetSwarmTrailOrbs(MatchRuntime runtime, long playerId) =>
+        runtime.GetOrbs(playerId).GetOrderedOrbs();
 
     private static int GetSquadOrbTier(int itemId)
     {
@@ -1261,7 +1242,7 @@ internal class MatchCombatService(
     }
 
     internal List<ProximityCombatActor> BuildSwarmArenaCombatActors(
-        long matchingId,
+        MatchRuntime runtime,
         IReadOnlyList<Player> players,
         DateTime nowUtc)
     {
@@ -1271,10 +1252,10 @@ internal class MatchCombatService(
             if (player.IsEliminated || player.Position == null) continue;
             if (CombatActorFactory.TryCreateSpatialActor(player.PlayerId, Config.SWARM_MATCH_MAP,
                     player.CurrentArea, player.Position, out var spatial))
-                AddSwarmParticipantCombatActors(actors, matchingId, spatial, nowUtc);
+                AddSwarmParticipantCombatActors(actors, runtime, spatial, nowUtc);
         }
 
-        foreach (var target in matchRuntimes.GetOrThrow(matchingId).Monsters.GetCombatTargets(matchingId))
+        foreach (var target in runtime.Monsters.GetCombatTargets())
         {
             actors.Add(new ProximityCombatActor(
                 target.CombatTargetId,
@@ -1300,7 +1281,7 @@ internal class MatchCombatService(
     /// </summary>
     private void AddSwarmParticipantCombatActors(
         List<ProximityCombatActor> actors,
-        long matchingId,
+        MatchRuntime runtime,
         ProximityCombatActor spatial,
         DateTime nowUtc)
     {
@@ -1315,7 +1296,7 @@ internal class MatchCombatService(
             // 사거리 판정을 이미 필터가 하므로, 후보에 올라온 사람은 곧 사정권 안이다.
             TargetPriority = 0
         };
-        var inventory = matchRuntimes.GetOrThrow(matchingId).GetOrbs(spatial.PlayerId);
+        var inventory = runtime.GetOrbs(spatial.PlayerId);
         var inventoryItems = inventory.GetAllItems().Where(item => item.Count > 0).ToList();
         if (inventoryItems.Count == 0)
         {
@@ -1343,7 +1324,6 @@ internal class MatchCombatService(
         // #229: 태양·바람은 티어별 원시 피해·주기·탄속이 같은 유도탄이다. 차이는 보드
         // 패시브뿐이며, 태양 보너스는 모든 PvE 공격에 적용된다. 파도는 별도 물폭탄 시스템.
         float sunAttackMultiplier = OrbData.GetSunPveAttackMultiplier(inventoryItems);
-        var runtime = matchRuntimes.GetOrThrow(matchingId);
         var player = runtime.GetParticipant(spatial.PlayerId)!;
         var actorTiers = orbTrails.GetOrbTiersInOrder(runtime, player);
         int orbCount = actors.Count - before;

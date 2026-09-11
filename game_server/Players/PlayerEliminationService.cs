@@ -32,7 +32,7 @@ internal sealed class PlayerEliminationService(
         long eliminatedPlayerId = eliminatedPlayer.PlayerId;
         var allSessions = runtime.GetSessions();
         var eliminatedSession = eliminatedPlayer.Session;
-        var eliminatedBot = runtime.Bots.GetBot(matchingId, eliminatedPlayerId);
+        var eliminatedBot = runtime.Bots.GetBot(eliminatedPlayerId);
         var eliminatedArea = eliminatedPlayer.CurrentArea;
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
 
@@ -119,7 +119,7 @@ internal sealed class PlayerEliminationService(
             }
         }
 
-        var eliminatedResultPlayers = matchResults.BuildPlayerResults(matchingId, 0);
+        var eliminatedResultPlayers = matchResults.BuildPlayerResults(runtime, 0);
         foreach (var session in allSessions)
         {
             using var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED);

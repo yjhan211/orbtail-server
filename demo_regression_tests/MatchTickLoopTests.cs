@@ -40,7 +40,7 @@ public sealed class MatchTickLoopTests
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
             new PlayerPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
             (_, _) => Process("combat"),
-            (_, _) => Process("environment"), _ => Process("movement"), (_, _) => { });
+            (_, _) => Process("environment"), _ => Process("movement"), _ => { });
         fixture.Loops.Add(loop);
         TestMatchTickServices.ForceNextEnvironmentalTick(loop);
 
@@ -73,7 +73,7 @@ public sealed class MatchTickLoopTests
             {
                 Assert.Same(fixture.Match, runtime);
                 Record("movement");
-            }, (_, _) => { });
+            }, _ => { });
 
         fixture.Loops.Add(loop);
         TestMatchTickServices.ForceNextEnvironmentalTick(loop);
@@ -102,14 +102,14 @@ public sealed class MatchTickLoopTests
                     throw new InvalidOperationException("test combat failure");
             },
             (_, _) => throw new InvalidOperationException("environment should not be due"),
-            _ => movements++, (_, _) => { });
+            _ => movements++, _ => { });
 
         first.Loops.Add(loop);
         Assert.Throws<InvalidOperationException>(loop.ProcessTick);
         Assert.False(Monitor.IsEntered(first.Match.MatchLock));
         var secondLoop = TestMatchTickServices.CreateLoop(second, first.Store, NullLogger.Instance,
             new PlayerPickupService(first.Store.EventLogs, TestGameSessionServices.CreateHealthService(first.Store, first.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
-            (id, _) => combatIds.Add(id), (_, _) => { }, _ => { }, (_, _) => { });
+            (id, _) => combatIds.Add(id), (_, _) => { }, _ => { }, _ => { });
         secondLoop.ProcessTick();
         secondLoop.Stop();
         Assert.Contains(first.Match.MatchingId, combatIds);
@@ -130,7 +130,7 @@ public sealed class MatchTickLoopTests
                 combats++;
                 fixture.Match.TryMarkEnded();
             },
-            (_, _) => { }, _ => movements++, (_, _) => { });
+            (_, _) => { }, _ => movements++, _ => { });
 
         fixture.Loops.Add(loop);
         loop.ProcessTick();
@@ -154,7 +154,7 @@ public sealed class MatchTickLoopTests
         int calls = 0;
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
             new PlayerPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
-            (_, _) => Interlocked.Increment(ref calls), (_, _) => { }, _ => { }, (_, _) => { });
+            (_, _) => Interlocked.Increment(ref calls), (_, _) => { }, _ => { }, _ => { });
         Task holder = Task.Run(() =>
         {
             using (fixture.Match.Enter())
@@ -202,7 +202,7 @@ public sealed class MatchTickLoopTests
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
             new PlayerPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
             (_, _) => steps.Add("combat"),
-            (_, _) => steps.Add("environment"), _ => steps.Add("movement"), (_, _) => { });
+            (_, _) => steps.Add("environment"), _ => steps.Add("movement"), _ => { });
 
         fixture.Loops.Add(loop);
         TestMatchTickServices.ForceNextEnvironmentalTick(loop);
@@ -221,11 +221,11 @@ public sealed class MatchTickLoopTests
             NullLogger<BotMovementService>.Instance);
         using (MatchRuntimeStore.Enter(first))
         {
-            service.ProcessTick(first, (_, _) => throw new InvalidOperationException("No bots should request a directive."));
+            service.ProcessTick(first, _ => throw new InvalidOperationException("No bots should request a directive."));
             Assert.Equal(1, first.BotTickMetrics.SampleCount);
             Assert.Equal(0, second.BotTickMetrics.SampleCount);
             for (int i = 1; i < SwarmBotTickMetrics.WindowSize; i++)
-                service.ProcessTick(first, (_, _) => throw new InvalidOperationException("No bots."));
+                service.ProcessTick(first, _ => throw new InvalidOperationException("No bots."));
             Assert.Equal(0, first.BotTickMetrics.SampleCount);
             var entry = Assert.Single(logs.GetRecent(first.MatchingId),
                 e => e.Type == GameEventType.SurvivorBotMovementTickPerformance);
@@ -246,7 +246,7 @@ public sealed class MatchTickLoopTests
             (_, _) => fixture.Match.TryMarkEnded(),
             (_, _) => laterStages++,
             _ => laterStages++,
-            (_, _) => laterStages++);
+            _ => laterStages++);
         fixture.Loops.Add(loop);
         loop.ProcessTick();
         Assert.Equal(0, laterStages);
@@ -262,7 +262,7 @@ public sealed class MatchTickLoopTests
         public Fixture(long id, bool startImmediately = true)
         {
             Match = Store.GetOrCreate(id);
-            Match.Bots.RegisterBots(id, Config.SWARM_MATCH_MAP, [-42],
+            Match.Bots.RegisterBots(Config.SWARM_MATCH_MAP, [-42],
                 new Dictionary<long, Cell> { [-42] = new(0, 0) });
             if (startImmediately) Match.StartGameplay();
         }

@@ -1,6 +1,5 @@
 using game_server.matches;
 using game_server.matches.combat;
-using game_server.matches.field;
 using game_server.players.bots;
 using MessagePack;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -58,7 +57,7 @@ public sealed class PlayerEliminationCauseTests
         var bot = new BotPlayerState { PlayerId = -1, Player = { Health = 10 } };
         using (match.Enter())
         {
-            match.Bots.GetBots(1).Add(bot);
+            match.Bots.GetBots().Add(bot);
             match.RegisterParticipant(bot.Player);
             combat.ApplyProximityAutoCombatHit(match, healthService, bot.Player, 101, AreaType.None, 123, 9);
             Assert.False(bot.Player.IsEliminated);

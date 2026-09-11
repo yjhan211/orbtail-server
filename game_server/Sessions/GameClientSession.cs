@@ -389,8 +389,8 @@ public partial class GameClientSession : SessionBase
                 }
             }
 
-            var bots = match.Bots.GetBots(MatchingId).Where(bot => !bot.Player.IsEliminated && bot.Player.CurrentArea == Player.CurrentArea).ToList();
-            var objects = bots.Select(bot => match.Bots.SynthesizeGameObjectInfo(MatchingId, bot.PlayerId)).OfType<GameObjectInfo>().ToList();
+            var bots = match.Bots.GetBots().Where(bot => !bot.Player.IsEliminated && bot.Player.CurrentArea == Player.CurrentArea).ToList();
+            var objects = bots.Select(bot => match.Bots.SynthesizeGameObjectInfo(bot.PlayerId)).OfType<GameObjectInfo>().ToList();
             if (objects.Count <= 0)
             {
                 return;

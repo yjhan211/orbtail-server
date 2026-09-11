@@ -1,4 +1,4 @@
-using game_server.matches.field;
+using game_server.matches;
 using game_server.players;
 using MessagePack;
 using Microsoft.Extensions.Logging;

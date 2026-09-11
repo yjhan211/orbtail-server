@@ -60,7 +60,7 @@ internal static class TestGameSessionServices
         return (runtime, clock) => TestMatchTickServices.CreateLoop(runtime, store, NullLogger<MatchTickLoop>.Instance,
             new PlayerPickupService(logs, CreateHealthService(store, logs), NullLogger<PlayerPickupService>.Instance),
             (matchingId, _) => processTick(store.GetOrThrow(matchingId)),
-            (_, _) => { }, _ => { }, (_, _) => { }, clock);
+            (_, _) => { }, _ => { }, _ => { }, clock);
     }
 
     // 단위 테스트도 실제 Lifecycle을 사용한다. Redis/NATS만 인메모리 구현으로 대체한다.
@@ -138,7 +138,7 @@ internal static class TestGameSessionServices
     /// <summary>참가자·봇·미등록 순으로 플레이어를 찾고, 없으면 참가자로 등록한다.</summary>
     public static Player GetOrRegisterPlayer(MatchRuntime match, long playerId)
     {
-        var player = match.GetParticipant(playerId) ?? match.Bots.GetBot(match.MatchingId, playerId)?.Player;
+        var player = match.GetParticipant(playerId) ?? match.Bots.GetBot(playerId)?.Player;
         if (player != null)
             return player;
         player = new Player { Profile = new PlayerInfo { PlayerId = playerId } };
@@ -151,7 +151,7 @@ internal static class TestGameSessionServices
 
     public static Player.SummonStoneState SummonStones(MatchRuntime match, long playerId)
     {
-        var player = match.GetParticipant(playerId) ?? match.Bots.GetBot(match.MatchingId, playerId)?.Player;
+        var player = match.GetParticipant(playerId) ?? match.Bots.GetBot(playerId)?.Player;
         return player == null ? Player.SummonStoneState.Empty : player.SummonStones;
     }
 

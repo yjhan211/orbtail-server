@@ -18,5 +18,6 @@ public enum MatchTieBreakCriterion
     SingleCandidate,
     PreDamageHealth,
     CumulativePvpDamage,
-    MatchSeedPriority
+    FieldDamage,
+    PlayerId
 }

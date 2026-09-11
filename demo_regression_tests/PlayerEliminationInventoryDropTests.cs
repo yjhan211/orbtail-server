@@ -101,12 +101,10 @@ public sealed class PlayerEliminationInventoryDropTests
         Player player;
         if (playerId < 0)
         {
-            match.Bots.RegisterBots(
-                match.MatchingId,
-                Config.SWARM_MATCH_MAP,
+            match.Bots.RegisterBots(Config.SWARM_MATCH_MAP,
                 [playerId],
                 new Dictionary<long, Cell> { [playerId] = new Cell(0, 0) });
-            player = match.Bots.GetBot(match.MatchingId, playerId)!.Player;
+            player = match.Bots.GetBot(playerId)!.Player;
         }
         else
         {

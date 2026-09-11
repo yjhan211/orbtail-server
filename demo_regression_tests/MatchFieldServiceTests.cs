@@ -1,16 +1,16 @@
 using game_server;
 using game_server.matches;
-using game_server.matches.field;
 using game_server.matches.logging;
 using game_server.matches.results;
 using game_server.players.bots;
 using game_server.sessions;
 using Microsoft.Extensions.Logging.Abstractions;
+using network.common;
 using network.common.data;
 
 namespace demo_regression_tests;
 
-public sealed class MatchEnvironmentServiceTests
+public sealed class MatchFieldServiceTests
 {
     [Theory]
     [InlineData(1, -2)]
@@ -26,7 +26,7 @@ public sealed class MatchEnvironmentServiceTests
         var store = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
             .GetRequiredService<MatchRuntimeStore>(provider);
         var service = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
-            .GetRequiredService<MatchEnvironmentService>(provider);
+            .GetRequiredService<MatchFieldService>(provider);
         var match = store.GetOrCreate(947008);
         var first = new game_server.players.Player
         {
@@ -47,9 +47,9 @@ public sealed class MatchEnvironmentServiceTests
             match.Closures.InitializeMatching().GameStartTime =
                 DateTime.UtcNow.AddSeconds(-network.common.Config.SWARM_MATCH_DURATION_SECONDS - 100);
             Assert.Empty(match.GetSessions());
-            Assert.True(MatchPressureFieldPolicy.GetDamagePerTick(match, first.Position, DateTime.UtcNow) >= 2);
+            Assert.True(MatchFieldService.GetDamagePerTick(match, first.Position, DateTime.UtcNow) >= 2);
 
-            service.ProcessTick(match);
+            service.ProcessDamageTick(match);
 
             Assert.Equal(0, first.Health);
             Assert.Equal(0, second.Health);
@@ -65,7 +65,8 @@ public sealed class MatchEnvironmentServiceTests
     {
         var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947001);
         var service = CreateService();
-        Assert.Throws<InvalidOperationException>(() => service.ProcessTick(match));
+        Assert.Throws<InvalidOperationException>(() => service.ProcessDamageTick(match));
+        Assert.Throws<InvalidOperationException>(() => service.ProcessClosureTick(match));
     }
 
     [Fact]
@@ -76,7 +77,7 @@ public sealed class MatchEnvironmentServiceTests
         lock (match.MatchLock)
         {
             match.TryMarkEnded();
-            service.ProcessTick(match);
+            service.ProcessDamageTick(match);
             Assert.True(match.IsEnded);
         }
     }
@@ -85,8 +86,8 @@ public sealed class MatchEnvironmentServiceTests
     public void PressureField_WithoutStartTimeIsSafe()
     {
         var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947004);
-        Assert.Equal(double.MaxValue, MatchPressureFieldPolicy.GetSafeDistance(match, DateTime.UtcNow));
-        Assert.Equal(0, MatchPressureFieldPolicy.GetDamagePerTick(match, null, DateTime.UtcNow));
+        Assert.Equal(double.MaxValue, match.Closures.GetSafeDistance(DateTime.UtcNow));
+        Assert.Equal(0, MatchFieldService.GetDamagePerTick(match, null, DateTime.UtcNow));
     }
 
     [Fact]
@@ -96,18 +97,17 @@ public sealed class MatchEnvironmentServiceTests
         var second = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947006);
         var now = new DateTime(2026, 9, 7, 0, 0, 0, DateTimeKind.Utc);
         first.Closures.InitializeMatching().GameStartTime =
-            now.AddSeconds(-MatchPressureFieldPolicy.HoldSeconds - MatchPressureFieldPolicy.ShrinkSeconds / 2);
+            now.AddSeconds(-SwarmPressureField.HoldSeconds - SwarmPressureField.ShrinkSeconds / 2);
         second.Closures.InitializeMatching().GameStartTime = now;
-        double expected = MatchPressureFieldPolicy.Enabled
+        double expected = Config.SWARM_PRESSURE_FIELD_ENABLED
             ? SwarmPressureField.GetSafeDistanceAtProgress(0.5)
             : double.MaxValue;
-        Assert.Equal(expected, MatchPressureFieldPolicy.GetSafeDistance(first, now));
-        Assert.Equal(double.MaxValue, MatchPressureFieldPolicy.GetSafeDistance(second, now));
-        double endExpected = MatchPressureFieldPolicy.Enabled
+        Assert.Equal(expected, first.Closures.GetSafeDistance(now));
+        Assert.Equal(double.MaxValue, second.Closures.GetSafeDistance(now));
+        double endExpected = Config.SWARM_PRESSURE_FIELD_ENABLED
             ? SwarmPressureField.GetSafeDistanceAtProgress(1)
             : double.MaxValue;
-        Assert.Equal(endExpected, MatchPressureFieldPolicy.GetSafeDistance(first,
-            now.AddSeconds(MatchPressureFieldPolicy.ShrinkSeconds)));
+        Assert.Equal(endExpected, first.Closures.GetSafeDistance(now.AddSeconds(SwarmPressureField.ShrinkSeconds)));
     }
 
     [Fact]
@@ -121,26 +121,25 @@ public sealed class MatchEnvironmentServiceTests
         var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947007);
         var center = SwarmPressureField.CenterCell;
         var cell = new network.common.data.models.Cell((int)center.X, (int)center.Y);
-        match.Bots.RegisterBots(match.MatchingId, network.common.Config.SWARM_MATCH_MAP,
+        match.Bots.RegisterBots(network.common.Config.SWARM_MATCH_MAP,
             [-1, -2], new Dictionary<long, network.common.data.models.Cell> { [-1] = cell, [-2] = cell });
-        var closure = match.Closures.InitializeMatching(wavesOverride:
-            AreaClosureManager.BuildSwarmFieldWaves(MatchPressureFieldPolicy.HoldSeconds, MatchPressureFieldPolicy.ShrinkSeconds));
+        var closure = match.Closures.InitializeMatching(wavesOverride: MatchFieldService.SwarmFieldDerivedWaves.Value);
         Assert.NotEmpty(closure.Waves);
         closure.GameStartTime = DateTime.UtcNow.AddSeconds(-network.common.Config.SWARM_MATCH_DURATION_SECONDS - 100);
-        var bots = match.Bots.GetBots(match.MatchingId).ToList();
+        var bots = match.Bots.GetBots().ToList();
         foreach (var bot in bots) match.RegisterParticipant(bot.Player);
         var healthBefore = bots.Select(bot => bot.Player.Health).ToArray();
         foreach (var bot in bots)
-            Assert.Equal(0, MatchPressureFieldPolicy.GetDamagePerTick(match, bot.Player.Position!, DateTime.UtcNow));
+            Assert.Equal(0, MatchFieldService.GetDamagePerTick(match, bot.Player.Position!, DateTime.UtcNow));
 
         lock (match.MatchLock)
-            CreateService().ProcessTick(match);
+            CreateService().ProcessDamageTick(match);
 
         Assert.Equal(healthBefore, bots.Select(bot => bot.Player.Health).ToArray());
         Assert.All(bots, bot => Assert.False(bot.Player.IsEliminated));
     }
 
-    private static MatchEnvironmentService CreateService()
+    private static MatchFieldService CreateService()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var sessions = new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance);
@@ -148,9 +147,8 @@ public sealed class MatchEnvironmentServiceTests
         var eliminations = TestGameSessionServices.CreateEliminationService(
             store, logs, new MatchSummaryFileStore(), NullLogger.Instance);
         var results = new MatchResultService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance);
-        return new MatchEnvironmentService(logs, TestGameSessionServices.CreateHealthService(store, logs),
+        return new MatchFieldService(logs, new game_server.players.PlayerOrbTrailService(), TestGameSessionServices.CreateHealthService(store, logs),
             new MatchCleanupService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance),
-            eliminations, results,
-            NullLogger<MatchEnvironmentService>.Instance);
+            eliminations, results);
     }
 }

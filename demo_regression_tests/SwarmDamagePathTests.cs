@@ -40,7 +40,7 @@ public class SwarmDamagePathTests
         string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
 
         // 한 교차 = 밟은 순번부터 꼬리 끝까지. 낙수 흩기는 절단 경로에 없어야 한다.
-        Assert.Contains("DestroyOrbsFromOrdinal(match, owner, bestTailOrdinal)", cutBody);
+        Assert.Contains("DestroyOrbsFromOrdinal(runtime, owner, bestTailOrdinal)", cutBody);
         Assert.DoesNotContain("DestroySwarmOrbAtOrdinal", source);
         Assert.DoesNotContain("ScatterSwarmOrbBreakStones", cutBody);
         // 공격자 비용: 선결 검사 → 치명상 → 회복 차단이 같은 사건 안에 있다.
@@ -120,7 +120,7 @@ public class SwarmDamagePathTests
         int cutMethodEnd = source.IndexOf("// 링 연출 종류", cutMethodStart, StringComparison.Ordinal);
         string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
         Assert.Contains("cutterBot != null && !botDecisions.IsSwarmBotCutAllowed(", cutBody);
-        Assert.Contains("BotTactics.LastTrailCutAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc", cutBody);
+        Assert.Contains("BotTactics.LastTrailCutAtUtc[cutterBot.PlayerId] = nowUtc", cutBody);
         // 사람 절단은 자제 규칙을 타지 않는다 — 봇 분기 안에서만 호출된다.
         Assert.Single(Regex.Matches(cutBody, @"IsSwarmBotCutAllowed\("));
 
@@ -296,7 +296,7 @@ public class SwarmDamagePathTests
     {
         // #229: 스웜 전투는 전부 몹 상대인데 어떤 카운터에도 안 쌓여 결과가 "처치 0회"였다.
         // 단 PvP 피해와 같은 칸에 넣으면 안 된다 — 그 칸은 동시 탈락 시 생존자를 가르는
-        // 기준(MatchEnvironmentService.ResolveEliminationOrder)이라 의미가 섞이면 판정이 바뀐다.
+        // 기준(MatchFieldService.ResolveEliminationOrder)이라 의미가 섞이면 판정이 바뀐다.
         var manager = TestGameEventLogs.Create();
         const long matchingId = 771001;
         const long playerId = 4242;

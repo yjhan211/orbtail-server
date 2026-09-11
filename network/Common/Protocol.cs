@@ -88,10 +88,6 @@ namespace network.common
 
         // 미션 그래프 선택지 프로토콜 (#143)
 
-        // 기척 프로토콜 (프로토 0, #159)
-
-        G_TO_C_ENCOUNTER_REVEAL,
-
         // 서버 권위 바닥 아이템
         G_TO_C_GROUND_ITEM_SNAPSHOT,
         G_TO_C_GROUND_ITEM_SPAWN,

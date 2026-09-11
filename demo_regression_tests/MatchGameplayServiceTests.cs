@@ -28,8 +28,8 @@ public sealed class MatchGameplayServiceTests
         {
             match.RegisterParticipant(player);
             Assert.Empty(match.GetSessions());
-            Assert.Null(match.Bots.GetBot(match.MatchingId, playerId));
-            var result = Assert.Single(service.BuildPlayerResults(match.MatchingId, playerId));
+            Assert.Null(match.Bots.GetBot(playerId));
+            var result = Assert.Single(service.BuildPlayerResults(match, playerId));
             Assert.Equal(playerId, result.PlayerId);
             Assert.Equal("Participant", result.Name);
             Assert.Equal(37, result.Health);
@@ -62,10 +62,10 @@ public sealed class MatchGameplayServiceTests
             match.StartGameplay();
             var deadline = match.StartsAtUtc!.Value.AddSeconds(network.common.Config.SWARM_MATCH_DURATION_SECONDS);
             Assert.Empty(match.GetSessions());
-            Assert.False(service.ProcessSwarmScoreTimeout(match.MatchingId, deadline.AddMilliseconds(-1)));
-            Assert.True(service.ProcessSwarmScoreTimeout(match.MatchingId, deadline));
+            Assert.False(service.ProcessSwarmScoreTimeout(match, deadline.AddMilliseconds(-1)));
+            Assert.True(service.ProcessSwarmScoreTimeout(match, deadline));
             Assert.True(match.IsEnded);
-            Assert.False(service.ProcessSwarmScoreTimeout(match.MatchingId, deadline.AddSeconds(1)));
+            Assert.False(service.ProcessSwarmScoreTimeout(match, deadline.AddSeconds(1)));
             var events = provider.GetRequiredService<game_server.matches.logging.GameEventLogManager>().GetForPersistence(match.MatchingId);
             var result = Assert.Single(events, entry => entry.Type == game_server.matches.logging.GameEventType.MatchEnded);
             Assert.Equal(winnerId, result.WinnerPlayerId);
@@ -92,7 +92,7 @@ public sealed class MatchGameplayServiceTests
             Assert.Empty(match.GetSessions());
             var broadcast = typeof(MatchCombatService).GetMethod("BroadcastSwarmOrbRankings",
                 BindingFlags.Instance | BindingFlags.NonPublic)!;
-            broadcast.Invoke(service, [match.MatchingId,
+            broadcast.Invoke(service, [match,
                 new List<game_server.sessions.GameClientSession> { TestGameSessionServices.CreateRecipientSession() }]);
             var signature = match.OrbRankingsSignature;
             Assert.Equal("101:2|-102:1|103:0", signature);
@@ -119,7 +119,7 @@ public sealed class MatchGameplayServiceTests
         {
             match.RegisterParticipant(cutter);
             match.RegisterParticipant(owner);
-            if (cutterId < 0) match.Bots.GetBots(match.MatchingId).Add(bot);
+            if (cutterId < 0) match.Bots.GetBots().Add(bot);
             Assert.True(TestGameSessionServices.Orbs(match, owner.PlayerId).TryAddItemWithCapacity(107000010, 1, out _));
             var orb = Assert.Single(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllItems());
             var chains = new Dictionary<long, (network.common.AreaType Area, Vector3f OwnerPosition,
@@ -130,7 +130,7 @@ public sealed class MatchGameplayServiceTests
             };
             var cut = typeof(MatchCombatService).GetMethod("TryPerformSwarmTrailCut",
                 BindingFlags.Instance | BindingFlags.NonPublic)!;
-            cut.Invoke(service, [match.MatchingId, cutterId, cutterId, network.common.AreaType.S2Ground,
+            cut.Invoke(service, [match, cutterId, cutterId, network.common.AreaType.S2Ground,
                 new Vector3f(-0.7f, 0.15f, 0), new Vector3f(0.7f, 0.15f, 0), chains, now,
                 new List<game_server.sessions.GameClientSession>()]);
 
@@ -145,7 +145,7 @@ public sealed class MatchGameplayServiceTests
             Assert.True(cutter.HealLockUntilUtc >= now.AddSeconds(8));
             if (cutterId < 0)
             {
-                Assert.Equal(now, match.BotTactics.LastTrailCutAtUtc[(match.MatchingId, cutterId)]);
+                Assert.Equal(now, match.BotTactics.LastTrailCutAtUtc[cutterId]);
                 Assert.True(bot.LastDamagedAtUtc >= now);
             }
         }
@@ -168,14 +168,14 @@ public sealed class MatchGameplayServiceTests
             match.RegisterParticipant(player);
             player.CompleteDoor();
             player.BeginDoor(702000101, 0);
-            service.ApplySwarmParticipantDamage(match.MatchingId,
+            service.ApplySwarmParticipantDamage(match,
                 new SwarmPlayerDamage(1, playerId, player.CurrentArea, 12), []);
             Assert.Equal(100 - network.common.Config.ScaleSwarmDamageTaken(12), player.Health);
             Assert.False(player.TryFinishDoor(702000101, 3000, TimeSpan.FromSeconds(3), out _));
 
             player.Status = network.common.PlayerMatchStatus.ELIMINATED;
             int health = player.Health;
-            service.ApplySwarmParticipantDamage(match.MatchingId,
+            service.ApplySwarmParticipantDamage(match,
                 new SwarmPlayerDamage(1, playerId, player.CurrentArea, 12), []);
             Assert.Equal(health, player.Health);
         }
@@ -320,8 +320,6 @@ public sealed class MatchGameplayServiceTests
         var store = provider.GetRequiredService<MatchRuntimeStore>();
         Assert.Same(combat, provider.GetRequiredService<MatchCombatService>());
         Assert.Same(decisions, Read<BotDecisionService>(combat));
-        Assert.Same(store, Read<MatchRuntimeStore>(combat));
-        Assert.Same(store, Read<MatchRuntimeStore>(decisions));
         Assert.DoesNotContain(Fields(combat), field => field.FieldType == typeof(GameServer));
         Assert.DoesNotContain(Fields(decisions), field =>
             field.FieldType == typeof(GameServer) || field.FieldType == typeof(MatchCombatService));
@@ -415,19 +413,19 @@ public sealed class MatchGameplayServiceTests
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947706);
         var bot = new BotPlayerState { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA, Velocity = new Vector3f(3, 0, 0) } };
-        match.Bots.GetBots(match.MatchingId).Add(bot);
+        match.Bots.GetBots().Add(bot);
         using (match.Enter())
         {
             Assert.True(bot.Player.TryStartSleep(DateTime.UtcNow));
-            var result = match.Bots.ProcessBotMovementTick(match.MatchingId, match.Closures,
+            var result = match.Bots.ProcessBotMovementTick(match.Closures,
                 new Dictionary<long, network.common.AreaType>(), match.GroundItems, [],
-                (_, _) => throw new InvalidOperationException("A sleeping bot must not request a movement plan."));
+                _ => throw new InvalidOperationException("A sleeping bot must not request a movement plan."));
             Assert.Single(result.Movements);
             Assert.Equal(0, bot.Player.Velocity.X);
             Assert.Equal(0, bot.Player.Position!.X);
             Assert.True(bot.Player.IsSleeping);
-            Assert.Equal(network.common.PlayerState.SLEEP, match.Bots.SynthesizeGameObjectInfo(match.MatchingId, bot.PlayerId)!.State);
-            Assert.Equal(network.common.PlayerState.NONE, match.Bots.GetPlayerProfile(match.MatchingId, bot.PlayerId)!.State);
+            Assert.Equal(network.common.PlayerState.SLEEP, match.Bots.SynthesizeGameObjectInfo(bot.PlayerId)!.State);
+            Assert.Equal(network.common.PlayerState.NONE, match.Bots.GetPlayerProfile(bot.PlayerId)!.State);
         }
     }
     [Fact]
@@ -441,11 +439,11 @@ public sealed class MatchGameplayServiceTests
         using (MatchRuntimeStore.Enter(match))
         {
             int half = (int)(network.common.Config.MAX_HEALTH * 0.5f);
-            Assert.True(service.IsSwarmBotCutAllowed(match.MatchingId, 11, half + 5, now, 5));
-            Assert.False(service.IsSwarmBotCutAllowed(match.MatchingId, 11, half + 5, now, 6));
-            match.BotTactics.LastTrailCutAtUtc[(match.MatchingId, 11)] = now;
-            Assert.False(service.IsSwarmBotCutAllowed(match.MatchingId, 11, network.common.Config.MAX_HEALTH, now.AddSeconds(5), 5));
-            Assert.True(service.IsSwarmBotCutAllowed(match.MatchingId, 11, network.common.Config.MAX_HEALTH, now.AddSeconds(6), 5));
+            Assert.True(service.IsSwarmBotCutAllowed(match, 11, half + 5, now, 5));
+            Assert.False(service.IsSwarmBotCutAllowed(match, 11, half + 5, now, 6));
+            match.BotTactics.LastTrailCutAtUtc[11] = now;
+            Assert.False(service.IsSwarmBotCutAllowed(match, 11, network.common.Config.MAX_HEALTH, now.AddSeconds(5), 5));
+            Assert.True(service.IsSwarmBotCutAllowed(match, 11, network.common.Config.MAX_HEALTH, now.AddSeconds(6), 5));
             match.TryMarkEnded();
         }
     }

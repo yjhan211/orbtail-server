@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
+using game_server.matches;
 using game_server.matches.combat;
-using game_server.matches.field;
 using game_server.matches.items;
 using game_server.players.bots;
 using network.common;
@@ -138,6 +138,8 @@ public sealed class SwarmMonsterDirector
     private const float SupplyScatterRadius = 1.6f;
     // 원거리 종(다트·볼러)은 사거리의 이 비율에서 멈춰 쏜다 — 근접 종만 몸으로 파고든다.
     private const float RangedHoldRangeRatio = 0.8f;
+    // 자기장 스폰 띠 두께(셀). 스폰은 구역 바깥 띠, 앵커는 중심에 가까운 안쪽 띠에서 고른다.
+    private const int FieldSpawnBandCells = 6;
 
     // 잠든 몹이 깨어나는 근접 반경 — 주인 할당 추격의 개전 거리이자 남의 몹 근접 난입 반경.
     public static float CampAggroRadius => SwarmConfigData.GetFloat("SWARM_MONSTER_AGGRO_RADIUS", 2.5f);
@@ -218,9 +220,9 @@ public sealed class SwarmMonsterDirector
         SwarmMonsterArchetypeCatalog.GetContactRadius(kind);
 
     /// <summary>파도 문양 몹인가 — 접촉 강타가 스플래시로 튀므로 공격 연출을 따로 보내야 읽힌다.</summary>
-    public bool IsWavePatternMonster(long matchingId, int monsterId)
+    public bool IsWavePatternMonster(int monsterId)
     {
-        if (!TryGetState(matchingId, out var state))
+        if (!TryGetState(out var state))
             return false;
         lock (state.SyncRoot)
         {
@@ -246,10 +248,9 @@ public sealed class SwarmMonsterDirector
     private const float EscalationStage2MoveSpeedMultiplier = 1.1f;
 
     /// <summary>
-    ///     이 매치의 자기장 스폰 위치 계산 함수. MatchZoneService의 규칙을 연결한다.
+    ///     이 매치의 자기장 스폰 위치 계산. 안전 반경은 AreaClosureState, 거리순 셀은 SwarmPressureField에서 읽는다.
     ///     경계가 통과 중이면 경계 바깥에서, 안전한 구역이면 바깥쪽 띠에서 스폰해 안쪽으로 이동한다.
     /// </summary>
-    public Func<long, AreaType, (Cell Spawn, Cell Anchor)?>? FieldSpawnCellResolver { get; set; }
 
     /// <summary>공격·회복 오브가 없는 플레이어를 우선 추격 대상으로 판정한다.</summary>
     internal bool IsPlayerOrbless(long playerId) => !_hasAnyOrb(playerId);
@@ -262,12 +263,12 @@ public sealed class SwarmMonsterDirector
     internal DateTime NextMonsterPositionBroadcastAtUtc { get; set; }
 
     private readonly long _matchingId;
-    private readonly AreaClosureManager _closures;
+    private readonly AreaClosureState _closures;
     private readonly Func<long, bool> _hasAnyOrb;
     private MatchState? _state;
     private readonly Func<DateTime> _utcNow;
 
-    public SwarmMonsterDirector(long matchingId, AreaClosureManager closures, Func<long, bool> hasAnyOrb, Func<DateTime>? utcNow = null)
+    public SwarmMonsterDirector(long matchingId, AreaClosureState closures, Func<long, bool> hasAnyOrb, Func<DateTime>? utcNow = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
         _matchingId = matchingId;
@@ -276,40 +277,39 @@ public sealed class SwarmMonsterDirector
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
 
-    public bool HasMatching(long matchingId) => matchingId == _matchingId && Volatile.Read(ref _state) != null;
+    public bool HasMatching() => Volatile.Read(ref _state) != null;
 
-    private bool TryGetState(long matchingId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out MatchState? state)
+    private bool TryGetState([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out MatchState? state)
     {
-        state = matchingId == _matchingId ? Volatile.Read(ref _state) : null;
+        state = Volatile.Read(ref _state);
         return state != null;
     }
 
-    public bool InitializeMatching(long matchingId, long humanPlayerId, DateTime startsAtUtc)
+    public bool InitializeMatching(long humanPlayerId, DateTime startsAtUtc)
     {
         // 봇 전용 검증 매치는 대표 참가자가 봇(음수 id)이다 — 0만 거부한다.
-        if (matchingId != _matchingId || humanPlayerId == 0)
+        if (humanPlayerId == 0)
             return false;
 
         var state = new MatchState
         {
-            MatchingId = matchingId,
+            MatchingId = _matchingId,
             HumanPlayerId = humanPlayerId,
             StartsAtUtc = startsAtUtc,
             LastTickAtUtc = startsAtUtc,
-            Rng = new Random(unchecked((int)(matchingId ^ 0x5A7A_17)))
+            Rng = new Random(unchecked((int)(_matchingId ^ 0x5A7A_17)))
         };
         return Interlocked.CompareExchange(ref _state, state, null) == null;
     }
 
     /// <summary>시작 여부에 따라 시작 전 예열 또는 진행 중 추격·공급을 처리한다.</summary>
     public SwarmArenaTickResult Tick(
-        long matchingId,
         IReadOnlyCollection<SwarmParticipantSpatial> participants,
         bool isGameplayActive,
         DateTime? nowUtc = null)
     {
         var result = new SwarmArenaTickResult();
-        if (!TryGetState(matchingId, out var state))
+        if (!TryGetState(out var state))
             return result;
 
         DateTime now = nowUtc ?? _utcNow();
@@ -477,9 +477,9 @@ public sealed class SwarmMonsterDirector
     ///     예약분만으로 이미 죽는 몹은 GetCombatTargets가 후보에서 빼므로, 다음 오브는 아직
     ///     살아남을 몹을 고른다. 화력이 곧 처치 수가 된다.
     /// </summary>
-    public void ReserveMonsterDamage(long matchingId, long combatTargetId, int damage)
+    public void ReserveMonsterDamage(long combatTargetId, int damage)
     {
-        if (damage <= 0 || !TryGetState(matchingId, out var state))
+        if (damage <= 0 || !TryGetState(out var state))
             return;
 
         lock (state.SyncRoot)
@@ -499,9 +499,9 @@ public sealed class SwarmMonsterDirector
     ///     아니라 발사 기준이다. 교차사격 모양은 발사 순간 잠긴 기준점에서 생기므로, 몹이 몇 번의
     ///     모양을 만들고 죽는지는 이 수로 읽는다.
     /// </summary>
-    public void RecordMonsterAttackEvent(long matchingId, long combatTargetId)
+    public void RecordMonsterAttackEvent(long combatTargetId)
     {
-        if (!TryGetState(matchingId, out var state))
+        if (!TryGetState(out var state))
             return;
         lock (state.SyncRoot)
         {
@@ -513,12 +513,11 @@ public sealed class SwarmMonsterDirector
     }
 
     public SwarmArenaDamageResult ApplyMonsterDamage(
-        long matchingId,
         long combatTargetId,
         long attackerPlayerId,
         int damage)
     {
-        if (damage <= 0 || !TryGetState(matchingId, out var state))
+        if (damage <= 0 || !TryGetState(out var state))
             return SwarmArenaDamageResult.None;
 
         lock (state.SyncRoot)
@@ -576,9 +575,9 @@ public sealed class SwarmMonsterDirector
     ///     봇 지시: 잔상 무리가 가까우면 반대쪽으로 이탈하고, 아니면 현재 구역 안을 배회한다.
     ///     M1의 최소 행동 — 경제(개봉·정예 사냥) 참여는 후속 증분에서 붙인다.
     /// </summary>
-    public SwarmBotDirective GetBotDirective(long matchingId, long botPlayerId)
+    public SwarmBotDirective GetBotDirective(long botPlayerId)
     {
-        if (!TryGetState(matchingId, out var state))
+        if (!TryGetState(out var state))
             return SwarmBotDirective.None;
 
         lock (state.SyncRoot)
@@ -715,9 +714,9 @@ public sealed class SwarmMonsterDirector
             bot.Position, bot.Area);
     }
 
-    public IReadOnlyList<MonsterRuntimeInfo> GetVisualStates(long matchingId)
+    public IReadOnlyList<MonsterRuntimeInfo> GetVisualStates()
     {
-        if (!TryGetState(matchingId, out var state))
+        if (!TryGetState(out var state))
             return [];
         lock (state.SyncRoot)
             return state.Monsters.Values
@@ -725,9 +724,9 @@ public sealed class SwarmMonsterDirector
                 .ToArray();
     }
 
-    public IReadOnlyList<SwarmArenaCombatTarget> GetCombatTargets(long matchingId)
+    public IReadOnlyList<SwarmArenaCombatTarget> GetCombatTargets()
     {
-        if (!TryGetState(matchingId, out var state))
+        if (!TryGetState(out var state))
             return [];
         lock (state.SyncRoot)
         {
@@ -745,9 +744,9 @@ public sealed class SwarmMonsterDirector
     }
 
     /// <summary>착탄 지연 피해의 발사 연출용 — 전투 대상 id로 몬스터 id를 조회한다. 없으면 0.</summary>
-    public int GetMonsterIdForCombatTarget(long matchingId, long combatTargetId)
+    public int GetMonsterIdForCombatTarget(long combatTargetId)
     {
-        if (!TryGetState(matchingId, out var state))
+        if (!TryGetState(out var state))
             return 0;
         lock (state.SyncRoot)
         {
@@ -761,9 +760,9 @@ public sealed class SwarmMonsterDirector
     ///     침수 (#268): 소용돌이 피격 몹의 이동 감속. 변위(당김·밀침·축출) 실험은
     ///     전부 기각 — 체감이 없거나 과했다. 감속은 행군·추격 이동 양쪽에 적용된다.
     /// </summary>
-    public bool TrySlowMonster(long matchingId, long combatTargetId, float slowSeconds, DateTime nowUtc)
+    public bool TrySlowMonster(long combatTargetId, float slowSeconds, DateTime nowUtc)
     {
-        if (!TryGetState(matchingId, out var state))
+        if (!TryGetState(out var state))
             return false;
         lock (state.SyncRoot)
         {
@@ -777,9 +776,9 @@ public sealed class SwarmMonsterDirector
         }
     }
 
-    public SwarmMonsterSummary GetSummary(long matchingId)
+    public SwarmMonsterSummary GetSummary()
     {
-        if (!TryGetState(matchingId, out var state))
+        if (!TryGetState(out var state))
             return SwarmMonsterSummary.Empty;
         lock (state.SyncRoot)
         {
@@ -1285,18 +1284,18 @@ public sealed class SwarmMonsterDirector
 
             // #272 경계 토출: 운동장 발원 침투를 자기장 발원으로 교체 —
             // 잔상은 그 구역의 바깥 띠(경계 관통 중이면 경계 밖 빨간 띠, 아직 안전하면 가장
-            // 바깥 띠)에서 태어나 배정 앵커 쪽으로 걸어 들어온다. 리졸버 미주입(자기장 모드
-            // 밖)이면 기존 운동장 침투가 폴백이다.
+            // 바깥 띠)에서 태어나 배정 앵커 쪽으로 걸어 들어온다. 자기장 모드가 아니면
+            // 기존 운동장 침투가 폴백이다.
             var position = destination;
             var spawnArea = area;
             List<Vector3f>? route = null;
-            var fieldSpawn = FieldSpawnCellResolver?.Invoke(state.MatchingId, area);
+            var fieldSpawn = ResolveFieldSpawn(_closures.GetSafeDistance(now), area);
             if (fieldSpawn != null)
             {
                 position = ClampToAreaWalkable(
                     BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Spawn),
                     packAnchor, area);
-                // 도착지도 리졸버의 안쪽 띠 셀로 (#269-A): 캠프 앵커
+                // 도착지도 자기장 정책의 안쪽 띠 셀로 (#269-A): 캠프 앵커
                 // 산개점은 복도처럼 좁은 구역에서 스폰 띠와 몇 셀 차이라 "즉시 젠 후 제자리"로
                 // 읽혔다 — 구역을 최대로 가로질러 걸어 들어오게 한다. 산개 지터는 유지.
                 var fieldAnchorWorld = BotPlayerManager.CellToWorldPosition(
@@ -2152,6 +2151,36 @@ public sealed class SwarmMonsterDirector
         Cell cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, position);
         return GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell) &&
                GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == area;
+    }
+
+    private static (Cell Spawn, Cell Anchor)? ResolveFieldSpawn(double safeDistance, AreaType area)
+    {
+        if (!Config.SWARM_PRESSURE_FIELD_ENABLED) return null;
+
+        var cells = SwarmPressureField.GetAreaCellsByDistance(area);
+        if (cells.Count == 0) return null;
+
+        bool boundaryCrossing = safeDistance < cells[^1].Distance;
+        double spawnMin = boundaryCrossing ? safeDistance : cells[^1].Distance - FieldSpawnBandCells;
+        double spawnMax = boundaryCrossing ? safeDistance + FieldSpawnBandCells : cells[^1].Distance;
+
+        var spawnBand = cells
+            .Where(entry => entry.Distance > spawnMin && entry.Distance <= spawnMax)
+            .ToList();
+        if (spawnBand.Count == 0)
+            spawnBand = boundaryCrossing
+                ? cells.Where(entry => entry.Distance > safeDistance).ToList()
+                : [cells[^1]];
+
+        var anchorBand = cells
+            .Where(entry => entry.Distance < cells[0].Distance + FieldSpawnBandCells)
+            .ToList();
+        if (anchorBand.Count == 0)
+            anchorBand = [cells[0]];
+
+        return (
+            spawnBand[Random.Shared.Next(spawnBand.Count)].Cell,
+            anchorBand[Random.Shared.Next(anchorBand.Count)].Cell);
     }
 
     private static Vector3f ClampToAreaWalkable(Vector3f position, Vector3f center, AreaType area)

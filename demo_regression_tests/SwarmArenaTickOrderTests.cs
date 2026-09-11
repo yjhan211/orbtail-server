@@ -1,7 +1,6 @@
 using game_server.matches;
 using game_server.matches.combat;
 using game_server.matches.entry;
-using game_server.matches.field;
 using game_server.matches.monsters;
 using game_server.matches.results;
 using game_server.players;
@@ -27,7 +26,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(composition,
             "services.AddSingleton<Func<MatchRuntime, TimeProvider, MatchTickLoop>>",
             "return (runtime, clock) =>",
-            "entryFailureHandler, combat, environment, botMovement, botDecisions, zones, clock);",
+            "entryFailureHandler, combat, field, botMovement, botDecisions, clock);",
 
             "services.AddSingleton<MatchTickService>");
         AssertInOrder(runner,
@@ -45,7 +44,7 @@ public sealed class SwarmArenaTickOrderTests
             root, "game_server", "Matches", "Combat", "OrbVisualStatePublisher.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string settlement = ReadNormalizedSource(
-            root, "game_server", "Matches", "Field", "MatchEnvironmentService.cs");
+            root, "game_server", "Matches", "MatchFieldService.cs");
 
         string proximityTick = ReadMethodSlice(
             ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs"),
@@ -54,7 +53,6 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             proximityTick,
             "using var scope = runtime.Enter();",
-            "runtime.GetSessions()",
             "runtime.IsEntryTimedOut(utcNow)",
             "combat.ProcessTick(runtime);");
         Assert.DoesNotContain("catch (", proximityTick);
@@ -78,21 +76,21 @@ public sealed class SwarmArenaTickOrderTests
             "combat.ProcessTick(runtime);",
             "runtime.StartsAtUtc",
             "if (currentEnvironmentInterval > _lastEnvironmentInterval)",
-            "environment.ProcessTick(runtime);",
+            "field.ProcessDamageTick(runtime);",
             "runtime.IsEnded ||",
-            "botMovement.ProcessTick(runtime, botDecisions.DecideMovement);");
+            "botMovement.ProcessTick(runtime, botPlayerId => botDecisions.DecideMovement(runtime, botPlayerId));");
 
         string matchingSettlement = ReadMethodSlice(
             settlement,
-            "public void ProcessTick(",
-            "private sealed record EnvironmentalTarget(");
+            "public void ProcessDamageTick(",
+            "internal static int GetDamagePerTick(");
         AssertInOrder(
             matchingSettlement,
-            "long matchingId = match.MatchingId;",
-            "var players = match.GetAlivePlayers()",
-            "healthService.ApplyDamage(match, player, totalDelta, handleElimination: false);",
-            "var eliminatedTargets = targets",
-            "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
+            "long matchingId = runtime.MatchingId;",
+            "var alivePlayers = runtime.GetAlivePlayers()",
+            "healthService.ApplyDamage(runtime, target.Player, target.Damage, handleElimination: false);",
+            "var lethalTargets = targets",
+            "foreach (var candidate in eliminationBestToWorst.AsEnumerable().Reverse())",
             "matchEliminations.EliminatePlayer(",
             "CheckGameOver()",
             "matchResults.FinalizeMatch(matchingId, winnerId.Value, MatchEndReason.PressureFieldSettlement, resolution.DecisiveCriterion);");
@@ -282,89 +280,42 @@ public sealed class SwarmArenaTickOrderTests
     }
 
     [Fact]
-    public void ScheduledClosureTick_CommitsStateThenPublishesInsideMatchLock()
+    public void ScheduledClosureTick_SendsEachStepInWireOrderInsideMatchLock()
     {
         string root = FindRepositoryRoot();
         string composition = ReadNormalizedSource(root, "game_server", "Program.cs");
-        string field = ReadNormalizedSource(root, "game_server", "Matches", "Field", "MatchZoneService.cs");
-        Assert.Contains("botDecisions, zones, clock)", composition);
+        string field = ReadNormalizedSource(root, "game_server", "Matches", "MatchFieldService.cs");
+        Assert.Contains("combat, field, botMovement, botDecisions, clock)", composition);
         string tick = ReadMethodSlice(
             field,
-            "public void ProcessTick(",
-            "    // #272 경계 토출 스폰: 구역별");
-        string prepare = ReadMethodSlice(
-            field,
-            "private SwarmClosurePublicationPlan? PrepareSwarmScheduledClosureTick(",
-            "private void DispatchSwarmClosurePublicationPlan(");
-        string dispatch = ReadMethodSlice(
-            field,
-            "private void DispatchSwarmClosurePublicationPlan(",
-            "private void PrepareDestroySwarmOrbsInClosedAreas(");
-        string orbPrepare = field[field.IndexOf("private void PrepareDestroySwarmOrbsInClosedAreas(", StringComparison.Ordinal)..];
+            "public void ProcessClosureTick(",
+            "    public void ProcessDamageTick(");
 
-        // 독립 루프의 매치 잠금 안에서 1초 주기를 확인하고 상태 확정 → 송신한다.
+        // 독립 루프의 매치 잠금 안에서 1초 주기를 확인하고 폐쇄 틱을 돌린다.
         string runner = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs");
         AssertInOrder(runner,
             "using var scope = runtime.Enter();",
             "_lastAreaClosureSecond = elapsedSeconds;",
-            "zones.ProcessTick(matchingId, playerSessions.ToArray());");
+            "field.ProcessClosureTick(runtime);");
+        Assert.DoesNotContain("TryEnter", tick);
+
+        // 같은 잠금 안에서 단계마다 상태를 바꾼 직후 그 패킷을 보낸다. 전송 실패는 상태를 되돌리지 않는다.
         AssertInOrder(
             tick,
-            "PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);",
-            "DispatchSwarmClosurePublicationPlan(plan)");
-        Assert.DoesNotContain("TryEnter", tick);
-        Assert.DoesNotContain(".TrySend(", tick);
-
-        AssertInOrder(
-            prepare,
             "Closures.InitializeMatching(",
-            "new SwarmFieldStateOutbound(",
+            "Protocol.G_TO_C_SWARM_FIELD_STATE",
             "Closures.CheckClosureSchedule()",
-            "new SwarmClosureWarningOutbound(",
+            "Protocol.G_TO_C_AREA_CLOSURE_WARNING",
             "eventLogs.LogClosure(",
-            "new SwarmAreaClosedOutbound(",
-            "matchRuntimes.GetOrNull(matchingId)?.Doors.CloseDoorsForAreas(",
-            "new SwarmDoorStateOutbound(",
-            "PrepareDestroySwarmOrbsInClosedAreas(",
-            "new SwarmClosurePublicationPlan(");
-        Assert.DoesNotContain("Packet.Create(", prepare);
-        Assert.DoesNotContain("PacketMaker.", prepare);
-        Assert.DoesNotContain(".TrySend(", prepare);
-        Assert.Contains("Transport failure never rolls back", field);
-
-        AssertInOrder(
-            orbPrepare,
+            "Protocol.G_TO_C_AREA_CLOSED",
+            "runtime.Doors.CloseDoorsForAreas(",
+            "PacketMaker.G_TO_C_DOOR_STATE_UPDATE(",
             "DestroyOrbsFromOrdinal(",
             ".OrbDurabilityBonus.Remove(",
-            "new SwarmInventoryUpdateOutbound(",
-            "new SwarmRingVfxOutbound(",
+            "SendOrbUpdate(",
+            "Protocol.G_TO_C_ORB_RING_EFFECT",
             "eventLogs.LogSystem(");
-        Assert.DoesNotContain("Packet.Create(", orbPrepare);
-        Assert.DoesNotContain("PacketMaker.", orbPrepare);
-        Assert.DoesNotContain(".TrySend(", orbPrepare);
-        Assert.DoesNotContain("SendOrbUpdate(", orbPrepare);
-        Assert.DoesNotContain("SendOrbRingEffect(", orbPrepare);
-        Assert.Contains("foreach (var player in runtime.GetAlivePlayers())", orbPrepare);
-        Assert.DoesNotContain("Bots.GetBots", orbPrepare);
-        Assert.DoesNotContain("owners.Add", orbPrepare);
-
-        AssertInOrder(
-            dispatch,
-            "case SwarmFieldStateOutbound",
-            "Protocol.G_TO_C_SWARM_FIELD_STATE",
-            "case SwarmClosureWarningOutbound",
-            "Protocol.G_TO_C_AREA_CLOSURE_WARNING",
-            "case SwarmAreaClosedOutbound",
-            "Protocol.G_TO_C_AREA_CLOSED",
-            "case SwarmDoorStateOutbound",
-            "PacketMaker.G_TO_C_DOOR_STATE_UPDATE(",
-            "case SwarmInventoryUpdateOutbound",
-            "session.SendOrbUpdate(",
-            "case SwarmRingVfxOutbound",
-            "Protocol.G_TO_C_ORB_RING_EFFECT");
-        Assert.Contains("session.TrySend(packet)", dispatch);
-        Assert.DoesNotContain("catch", dispatch);
-        Assert.Contains("first transport exception", field);
+        Assert.DoesNotContain("catch", tick);
     }
 
     [Fact]
@@ -440,18 +391,12 @@ public sealed class SwarmArenaTickOrderTests
         Assert.Contains("RollCritical(runtime, Config.SWARM_WIND_WOUND_CRIT_CHANCE)", damage);
         Assert.DoesNotContain("MatchRuntimeStore", damage);
 
-        string field = ReadNormalizedSource(root, "game_server", "Matches", "Field", "MatchZoneService.cs");
+        string field = ReadNormalizedSource(root, "game_server", "Matches", "MatchFieldService.cs");
         Assert.Contains(
-            "Lazy<IReadOnlyDictionary<AreaType, IReadOnlyList<(Cell Cell, int Distance)>>>",
+            "Lazy<IReadOnlyList<ClosureWaveDefinition>> SwarmFieldDerivedWaves",
             field);
-        Assert.Contains(
-            "Lazy<IReadOnlyList<ClosureWaveDefinition>> _swarmFieldDerivedWaves",
-            field);
-        Assert.Equal(
-            2,
-            CountOccurrences(field, "LazyThreadSafetyMode.ExecutionAndPublication"));
-        Assert.DoesNotContain("_swarmAreaCellsByDistance == null", field);
-        Assert.DoesNotContain("_swarmFieldDerivedWaves ??=", field);
+        Assert.Equal(1, CountOccurrences(field, "LazyThreadSafetyMode.ExecutionAndPublication"));
+        Assert.DoesNotContain("SwarmFieldDerivedWaves ??=", field);
     }
 
     private static string ReadSwarmArenaTick()

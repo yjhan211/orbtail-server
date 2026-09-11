@@ -1,6 +1,5 @@
 using game_server.matches.combat;
 using game_server.matches.entry;
-using game_server.matches.field;
 using game_server.players;
 using game_server.players.bots;
 using Microsoft.Extensions.Logging;
@@ -28,10 +27,9 @@ internal sealed class MatchTickLoop(
     PlayerPickupService playerPickups,
     MatchEntryFailureHandler entryFailureHandler,
     MatchCombatService combat,
-    MatchEnvironmentService environment,
+    MatchFieldService field,
     BotMovementService botMovement,
     BotDecisionService botDecisions,
-    MatchZoneService zones,
     TimeProvider? timeProvider = null)
 {
     private readonly PeriodicTimer _timer = new(TimeSpan.FromMilliseconds(50), timeProvider ?? TimeProvider.System);
@@ -88,7 +86,6 @@ internal sealed class MatchTickLoop(
             return;
         }
 
-        var playerSessions = runtime.GetSessions();
         var utcNow = (timeProvider ?? TimeProvider.System).GetUtcNow().UtcDateTime;
         if (runtime.IsEntryTimedOut(utcNow))
         {
@@ -120,7 +117,7 @@ internal sealed class MatchTickLoop(
             if (currentEnvironmentInterval > _lastEnvironmentInterval)
             {
                 _lastEnvironmentInterval = currentEnvironmentInterval;
-                environment.ProcessTick(runtime);
+                field.ProcessDamageTick(runtime);
                 if (runtime.IsEnded)
                 {
                     return;
@@ -130,15 +127,15 @@ internal sealed class MatchTickLoop(
             if (elapsedSeconds > _lastAreaClosureSecond)
             {
                 _lastAreaClosureSecond = elapsedSeconds;
-                zones.ProcessTick(matchingId, playerSessions.ToArray());
+                field.ProcessClosureTick(runtime);
             }
         }
 
-        if (runtime.IsEnded || !runtime.Bots.HasBots(matchingId))
+        if (runtime.IsEnded || !runtime.Bots.HasBots())
         {
             return;
         }
 
-        botMovement.ProcessTick(runtime, botDecisions.DecideMovement);
+        botMovement.ProcessTick(runtime, botPlayerId => botDecisions.DecideMovement(runtime, botPlayerId));
     }
 }

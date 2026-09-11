@@ -22,7 +22,7 @@ internal class BotMovementService(
     // MatchTickLoop가 전투 뒤 같은 매치 잠금 안에서 봇 이동을 실행한다.
 
     /// <summary>매치 잠금 안에서 봇 걸음을 확정하고 같은 순서로 바로 송신한다.</summary>
-    public virtual void ProcessTick(MatchRuntime runtime, Func<long, long, SwarmBotDirective> resolveDirective)
+    public virtual void ProcessTick(MatchRuntime runtime, Func<long, SwarmBotDirective> resolveDirective)
     {
         if (runtime.IsEnded)
             throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
@@ -38,7 +38,7 @@ internal class BotMovementService(
         double sessionSnapshotElapsedMilliseconds =
             Stopwatch.GetElapsedTime(tickStartedAt).TotalMilliseconds;
         SwarmBotMovementPlan plan = runtime.Bots.PrepareMovementTick(
-            runtime.Closures, runtime.GroundItems, runtime.Encounters,
+            runtime.Closures, runtime.GroundItems,
             eventLogs,
             runtime.GetAlivePlayers(),
             observers,
@@ -157,24 +157,6 @@ internal class BotMovementService(
                     session.TrySend(movePacket);
             }
 
-            if (movement.Encounter is { } encounter)
-            {
-                using var encounterPacket = PacketMaker.G_TO_C_ENCOUNTER_REVEAL(
-                    encounter.BotPlayerId,
-                    encounter.Area,
-                    encounter.EventType,
-                    encounter.CooldownSeconds,
-                    encounter.RevealDelayMs);
-                encounter.TargetSession?.TrySend(encounterPacket);
-                logger.LogInformation(
-                    "Bot corridor encounter event: Matching={MatchingId}, Bot={Bot}, Target={Target}, " +
-                    "Area={Area}, EventType={EventType}",
-                    plan.MatchingId,
-                    encounter.BotPlayerId,
-                    encounter.TargetPlayerId,
-                    encounter.Area,
-                    encounter.EventType);
-            }
         }
 
     }
@@ -192,7 +174,6 @@ internal class BotMovementService(
         ImmutableArray<SwarmBotObserverSnapshot> observers =
             CaptureSwarmBotObservers(matchingId, sessionSnapshot);
         SwarmBotMovementPlan plan = runtime.Bots.PrepareExternalMovement(
-            runtime.Encounters,
             eventLogs,
             movement,
             runtime.GetAlivePlayers(),

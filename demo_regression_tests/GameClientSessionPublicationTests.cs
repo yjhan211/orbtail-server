@@ -4,7 +4,6 @@ using game_server;
 using game_server.matches;
 using game_server.matches.combat;
 using game_server.matches.entry;
-using game_server.matches.field;
 using game_server.matches.items;
 using game_server.matches.logging;
 using game_server.matches.results;
@@ -132,7 +131,7 @@ public sealed class GameClientSessionPublicationTests
         player.Position = session.Player.Position;
         player.CurrentArea = session.Player.CurrentArea;
         match.RegisterParticipant(player);
-        match.Bots.GetBots(match.MatchingId).Add(bot);
+        match.Bots.GetBots().Add(bot);
         var pickup = new PlayerPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<PlayerPickupService>.Instance);
         using (match.Enter())
         {
@@ -288,7 +287,7 @@ public sealed class GameClientSessionPublicationTests
         var match = session.Match;
         var bot = new game_server.players.bots.BotPlayerState { PlayerId = -11 };
         bot.Player.Health = session.Player.Health;
-        match.Bots.GetBots(match.MatchingId).Add(bot);
+        match.Bots.GetBots().Add(bot);
         int before = bot.Player.Health;
         using (match.Enter())
         {
@@ -301,7 +300,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.False(bot.Player.CanSleep(DateTime.UtcNow));
         Assert.Equal(101, bot.LastProximityAttackerPlayerId);
         Assert.True(bot.LastDamagedAtUtc > DateTime.MinValue);
-        Assert.True(match.BotTactics.LastDamagedAtUtc.ContainsKey((match.MatchingId, bot.PlayerId)));
+        Assert.True(match.BotTactics.LastDamagedAtUtc.ContainsKey(bot.PlayerId));
         Assert.Single(fixture.ConnectionFor(session).AttemptedProtocols, protocol => protocol == Protocol.G_TO_C_COMBAT_HIT);
     }
 
@@ -314,7 +313,7 @@ public sealed class GameClientSessionPublicationTests
         var bot = new game_server.players.bots.BotPlayerState { PlayerId = -11 };
         bot.Player.Health = session.Player.Health;
         bot.Player.CurrentArea = session.Player.CurrentArea;
-        match.Bots.GetBots(match.MatchingId).Add(bot);
+        match.Bots.GetBots().Add(bot);
         int before = bot.Player.Health;
         using (match.Enter())
         {
@@ -1361,7 +1360,7 @@ public sealed class GameClientSessionPublicationTests
         var loop = TestMatchTickServices.CreateLoop(runtime, fixture.Store, NullLogger.Instance,
             new PlayerPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<PlayerPickupService>.Instance),
             static (_, _) => { },
-            static (_, _) => { }, static _ => { }, static (_, _) => { });
+            static (_, _) => { }, static _ => { }, static _ => { });
         fixture.TickLoops.Add(loop);
         return loop;
     }
@@ -1379,7 +1378,7 @@ public sealed class GameClientSessionPublicationTests
         using var fixture = new SessionFixture();
         var observer = fixture.CreateSession(70001, 101, (AreaType)50);
         var actor = fixture.CreateSession(70001, 102, (AreaType)50);
-        var publisher = new OrbVisualStatePublisher(fixture.Store);
+        var publisher = new OrbVisualStatePublisher();
         var match = observer.Match;
         var actors = new[]
         {
@@ -1390,8 +1389,8 @@ public sealed class GameClientSessionPublicationTests
 
         using (match.Enter())
         {
-            publisher.Publish(match.MatchingId, actors, [observer, actor]);
-            publisher.Publish(match.MatchingId, actors, [observer, actor]);
+            publisher.Publish(match, actors, [observer, actor]);
+            publisher.Publish(match, actors, [observer, actor]);
         }
         Assert.Equal(1, Delivered(observer));
         var state = fixture.ConnectionFor(observer).DeserializeSingle<G_TO_C_ORB_EFFECT_STATE>(Protocol.G_TO_C_ORB_EFFECT_STATE);
@@ -1402,7 +1401,7 @@ public sealed class GameClientSessionPublicationTests
         var reconnected = fixture.CreateSession(70001, 101, (AreaType)50);
         using (match.Enter())
         {
-            publisher.Publish(match.MatchingId, actors, [reconnected, actor]);
+            publisher.Publish(match, actors, [reconnected, actor]);
         }
         Assert.Equal(1, Delivered(reconnected));
     }

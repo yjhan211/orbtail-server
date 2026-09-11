@@ -1,5 +1,5 @@
-using game_server.matches.logging;
 using game_server.matches;
+using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.sessions;
@@ -102,7 +102,7 @@ internal sealed class SunOrbAttackService(
             front = MathF.Min(front, sweepEnd);
             float lastFront = shape.LastFront;
             shape.LastFront = front;
-            monsters ??= runtime.Monsters.GetCombatTargets(matchingId);
+            monsters ??= runtime.Monsters.GetCombatTargets();
 
             // 관통 (뱀서식): 이번 틱 구간에 걸린 표적 전부를 지나가며 때린다 —
             // 첫 표적 폭발은 퇴역. 투사체는 멈추지 않고, 폭발은 벽에 닿을 때만.
@@ -116,7 +116,7 @@ internal sealed class SunOrbAttackService(
 
                 shape.HitMonsters.Add(monster.CombatTargetId);
                 TrackSwarmCrossfireConvergence(runtime, monster.CombatTargetId, nowUtc);
-                runtime.Monsters.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
+                runtime.Monsters.RecordMonsterAttackEvent(monster.CombatTargetId);
                 int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime,
                     shape.Damage, out bool critical);
                 combatDamage.ApplySwarmMonsterHitNow(runtime,

@@ -1,7 +1,6 @@
 using game_server.matches;
-using game_server.matches.field;
 using game_server.matches.results;
-using static game_server.matches.field.MatchEnvironmentService;
+using static game_server.matches.MatchFieldService;
 
 namespace demo_regression_tests;
 
@@ -10,10 +9,10 @@ public sealed class MatchEliminationOrderTests
     [Fact]
     public void Resolve_PrefersHigherPreDamageHealth()
     {
-        var result = MatchEnvironmentService.ResolveEliminationOrder(195001, new[]
+        var result = MatchFieldService.ResolveEliminationOrder(new[]
         {
-            new MatchSettlementCandidate(1, 60, 500),
-            new MatchSettlementCandidate(2, 70, 10)
+            new MatchSettlementCandidate(1, 60, 500, 12),
+            new MatchSettlementCandidate(2, 70, 10, 40)
         });
 
         Assert.Equal(2, result.BestToWorst[0].PlayerId);
@@ -23,10 +22,10 @@ public sealed class MatchEliminationOrderTests
     [Fact]
     public void Resolve_PrefersHigherPvpDamageWhenHealthMatches()
     {
-        var result = MatchEnvironmentService.ResolveEliminationOrder(195002, new[]
+        var result = MatchFieldService.ResolveEliminationOrder(new[]
         {
-            new MatchSettlementCandidate(1, 80, 100),
-            new MatchSettlementCandidate(2, 80, 200)
+            new MatchSettlementCandidate(1, 80, 100, 12),
+            new MatchSettlementCandidate(2, 80, 200, 40)
         });
 
         Assert.Equal(2, result.BestToWorst[0].PlayerId);
@@ -34,22 +33,29 @@ public sealed class MatchEliminationOrderTests
     }
 
     [Fact]
-    public void Resolve_UsesStableMatchSeedPriorityAsFinalTieBreaker()
+    public void Resolve_PrefersSmallerFieldDamageWhenHealthAndPvpDamageMatch()
     {
-        var candidates = new[]
+        var result = MatchFieldService.ResolveEliminationOrder(new[]
         {
-            new MatchSettlementCandidate(11, 90, 300),
-            new MatchSettlementCandidate(12, 90, 300),
-            new MatchSettlementCandidate(13, 90, 300)
-        };
+            new MatchSettlementCandidate(1, 80, 200, 40),
+            new MatchSettlementCandidate(2, 80, 200, 12)
+        });
 
-        var first = MatchEnvironmentService.ResolveEliminationOrder(195003, candidates);
-        var second = MatchEnvironmentService.ResolveEliminationOrder(195003, candidates.Reverse());
+        Assert.Equal(2, result.BestToWorst[0].PlayerId);
+        Assert.Equal(MatchTieBreakCriterion.FieldDamage, result.DecisiveCriterion);
+    }
 
-        Assert.Equal(MatchTieBreakCriterion.MatchSeedPriority, first.DecisiveCriterion);
-        Assert.Equal(
-            first.BestToWorst.Select(candidate => candidate.PlayerId),
-            second.BestToWorst.Select(candidate => candidate.PlayerId));
-        Assert.Equal(3, first.BestToWorst.Select(candidate => candidate.PlayerId).Distinct().Count());
+    [Fact]
+    public void Resolve_FallsBackToHumansFirstThenPlayerId()
+    {
+        var result = MatchFieldService.ResolveEliminationOrder(new[]
+        {
+            new MatchSettlementCandidate(-3, 90, 300, 17),
+            new MatchSettlementCandidate(12, 90, 300, 17),
+            new MatchSettlementCandidate(11, 90, 300, 17)
+        });
+
+        Assert.Equal(new long[] { 11, 12, -3 }, result.BestToWorst.Select(candidate => candidate.PlayerId));
+        Assert.Equal(MatchTieBreakCriterion.PlayerId, result.DecisiveCriterion);
     }
 }

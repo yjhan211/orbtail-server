@@ -1,5 +1,5 @@
-using game_server.matches.logging;
 using game_server.matches;
+using game_server.matches.logging;
 using game_server.players;
 using network.common;
 using network.common.data;
@@ -64,7 +64,7 @@ internal sealed class WaveOrbAttackService(
         int hitCount = 0;
         int notifiedCount = 0;
         // 몹: 착탄 지연 정산 파이프라인 재사용 — 킬 보상·상태 브로드캐스트가 따라온다.
-        foreach (var target in runtime.Monsters.GetCombatTargets(matchingId))
+        foreach (var target in runtime.Monsters.GetCombatTargets())
         {
             if (target.Area != area)
                 continue;
@@ -73,15 +73,14 @@ internal sealed class WaveOrbAttackService(
             if (dx * dx + dy * dy > radiusSquared)
                 continue;
             int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, damage, out bool critical);
-            runtime.Monsters.ReserveMonsterDamage(matchingId, target.CombatTargetId, monsterDamage);
-            runtime.Monsters.RecordMonsterAttackEvent(matchingId, target.CombatTargetId);
+            runtime.Monsters.ReserveMonsterDamage(target.CombatTargetId, monsterDamage);
+            runtime.Monsters.RecordMonsterAttackEvent(target.CombatTargetId);
             combatDamage.ScheduleMonsterHit(runtime, new PendingMonsterHit(
                 target.CombatTargetId, ownerId, monsterDamage, nowUtc));
-            runtime.Monsters.TrySlowMonster(
-                matchingId, target.CombatTargetId, OrbData.WaveSlowSeconds, nowUtc);
+            runtime.Monsters.TrySlowMonster(target.CombatTargetId, OrbData.WaveSlowSeconds, nowUtc);
             hitCount++;
 
-            int monsterId = runtime.Monsters.GetMonsterIdForCombatTarget(matchingId, target.CombatTargetId);
+            int monsterId = runtime.Monsters.GetMonsterIdForCombatTarget(target.CombatTargetId);
             if (monsterId <= 0)
                 continue;
 

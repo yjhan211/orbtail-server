@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
 using System.Diagnostics;
+using game_server.matches;
 using game_server.matches.combat;
-using game_server.matches.field;
 using game_server.matches.items;
 using game_server.matches.logging;
 using game_server.matches.monsters;
@@ -27,13 +27,12 @@ public partial class BotPlayerManager
     }
 
     internal SwarmBotMovementPlan PrepareMovementTick(
-        AreaClosureManager closures,
+        AreaClosureState closures,
         GroundItemManager groundItems,
-        EncounterRevealManager encounters,
         GameEventLogManager gameEventLogManager,
         IReadOnlyList<Player> players,
         IReadOnlyList<SwarmBotObserverSnapshot> observers,
-        Func<long, long, SwarmBotDirective> directiveProvider)
+        Func<long, SwarmBotDirective> directiveProvider)
     {
         ArgumentNullException.ThrowIfNull(observers);
         ArgumentNullException.ThrowIfNull(directiveProvider);
@@ -50,7 +49,6 @@ public partial class BotPlayerManager
             Stopwatch.GetElapsedTime(snapshotStartedAt).TotalMilliseconds;
         IReadOnlyCollection<MonsterCombatTarget> pveTargets = [];
         BotPlayerManager.BotWalkingTickResult movementResult = ProcessBotMovementTick(
-            matchingId,
             closures,
             playerAreas,
             groundItems,
@@ -59,7 +57,6 @@ public partial class BotPlayerManager
 
         long preparationStartedAt = Stopwatch.GetTimestamp();
         SwarmBotMovementPlan plan = PrepareResult(
-            encounters,
             gameEventLogManager,
             matchingId,
             movementResult.Movements,
@@ -81,7 +78,6 @@ public partial class BotPlayerManager
     ///     not advance the orb orbit because the existing cut-dummy controls never did so.
     /// </summary>
     internal SwarmBotMovementPlan PrepareExternalMovement(
-        EncounterRevealManager encounters,
         GameEventLogManager gameEventLogManager,
         BotMovementEvent movement,
         IReadOnlyList<Player> players,
@@ -93,7 +89,6 @@ public partial class BotPlayerManager
 
         long preparationStartedAt = Stopwatch.GetTimestamp();
         SwarmBotMovementPlan plan = PrepareResult(
-            encounters,
             gameEventLogManager,
             matchingId,
             [movement],
@@ -110,7 +105,6 @@ public partial class BotPlayerManager
     }
 
     private SwarmBotMovementPlan PrepareResult(
-        EncounterRevealManager encounters,
         GameEventLogManager gameEventLogManager,
         long matchingId,
         IReadOnlyCollection<BotMovementEvent> movements,
@@ -124,7 +118,6 @@ public partial class BotPlayerManager
         foreach (BotMovementEvent movement in movements)
         {
             SwarmBotMovementDispatch? dispatch = PrepareMovement(
-                encounters,
                 gameEventLogManager,
                 matchingId,
                 movement,
@@ -145,7 +138,6 @@ public partial class BotPlayerManager
     }
 
     private SwarmBotMovementDispatch? PrepareMovement(
-        EncounterRevealManager encounters,
         GameEventLogManager gameEventLogManager,
         long matchingId,
         BotMovementEvent movement,
@@ -153,7 +145,7 @@ public partial class BotPlayerManager
         IReadOnlyList<SwarmBotObserverSnapshot> observers,
         bool advanceOrbOrbit)
     {
-        BotPlayerState? bot = GetBot(matchingId, movement.BotPlayerId);
+        BotPlayerState? bot = GetBot(movement.BotPlayerId);
         if (advanceOrbOrbit)
             bot?.Player.AdvanceOrbOrbit(movement.Position);
 
@@ -178,21 +170,14 @@ public partial class BotPlayerManager
         SwarmBotPlayerInfoSnapshot? enteringBot = null;
         if (movement.IsAreaTransition)
         {
-            PlayerInfo? botInfo = GetPlayerProfile(matchingId, movement.BotPlayerId);
-            GameObjectInfo? objectInfo = SynthesizeGameObjectInfo(matchingId, movement.BotPlayerId);
+            PlayerInfo? botInfo = GetPlayerProfile(movement.BotPlayerId);
+            GameObjectInfo? objectInfo = SynthesizeGameObjectInfo(movement.BotPlayerId);
             if (botInfo != null && objectInfo != null)
                 enteringBot = SwarmBotPlayerInfoSnapshot.Capture(botInfo, objectInfo);
         }
 
         float orbOrbitPhase = bot?.Player.OrbOrbitPhaseDegrees
                               ?? SwarmOrbOrbit.InitialPhaseDegrees(movement.BotPlayerId);
-        SwarmBotEncounterDispatch? encounter = PrepareEncounter(
-            encounters,
-            matchingId,
-            movement,
-            players,
-            observers);
-
         return new SwarmBotMovementDispatch(
             movement.BotPlayerId,
             movement.IsAreaTransition,
@@ -205,58 +190,7 @@ public partial class BotPlayerManager
             orbOrbitPhase,
             leaveRecipients,
             destinationRecipients,
-            enteringBot,
-            encounter);
-    }
-
-    private SwarmBotEncounterDispatch? PrepareEncounter(
-        EncounterRevealManager encounters,
-        long matchingId,
-        BotMovementEvent movement,
-        IReadOnlyList<Player> players,
-        IReadOnlyList<SwarmBotObserverSnapshot> observers)
-    {
-        if (!movement.ToArea.IsCorridor())
-            return null;
-
-        var candidates = new List<(long PlayerId, Vector3f Position)>();
-        foreach (var player in players)
-        {
-            if (player.PlayerId == movement.BotPlayerId || player.IsEliminated ||
-                player.CurrentArea != movement.ToArea || player.Position == null)
-                continue;
-            candidates.Add((player.PlayerId, player.Position));
-        }
-        if (candidates.Count == 0)
-            return null;
-
-        CorridorEncounterDecision decision = encounters.ResolveCorridorEncounter(
-            movement.BotPlayerId,
-            new Vector3f(movement.Position.X, movement.Position.Y, movement.Position.Z),
-            candidates,
-            0,
-            0);
-        if (!decision.HasEvent)
-            return null;
-
-        GameClientSession? targetSession = null;
-        foreach (SwarmBotObserverSnapshot observer in observers)
-        {
-            if (observer.PlayerId == decision.TargetPlayerId)
-            {
-                targetSession = observer.Session;
-                break;
-            }
-        }
-
-        return new SwarmBotEncounterDispatch(
-            targetSession,
-            decision.TargetPlayerId,
-            movement.BotPlayerId,
-            movement.ToArea,
-            decision.EventType,
-            decision.CooldownSeconds,
-            decision.RevealDelayMs);
+            enteringBot);
     }
 
     private static ImmutableArray<GameClientSession> SelectRecipients(

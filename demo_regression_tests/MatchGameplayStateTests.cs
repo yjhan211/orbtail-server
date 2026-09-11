@@ -216,8 +216,8 @@ public sealed class MatchGameplayStateTests
         MatchRuntime removed = store.GetOrCreate(removedMatchingId);
         MatchRuntime sibling = store.GetOrCreate(siblingMatchingId);
 
-        removed.TrailCombat.OrbTrails[(removedMatchingId, removedPlayerId)] = [];
-        removed.BotTactics.FleeDirective.Add((removedMatchingId, removedPlayerId));
+        removed.TrailCombat.OrbTrails[removedPlayerId] = [];
+        removed.BotTactics.FleeDirective.Add(removedPlayerId);
         removed.WindOrbAttacks.ApplyWound(removedPlayerId, DateTime.MaxValue);
         GetOrRegisterPlayer(removed, removedPlayerId).IncrementOrbUpgradeCount(WindOrbGroupId);
         removed.SunOrbAttacks.AddShape(CreateCrossfireShape(
@@ -235,8 +235,8 @@ public sealed class MatchGameplayStateTests
             tickIntervalSeconds: 1d);
         removed.SunOrbAttacks.TrackConvergence(7001, crossfireNowUtc);
 
-        sibling.TrailCombat.OrbTrails[(siblingMatchingId, siblingPlayerId)] = [];
-        sibling.BotTactics.FleeDirective.Add((siblingMatchingId, siblingPlayerId));
+        sibling.TrailCombat.OrbTrails[siblingPlayerId] = [];
+        sibling.BotTactics.FleeDirective.Add(siblingPlayerId);
         sibling.WindOrbAttacks.ApplyWound(siblingPlayerId, DateTime.MaxValue);
         GetOrRegisterPlayer(sibling, siblingPlayerId).IncrementOrbUpgradeCount(WaveOrbGroupId);
         sibling.SunOrbAttacks.AddShape(CreateCrossfireShape(
@@ -260,8 +260,8 @@ public sealed class MatchGameplayStateTests
         Assert.Null(missing);
         MatchRuntime? preservedSibling = store.GetOrNull(siblingMatchingId);
         Assert.Same(sibling, preservedSibling);
-        Assert.Contains((siblingMatchingId, siblingPlayerId), sibling.TrailCombat.OrbTrails.Keys);
-        Assert.Contains((siblingMatchingId, siblingPlayerId), sibling.BotTactics.FleeDirective);
+        Assert.Contains(siblingPlayerId, sibling.TrailCombat.OrbTrails.Keys);
+        Assert.Contains(siblingPlayerId, sibling.BotTactics.FleeDirective);
         Assert.True(sibling.WindOrbAttacks.IsWounded(siblingPlayerId, DateTime.UtcNow));
         Assert.Equal(1, GetOrRegisterPlayer(sibling, siblingPlayerId).GetOrbUpgradeCount(WaveOrbGroupId));
         Assert.Equal(1, sibling.SunOrbAttacks.ShapeCount);

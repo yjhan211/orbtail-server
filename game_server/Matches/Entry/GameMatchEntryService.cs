@@ -128,11 +128,11 @@ internal sealed class GameMatchEntryService(
                 }
                 if (botPlayerIds.Count > 0)
                 {
-                    runtime.Bots.RegisterBots(matchingId, Config.SWARM_MATCH_MAP, botPlayerIds, spawnCells);
+                    runtime.Bots.RegisterBots(Config.SWARM_MATCH_MAP, botPlayerIds, spawnCells);
                 }
                 foreach (long botPlayerId in botPlayerIds)
                 {
-                    var botProfile = runtime.Bots.GetPlayerProfile(matchingId, botPlayerId);
+                    var botProfile = runtime.Bots.GetPlayerProfile(botPlayerId);
                     if (botProfile == null)
                     {
                         throw new InvalidOperationException($"Bot {botPlayerId} was not initialized.");

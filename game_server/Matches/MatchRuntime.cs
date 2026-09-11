@@ -1,5 +1,4 @@
 using game_server.matches.combat;
-using game_server.matches.field;
 using game_server.matches.items;
 using game_server.matches.logging;
 using game_server.matches.monsters;
@@ -59,9 +58,9 @@ internal sealed class MatchRuntime
         MatchingId = matchingId;
         SunOrbAttacks = new SunOrbAttackState(matchingId);
         Bots = new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks, eventLogs);
-        AutoAttack = new AutoAttackController(matchingId);
+        AutoAttack = new AutoAttackController();
         GroundItems = new GroundItemManager(matchingId);
-        Closures = new AreaClosureManager(matchingId, logger);
+        Closures = new AreaClosureState();
         Monsters = new SwarmMonsterDirector(matchingId, Closures, playerId => GetParticipant(playerId)?.Orbs.HasAnyOrb() ?? false);
     }
 
@@ -85,8 +84,7 @@ internal sealed class MatchRuntime
 
     // 맵과 진행 상태
     public DoorState Doors { get; } = new();
-    public AreaClosureManager Closures { get; }
-    public EncounterRevealManager Encounters { get; } = new();
+    public AreaClosureState Closures { get; }
     public OrbRecoveryState OrbRecovery { get; } = new();
     public EventLogState EventLog { get; } = new();
 
@@ -120,7 +118,7 @@ internal sealed class MatchRuntime
         SpawnCells = spawnCells;
         foreach (var player in playerRoster)
         {
-            var participant = Bots.GetBot(MatchingId, player.PlayerId)?.Player ?? new Player { Profile = player };
+            var participant = Bots.GetBot(player.PlayerId)?.Player ?? new Player { Profile = player };
             RegisterParticipant(participant);
             PlayerOrbGrowthService.GrantStartingSummonStones(this, participant);
         }
@@ -394,7 +392,6 @@ internal sealed class MatchRuntime
                 Doors.Clear();
                 EventLog.Release();
                 GroundItems.Release();
-                Encounters.Release();
                 _participants.Clear();
                 _aliveCount = 0;
                 Closures.Release();

@@ -38,8 +38,8 @@ public sealed class MatchOwnedBotsTests
         using (match.Enter())
         {
             var cells = network.common.data.MatchSpawnData.CreatePhaseRoomAssignments(match.MatchingId, [1L, -1L]);
-            match.Bots.RegisterBots(match.MatchingId, Config.SWARM_MATCH_MAP, [-1L], cells);
-            var bot = match.Bots.GetBot(match.MatchingId, -1)!;
+            match.Bots.RegisterBots(Config.SWARM_MATCH_MAP, [-1L], cells);
+            var bot = match.Bots.GetBot(-1)!;
             var profile = bot.Player.Profile;
             Assert.Equal("Player1", profile.Name);
             Assert.NotEmpty(profile.WearItemIdList);
@@ -47,12 +47,12 @@ public sealed class MatchOwnedBotsTests
             profile.Name = "Updated";
             profile.Hp = 17;
             bot.Player.State = PlayerState.SLEEP;
-            Assert.Same(profile, match.Bots.GetPlayerProfile(match.MatchingId, -1));
+            Assert.Same(profile, match.Bots.GetPlayerProfile(-1));
             Assert.Same(wearItems, profile.WearItemIdList);
             Assert.Equal("Updated", profile.Name);
             Assert.Equal(17, profile.Hp);
             Assert.Equal(PlayerState.IDLE, profile.State);
-            var spatial = match.Bots.SynthesizeGameObjectInfo(match.MatchingId, -1)!;
+            var spatial = match.Bots.SynthesizeGameObjectInfo(-1)!;
             var snapshot = SwarmBotPlayerInfoSnapshot.Capture(profile, spatial);
             Assert.Equal(PlayerState.SLEEP, snapshot.ToGameObjectInfo().State);
         }
@@ -66,18 +66,18 @@ public sealed class MatchOwnedBotsTests
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         Assert.NotSame(first.Bots, second.Bots);
         using (MatchRuntimeStore.Enter(first))
-            Assert.Equal(1L, first.Bots.PrepareMovementTick(first.Closures, first.GroundItems, first.Encounters, logs, [], [], (_, _) => default).MatchingId);
+            Assert.Equal(1L, first.Bots.PrepareMovementTick(first.Closures, first.GroundItems, logs, [], [], _ => default).MatchingId);
         using (MatchRuntimeStore.Enter(second))
-            Assert.Equal(2L, second.Bots.PrepareMovementTick(second.Closures, second.GroundItems, second.Encounters, logs, [], [], (_, _) => default).MatchingId);
+            Assert.Equal(2L, second.Bots.PrepareMovementTick(second.Closures, second.GroundItems, logs, [], [], _ => default).MatchingId);
         using (MatchRuntimeStore.Enter(first))
         {
             first.TryMarkEnded();
             var movementService = new BotMovementService(logs, NullLogger<BotMovementService>.Instance);
-            Assert.Throws<InvalidOperationException>(() => movementService.ProcessTick(first, (_, _) => default));
+            Assert.Throws<InvalidOperationException>(() => movementService.ProcessTick(first, _ => default));
         }
-        Assert.Throws<InvalidOperationException>(() => first.Bots.PrepareMovementTick(first.Closures, first.GroundItems, first.Encounters, logs, [], [], (_, _) => default));
+        Assert.Throws<InvalidOperationException>(() => first.Bots.PrepareMovementTick(first.Closures, first.GroundItems, logs, [], [], _ => default));
         using (MatchRuntimeStore.Enter(second))
-            Assert.Equal(2L, second.Bots.PrepareMovementTick(second.Closures, second.GroundItems, second.Encounters, logs, [], [], (_, _) => default).MatchingId);
+            Assert.Equal(2L, second.Bots.PrepareMovementTick(second.Closures, second.GroundItems, logs, [], [], _ => default).MatchingId);
     }
 
     [Fact]
@@ -87,13 +87,13 @@ public sealed class MatchOwnedBotsTests
         var first = store.GetOrCreate(1);
         var second = store.GetOrCreate(2);
         Assert.NotSame(first.Monsters, second.Monsters);
-        Assert.True(first.Monsters.InitializeMatching(1, 10, DateTime.UtcNow));
-        Assert.False(first.Monsters.InitializeMatching(2, 20, DateTime.UtcNow));
-        Assert.False(second.Monsters.HasMatching(2));
-        Assert.True(second.Monsters.InitializeMatching(2, 20, DateTime.UtcNow));
+        Assert.True(first.Monsters.InitializeMatching(10, DateTime.UtcNow));
+        Assert.False(first.Monsters.InitializeMatching(20, DateTime.UtcNow));
+        Assert.False(second.Monsters.HasMatching());
+        Assert.True(second.Monsters.InitializeMatching(20, DateTime.UtcNow));
         using (MatchRuntimeStore.Enter(first)) first.TryMarkEnded();
-        Assert.False(first.Monsters.HasMatching(1));
-        Assert.True(second.Monsters.HasMatching(2));
+        Assert.False(first.Monsters.HasMatching());
+        Assert.True(second.Monsters.HasMatching());
     }
 
     [Fact]
@@ -105,9 +105,9 @@ public sealed class MatchOwnedBotsTests
         using (match.Enter())
         {
             var cells = network.common.data.MatchSpawnData.CreatePhaseRoomAssignments(match.MatchingId, [1L, -1L]);
-            match.Bots.RegisterBots(match.MatchingId, Config.SWARM_MATCH_MAP, [-1L], cells);
-            var bot = Assert.IsType<BotPlayerState>(match.Bots.GetBot(match.MatchingId, -1));
-            var profile = match.Bots.GetPlayerProfile(match.MatchingId, -1)!;
+            match.Bots.RegisterBots(Config.SWARM_MATCH_MAP, [-1L], cells);
+            var bot = Assert.IsType<BotPlayerState>(match.Bots.GetBot(-1));
+            var profile = match.Bots.GetPlayerProfile(-1)!;
             bot.Player.ApplyDamage(20);
             match.InitializeMatch(MatchMode.Normal, cells, [new PlayerInfo { PlayerId = 1 }, profile]);
             Assert.Same(bot.Player, match.GetParticipant(-1));
@@ -129,9 +129,9 @@ public sealed class MatchOwnedBotsTests
         using (match.Enter())
         {
             var cells = network.common.data.MatchSpawnData.CreatePhaseRoomAssignments(match.MatchingId, [1L, -1L]);
-            match.Bots.RegisterBots(match.MatchingId, Config.SWARM_MATCH_MAP, [-1L], cells);
-            var bot = match.Bots.GetBot(match.MatchingId, -1)!;
-            var profile = match.Bots.GetPlayerProfile(match.MatchingId, -1)!;
+            match.Bots.RegisterBots(Config.SWARM_MATCH_MAP, [-1L], cells);
+            var bot = match.Bots.GetBot(-1)!;
+            var profile = match.Bots.GetPlayerProfile(-1)!;
             match.InitializeMatch(MatchMode.Normal, cells, [new PlayerInfo { PlayerId = 1 }, profile]);
             var player = match.GetParticipant(-1)!;
             Assert.Same(bot.Player, player);
@@ -145,7 +145,7 @@ public sealed class MatchOwnedBotsTests
             player.Velocity = new Vector3f(6, 0, 0);
             player.Rotation = 180;
             player.CurrentArea = Config.SWARM_MATCH_GROUND_AREA;
-            var snapshot = match.Bots.SynthesizeGameObjectInfo(match.MatchingId, -1)!;
+            var snapshot = match.Bots.SynthesizeGameObjectInfo(-1)!;
             Assert.Equal(12, snapshot.Position.X);
             Assert.Equal(34, snapshot.Position.Y);
             Assert.Equal(180, snapshot.Rotation);
@@ -164,16 +164,14 @@ public sealed class MatchOwnedBotsTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(1);
         var second = store.GetOrCreate(2);
-        first.Bots.RegisterBots(1, Config.SWARM_MATCH_MAP, [], new Dictionary<long, Cell>());
-        first.Bots.GetBots(1).Add(new BotPlayerState { PlayerId = -1 });
+        first.Bots.RegisterBots(Config.SWARM_MATCH_MAP, [], new Dictionary<long, Cell>());
+        first.Bots.GetBots().Add(new BotPlayerState { PlayerId = -1 });
         Assert.NotSame(first.Bots, second.Bots);
-        Assert.Single(first.Bots.GetBots(1));
-        Assert.Empty(second.Bots.GetBots(2));
-        Assert.Empty(first.Bots.GetBots(2));
-        Assert.Throws<InvalidOperationException>(() => first.Bots.RegisterBots(2, Config.SWARM_MATCH_MAP, [], new Dictionary<long, Cell>()));
+        Assert.Single(first.Bots.GetBots());
+        Assert.Empty(second.Bots.GetBots());
         using (MatchRuntimeStore.Enter(first)) first.TryMarkEnded();
         Assert.Null(store.GetOrNull(1));
-        Assert.Empty(first.Bots.GetBots(1));
+        Assert.Empty(first.Bots.GetBots());
         Assert.Same(second, store.GetOrNull(2));
     }
 }

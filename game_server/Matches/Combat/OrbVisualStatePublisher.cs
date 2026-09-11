@@ -11,12 +11,10 @@ namespace game_server.matches.combat;
 ///     행위자별 오브·체력·외피 표시 상태를 계산해 관찰자 세션마다 전달한다.
 ///     마지막 전송 상태는 각 세션이 갖고, 세션이 값이 같으면 보내지 않는다. 호출자는 매치 잠금을 보유한다.
 /// </summary>
-internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
+internal sealed class OrbVisualStatePublisher
 {
-    public void Publish(long matchingId, IReadOnlyCollection<ProximityCombatActor> actors, IReadOnlyCollection<GameClientSession> matchingSessions)
+    public void Publish(MatchRuntime runtime, IReadOnlyCollection<ProximityCombatActor> actors, IReadOnlyCollection<GameClientSession> matchingSessions)
     {
-        if (matchRuntimes.GetOrNull(matchingId) is not { } runtime)
-            return;
         var visuals = BuildOrbVisuals(runtime, actors, matchingSessions);
         var recipientSnapshot = matchingSessions.ToArray();
         foreach (var observer in recipientSnapshot)
@@ -95,7 +93,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
                 return session.Player.Health;
         }
 
-        foreach (var bot in runtime.Bots.GetBots(runtime.MatchingId))
+        foreach (var bot in runtime.Bots.GetBots())
         {
             if (bot.PlayerId == playerId)
                 return bot.Player.Health;
@@ -113,7 +111,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
         long mask = 0;
         var orbs = runtime.GetOrbs(playerId).GetOrderedOrbs();
         for (int ordinal = 0; ordinal < orbs.Count && ordinal < 64; ordinal++)
-            if (runtime.TrailCombat.OrbDurabilityBonus.ContainsKey((runtime.MatchingId, playerId, orbs[ordinal].ItemUid)))
+            if (runtime.TrailCombat.OrbDurabilityBonus.ContainsKey((playerId, orbs[ordinal].ItemUid)))
                 mask |= 1L << ordinal;
         return mask;
     }
