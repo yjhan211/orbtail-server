@@ -279,7 +279,7 @@ public partial class GameClientSession : SessionBase
 
 
 
-                SendInteractableList(Player.CurrentArea);
+                SendInteractableList();
 
                 SendGroundItemSnapshot(Player.CurrentArea);
                 SendOrbList();

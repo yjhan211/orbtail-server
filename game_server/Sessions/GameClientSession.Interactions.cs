@@ -1,4 +1,5 @@
 using game_server.matches.field;
+using game_server.players;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -184,9 +185,9 @@ public partial class GameClientSession
         }
     }
 
-    private void SendInteractableList(AreaType areaType)
+    private void SendInteractableList()
     {
-        if (areaType == AreaType.None)
+        if (Player.CurrentArea == AreaType.None)
         {
             return;
         }
@@ -196,21 +197,14 @@ public partial class GameClientSession
         {
             if (match.IsEnded) return;
 
-            var objects = InteractableStateManager.GetAreaObjectStates(areaType);
-            if (Config.IsSwarmExploreDisabled())
-            {
-                objects = objects.Where(state => GameInteractableData.Get(state.InteractId) is { DoorId: > 0 }).ToList();
-            }
-
-            objects = objects.Where(state => GameInteractableData.Get(state.InteractId) is not { DoorId: > 0 } info || !match.Doors.IsDoorOpen(info.DoorId)).ToList();
-            if (objects.Count == 0)
+            var interactions = _interactions.GetAvailableInteractions(match, Player);
+            if (interactions.Count == 0)
             {
                 return;
             }
 
-            using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(areaType, objects);
+            using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(Player.CurrentArea, interactions);
             TrySend(packet);
         }
     }
-
 }

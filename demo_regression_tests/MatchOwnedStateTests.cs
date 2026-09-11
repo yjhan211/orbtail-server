@@ -245,19 +245,4 @@ public sealed class MatchOwnedStateTests
             Assert.Single(logs.GetRecent(match.MatchingId), entry => entry.Type == GameEventType.EliminationDrop);
         }
     }
-    [Fact]
-    public void InteractableSnapshots_AreIndependentCopiesOfSharedDefinitions()
-    {
-
-        var definition = GameInteractableData.GetAll().First(item => item.Actions.Any(action => action.State == 0));
-        var area = (AreaType)definition.ZoneId;
-        var first = InteractableStateManager.GetAreaObjectStates(area);
-        var second = InteractableStateManager.GetAreaObjectStates(area);
-        Assert.NotEmpty(first);
-        Assert.Equal(first.Count, second.Count);
-        first[0].Actions[0].IsExplored = true;
-        first[0].Actions.Clear();
-        Assert.NotEmpty(second[0].Actions);
-        Assert.All(second.SelectMany(item => item.Actions), action => Assert.False(action.IsExplored));
-    }
 }

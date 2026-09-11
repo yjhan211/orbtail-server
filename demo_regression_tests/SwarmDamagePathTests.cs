@@ -85,8 +85,8 @@ public class SwarmDamagePathTests
         // 게이트가 실제로 물려 있어야 한다: 문 목록 필터와 몬스터 소비품 드롭. 상자 시작·봇 개봉 코드는 제거됐다.
         foreach (var (file, marker) in new[]
                  {
-                     (Path.Combine("game_server", "Sessions", "GameClientSession.Interactions.cs"),
-                         "private void SendInteractableList"),
+                     (Path.Combine("game_server", "Players", "PlayerInteractionService.cs"),
+                         "public List<InteractableObjectState> GetAvailableInteractions"),
                      (Path.Combine("game_server", "Matches", "Combat", "MatchCombatDamageService.cs"),
                          "private void SpawnSwarmSummonStone")
                  })

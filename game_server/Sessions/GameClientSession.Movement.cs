@@ -193,7 +193,7 @@ public partial class GameClientSession
                     Logger.LogDebug("Sent {Count} bots in new Area {NewArea} to Player {PlayerId}", newAreaBots.Count, newArea, PlayerId);
                 }
 
-                SendInteractableList(newArea);
+                SendInteractableList();
                 SendGroundItemSnapshot(newArea);
             }
         }

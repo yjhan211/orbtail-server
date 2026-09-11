@@ -3,6 +3,7 @@ using game_server.matches.field;
 using game_server.players;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
+using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
 
@@ -172,5 +173,26 @@ public sealed class PlayerInteractionServiceTests
             Assert.False(_interactions.TryFinishDoor(match, player, 11, door.DoorId, duration * 2, out _));
             Assert.False(match.Doors.IsDoorOpen(door.DoorId));
         }
+    }
+
+    [Fact]
+    public void InteractableSnapshots_AreIndependentCopiesOfSharedDefinitions()
+    {
+        var definition = GameInteractableData.GetAll().First(item => item.DoorId > 0 && item.Actions.Any(action => action.State == 0));
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(948602);
+        var player = TestGameSessionServices.GetOrRegisterPlayer(match, 11);
+        player.CurrentArea = (AreaType)definition.ZoneId;
+        Assert.Throws<InvalidOperationException>(() => _interactions.GetAvailableInteractions(match, player));
+        using var scope = match.Enter();
+        var first = _interactions.GetAvailableInteractions(match, player);
+        var second = _interactions.GetAvailableInteractions(match, player);
+        Assert.NotEmpty(first);
+        Assert.Contains(first, state => state.InteractId == definition.Id);
+        Assert.Equal(first.Count, second.Count);
+        first[0].Actions[0].IsExplored = true;
+        first[0].Actions.Clear();
+        Assert.NotEmpty(second[0].Actions);
+        Assert.All(second.SelectMany(item => item.Actions), action => Assert.False(action.IsExplored));
     }
 }
