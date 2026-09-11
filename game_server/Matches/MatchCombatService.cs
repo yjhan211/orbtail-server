@@ -159,9 +159,9 @@ internal class MatchCombatService(
         var actors = BuildSwarmArenaCombatActors(runtime, players, nowUtc);
         playerOrbs.ProcessOrbRecovery(runtime, actors, nowUtc);
         orbVisuals.Publish(runtime, actors, sessions);
-        BroadcastSwarmOrbRankings(runtime, sessions);
+        matchResults.BroadcastOrbRankings(runtime, sessions);
         botDecisions.ProcessBotOrbGrowth(runtime, aliveBots);
-        if (ProcessSwarmScoreTimeout(runtime, nowUtc))
+        if (matchResults.TryEndOnScoreTimeout(runtime, nowUtc))
         {
             return;
         }
@@ -644,7 +644,7 @@ internal class MatchCombatService(
         int orbsAfter = orbTrails.CountOrbs(runtime, owner);
         int attackOrbsAfter = CountSwarmAttackOrbs(runtime.GetOrbs(bestOwnerId).GetOrderedOrbs().Select(item => item.ItemId).ToList());
         var rankingAfter = runtime.GetAlivePlayers()
-            .Select(player => (Id: player.PlayerId, Score: GetSwarmOrbScore(runtime, player.PlayerId)))
+            .Select(player => (Id: player.PlayerId, Score: runtime.GetOrbs(player.PlayerId).GetOrbScore()))
             .OrderByDescending(entry => entry.Score.OrbCount)
             .ThenByDescending(entry => entry.Score.TierSum)
             .ThenBy(entry => entry.Id)
@@ -699,101 +699,6 @@ internal class MatchCombatService(
         }
 
         combatDamage.ApplySwarmAfterimageMonsterHit(runtime, healthService, victim, damage.MonsterId, damage.Damage);
-    }
-
-    internal bool ProcessSwarmScoreTimeout(MatchRuntime runtime, DateTime nowUtc)
-    {
-        if (runtime.TimeoutResultProcessed || runtime.IsEnded)
-        {
-            return false;
-        }
-
-        var startedAtUtc = runtime.StartsAtUtc;
-        if (startedAtUtc == null)
-        {
-            if (!runtime.FallbackStartedAtUtc.HasValue)
-            {
-                runtime.FallbackStartedAtUtc = nowUtc;
-                return false;
-            }
-            startedAtUtc = runtime.FallbackStartedAtUtc.Value;
-        }
-
-        if ((nowUtc - startedAtUtc.Value).TotalSeconds < Config.SWARM_MATCH_DURATION_SECONDS)
-        {
-            return false;
-        }
-
-        var candidates = runtime.GetAlivePlayers()
-            .Select(candidate =>
-            {
-                var (orbCount, tierSum) = GetSwarmOrbScore(runtime, candidate.PlayerId);
-                return (candidate.PlayerId, OrbCount: orbCount, TierSum: tierSum,
-                    candidate.Health);
-            })
-            .OrderByDescending(candidate => candidate.OrbCount)
-            .ThenByDescending(candidate => candidate.TierSum)
-            .ThenByDescending(candidate => runtime.TrailCombat.OrbDurabilityBonus
-                .Where(pair => pair.Key.PlayerId == candidate.PlayerId)
-                .Sum(pair => pair.Value))
-            .ThenByDescending(candidate => candidate.Health)
-            .ThenBy(candidate => candidate.PlayerId)
-            .ToList();
-        long winnerId = candidates.Count > 0 ? candidates[0].PlayerId : 0;
-        runtime.TimeoutResultProcessed = true;
-        eventLogs.LogSystem(
-            runtime.MatchingId,
-            "match_score_result " + string.Join(",", candidates.Select(candidate =>
-                $"{candidate.PlayerId}:{candidate.OrbCount}:{candidate.TierSum}")));
-
-        matchResults.FinalizeMatch(runtime.MatchingId, winnerId, MatchEndReason.OrbScoreTimeout);
-        runtime.AutoAttack.Clear();
-        return true;
-    }
-
-    private (int OrbCount, int TierSum) GetSwarmOrbScore(MatchRuntime runtime, long playerId) => runtime.GetOrbs(playerId).GetOrbScore();
-    private void BroadcastSwarmOrbRankings(MatchRuntime runtime, List<GameClientSession> sessions)
-    {
-        var entries = runtime.GetPlayers()
-            .Select(entry =>
-            {
-                var (orbCount, tierSum) = GetSwarmOrbScore(runtime, entry.PlayerId);
-                return (entry.PlayerId,
-                    Orbs: entry.IsEliminated ? 0 : orbCount,
-                    TierSum: entry.IsEliminated ? 0 : tierSum);
-            })
-            .OrderByDescending(entry => entry.Orbs)
-            .ThenByDescending(entry => entry.TierSum)
-            .ThenBy(entry => entry.PlayerId)
-            .ToList();
-        if (entries.Count == 0 || sessions.Count == 0)
-        {
-            return;
-        }
-
-        string signature = string.Join("|", entries.Select(entry => $"{entry.PlayerId}:{entry.Orbs}"));
-        bool isFirstBroadcast = runtime.OrbRankingsSignature == null;
-        if (!isFirstBroadcast && runtime.OrbRankingsSignature == signature)
-        {
-            return;
-        }
-
-        runtime.OrbRankingsSignature = signature;
-        if (isFirstBroadcast)
-        {
-            logger.LogInformation("Orb rankings broadcast armed: MatchingId={MatchingId}, Participants={Count}, Sessions={Sessions}", runtime.MatchingId, entries.Count, sessions.Count);
-        }
-        var message = new G_TO_C_JAM_RANKINGS
-        {
-            PlayerIds = entries.Select(entry => entry.PlayerId).ToList(),
-            JamCounts = entries.Select(entry => entry.Orbs).ToList()
-        };
-        using var packet = Packet.Create((int)Protocol.G_TO_C_JAM_RANKINGS);
-        packet.SetBody(MessagePackSerializer.Serialize(message));
-        foreach (var session in sessions)
-        {
-            session.TrySend(packet);
-        }
     }
 
     private static int GetSquadOrbTier(int itemId)

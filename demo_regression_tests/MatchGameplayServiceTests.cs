@@ -44,7 +44,7 @@ public sealed class MatchGameplayServiceTests
     {
         TestGameData.EnsureBattleItemCombatLoaded();
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var service = provider.GetRequiredService<MatchCombatService>();
+        var service = provider.GetRequiredService<MatchResultService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947803);
         var winner = new game_server.players.Player { Profile = new PlayerInfo { PlayerId = winnerId } };
         var other = new game_server.players.Player { Profile = new PlayerInfo { PlayerId = 202 } };
@@ -62,10 +62,10 @@ public sealed class MatchGameplayServiceTests
             match.StartGameplay();
             var deadline = match.StartsAtUtc!.Value.AddSeconds(network.common.Config.SWARM_MATCH_DURATION_SECONDS);
             Assert.Empty(match.GetSessions());
-            Assert.False(service.ProcessSwarmScoreTimeout(match, deadline.AddMilliseconds(-1)));
-            Assert.True(service.ProcessSwarmScoreTimeout(match, deadline));
+            Assert.False(service.TryEndOnScoreTimeout(match, deadline.AddMilliseconds(-1)));
+            Assert.True(service.TryEndOnScoreTimeout(match, deadline));
             Assert.True(match.IsEnded);
-            Assert.False(service.ProcessSwarmScoreTimeout(match, deadline.AddSeconds(1)));
+            Assert.False(service.TryEndOnScoreTimeout(match, deadline.AddSeconds(1)));
             var events = provider.GetRequiredService<game_server.matches.logging.GameEventLogManager>().GetForPersistence(match.MatchingId);
             var result = Assert.Single(events, entry => entry.Type == game_server.matches.logging.GameEventType.MatchEnded);
             Assert.Equal(winnerId, result.WinnerPlayerId);
@@ -77,7 +77,7 @@ public sealed class MatchGameplayServiceTests
     {
         TestGameData.EnsureBattleItemCombatLoaded();
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var service = provider.GetRequiredService<MatchCombatService>();
+        var service = provider.GetRequiredService<MatchResultService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947804);
         using (match.Enter())
         {
@@ -90,10 +90,8 @@ public sealed class MatchGameplayServiceTests
                 Assert.True(TestGameSessionServices.Orbs(match, 103).TryAddItemWithCapacity(107000010, 8, out _));
             match.TryEliminatePlayer(103, network.common.EliminationReason.HEALTH_ZERO);
             Assert.Empty(match.GetSessions());
-            var broadcast = typeof(MatchCombatService).GetMethod("BroadcastSwarmOrbRankings",
-                BindingFlags.Instance | BindingFlags.NonPublic)!;
-            broadcast.Invoke(service, [match,
-                new List<game_server.sessions.GameClientSession> { TestGameSessionServices.CreateRecipientSession() }]);
+            service.BroadcastOrbRankings(match,
+                new List<game_server.sessions.GameClientSession> { TestGameSessionServices.CreateRecipientSession() });
             var signature = match.OrbRankingsSignature;
             Assert.Equal("101:2|-102:1|103:0", signature);
         }

@@ -1,4 +1,5 @@
 using game_server.matches.logging;
+using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -54,7 +55,6 @@ internal sealed class MatchResultService(
             Players = players
         });
 
-        var completionNotifications = new List<Action>();
         MatchSummaryDocument? summaryRequest = null;
         IReadOnlyList<GameEventEntry> capturedEvents = [];
         if (gameEventLogManager.TryBeginFinalization(matchingId))
@@ -125,48 +125,161 @@ internal sealed class MatchResultService(
 
         foreach (var session in sessionSnapshot)
         {
-            Action? lifecyclePublication = null;
             try
             {
-                lifecyclePublication = session.MarkGameEndedAndPrepareLifecyclePublication();
+                var lifecyclePublication = session.MarkGameEndedAndPrepareLifecyclePublication();
+                if (lifecyclePublication != null)
+                {
+                    runtime.AfterRelease.Add(lifecyclePublication);
+                }
             }
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Match terminal publication failed: MatchingId={MatchingId}, PlayerId={PlayerId}, Component={Component}", matchingId, session.PlayerId, "MarkGameEnded");
             }
-
-            if (lifecyclePublication != null)
-            {
-                completionNotifications.Add(lifecyclePublication);
-            }
-
         }
-        var capturedSummary = summaryRequest;
-        runtime.AfterRelease.Add(() => SendCompletionNotifications(matchingId, completionNotifications));
 
+        var capturedSummary = summaryRequest;
         if (capturedSummary != null)
         {
             runtime.AfterRelease.Add(() => matchSummaryFileStore.Save(capturedSummary, capturedEvents, logger));
         }
     }
 
-    private void SendCompletionNotifications(long matchingId, IReadOnlyList<Action> lifecyclePublications)
+    public bool TryEndOnScoreTimeout(MatchRuntime runtime, DateTime nowUtc)
     {
-        foreach (var dispatch in lifecyclePublications)
+        if (!Monitor.IsEntered(runtime.MatchLock))
         {
-            try
+            throw new InvalidOperationException("Score timeout requires the match lock.");
+        }
+        if (runtime.TimeoutResultProcessed || runtime.IsEnded)
+        {
+            return false;
+        }
+
+        var startedAtUtc = runtime.StartsAtUtc;
+        if (startedAtUtc == null)
+        {
+            if (!runtime.FallbackStartedAtUtc.HasValue)
             {
-                dispatch();
+                runtime.FallbackStartedAtUtc = nowUtc;
+                return false;
             }
-            catch (Exception ex)
+            startedAtUtc = runtime.FallbackStartedAtUtc.Value;
+        }
+
+        if ((nowUtc - startedAtUtc.Value).TotalSeconds < Config.SWARM_MATCH_DURATION_SECONDS)
+        {
+            return false;
+        }
+
+        var candidates = new List<(long PlayerId, int OrbCount, int TierSum, int DurabilityBonus, int Health)>();
+        foreach (var player in runtime.GetAlivePlayers())
+        {
+            var (orbCount, tierSum) = runtime.GetOrbs(player.PlayerId).GetOrbScore();
+            int durabilityBonus = 0;
+            foreach (var ((ownerId, _), bonus) in runtime.TrailCombat.OrbDurabilityBonus)
             {
-                logger.LogWarning(ex, "Deferred matching lifecycle dispatch failed: MatchingId={MatchingId}", matchingId);
+                if (ownerId == player.PlayerId)
+                {
+                    durabilityBonus += bonus;
+                }
             }
+            candidates.Add((player.PlayerId, orbCount, tierSum, durabilityBonus, player.Health));
+        }
+        candidates = candidates
+            .OrderByDescending(candidate => candidate.OrbCount)
+            .ThenByDescending(candidate => candidate.TierSum)
+            .ThenByDescending(candidate => candidate.DurabilityBonus)
+            .ThenByDescending(candidate => candidate.Health)
+            .ThenBy(candidate => candidate.PlayerId)
+            .ToList();
+
+        long winnerId = candidates.Count > 0 ? candidates[0].PlayerId : 0;
+        runtime.TimeoutResultProcessed = true;
+        var scoreLog = new List<string>();
+        foreach (var candidate in candidates)
+        {
+            scoreLog.Add($"{candidate.PlayerId}:{candidate.OrbCount}:{candidate.TierSum}");
+        }
+        gameEventLogManager.LogSystem(runtime.MatchingId, "match_score_result " + string.Join(",", scoreLog));
+
+        FinalizeMatch(runtime.MatchingId, winnerId, MatchEndReason.OrbScoreTimeout);
+        runtime.AutoAttack.Clear();
+        return true;
+    }
+
+    public void BroadcastOrbRankings(MatchRuntime runtime, List<GameClientSession> sessions)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Orb rankings broadcast requires the match lock.");
+        }
+        if (sessions.Count == 0)
+        {
+            return;
+        }
+
+        var entries = new List<(long PlayerId, int Orbs, int TierSum)>();
+        foreach (var player in runtime.GetPlayers())
+        {
+            if (player.IsEliminated)
+            {
+                entries.Add((player.PlayerId, 0, 0));
+                continue;
+            }
+            var (orbCount, tierSum) = runtime.GetOrbs(player.PlayerId).GetOrbScore();
+            entries.Add((player.PlayerId, orbCount, tierSum));
+        }
+        if (entries.Count == 0)
+        {
+            return;
+        }
+        entries = entries
+            .OrderByDescending(entry => entry.Orbs)
+            .ThenByDescending(entry => entry.TierSum)
+            .ThenBy(entry => entry.PlayerId)
+            .ToList();
+
+        var playerIds = new List<long>(entries.Count);
+        var orbCounts = new List<int>(entries.Count);
+        var signatureParts = new List<string>(entries.Count);
+        foreach (var entry in entries)
+        {
+            playerIds.Add(entry.PlayerId);
+            orbCounts.Add(entry.Orbs);
+            signatureParts.Add($"{entry.PlayerId}:{entry.Orbs}");
+        }
+        string signature = string.Join("|", signatureParts);
+        bool isFirstBroadcast = runtime.OrbRankingsSignature == null;
+        if (!isFirstBroadcast && runtime.OrbRankingsSignature == signature)
+        {
+            return;
+        }
+
+        runtime.OrbRankingsSignature = signature;
+        if (isFirstBroadcast)
+        {
+            logger.LogInformation("Orb rankings broadcast armed: MatchingId={MatchingId}, Participants={Count}, Sessions={Sessions}", runtime.MatchingId, entries.Count, sessions.Count);
+        }
+        using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_RANKINGS);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_RANKINGS
+        {
+            PlayerIds = playerIds,
+            OrbCounts = orbCounts
+        }));
+        foreach (var session in sessions)
+        {
+            session.TrySend(packet);
         }
     }
 
     public List<GameResultPlayerInfo> BuildPlayerResults(MatchRuntime runtime, long winnerId)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Building player results requires the match lock.");
+        }
         var endedAtUtc = DateTime.UtcNow;
         var startedAtUtc = runtime.StartsAtUtc ?? endedAtUtc;
         var resultRows = runtime.BuildGameResult();
@@ -185,52 +298,31 @@ internal sealed class MatchResultService(
         var playerResults = new List<GameResultPlayerInfo>();
         foreach (var row in resultRows)
         {
-            long playerId = row.playerId;
-            var player = runtime.GetParticipant(playerId)!;
-            var playerProfile = player.Profile;
-            var stats = gameEventLogManager.GetResultStats(runtime.MatchingId, playerId);
-
-            string? name = playerProfile?.Name;
-            if (string.IsNullOrEmpty(name))
-            {
-                name = $"Player{Math.Abs(playerId)}";
-            }
-            int health = player.Health;
-            var wearItemIds = new List<int>();
-            if (playerProfile?.WearItemIdList is { Count: > 0 })
-            {
-                wearItemIds.AddRange(playerProfile.WearItemIdList);
-            }
-
+            var player = runtime.GetParticipant(row.playerId)!;
+            var stats = gameEventLogManager.GetResultStats(runtime.MatchingId, row.playerId);
+            var orbs = runtime.GetOrbs(row.playerId);
+            bool isWinner = row.playerId == winnerId;
+            killCountsByPlayerId.TryGetValue(row.playerId, out int pvpKillCount);
             var survivalEndUtc = row.eliminatedAt ?? endedAtUtc;
-            int survivalSeconds = Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds));
-            killCountsByPlayerId.TryGetValue(playerId, out int playerKillCount);
-            int killCount = playerKillCount + stats.MonsterKillCount;
-            int orbCount = runtime.GetOrbs(playerId).GetOrbScore().OrbCount;
-            bool isWinner = playerId == winnerId;
-            int rank = isWinner ? 1 : row.eliminationRank;
-            int finalOrbTier = isWinner ? runtime.GetOrbs(playerId).GetHighestOrbTier() : row.finalOrbTier;
-
-            var result = new GameResultPlayerInfo
+            playerResults.Add(new GameResultPlayerInfo
             {
-                PlayerId = playerId,
-                Name = name,
+                PlayerId = row.playerId,
+                Name = string.IsNullOrEmpty(player.Profile.Name) ? $"Player{Math.Abs(row.playerId)}" : player.Profile.Name,
                 EliminationReason = row.reason,
                 FinalStatus = row.finalStatus,
-                Health = health,
+                Health = player.Health,
                 MaxHealth = Config.MAX_HEALTH,
-                WearItemIdList = wearItemIds,
-                SurvivalTimeSeconds = survivalSeconds,
-                KillCount = killCount,
+                WearItemIdList = player.Profile.WearItemIdList is { Count: > 0 } wearItemIds ? new List<int>(wearItemIds) : new List<int>(),
+                SurvivalTimeSeconds = Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
+                KillCount = pvpKillCount + stats.MonsterKillCount,
                 TotalDamageDealt = stats.TotalDamageDealt + stats.MonsterDamageDealt,
                 TotalRecovery = stats.TotalRecovery,
                 AttackerPlayerId = row.attackerPlayerId,
                 EliminatedArea = row.eliminatedArea,
-                Rank = rank,
-                FinalOrbTier = finalOrbTier,
-                OrbCount = orbCount
-            };
-            playerResults.Add(result);
+                Rank = isWinner ? 1 : row.eliminationRank,
+                FinalOrbTier = isWinner ? orbs.GetHighestOrbTier() : row.finalOrbTier,
+                OrbCount = orbs.GetOrbScore().OrbCount
+            });
         }
 
         return AssignRankings(playerResults, winnerId);

@@ -238,14 +238,14 @@ namespace network.common.data.models
     }
 
     /// <summary>
-    ///     잼 리더보드 (#222 M3). 전 참가자를 잼 내림차순으로 정렬한 병렬 리스트다.
+    ///     오브 순위표. 전 참가자를 오브 수 내림차순으로 정렬한 병렬 리스트다.
     ///     구역 게이트 없이 매치 전역으로 브로드캐스트 — 순위표(RankDisplay)의 단일 출처.
     /// </summary>
     [MessagePackObject]
-    public class G_TO_C_JAM_RANKINGS : IMessagePackObject
+    public class G_TO_C_ORB_RANKINGS : IMessagePackObject
     {
         [Key("playerIds")] public List<long> PlayerIds { get; set; } = new();
-        [Key("jamCounts")] public List<int> JamCounts { get; set; } = new();
+        [Key("orbCounts")] public List<int> OrbCounts { get; set; } = new();
     }
 
 

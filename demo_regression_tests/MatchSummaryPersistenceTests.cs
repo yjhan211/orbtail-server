@@ -129,8 +129,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     {
         string root = FindRepositoryRoot();
         string source = ReadNormalizedSource(root, "game_server", "Matches", "MatchResultService.cs");
-        string finalization = ReadMethodSlice(source, "public void FinalizeMatch(", "private void SendCompletionNotifications(");
-        string notifications = ReadMethodSlice(source, "private void SendCompletionNotifications(", "public List<GameResultPlayerInfo> BuildPlayerResults(");
+        string finalization = ReadMethodSlice(source, "public void FinalizeMatch(", "public bool TryEndOnScoreTimeout(");
 
         static void InOrder(string body, params string[] markers)
         {
@@ -151,12 +150,10 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             "MatchSummaryFileStore.Prepare(", "Final match summary capture failed;",
             "Protocol.G_TO_C_GAME_RESULT", "session.TrySend(resultPacket);",
             "Protocol.G_TO_C_GAME_END", "session.TrySend(endPacket);",
-            "session.MarkGameEndedAndPrepareLifecyclePublication()", "completionNotifications.Add(lifecyclePublication);",
-            "runtime.AfterRelease.Add(() => SendCompletionNotifications(matchingId, completionNotifications));",
+            "session.MarkGameEndedAndPrepareLifecyclePublication()", "runtime.AfterRelease.Add(lifecyclePublication);",
             "runtime.AfterRelease.Add(() => matchSummaryFileStore.Save(capturedSummary, capturedEvents, logger));");
         Assert.Contains("if (capturedSummary != null)", finalization);
         Assert.Single(Regex.Matches(finalization, @"matchSummaryFileStore\.Save\s*\("));
-        InOrder(notifications, "foreach (var dispatch in lifecyclePublications)", "dispatch();", "Deferred matching lifecycle dispatch failed:");
 
         string cleanup = ReadNormalizedSource(root, "game_server", "Matches", "MatchCleanupService.cs");
         string noHumans = cleanup.Substring(Find(cleanup, "public void CleanupIfNoHumanSessionsRemain("));

@@ -104,8 +104,8 @@ namespace network.common
         C_TO_G_SUMMON_ORB,
         G_TO_C_SUMMON_ORB_RESULT,
 
-        // 오브 수 순위표. 이름은 잼 재화 세대의 것이고 JamCounts에 현재 오브 수를 싣는다.
-        G_TO_C_JAM_RANKINGS,
+        // 오브 수 순위표.
+        G_TO_C_ORB_RANKINGS,
 
 
         // 오브 공용 링 연출 — 파도 공격 예고, 꼬리 절단, 포위 효과.
