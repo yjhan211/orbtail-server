@@ -1,7 +1,7 @@
 using game_server.matches.logging;
 using Microsoft.Extensions.Logging;
 
-namespace game_server.matches.results;
+namespace game_server.matches;
 
 /// <summary>
 ///     사람 세션이 남지 않은 매치를 종료하고 결과 로그와 요약을 정리한다.

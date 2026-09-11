@@ -5,7 +5,7 @@ using network.common;
 using network.common.data.models;
 using network.packets;
 
-namespace game_server.matches.results;
+namespace game_server.matches;
 
 /// <summary>
 ///     매치 종료를 한 번만 확정하고 참가자별 결과와 순위를 만든다.

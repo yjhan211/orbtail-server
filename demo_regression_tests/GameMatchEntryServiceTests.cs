@@ -1,6 +1,5 @@
 using game_server;
 using game_server.matches;
-using game_server.matches.entry;
 using game_server.matches.logging;
 using MessagePack;
 using Microsoft.Extensions.Logging.Abstractions;

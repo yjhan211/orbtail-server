@@ -1,9 +1,7 @@
 using game_server;
 using game_server.matches;
 using game_server.matches.combat;
-using game_server.matches.entry;
 using game_server.matches.logging;
-using game_server.matches.results;
 using game_server.players;
 using game_server.sessions;
 using Microsoft.Extensions.Logging.Abstractions;

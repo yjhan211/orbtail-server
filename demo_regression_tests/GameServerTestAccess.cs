@@ -2,9 +2,7 @@ using System.Reflection;
 using game_server;
 using game_server.matches;
 using game_server.matches.combat;
-using game_server.matches.entry;
 using game_server.matches.logging;
-using game_server.matches.results;
 using game_server.players;
 using game_server.players.bots;
 using game_server.sessions;
@@ -79,7 +77,7 @@ internal static class GameServerTestAccess
                 health, combatDamage, results,
                 new PlayerOrbService(health, combatDamage, orbTrails, logs),
                 new OrbVisualStatePublisher(), orbTrails,
-                new SunOrbAttackService(TestGameSessionServices.CreateHealthService(runtimes, logs, new game_server.matches.results.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), combatDamage, logs),
+                new SunOrbAttackService(TestGameSessionServices.CreateHealthService(runtimes, logs, new game_server.matches.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), combatDamage, logs),
                 new WaveOrbAttackService(health, combatDamage, logs), decisions,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatService>.Instance);
 

@@ -1,4 +1,4 @@
-namespace game_server.matches.results;
+namespace game_server.matches;
 
 /// <summary>매치가 종료된 이유.</summary>
 public enum MatchEndReason

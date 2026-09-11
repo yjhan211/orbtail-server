@@ -1,4 +1,4 @@
-using game_server.matches.entry;
+using game_server.matches;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common.data.models;
 

@@ -3,7 +3,7 @@ using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common;
 
-namespace game_server.matches.entry;
+namespace game_server.matches;
 
 /// <summary>
 ///     게임 입장에 실패하면 해당 매치를 중단하고 참가자들의 연결을 종료한다.

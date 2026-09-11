@@ -2,9 +2,7 @@ using System.Reflection;
 using game_server;
 using game_server.matches;
 using game_server.matches.combat;
-using game_server.matches.entry;
 using game_server.matches.logging;
-using game_server.matches.results;
 using game_server.players;
 using game_server.players.bots;
 using game_server.sessions;
@@ -103,8 +101,8 @@ public sealed class GameServerDependencyInjectionTests
         [
             typeof(game_server.matches.MatchRuntimeStore),
             typeof(game_server.matches.logging.GameEventLogManager),
-            typeof(game_server.matches.entry.GameMatchEntryService),
-            typeof(game_server.matches.entry.MatchEntryFailureHandler),
+            typeof(game_server.matches.GameMatchEntryService),
+            typeof(game_server.matches.MatchEntryFailureHandler),
             typeof(game_server.matches.MatchTickService)
         ];
         foreach (var type in serviceTypes)
@@ -139,17 +137,17 @@ public sealed class GameServerDependencyInjectionTests
     public void MatchResultServiceDoesNotOwnAConnectionOrDependOnGameServer()
     {
         using var provider = CreateProvider();
-        var results = provider.GetRequiredService<game_server.matches.results.MatchResultService>();
-        Assert.Same(results, provider.GetRequiredService<game_server.matches.results.MatchResultService>());
+        var results = provider.GetRequiredService<game_server.matches.MatchResultService>();
+        Assert.Same(results, provider.GetRequiredService<game_server.matches.MatchResultService>());
 
-        var fields = typeof(game_server.matches.results.MatchResultService)
+        var fields = typeof(game_server.matches.MatchResultService)
             .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         Assert.DoesNotContain(fields, field => field.FieldType == typeof(GameServer));
         Assert.DoesNotContain(fields, field => field.FieldType == typeof(game_server.sessions.GameClientSession));
         Assert.DoesNotContain(
             typeof(game_server.sessions.GameClientSession)
                 .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic),
-            field => field.FieldType == typeof(game_server.matches.results.MatchSummaryFileStore));
+            field => field.FieldType == typeof(game_server.matches.MatchSummaryFileStore));
     }
     internal static ServiceProvider CreateProvider(network.infrastructure.messaging.INatsClient? natsClient = null,
         Action<IServiceCollection>? configure = null)

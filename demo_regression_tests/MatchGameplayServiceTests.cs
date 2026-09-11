@@ -17,7 +17,7 @@ public sealed class MatchGameplayServiceTests
     public void ResultsReadHealthAndProfileFromParticipantWithoutSession(long playerId)
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var service = provider.GetRequiredService<game_server.matches.results.MatchResultService>();
+        var service = provider.GetRequiredService<game_server.matches.MatchResultService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947804);
         var player = new game_server.players.Player
         {

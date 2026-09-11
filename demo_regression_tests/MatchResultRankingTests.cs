@@ -1,4 +1,4 @@
-using game_server.matches.results;
+using game_server.matches;
 using network.common.data.models;
 
 namespace demo_regression_tests;

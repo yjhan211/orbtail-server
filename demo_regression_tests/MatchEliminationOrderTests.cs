@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.results;
 using static game_server.matches.MatchFieldService;
 
 namespace demo_regression_tests;

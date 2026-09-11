@@ -1,5 +1,4 @@
 using game_server.matches.logging;
-using game_server.matches.results;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -9,7 +8,7 @@ using network.gameentry;
 using network.infrastructure.redis;
 using StackExchange.Redis;
 
-namespace game_server.matches.entry;
+namespace game_server.matches;
 
 /// <summary>
 ///     GameServer 입장 준비와 입장 기록을 담당한다.

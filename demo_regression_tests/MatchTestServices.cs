@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.results;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 

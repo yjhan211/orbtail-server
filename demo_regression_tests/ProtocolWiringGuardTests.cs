@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using game_server.matches;
-using game_server.matches.entry;
 using game_server.sessions;
 using Xunit;
 
@@ -89,7 +88,7 @@ public class ProtocolWiringGuardTests
         int area = source.IndexOf("Player.InitializeSpawn(matchingSpawnCell)", StringComparison.Ordinal);
         int join = source.IndexOf("SyncPlayersOnEntry()", StringComparison.Ordinal);
         Assert.True(roster >= 0 && roster < area && roster < join);
-        string entry = File.ReadAllText(Path.Combine(root, "game_server", "Matches", "Entry", "GameMatchEntryService.cs"));
+        string entry = File.ReadAllText(Path.Combine(root, "game_server", "Matches", "GameMatchEntryService.cs"));
         Assert.True(entry.IndexOf("if (runtime.IsSetupComplete", StringComparison.Ordinal) <
                     entry.IndexOf("Interlocked.Decrement(ref _botIdCounter)", StringComparison.Ordinal));
     }

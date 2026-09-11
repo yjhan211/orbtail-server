@@ -2,7 +2,7 @@ using System.Text.Json;
 using game_server.matches.logging;
 using Microsoft.Extensions.Logging;
 
-namespace game_server.matches.results;
+namespace game_server.matches;
 
 /// <summary>
 ///     종료된 매치의 승자·참가자별 결과와 이벤트 기록을 파일로 저장한다.

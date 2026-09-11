@@ -1,6 +1,5 @@
 using game_server.matches;
 using game_server.matches.combat;
-using game_server.matches.results;
 namespace demo_regression_tests;
 
 public sealed class ServerDeploymentSurfaceTests
@@ -30,7 +29,7 @@ public sealed class ServerDeploymentSurfaceTests
         Assert.DoesNotContain("GetActiveMatchingIds", source);
         Assert.DoesNotContain("GetActiveMatchingIds", Read("game_server/Matches/Combat/MatchCombatService.cs"));
         Assert.DoesNotContain("GetActiveMatchingIds", Read("game_server/Sessions/GameSessionRegistry.cs"));
-        Assert.Contains("EndBotOnlyMatchIfSettled", Read("game_server/Matches/Results/MatchCleanupService.cs"));
+        Assert.Contains("EndBotOnlyMatchIfSettled", Read("game_server/Matches/MatchCleanupService.cs"));
     }
 
     [Theory]

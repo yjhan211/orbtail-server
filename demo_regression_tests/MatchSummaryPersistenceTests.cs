@@ -4,7 +4,6 @@ using System.Text.RegularExpressions;
 using game_server;
 using game_server.matches;
 using game_server.matches.logging;
-using game_server.matches.results;
 using game_server.players;
 using game_server.sessions;
 using MessagePack;
@@ -129,7 +128,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     public void NormalAndNoHumanFinalization_KeepCaptureAndPostCommitPersistenceOrdering()
     {
         string root = FindRepositoryRoot();
-        string source = ReadNormalizedSource(root, "game_server", "Matches", "Results", "MatchResultService.cs");
+        string source = ReadNormalizedSource(root, "game_server", "Matches", "MatchResultService.cs");
         string finalization = ReadMethodSlice(source, "public void FinalizeMatch(", "private void SendCompletionNotifications(");
         string notifications = ReadMethodSlice(source, "private void SendCompletionNotifications(", "public List<GameResultPlayerInfo> BuildPlayerResults(");
 
@@ -159,7 +158,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         Assert.Single(Regex.Matches(finalization, @"matchSummaryFileStore\.Save\s*\("));
         InOrder(notifications, "foreach (var dispatch in lifecyclePublications)", "dispatch();", "Deferred matching lifecycle dispatch failed:");
 
-        string cleanup = ReadNormalizedSource(root, "game_server", "Matches", "Results", "MatchCleanupService.cs");
+        string cleanup = ReadNormalizedSource(root, "game_server", "Matches", "MatchCleanupService.cs");
         string noHumans = cleanup.Substring(Find(cleanup, "public void CleanupIfNoHumanSessionsRemain("));
         InOrder(noHumans, "runtime.Enter()", "runtime.TryMarkEnded();", "eventLogs.LogMatchAbandoned(",
             "MatchSummaryFileStore.Prepare(", "if (summaryRequest != null)",
