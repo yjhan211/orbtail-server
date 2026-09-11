@@ -5,7 +5,6 @@ using game_server.players;
 using game_server.players.bots;
 using game_server.sessions;
 using MessagePack;
-using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -25,8 +24,7 @@ internal class MatchCombatService(
     MatchCombatActorBuilder actorBuilder,
     SunOrbAttackService sunOrbAttacks,
     WaveOrbAttackService waveOrbAttacks,
-    BotDecisionService botDecisions,
-    ILogger<MatchCombatService> logger)
+    BotDecisionService botDecisions)
 {
     public virtual void ProcessTick(MatchRuntime runtime)
     {
@@ -55,14 +53,9 @@ internal class MatchCombatService(
             {
                 return;
             }
-            foreach (var (startRoom, pairZone) in SwarmPairZones)
-            {
-                var path = BotPathfinder.FindPath(Config.SWARM_MATCH_MAP, startRoom, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, startRoom), pairZone, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, pairZone));
-            }
         }
 
         var nowUtc = DateTime.UtcNow;
-        int aliveHumanCount = players.Count(player => player.PlayerId > 0);
         var aliveBots = bots.Where(bot => !bot.Player.IsEliminated).ToList();
         var participants = new List<SwarmParticipantSpatial>();
         foreach (var player in players)
@@ -88,54 +81,25 @@ internal class MatchCombatService(
 
         orbTrails.UpdateTrails(runtime, participants);
         trailCuts.ProcessTick(runtime, nowUtc, participants, sessions);
-
         waveOrbAttacks.ProcessTick(runtime, nowUtc);
-        if (runtime.IsEnded)
-        {
-            return;
-        }
-
         foreach (var player in runtime.GetAlivePlayers())
         {
             playerOrbs.ActivateWaveOrbs(runtime, player, nowUtc);
         }
-
-        if (runtime.IsEnded)
-        {
-            return;
-        }
-
         foreach (var player in runtime.GetAlivePlayers())
         {
             playerOrbs.ActivateWindOrbs(runtime, player, nowUtc);
         }
-
-        if (runtime.IsEnded)
-        {
-            return;
-        }
-
         sunOrbAttacks.ProcessSwarmSunBurns(runtime, nowUtc);
-        if (runtime.IsEnded)
-        {
-            return;
-        }
-
-        if (tick.PlayerDamage.Count > 0 && (!runtime.NextContactLogAtUtc.HasValue || nowUtc >= runtime.NextContactLogAtUtc.Value))
-        {
-            runtime.NextContactLogAtUtc = nowUtc.AddSeconds(10);
-            int toBots = tick.PlayerDamage.Count(entry => entry.TargetPlayerId < 0);
-            int toHumans = tick.PlayerDamage.Count - toBots;
-        }
-
         foreach (var damage in tick.PlayerDamage)
         {
             ApplySwarmParticipantDamage(runtime, damage, sessions);
-            if (runtime.IsEnded)
-            {
-                return;
-            }
         }
+        if (runtime.IsEnded)
+        {
+            return;
+        }
+
         aliveBots.RemoveAll(bot => bot.Player.IsEliminated);
         botDecisions.UpdateSleep(runtime, aliveBots, nowUtc);
         healthService.ApplyPeriodicBuffs(runtime, players, nowUtc);
@@ -146,7 +110,6 @@ internal class MatchCombatService(
         players.RemoveAll(player => player.IsEliminated);
         healthService.ApplySleepRecovery(runtime, players, nowUtc);
         botDecisions.ProcessSwarmBotDoorUnlocks(runtime, aliveBots, sessions, nowUtc);
-
         if (MonsterSnapshotPublisher.TryConsumeBroadcastSlot(runtime, nowUtc))
         {
             MonsterSnapshotPublisher.Broadcast(runtime, sessions, runtime.Monsters.GetVisualStates());
@@ -163,11 +126,6 @@ internal class MatchCombatService(
         }
         combatDamage.ProcessPendingMonsterHits(runtime, nowUtc, sessions);
         sunOrbAttacks.ProcessSwarmCrossfires(runtime, nowUtc);
-        if (runtime.IsEnded)
-        {
-            return;
-        }
-
         combatDamage.ProcessPendingPvpHits(runtime, healthService, nowUtc, runtime.GetAlivePlayers(), sessions);
         if (runtime.IsEnded)
         {
@@ -243,9 +201,11 @@ internal class MatchCombatService(
         foreach (var attack in attacks)
         {
             if (runtime.GetParticipant(attack.AttackerPlayerId)?.IsEliminated == true)
+            {
                 continue;
+            }
             int monsterId = runtime.Monsters.GetMonsterIdForCombatTarget(attack.TargetPlayerId);
-            if (monsterId <= 0 && attack.TargetPlayerId < -1_000_000_000_000L)
+            if (monsterId <= 0 && SwarmMonsterDirector.IsCombatTargetId(attack.TargetPlayerId))
             {
                 continue;
             }
@@ -276,7 +236,7 @@ internal class MatchCombatService(
                 continue;
             }
 
-            if (attack.TargetPlayerId < -1_000_000_000_000L)
+            if (SwarmMonsterDirector.IsCombatTargetId(attack.TargetPlayerId))
             {
                 continue;
             }
@@ -299,22 +259,7 @@ internal class MatchCombatService(
         }
     }
 
-    private static readonly (AreaType StartRoom, AreaType PairZone)[] SwarmPairZones =
-    [
-        (AreaType.S2Classroom1, AreaType.S2Library1),
-        (AreaType.S2Classroom2, AreaType.S2Library1),
-        (AreaType.S2ExamRoom, AreaType.S2Gym1),
-        (AreaType.S2BroadcastRoom, AreaType.S2Gym1),
-        (AreaType.S2Storage, AreaType.S2Library2),
-        (AreaType.S2AdminOffice2, AreaType.S2Library2),
-        (AreaType.S2AdminOffice1, AreaType.S2Gym2),
-        (AreaType.S2NurseOffice, AreaType.S2Gym2)
-    ];
-
-    internal void ApplySwarmParticipantDamage(
-        MatchRuntime runtime,
-        SwarmPlayerDamage damage,
-        List<GameClientSession> allSessions)
+    internal void ApplySwarmParticipantDamage(MatchRuntime runtime, SwarmPlayerDamage damage, List<GameClientSession> allSessions)
     {
         var victim = runtime.GetParticipant(damage.TargetPlayerId);
         if (runtime.IsEnded || victim == null || victim.IsEliminated)
@@ -339,7 +284,6 @@ internal class MatchCombatService(
                 }
             }
         }
-
         combatDamage.ApplySwarmAfterimageMonsterHit(runtime, healthService, victim, damage.MonsterId, damage.Damage);
     }
 }

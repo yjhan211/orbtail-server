@@ -232,6 +232,11 @@ public sealed class SwarmMonsterDirector
 
     private const int FirstMonsterId = 7_000_000;
     private const long FirstCombatTargetId = -4_000_000_000_000_000_000L;
+    // 액터 ID 공간: 사람은 양수, 봇은 음수, 몬스터는 이 경계 아래의 큰 음수. 봇 ID는 여기까지 내려오지 않는다.
+    private const long CombatTargetIdUpperBound = -1_000_000_000_000L;
+
+    /// <summary>자동공격 액터 ID가 몬스터 표적 구간인지. 죽은 몬스터의 ID도 참이다 — 생존 여부는 GetMonsterIdForCombatTarget이 답한다.</summary>
+    public static bool IsCombatTargetId(long actorId) => actorId < CombatTargetIdUpperBound;
     // 아이소 월드 스케일에서 방의 세로 폭은 ~2.5유닛에 불과하다. 이동 목표가 방을
     // 벗어나면 구역 클램프로 제자리 회귀해 봇이 서 있는 것처럼 보인다 — 짧게 잡는다.
     // 위험 반경 5 / 사격 대역 5~7 — 깨어난 몹이 5에 오면 물러난다.

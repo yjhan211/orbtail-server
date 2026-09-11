@@ -402,7 +402,7 @@ public sealed class SwarmArenaTickOrderTests
         return ReadMethodSlice(
             source,
             "public void ProcessTick(",
-            "    private static readonly (AreaType StartRoom, AreaType PairZone)[] SwarmPairZones");
+            "    internal void ApplySwarmParticipantDamage(");
     }
 
     private static string ReadBracedBlockAfterMarker(string source, string marker)

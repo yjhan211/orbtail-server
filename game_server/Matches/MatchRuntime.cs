@@ -282,7 +282,6 @@ internal sealed class MatchRuntime
         }
     }
 
-
     public DateTime? EntryDeadlineUtc { get { lock (MatchLock) return _entryDeadlineUtc; } }
     public DateTime? StartsAtUtc { get { lock (MatchLock) return _startsAtUtc; } }
     /// <summary>개전 게이트가 없는 봇 전용 매치의 시작 앵커. 전투 서비스가 스웜 첫 틱에 찍는다.</summary>
@@ -292,7 +291,6 @@ internal sealed class MatchRuntime
     public bool TimeoutResultProcessed { get; set; }
     /// <summary>마지막으로 방송한 오브 순위표. 같으면 다시 보내지 않는다.</summary>
     public string? OrbRankingsSignature { get; set; }
-    public DateTime? NextContactLogAtUtc { get; set; }
     public bool InitialFieldStateSent { get; set; }
 
     public void BeginEntry(long playerId)
