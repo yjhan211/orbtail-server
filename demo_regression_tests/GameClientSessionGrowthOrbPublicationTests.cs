@@ -632,7 +632,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             root,
             "game_server",
             "Sessions",
-            "GameClientSession.OrbSummon.cs");
+            "GameClientSession.Orb.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
         string orbBoard = ReadNormalizedSource(root, "game_server", "Players", "PlayerOrbGrowthService.cs");
 

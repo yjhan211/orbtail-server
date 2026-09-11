@@ -42,7 +42,7 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string proximity = ReadNormalizedSource(
-            root, "game_server", "Sessions", "OrbVisualStatePublisher.cs");
+            root, "game_server", "Matches", "Combat", "OrbVisualStatePublisher.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string settlement = ReadNormalizedSource(
             root, "game_server", "Matches", "Field", "MatchEnvironmentService.cs");
@@ -188,7 +188,7 @@ public sealed class SwarmArenaTickOrderTests
             root, "game_server", "Players", "PlayerEliminationService.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string proximity = ReadNormalizedSource(
-            root, "game_server", "Sessions", "OrbVisualStatePublisher.cs");
+            root, "game_server", "Matches", "Combat", "OrbVisualStatePublisher.cs");
 
         string healthNotification = ReadBracedBlockAfterMarker(
             ReadNormalizedSource(root, "game_server", "Players", "PlayerHealthService.cs"),
@@ -212,16 +212,14 @@ public sealed class SwarmArenaTickOrderTests
             "session.TrySend(packet);");
 
         string orbPublicationSteps = ReadMethodSlice(
-            proximity,
-            "private void DispatchOrbVisualStatePublications(",
-            "private static ImmutableArray<int> CaptureSwarmOrbVisualItemIds(");
+            ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Orb.cs"),
+            "internal void SendOrbVisualStateIfChanged(",
+            "internal void ForgetOrbVisualState(");
         AssertInOrder(
             orbPublicationSteps,
-            "foreach (SwarmOrbVisualPublication publication in publications)",
-            "CommitAndDispatchOrbVisualStatePublication(publication)",
-            "visualStates[key] = state;",
+            "_lastSentOrbVisualStates[visual.ActorPlayerId] = visual.State;",
             "Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE)",
-            "publication.Recipient!.TrySend(packet);");
+            "TrySend(packet);");
         Assert.False(ContainsCodeToken(orbPublicationSteps, "catch"));
 
         string elimination = ReadBracedBlockAfterMarker(

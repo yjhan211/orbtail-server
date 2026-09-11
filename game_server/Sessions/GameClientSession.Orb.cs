@@ -1,5 +1,5 @@
-using game_server.matches.items;
 using game_server.players;
+using game_server.matches.combat;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -9,9 +9,10 @@ using network.packets;
 namespace game_server.sessions;
 
 /// <summary>
-///     오브 소환과 강화 요청을 처리한다.
+///     오브 소환·강화 요청을 처리하고 오브 관련 상태를 이 연결로 보낸다.
 ///     매치 잠금 안에서 소환·강화 서비스를 호출하고 결과를 클라이언트에 보낸다.
-///     보유 오브 목록·변경 내역, 소환석 보유량·다음 소환 비용과 계열별 강화 정보도 전송한다.
+///     보유 오브 목록·변경 내역, 소환석 보유량·다음 소환 비용, 계열별 강화 정보,
+///     다른 플레이어의 오브 표시 상태(마지막 전송값과 다를 때만)도 전송한다.
 /// </summary>
 public partial class GameClientSession
 {
@@ -239,4 +240,29 @@ public partial class GameClientSession
 
         Logger.LogDebug("Sent orb update to PlayerId={PlayerId}, ItemUid={ItemUid}, ItemId={ItemId}, Count={Count}", PlayerId, item.ItemUid, item.ItemId, item.Count);
     }
+
+    internal void SendOrbVisualStateIfChanged(OrbVisualStatePublisher.OrbVisual visual)
+    {
+        if (_lastSentOrbVisualStates.TryGetValue(visual.ActorPlayerId, out var previousState) && previousState == visual.State)
+        {
+            return;
+        }
+
+        _lastSentOrbVisualStates[visual.ActorPlayerId] = visual.State;
+        using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_EFFECT_STATE
+        {
+            PlayerId = visual.ActorPlayerId,
+            WeaponItemId = visual.State.WeaponItemId,
+            IsActive = visual.State.IsActive,
+            OrbItemIds = visual.OrbItemIds.ToList(),
+            FrontOrbHp = visual.State.FrontOrbHp,
+            JamCount = 0, // 기존 클라이언트 패킷 형식만 유지하며 잼은 집계하지 않는다.
+            BodyHealth = visual.State.BodyHealth,
+            ArmorMask = visual.State.ArmorMask
+        }));
+        TrySend(packet);
+    }
+
+    internal void ForgetOrbVisualState(long actorPlayerId) => _lastSentOrbVisualStates.Remove(actorPlayerId);
 }

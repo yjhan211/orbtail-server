@@ -1,4 +1,5 @@
 using game_server.matches;
+using game_server.matches.combat;
 using game_server.matches.entry;
 using game_server.matches.logging;
 using game_server.matches.results;
@@ -41,6 +42,7 @@ public partial class GameClientSession : SessionBase
 
     private MatchRuntime? _match;
     internal Player Player = null!;
+    private readonly Dictionary<long, OrbVisualStatePublisher.OrbVisualState> _lastSentOrbVisualStates = new();
 
     private int _entryCompleted;
     private int _entryFailureReported;

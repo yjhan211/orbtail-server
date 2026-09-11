@@ -87,7 +87,6 @@ internal sealed class MatchRuntime
     public DoorState Doors { get; } = new();
     public AreaClosureManager Closures { get; }
     public EncounterRevealManager Encounters { get; } = new();
-    public OrbVisualStateCache OrbVisualCache { get; } = new();
     public OrbRecoveryState OrbRecovery { get; } = new();
     public EventLogState EventLog { get; } = new();
     public MatchProgressState Progress { get; } = new();

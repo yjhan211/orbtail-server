@@ -117,8 +117,6 @@ public sealed class MatchOwnedStateTests
         first.OrbRecovery.ReadyAtUtc[(11, 22, 0)] = DateTime.UtcNow;
         first.Monsters.NextMonsterPositionBroadcastAtUtc = DateTime.UtcNow;
         Assert.Empty(second.OrbRecovery.ReadyAtUtc);
-        Assert.NotSame(first.OrbVisualCache, second.OrbVisualCache);
-        Assert.NotSame(first.OrbVisualCache.States, second.OrbVisualCache.States);
         Assert.Equal(default, second.Monsters.NextMonsterPositionBroadcastAtUtc);
     }
 

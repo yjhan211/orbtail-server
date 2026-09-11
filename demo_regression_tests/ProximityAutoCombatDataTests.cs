@@ -159,82 +159,52 @@ public class ProximityAutoCombatDataTests
     }
 
     [Fact]
-    public void OrbVisualPublication_UsesOneCommitAndSendStepPerCandidate()
+    public void OrbVisualPublication_ComputesEachActorOnceAndDelegatesSendToObserverSessions()
     {
-        string source = ReadNormalizedSource(
-            FindRepositoryRoot(), "game_server", "Sessions", "OrbVisualStatePublisher.cs");
-        string append = ReadMethodSlice(
-            source,
-            "private void DispatchOrbVisualStatePublications(",
-            "private void CommitAndDispatchOrbVisualStatePublication(");
-        string commitAndDispatch = ReadMethodSlice(
-            source,
-            "private void CommitAndDispatchOrbVisualStatePublication(",
-            "private static ImmutableArray<int> CaptureSwarmOrbVisualItemIds(");
+        string root = FindRepositoryRoot();
+        string publisher = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "OrbVisualStatePublisher.cs");
+        string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
+        string publish = ReadMethodSlice(
+            publisher,
+            "public void Publish(",
+            "private List<OrbVisual> BuildOrbVisuals(");
 
+        Assert.Contains("orbVisuals.Publish(matchingId, actors, sessions);", combat);
         AssertInOrder(
-            append,
-            "foreach (SwarmOrbVisualPublication publication in publications)",
-            "CommitAndDispatchOrbVisualStatePublication(publication);");
-        AssertInOrder(
-            commitAndDispatch,
-            "visualStates[key] = state;",
-            "visualStates.TryRemove(key, out _);",
-            "Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE)",
-            "publication.Recipient!.TrySend(packet);");
-        Assert.DoesNotContain("catch", append);
-        Assert.DoesNotContain("catch", commitAndDispatch);
+            publish,
+            "var visuals = BuildOrbVisuals(runtime, actors, matchingSessions);",
+            "var recipientSnapshot = matchingSessions.ToArray();",
+            "foreach (var observer in recipientSnapshot)",
+            "foreach (var visual in visuals)",
+            "if (observer.Player.CurrentArea != visual.State.Area)",
+            "observer.ForgetOrbVisualState(visual.ActorPlayerId);",
+            "observer.SendOrbVisualStateIfChanged(visual);");
+        // 퍼블리셔는 계산만 한다. 패킷 생성·전송·캐시는 세션에 있다.
+        Assert.DoesNotContain("Packet.Create", publisher);
+        Assert.DoesNotContain(".TrySend(", publisher);
+        Assert.DoesNotContain("_lastSentOrbVisualStates", publisher);
+        Assert.DoesNotContain("catch", publisher);
     }
 
     [Fact]
-    public void OrbVisualPublication_PreparesImmutablePlanBeforeInLockDispatch()
+    public void OrbVisualState_IsCommittedOnTheSessionRightBeforeSend()
     {
-        string root = FindRepositoryRoot();
-        string proximity = ReadNormalizedSource(
-            root, "game_server", "Sessions", "OrbVisualStatePublisher.cs");
-        string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
-        int prepareStart = proximity.IndexOf(
-            "private ImmutableArray<SwarmOrbVisualPublication> PrepareOrbVisualStatePublications(",
-            StringComparison.Ordinal);
-        int appendStart = proximity.IndexOf(
-            "private void DispatchOrbVisualStatePublications(",
-            StringComparison.Ordinal);
-        int captureStart = proximity.IndexOf(
-            "private static ImmutableArray<int> CaptureSwarmOrbVisualItemIds(",
-            StringComparison.Ordinal);
-        Assert.True(prepareStart >= 0 && appendStart > prepareStart && captureStart > appendStart);
-        string prepare = proximity[prepareStart..appendStart];
-        string dispatch = proximity[appendStart..captureStart];
-
-        Assert.Contains("orbVisuals.Publish(matchingId, actors, sessions);", combat);
-        Assert.Contains(
-            "DispatchOrbVisualStatePublications(\n" +
-            "            PrepareOrbVisualStatePublications(matchingId, actors, matchingSessions));",
-            proximity);
-        AssertInOrder(
-            prepare,
-            "GameClientSession[] recipientSnapshot = matchingSessions.ToArray();",
-            "foreach (var observer in recipientSnapshot)",
-            "foreach (var visualActor in visualActors)",
-            "if (observer.Player.CurrentArea != actor.Area)",
-            "publications.Add(SwarmOrbVisualPublication.Remove(",
-            "visualStates.TryGetValue(key, out var previousState)",
-            "publications.Add(SwarmOrbVisualPublication.Publish(",
-            "CaptureSwarmOrbVisualItemIds(visualActor.OrbItemIds)");
-        Assert.DoesNotContain("Packet.Create", prepare);
-        Assert.DoesNotContain(".TrySend(", prepare);
-        Assert.DoesNotContain("visualStates[key] = state;", prepare);
-        Assert.DoesNotContain("visualStates.TryRemove(key, out _);", prepare);
+        string session = ReadNormalizedSource(
+            FindRepositoryRoot(), "game_server", "Sessions", "GameClientSession.Orb.cs");
+        string send = ReadMethodSlice(
+            session,
+            "internal void SendOrbVisualStateIfChanged(",
+            "internal void ForgetOrbVisualState(");
 
         AssertInOrder(
-            dispatch,
-            "CommitAndDispatchOrbVisualStatePublication(publication)",
-            "visualStates[key] = state;",
-            "visualStates.TryRemove(key, out _);",
+            send,
+            "_lastSentOrbVisualStates.TryGetValue(visual.ActorPlayerId, out var previousState)",
+            "_lastSentOrbVisualStates[visual.ActorPlayerId] = visual.State;",
             "Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE)",
-            "OrbItemIds = publication.OrbItemIds.ToList()",
-            "publication.Recipient!.TrySend(packet);");
-        Assert.DoesNotContain("catch", dispatch);
+            "OrbItemIds = visual.OrbItemIds.ToList()",
+            "TrySend(packet);");
+        Assert.DoesNotContain("catch", send);
+        Assert.Contains("internal void ForgetOrbVisualState(long actorPlayerId) => _lastSentOrbVisualStates.Remove(actorPlayerId);", session);
     }
 
     [Fact]

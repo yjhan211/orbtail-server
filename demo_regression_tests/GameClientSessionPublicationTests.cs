@@ -989,7 +989,7 @@ public sealed class GameClientSessionPublicationTests
             root,
             "game_server",
             "Sessions",
-            "GameClientSession.OrbSummon.cs");
+            "GameClientSession.Orb.cs");
         string doors = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Interactions.cs");
         string connection = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
@@ -1371,6 +1371,40 @@ public sealed class GameClientSessionPublicationTests
         using (session.Match.Enter())
             new PlayerPickupService(eventLogs, TestGameSessionServices.CreateHealthService(store, eventLogs), NullLogger<PlayerPickupService>.Instance).PickUp(session.Match, session.Player);
         return Task.CompletedTask;
+    }
+
+    [Fact]
+    public void OrbVisualState_IsSentOnceUntilItChangesAndAgainToAReconnectedSession()
+    {
+        using var fixture = new SessionFixture();
+        var observer = fixture.CreateSession(70001, 101, (AreaType)50);
+        var actor = fixture.CreateSession(70001, 102, (AreaType)50);
+        var publisher = new OrbVisualStatePublisher(fixture.Store);
+        var match = observer.Match;
+        var actors = new[]
+        {
+            new ProximityCombatActor(102, (AreaType)50, new Vector3f(), 107000010, 0, 0, 0, WeaponItemUid: 1, OrbEffectActive: true)
+        };
+        int Delivered(GameClientSession session) =>
+            fixture.ConnectionFor(session).DeliveredProtocols.Count(protocol => protocol == Protocol.G_TO_C_ORB_EFFECT_STATE);
+
+        using (match.Enter())
+        {
+            publisher.Publish(match.MatchingId, actors, [observer, actor]);
+            publisher.Publish(match.MatchingId, actors, [observer, actor]);
+        }
+        Assert.Equal(1, Delivered(observer));
+        var state = fixture.ConnectionFor(observer).DeserializeSingle<G_TO_C_ORB_EFFECT_STATE>(Protocol.G_TO_C_ORB_EFFECT_STATE);
+        Assert.Equal(102, state.PlayerId);
+        Assert.Equal([107000010], state.OrbItemIds);
+
+        // 같은 플레이어의 새 연결은 빈 캐시라 변경이 없어도 전부 다시 받는다.
+        var reconnected = fixture.CreateSession(70001, 101, (AreaType)50);
+        using (match.Enter())
+        {
+            publisher.Publish(match.MatchingId, actors, [reconnected, actor]);
+        }
+        Assert.Equal(1, Delivered(reconnected));
     }
 
     private sealed class SessionFixture : IDisposable
