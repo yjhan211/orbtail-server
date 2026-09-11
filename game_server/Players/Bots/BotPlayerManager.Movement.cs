@@ -1,8 +1,8 @@
 using System.Diagnostics;
-using game_server.combat;
-using game_server.field;
-using game_server.items;
-using game_server.monsters;
+using game_server.matches.combat;
+using game_server.matches.field;
+using game_server.matches.items;
+using game_server.matches.monsters;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;

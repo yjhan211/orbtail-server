@@ -1,4 +1,4 @@
-using game_server.combat;
+using game_server.matches.combat;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common.data;
 

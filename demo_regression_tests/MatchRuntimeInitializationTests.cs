@@ -1,7 +1,7 @@
-using game_server.field;
-using game_server.items;
 using game_server.matches;
-using game_server.monsters;
+using game_server.matches.field;
+using game_server.matches.items;
+using game_server.matches.monsters;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 

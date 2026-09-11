@@ -1,8 +1,8 @@
-using game_server.combat;
-using game_server.field;
-using game_server.logging;
 using game_server.matches;
+using game_server.matches.combat;
 using game_server.matches.entry;
+using game_server.matches.field;
+using game_server.matches.logging;
 using game_server.matches.results;
 using game_server.players;
 using game_server.players.bots;

@@ -1,5 +1,5 @@
-using game_server.combat;
-using game_server.logging;
+using game_server.matches.combat;
+using game_server.matches.logging;
 using network.common;
 using network.common.data;
 using network.common.data.helpers;

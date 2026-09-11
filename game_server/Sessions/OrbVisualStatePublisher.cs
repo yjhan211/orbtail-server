@@ -1,14 +1,12 @@
-using game_server.orbs;
 using System.Collections.Immutable;
-using game_server.combat;
 using game_server.matches;
-using game_server.sessions;
+using game_server.matches.combat;
 using MessagePack;
 using network.common;
 using network.common.data;
 using network.common.data.models;
 using network.packets;
-using OrbVisualState = game_server.orbs.OrbVisualStateCache.OrbVisualState;
+using OrbVisualState = game_server.sessions.OrbVisualStateCache.OrbVisualState;
 
 namespace game_server.sessions;
 

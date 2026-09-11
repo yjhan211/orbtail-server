@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
 using game_server;
-using game_server.combat;
 using game_server.matches;
+using game_server.matches.combat;
 using game_server.players.bots;
 using game_server.sessions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -39,13 +39,13 @@ public sealed class SwarmBotMovementPlanTests
             var encounter = Assert.IsType<SwarmBotEncounterDispatch>(dispatch.Encounter);
             Assert.Equal(targetId, encounter.TargetPlayerId);
             Assert.Null(encounter.TargetSession);
-            Assert.Equal(game_server.field.EncounterRevealManager.CorridorRevealEventType, encounter.EventType);
+            Assert.Equal(game_server.matches.field.EncounterRevealManager.CorridorRevealEventType, encounter.EventType);
             Assert.Empty(dispatch.DestinationRecipients);
 
             // 연결 없는 대상과의 조우도 쌍별 쿨다운을 기록한다.
             var next = match.Encounters.ResolveCorridorEncounter(-10, movement.Position,
                 [(targetId, target.Position!)]);
-            Assert.NotEqual(game_server.field.EncounterRevealManager.CorridorRevealEventType, next.EventType);
+            Assert.NotEqual(game_server.matches.field.EncounterRevealManager.CorridorRevealEventType, next.EventType);
         }
     }
 

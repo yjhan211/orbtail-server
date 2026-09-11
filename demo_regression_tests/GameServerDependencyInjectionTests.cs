@@ -1,9 +1,9 @@
 using System.Reflection;
 using game_server;
-using game_server.combat;
-using game_server.logging;
 using game_server.matches;
+using game_server.matches.combat;
 using game_server.matches.entry;
+using game_server.matches.logging;
 using game_server.matches.results;
 using game_server.players;
 using game_server.players.bots;
@@ -58,9 +58,9 @@ public sealed class GameServerDependencyInjectionTests
                 Type[] dependencyTypes =
                 [
                     typeof(MatchCombatService),
-                    typeof(game_server.field.MatchEnvironmentService),
+                    typeof(game_server.matches.field.MatchEnvironmentService),
                     typeof(game_server.players.bots.BotMovementService), typeof(game_server.players.bots.BotDecisionService),
-                    typeof(game_server.field.MatchZoneService)
+                    typeof(game_server.matches.field.MatchZoneService)
                 ];
                 foreach (var type in dependencyTypes)
                 {
@@ -81,9 +81,9 @@ public sealed class GameServerDependencyInjectionTests
                 var combat = typeof(MatchTickLoop).GetFields(flags)
                     .Single(field => field.FieldType == typeof(MatchCombatService)).GetValue(loop)!;
                 var zone = typeof(MatchTickLoop).GetFields(flags)
-                    .Single(field => field.FieldType == typeof(game_server.field.MatchZoneService)).GetValue(loop);
+                    .Single(field => field.FieldType == typeof(game_server.matches.field.MatchZoneService)).GetValue(loop);
                 Assert.Same(zone, typeof(MatchCombatService).GetFields(flags)
-                    .Single(field => field.FieldType == typeof(game_server.field.MatchZoneService)).GetValue(combat));
+                    .Single(field => field.FieldType == typeof(game_server.matches.field.MatchZoneService)).GetValue(combat));
             }
             Assert.DoesNotContain(typeof(GameServer).GetConstructors().Single().GetParameters(),
                 parameter => parameter.ParameterType == typeof(MatchCombatService));
@@ -99,7 +99,7 @@ public sealed class GameServerDependencyInjectionTests
     {
         using var provider = CreateProvider();
         // 로그를 먼저 요청해도 저장소와 순환 없이 조립되어야 한다.
-        provider.GetRequiredService<game_server.logging.GameEventLogManager>();
+        provider.GetRequiredService<game_server.matches.logging.GameEventLogManager>();
         var registry = provider.GetRequiredService<GameSessionRegistry>();
         var server = provider.GetRequiredService<GameServer>();
         var injectedRegistry = typeof(GameServer)
@@ -113,7 +113,7 @@ public sealed class GameServerDependencyInjectionTests
         Type[] serviceTypes =
         [
             typeof(game_server.matches.MatchRuntimeStore),
-            typeof(game_server.logging.GameEventLogManager),
+            typeof(game_server.matches.logging.GameEventLogManager),
             typeof(game_server.matches.entry.GameMatchEntryService),
             typeof(game_server.matches.entry.MatchEntryFailureHandler),
             typeof(game_server.matches.MatchTickService)
@@ -133,7 +133,7 @@ public sealed class GameServerDependencyInjectionTests
         Assert.Same(health, provider.GetRequiredService<PlayerHealthService>());
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
         foreach (var type in new[] { typeof(MatchCombatService), typeof(game_server.players.PlayerOrbService),
-                     typeof(game_server.field.MatchEnvironmentService), typeof(game_server.players.PlayerPickupService) })
+                     typeof(game_server.matches.field.MatchEnvironmentService), typeof(game_server.players.PlayerPickupService) })
         {
             var service = provider.GetRequiredService(type);
             var field = type.GetFields(flags).Single(field => field.FieldType == typeof(PlayerHealthService));

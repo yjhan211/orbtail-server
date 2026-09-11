@@ -9,7 +9,7 @@ namespace demo_regression_tests;
 
 public sealed class MovementValidationServiceTests
 {
-    private readonly PlayerMovementService _service = new(new game_server.logging.GameEventLogManager(_ => null), NullLogger<PlayerMovementService>.Instance);
+    private readonly PlayerMovementService _service = new(new game_server.matches.logging.GameEventLogManager(_ => null), NullLogger<PlayerMovementService>.Instance);
 
     public MovementValidationServiceTests()
     {

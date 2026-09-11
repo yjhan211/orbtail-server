@@ -1,7 +1,7 @@
 using System.Reflection;
 using game_server;
-using game_server.combat;
 using game_server.matches;
+using game_server.matches.combat;
 using game_server.players;
 using game_server.players.bots;
 using Microsoft.Extensions.DependencyInjection;
@@ -66,8 +66,8 @@ public sealed class MatchGameplayServiceTests
             Assert.True(service.ProcessSwarmScoreTimeout(match.MatchingId, deadline));
             Assert.True(match.IsEnded);
             Assert.False(service.ProcessSwarmScoreTimeout(match.MatchingId, deadline.AddSeconds(1)));
-            var events = provider.GetRequiredService<game_server.logging.GameEventLogManager>().GetForPersistence(match.MatchingId);
-            var result = Assert.Single(events, entry => entry.Type == game_server.logging.GameEventType.MatchEnded);
+            var events = provider.GetRequiredService<game_server.matches.logging.GameEventLogManager>().GetForPersistence(match.MatchingId);
+            var result = Assert.Single(events, entry => entry.Type == game_server.matches.logging.GameEventType.MatchEnded);
             Assert.Equal(winnerId, result.WinnerPlayerId);
         }
     }
@@ -206,7 +206,7 @@ public sealed class MatchGameplayServiceTests
             service.ProcessPeriodicBuffs(match, [player, survivor], now.AddSeconds(1));
             Assert.Equal(13, player.Health);
             Assert.Equal(3,
-                provider.GetRequiredService<game_server.logging.GameEventLogManager>()
+                provider.GetRequiredService<game_server.matches.logging.GameEventLogManager>()
                     .GetResultStats(match.MatchingId, playerId).TotalRecovery);
 
             player.AddPeriodicBuff(network.common.BuffSubType.HEALTH_DOWN, 20, 1, 10, now.AddSeconds(1));
@@ -283,7 +283,7 @@ public sealed class MatchGameplayServiceTests
     public void WaveVortexDamagesAndSlowsPlayersWithoutSessionOrBotState()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var waveAttacks = provider.GetRequiredService<game_server.combat.WaveOrbAttackService>();
+        var waveAttacks = provider.GetRequiredService<game_server.matches.combat.WaveOrbAttackService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947799);
         var now = DateTime.UtcNow;
         var human = new game_server.players.Player

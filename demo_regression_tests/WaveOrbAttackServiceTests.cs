@@ -1,6 +1,5 @@
-using game_server.combat;
 using game_server.matches;
-using game_server.orbs;
+using game_server.matches.combat;
 using game_server.players;
 using Microsoft.Extensions.DependencyInjection;
 using network.common;

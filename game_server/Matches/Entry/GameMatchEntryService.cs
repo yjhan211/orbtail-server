@@ -1,4 +1,4 @@
-using game_server.logging;
+using game_server.matches.logging;
 using game_server.matches.results;
 using MessagePack;
 using Microsoft.Extensions.Logging;

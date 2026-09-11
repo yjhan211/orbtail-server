@@ -1,14 +1,13 @@
 using System.Collections.Concurrent;
 using System.Reflection;
 using game_server;
-using game_server.combat;
-using game_server.field;
-using game_server.items;
-using game_server.logging;
 using game_server.matches;
+using game_server.matches.combat;
 using game_server.matches.entry;
+using game_server.matches.field;
+using game_server.matches.items;
+using game_server.matches.logging;
 using game_server.matches.results;
-using game_server.orbs;
 using game_server.players;
 using game_server.players.bots;
 using game_server.sessions;
@@ -993,7 +992,7 @@ public sealed class GameClientSessionPublicationTests
             "GameClientSession.OrbSummon.cs");
         string doors = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Interactions.cs");
         string connection = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
-        string combat = ReadNormalizedSource(root, "game_server", "Combat", "MatchCombatService.cs");
+        string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
         string bots = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotDecisionService.cs");
         string botPickup = ReadNormalizedSource(root, "game_server", "Players", "PlayerPickupService.cs");
 
@@ -1042,8 +1041,8 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("RunWithMatchLock", combat);
         Assert.DoesNotContain("RunWithMatchLock", bots);
         Assert.DoesNotContain("RunWithMatchLock", botPickup);
-        Assert.Contains("victim.InterruptDoor()", ReadNormalizedSource(root, "game_server", "Combat", "MatchCombatDamageService.cs"));
-        Assert.Contains("victim.Session?.SendDoorOpenInterrupted(interactId);", ReadNormalizedSource(root, "game_server", "Combat", "MatchCombatDamageService.cs"));
+        Assert.Contains("victim.InterruptDoor()", ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatDamageService.cs"));
+        Assert.Contains("victim.Session?.SendDoorOpenInterrupted(interactId);", ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatDamageService.cs"));
 
         Assert.DoesNotContain(
             "RunWithMatchLock",

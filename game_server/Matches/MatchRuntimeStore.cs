@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using game_server.logging;
+using game_server.matches.logging;
 using Microsoft.Extensions.Logging;
 
 namespace game_server.matches;

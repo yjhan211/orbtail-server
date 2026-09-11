@@ -1,7 +1,7 @@
-using game_server.field;
 using game_server.matches;
+using game_server.matches.field;
 using game_server.matches.results;
-using static game_server.field.MatchEnvironmentService;
+using static game_server.matches.field.MatchEnvironmentService;
 
 namespace demo_regression_tests;
 

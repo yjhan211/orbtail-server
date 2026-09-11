@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using game_server;
-using game_server.combat;
 using game_server.matches;
+using game_server.matches.combat;
 using game_server.matches.results;
 using game_server.players;
 using game_server.players.bots;
@@ -27,7 +27,7 @@ public class SwarmDamagePathTests
     public void TailCut_RemovesSuffixAndChargesAttacker()
     {
         string source = File.ReadAllText(
-            Path.Combine(FindRepositoryRoot(), "game_server", "Combat", "MatchCombatService.cs"));
+            Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "Combat", "MatchCombatService.cs"));
 
         // 2026-09-02 재무장 — 절단은 켜져 있어야 한다 (끌 때는 이 어서션도 같이 바꾼다).
         Assert.Contains("SwarmTrailCutEnabled = true", source);
@@ -87,7 +87,7 @@ public class SwarmDamagePathTests
                  {
                      (Path.Combine("game_server", "Sessions", "GameClientSession.Interactions.cs"),
                          "private void SendInteractableList"),
-                     (Path.Combine("game_server", "Combat", "MatchCombatDamageService.cs"),
+                     (Path.Combine("game_server", "Matches", "Combat", "MatchCombatDamageService.cs"),
                          "private void SpawnSwarmSummonStone")
                  })
         {
@@ -112,7 +112,7 @@ public class SwarmDamagePathTests
     {
         // #312 분리: 절단 기계는 SwarmArena, 봇 판단(자제·도주·치명상)은 SwarmBots가 소유한다.
         string source = File.ReadAllText(
-            Path.Combine(FindRepositoryRoot(), "game_server", "Combat", "MatchCombatService.cs"));
+            Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "Combat", "MatchCombatService.cs"));
         string botSource = File.ReadAllText(
             Path.Combine(FindRepositoryRoot(), "game_server", "Players", "Bots", "BotDecisionService.cs"));
 
@@ -163,9 +163,9 @@ public class SwarmDamagePathTests
         Assert.Contains("player.TryStopSleep()", movement);
 
         string combat = File.ReadAllText(
-            Path.Combine(root, "game_server", "Combat", "MatchCombatService.cs"));
+            Path.Combine(root, "game_server", "Matches", "Combat", "MatchCombatService.cs"));
         // 피격·절단 가해는 수면을 깨지 않고 교전 잠금만 찍는다.
-        Assert.Contains("victim.MarkSwarmCombat(nowUtc)", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Combat", "MatchCombatDamageService.cs")));
+        Assert.Contains("victim.MarkSwarmCombat(nowUtc)", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "Combat", "MatchCombatDamageService.cs")));
         Assert.Contains("MarkSwarmCombat(nowUtc)", combat);
         // 아레나에서 수면을 깨우는 호출이 되살아나면 계약 위반이다 (폐쇄·경고 깨우기 퇴역).
         Assert.DoesNotContain("BreakSwarmSleep", combat);

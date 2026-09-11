@@ -1,8 +1,7 @@
-using game_server.combat;
-using game_server.logging;
 using game_server.matches;
-using game_server.monsters;
-using game_server.orbs;
+using game_server.matches.combat;
+using game_server.matches.logging;
+using game_server.matches.monsters;
 using MessagePack;
 using network.common;
 using network.common.data;

@@ -2,9 +2,8 @@ using System.Collections.Immutable;
 using System.Reflection;
 using System.Text.Json;
 using game_server;
-using game_server.combat;
 using game_server.matches;
-using game_server.orbs;
+using game_server.matches.combat;
 using game_server.players;
 using game_server.sessions;
 using network.common.data;
@@ -112,9 +111,9 @@ public class ProximityAutoCombatDataTests
     {
         string repoRoot = FindRepositoryRoot();
         string gameServerSource = ReadNormalizedSource(
-            repoRoot, "game_server", "Combat", "MatchCombatService.cs");
+            repoRoot, "game_server", "Matches", "Combat", "MatchCombatService.cs");
         string sessionSource = ReadNormalizedSource(
-            repoRoot, "game_server", "Combat", "MatchCombatDamageService.cs");
+            repoRoot, "game_server", "Matches", "Combat", "MatchCombatDamageService.cs");
         string mapSource = ReadMapManagerSources(repoRoot);
         string playerSource = ReadNormalizedSource(
             repoRoot, "client", "Assets", "Scripts", "Components", "Player", "Player.cs");
@@ -193,7 +192,7 @@ public class ProximityAutoCombatDataTests
         string root = FindRepositoryRoot();
         string proximity = ReadNormalizedSource(
             root, "game_server", "Sessions", "OrbVisualStatePublisher.cs");
-        string combat = ReadNormalizedSource(root, "game_server", "Combat", "MatchCombatService.cs");
+        string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
         int prepareStart = proximity.IndexOf(
             "private ImmutableArray<SwarmOrbVisualPublication> PrepareOrbVisualStatePublications(",
             StringComparison.Ordinal);
@@ -267,7 +266,7 @@ public class ProximityAutoCombatDataTests
         string mapSource = ReadMapManagerSources(repoRoot);
 
         // #238: 레거시 잔상 공격 파이프라인 퇴역 — 현행 스웜의 몬스터 공격 피드백 계약을 검사한다.
-        string swarmSource = ReadNormalizedSource(repoRoot, "game_server", "Combat", "MatchCombatService.cs");
+        string swarmSource = ReadNormalizedSource(repoRoot, "game_server", "Matches", "Combat", "MatchCombatService.cs");
         Assert.Contains("SendMonsterHitNotification(", swarmSource);
         // 봇 플레이어 ID도 음수라 플레이어 맵 우선 해석이 계약이다 (#219 봇전 연출 증발 수리)
         Assert.Contains(
