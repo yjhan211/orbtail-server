@@ -69,6 +69,7 @@ internal static class GameServerTestAccess
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotDecisionService>.Instance);
         var field = new MatchFieldService(logs, orbTrails, health,
             cleanup, matchEliminations, results);
+        var trailCuts = new MatchTrailCutService(logs, orbTrails, combatDamage, health, decisions);
         var groundPickup = new PlayerPickupService(logs, health,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<PlayerPickupService>.Instance);
         Func<MatchRuntime, TimeProvider, MatchTickLoop> createLoop = (runtime, clock) =>
@@ -76,7 +77,7 @@ internal static class GameServerTestAccess
             var combat = new MatchCombatService(logs,
                 health, combatDamage, results,
                 new PlayerOrbService(health, combatDamage, orbTrails, logs),
-                new OrbVisualStatePublisher(), orbTrails,
+                new OrbVisualStatePublisher(), orbTrails, trailCuts,
                 new SunOrbAttackService(TestGameSessionServices.CreateHealthService(runtimes, logs, new game_server.matches.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), combatDamage, logs),
                 new WaveOrbAttackService(health, combatDamage, logs), decisions,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatService>.Instance);

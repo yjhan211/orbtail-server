@@ -1,3 +1,4 @@
+using network.common;
 using network.common.data.models;
 
 namespace game_server.matches.combat;
@@ -65,5 +66,26 @@ internal static class SwarmCombatGeometry
         t = (qpx * sy - qpy * sx) / denominator;
         float u = (qpx * ry - qpy * rx) / denominator;
         return t >= 0f && t <= 1f && u >= 0f && u <= 1f;
+    }
+
+    // 국소 화망 (#227): 사거리가 구역 전체를 덮으면 후미 절단과 머리 절단의 위험이 같다 — 어디를 자르든 상대의 모든
+    // 오브가 사정권이기 때문. 6이면 각 오브가 자기 열 좌표 주변만 덮으므로 깊게 자를수록 앞열 여러 오브의 사거리가
+    // 겹치는 자리로 들어가야 한다. 위험을 수치가 아니라 공간이 만든다.
+    public const float SwarmSunAttackRange = 6f;
+    public const float SwarmWindAttackRange = SwarmSunAttackRange;
+    public const float SwarmPveSameAreaAttackRange = 7f;
+
+    /// <summary>오브 사거리 판정. 공격자 액터의 사거리가 0이면 기본 오브 사거리를 쓴다.</summary>
+    public static bool IsWithinSwarmOrbRange(ProximityCombatActor attacker, ProximityCombatActor target)
+    {
+        float range = attacker.AttackRange > 0f ? attacker.AttackRange : Config.SWARM_ORB_ATTACK_RANGE;
+        return IsWithinSwarmOrbRange(attacker.Position, range, target.Position);
+    }
+
+    public static bool IsWithinSwarmOrbRange(Vector3f origin, float range, Vector3f target)
+    {
+        float dx = target.X - origin.X;
+        float dy = (target.Y - origin.Y) * GroundYScale;
+        return dx * dx + dy * dy <= range * range;
     }
 }

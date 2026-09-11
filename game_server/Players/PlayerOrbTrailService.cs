@@ -1,4 +1,6 @@
 using game_server.matches;
+using game_server.matches.combat;
+using network.common;
 using network.common.data;
 using network.common.data.models;
 
@@ -13,6 +15,8 @@ internal sealed class PlayerOrbTrailService
 {
     internal const float CutFlashRadius = 0.7f;
     internal const int CutVfxKind = 1;
+    private const float SwarmTrailSampleMinDistance = 0.08f;
+    private const float SwarmTrailTeleportResetDistance = 5f;
 
     public int CountOrbs(MatchRuntime runtime, Player player)
     {
@@ -142,5 +146,54 @@ internal sealed class PlayerOrbTrailService
             }
         }
         return destroyed;
+    }
+
+    /// <summary>참가자 이동을 경로 점으로 기록한다. 정지하면 경로가 얼어 열이 남고, 순간이동 거리면 경로를 새로 시작한다. 클라 PlayerTool.UpdateOrbTrail과 같은 규칙.</summary>
+    public void UpdateTrails(MatchRuntime runtime, List<SwarmParticipantSpatial> participants)
+    {
+        foreach (var participant in participants)
+        {
+            long key = participant.PlayerId;
+            if (!runtime.TrailCombat.OrbTrails.TryGetValue(key, out var points))
+            {
+                points = new List<Vector3f>();
+                runtime.TrailCombat.OrbTrails[key] = points;
+            }
+
+            var center = participant.Position;
+            if (points.Count == 0)
+            {
+                points.Add(new Vector3f(center.X, center.Y, 0f));
+                continue;
+            }
+
+            float moved = Vector3f.Distance(center, points[0]);
+            if (moved >= SwarmTrailTeleportResetDistance)
+            {
+                points.Clear();
+                points.Add(new Vector3f(center.X, center.Y, 0f));
+                continue;
+            }
+
+            if (moved >= SwarmTrailSampleMinDistance)
+            {
+                points.Insert(0, new Vector3f(center.X, center.Y, 0f));
+            }
+
+            var player = runtime.GetParticipant(participant.PlayerId)!;
+            int trailOrbCount = Math.Max(CountOrbs(runtime, player) + 2, 4);
+            float neededLength = Config.SWARM_ORB_TRAIL_FIRST_OFFSET + trailOrbCount * Config.SWARM_ORB_TRAIL_SPACING + 1f;
+            float accumulated = 0f;
+            for (int pointIndex = 1; pointIndex < points.Count; pointIndex++)
+            {
+                accumulated += Vector3f.Distance(points[pointIndex - 1], points[pointIndex]);
+                if (accumulated <= neededLength)
+                {
+                    continue;
+                }
+                points.RemoveRange(pointIndex + 1, points.Count - pointIndex - 1);
+                break;
+            }
+        }
     }
 }

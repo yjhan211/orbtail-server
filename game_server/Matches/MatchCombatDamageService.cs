@@ -103,7 +103,7 @@ internal sealed class MatchCombatDamageService(
     {
         if (runtime.IsEnded || victim.IsEliminated || damage <= 0) return;
 
-        RecordCombatContact(runtime, victim, sourcePlayerId);
+        RecordCombatContact(runtime, victim, sourcePlayerId, DateTime.UtcNow);
         eventLogs.LogHit(runtime.MatchingId, sourcePlayerId, victim.PlayerId, weaponItemId, damage,
             victim.Health > 0 && victim.Health - damage <= 0,
             BotPlayerManager.IsBotPlayerId(sourcePlayerId), DateTimeOffset.UtcNow);
@@ -126,9 +126,9 @@ internal sealed class MatchCombatDamageService(
         session.TrySend(packet);
     }
 
-    private void RecordCombatContact(MatchRuntime runtime, Player victim, long attackerId)
+    /// <summary>피격·절단 같은 교전 접촉을 피해자에게 남긴다. 교전 잠금, 문 열기 중단, 봇이면 도주 판단 입력까지.</summary>
+    public void RecordCombatContact(MatchRuntime runtime, Player victim, long attackerId, DateTime nowUtc)
     {
-        var nowUtc = DateTime.UtcNow;
         victim.MarkSwarmCombat(nowUtc);
         if (victim.InterruptDoor() is { } interactId)
         {
@@ -414,7 +414,7 @@ internal sealed class MatchCombatDamageService(
             ApplyProximityAutoCombatHit(runtime, healthService, target, attack.AttackerPlayerId, attack.Area,
                 attack.WeaponItemId, healthDamage, sourceHealth: attackerHealth);
         else
-            RecordCombatContact(runtime, target, attack.AttackerPlayerId);
+            RecordCombatContact(runtime, target, attack.AttackerPlayerId, DateTime.UtcNow);
         int targetHealth = target.Health;
 
         if (healthDamage > 0 && sendAttackerFeedback)

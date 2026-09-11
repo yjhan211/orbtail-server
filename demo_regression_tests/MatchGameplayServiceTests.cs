@@ -106,7 +106,7 @@ public sealed class MatchGameplayServiceTests
     {
         TestGameData.EnsureBattleItemCombatLoaded();
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var service = provider.GetRequiredService<MatchCombatService>();
+        var service = provider.GetRequiredService<MatchTrailCutService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947802);
         int initialHealth = health == 35 ? health : network.common.Config.MAX_HEALTH;
         var bot = new BotPlayerState { PlayerId = cutterId, Player = { Health = initialHealth } };
@@ -119,18 +119,13 @@ public sealed class MatchGameplayServiceTests
             match.RegisterParticipant(owner);
             if (cutterId < 0) match.Bots.GetBots().Add(bot);
             Assert.True(TestGameSessionServices.Orbs(match, owner.PlayerId).TryAddItemWithCapacity(107000010, 1, out _));
-            var orb = Assert.Single(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllItems());
-            var chains = new Dictionary<long, (network.common.AreaType Area, Vector3f OwnerPosition,
-                List<Vector3f> Points, List<long> Uids, List<int> ItemIds)>
-            {
-                [owner.PlayerId] = (network.common.AreaType.S2Ground, new Vector3f(0, -1, 0),
-                    [new Vector3f(0, 0, 0)], [orb.ItemUid], [orb.ItemId])
-            };
-            var cut = typeof(MatchCombatService).GetMethod("TryPerformSwarmTrailCut",
-                BindingFlags.Instance | BindingFlags.NonPublic)!;
-            cut.Invoke(service, [match, cutterId, cutterId, network.common.AreaType.S2Ground,
-                new Vector3f(-0.7f, 0.15f, 0), new Vector3f(0.7f, 0.15f, 0), chains, now,
-                new List<game_server.sessions.GameClientSession>()]);
+            Assert.Single(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllItems());
+            owner.CurrentArea = network.common.AreaType.S2Ground;
+            owner.Position = new Vector3f(0, -1, 0);
+            var orbPointsByOwner = new Dictionary<long, List<Vector3f>> { [owner.PlayerId] = [new Vector3f(0, 0, 0)] };
+            service.TryPerformSwarmTrailCut(match, cutterId, network.common.AreaType.S2Ground,
+                new Vector3f(-0.7f, 0.15f, 0), new Vector3f(0.7f, 0.15f, 0), orbPointsByOwner, now,
+                new List<game_server.sessions.GameClientSession>());
 
             if (health == 35)
             {
