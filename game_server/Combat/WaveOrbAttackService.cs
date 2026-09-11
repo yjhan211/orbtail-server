@@ -3,7 +3,6 @@ using game_server.logging;
 using game_server.matches;
 using game_server.orbs;
 using game_server.players;
-using game_server.players.bots;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -99,7 +98,7 @@ internal sealed class WaveOrbAttackService(
         {
             if (participant.IsEliminated || participant.PlayerId == ownerId || participant.CurrentArea != area || participant.Position == null)
                 continue;
-            if (!SwarmCombatGeometry.IsWithinGroundRadius(position, participant.Position, radius + SwarmBotDodgePolicy.SwarmCrossfirePlayerRadius))
+            if (!SwarmCombatGeometry.IsWithinGroundRadius(position, participant.Position, radius + SwarmCombatGeometry.PlayerRadius))
                 continue;
 
             // 충격 면역 없음: 겹친 링에 다 맞는다 — 침수는 지속 갱신이라 중첩 무해.

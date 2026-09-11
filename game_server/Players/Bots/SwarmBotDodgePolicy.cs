@@ -1,3 +1,4 @@
+using game_server.combat;
 using game_server.matches;
 using game_server.orbs;
 using network.common;
@@ -16,12 +17,6 @@ namespace game_server.players.bots;
 /// </summary>
 public static class SwarmBotDodgePolicy
 {
-    /// <summary>바닥면 Y 배율 — 교차사격 판정·회피가 같은 기하를 써야 한다 (GameServer.SwarmCrossfire 별칭 원본).</summary>
-    public const float SwarmGroundYScale = 2f;
-
-    /// <summary>플레이어 몸통 반경 — 교차사격 판정·회피 공용.</summary>
-    public const float SwarmCrossfirePlayerRadius = 0.25f;
-
     // 봇이 반응하는 착탄 예상 시간 상한 — 이보다 멀면 아직 안 움직인다(예고 0.55초 + 비행이라 대개 1초 안팎).
     private const float SwarmBotDodgeHorizonSeconds = 1.5f;
     // 판정 띠 밖으로 이만큼 여유를 더 벌린다 — 띠 가장자리에서 멈추면 몸통 반경만큼 다시 맞는다.
@@ -64,14 +59,14 @@ public static class SwarmBotDodgePolicy
                 continue;
 
             float rx = position.X - threat.OriginX;
-            float ry = (position.Y - threat.OriginY) * SwarmGroundYScale;
+            float ry = (position.Y - threat.OriginY) * SwarmCombatGeometry.GroundYScale;
             float along = rx * threat.AxisX + ry * threat.AxisY;
             float perp = rx * -threat.AxisY + ry * threat.AxisX;
-            float band = threat.HalfWidth + SwarmCrossfirePlayerRadius + SwarmBotDodgeMargin;
+            float band = threat.HalfWidth + SwarmCombatGeometry.PlayerRadius + SwarmBotDodgeMargin;
             if (MathF.Abs(perp) > band)
                 continue;
-            if (along < -threat.HalfWidth - SwarmCrossfirePlayerRadius ||
-                along > threat.GroundLength + threat.HalfWidth + SwarmCrossfirePlayerRadius)
+            if (along < -threat.HalfWidth - SwarmCombatGeometry.PlayerRadius ||
+                along > threat.GroundLength + threat.HalfWidth + SwarmCombatGeometry.PlayerRadius)
                 continue;
 
             // 앞머리 위치: 예고 중이면 원점 앞 캡, 발동 뒤면 속도 × 경과.
@@ -80,7 +75,7 @@ public static class SwarmBotDodgePolicy
                 ? -threat.HalfWidth
                 : -threat.HalfWidth + (float)sinceArmed * threat.SweepSpeed;
             // 이미 지나간 투사체는 위협이 아니다.
-            if (front > along + SwarmCrossfirePlayerRadius)
+            if (front > along + SwarmCombatGeometry.PlayerRadius)
                 continue;
 
             float timeToHit = (float)Math.Max(0d, -sinceArmed) +
@@ -93,13 +88,13 @@ public static class SwarmBotDodgePolicy
             float side = MathF.Abs(perp) < 0.02f ? ((botPlayerId & 1) == 0 ? 1f : -1f) : MathF.Sign(perp);
             // 바닥면 수직 (-ay, ax) → 월드로 되돌린다 (Y는 ÷2).
             float wx = -threat.AxisY * side;
-            float wy = threat.AxisX * side / SwarmGroundYScale;
+            float wy = threat.AxisX * side / SwarmCombatGeometry.GroundYScale;
             float wl = MathF.Sqrt(wx * wx + wy * wy);
             if (wl < 0.001f)
                 continue;
             // 유지 시간 = 앞머리가 내 자리를 지나 몸 반경만큼 더 간 뒤 한 박자. 그동안은 띠 밖에 서서 기다린다.
             float holdSeconds = timeToHit +
-                                (2f * SwarmCrossfirePlayerRadius) / Math.Max(0.01f, threat.SweepSpeed) +
+                                (2f * SwarmCombatGeometry.PlayerRadius) / Math.Max(0.01f, threat.SweepSpeed) +
                                 SwarmBotDodgeHoldSlackSeconds;
             bestDirection = new SwarmBotDodgeAdvice(wx / wl, wy / wl, holdSeconds);
         }

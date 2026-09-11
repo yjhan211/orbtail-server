@@ -137,6 +137,7 @@ internal sealed class PlayerOrbTrailService
         {
             if (inventory.TryRemoveItem(orbs[ordinal].ItemUid, 1, out var destroyedItem) && destroyedItem != null)
             {
+                player.ForgetOrbTimers(destroyedItem.ItemUid);
                 destroyed.Add(destroyedItem);
             }
         }

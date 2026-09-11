@@ -3,7 +3,6 @@ using game_server.logging;
 using game_server.matches;
 using game_server.monsters;
 using game_server.orbs;
-using game_server.players.bots;
 using MessagePack;
 using network.common;
 using network.common.data;
@@ -22,13 +21,12 @@ internal sealed class PlayerOrbService(
     PlayerOrbTrailService orbTrails,
     GameEventLogManager eventLogs)
 {
-    private const float SwarmGroundYScale = SwarmBotDodgePolicy.SwarmGroundYScale;
+    private const float SwarmGroundYScale = SwarmCombatGeometry.GroundYScale;
     private const float SwarmCrossfireMonsterRadius = SwarmCombatGeometry.MonsterRadius;
     private const float SwarmCrossfireMonsterBodyHeight = 0.6f;
     private const int OrbRingEffectKindWaveOrb = 2;
     private const float SwarmCrossfireWallProbeStep = 0.2f;
     private const float SwarmCrossfireMaxGroundLength = 40f;
-    private const float SwarmWindBladePlayerRadius = 0.25f;
     private static double SwarmWindBladeVictimImmuneSeconds => SwarmConfigData.GetDouble("SWARM_WIND_BLADE_VICTIM_IMMUNE_SECONDS", 0.9d);
     private static double WaveOrbAttackIntervalSeconds => SwarmConfigData.GetDouble("SWARM_WAVE_VORTEX_INTERVAL_SECONDS", 2d);
     private static double WaveOrbDetonationDelaySeconds => SwarmConfigData.GetDouble("SWARM_WAVE_VORTEX_FUSE_SECONDS", 0.65d);
@@ -156,14 +154,8 @@ internal sealed class PlayerOrbService(
             }
 
             long orbUid = orb.ItemUid;
-            if (!owner.WaveOrbNextAttackAtUtc.TryGetValue(orbUid, out var nextAttackAtUtc))
-            {
-                double phase = 0.5d + orb.ItemUid % 977 / 977d;
-                owner.WaveOrbNextAttackAtUtc[orbUid] = nowUtc.AddSeconds(WaveOrbAttackIntervalSeconds * phase);
-                continue;
-            }
-
-            if (nowUtc < nextAttackAtUtc)
+            double firstPhase = 0.5d + orb.ItemUid % 977 / 977d;
+            if (!owner.IsWaveOrbDue(orbUid, nowUtc, WaveOrbAttackIntervalSeconds, firstPhase))
             {
                 continue;
             }
@@ -209,7 +201,7 @@ internal sealed class PlayerOrbService(
                     {
                         continue;
                     }
-                    if (!SwarmCombatGeometry.IsWithinGroundRadius(orbPosition, participant.Position, radius + SwarmBotDodgePolicy.SwarmCrossfirePlayerRadius))
+                    if (!SwarmCombatGeometry.IsWithinGroundRadius(orbPosition, participant.Position, radius + SwarmCombatGeometry.PlayerRadius))
                     {
                         continue;
                     }
@@ -223,7 +215,7 @@ internal sealed class PlayerOrbService(
                 continue;
             }
 
-            owner.WaveOrbNextAttackAtUtc[orbUid] = nowUtc.AddSeconds(WaveOrbAttackIntervalSeconds);
+            owner.ScheduleNextWaveOrbAttack(orbUid, nowUtc, WaveOrbAttackIntervalSeconds);
 
             if (sunDamageMultiplier < 0f)
             {
@@ -560,7 +552,7 @@ internal sealed class PlayerOrbService(
                     continue;
                 }
 
-                if (!SwarmCombatGeometry.IsWithinGroundRadius(orbPosition, participant.Position!, radius + SwarmWindBladePlayerRadius))
+                if (!SwarmCombatGeometry.IsWithinGroundRadius(orbPosition, participant.Position!, radius + SwarmCombatGeometry.PlayerRadius))
                 {
                     continue;
                 }

@@ -58,6 +58,7 @@ internal sealed class PlayerEliminationService(
         if (position != null && eliminatedArea != AreaType.None)
         {
             var removedItems = eliminatedPlayer.Orbs.TakeAllItems();
+            eliminatedPlayer.ClearOrbTimers();
             var droppedItemIds = new List<int>();
             foreach (var item in removedItems)
             {

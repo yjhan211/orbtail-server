@@ -1,3 +1,4 @@
+using game_server.combat;
 using game_server.players.bots;
 using network.common;
 using network.common.data.models;
@@ -134,7 +135,7 @@ public sealed class SunOrbAttackState
         foreach (SwarmCrossfireShape shape in _shapes)
         {
             float axisX = shape.End.X - shape.Origin.X;
-            float axisY = (shape.End.Y - shape.Origin.Y) * SwarmBotDodgePolicy.SwarmGroundYScale;
+            float axisY = (shape.End.Y - shape.Origin.Y) * SwarmCombatGeometry.GroundYScale;
             float length = MathF.Sqrt(axisX * axisX + axisY * axisY);
             if (length < 0.01f)
                 continue;

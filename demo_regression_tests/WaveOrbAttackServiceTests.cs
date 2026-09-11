@@ -31,11 +31,11 @@ public sealed class WaveOrbAttackServiceTests
             attacks.ActivateWaveOrbs(match, owner, now);
             Assert.Empty(match.WaveOrbAttacks.PendingAttacks);
             long key = orb.ItemUid;
-            var readyAt = owner.WaveOrbNextAttackAtUtc[key];
+            var readyAt = owner.WaveOrbNextAttackAt(key)!.Value;
             Assert.True(readyAt > now);
             attacks.ActivateWaveOrbs(match, owner, readyAt);
             Assert.Empty(match.WaveOrbAttacks.PendingAttacks);
-            Assert.Equal(readyAt, owner.WaveOrbNextAttackAtUtc[key]);
+            Assert.Equal(readyAt, owner.WaveOrbNextAttackAt(key)!.Value);
             victim.Position = trails.GetOrbPosition(match, owner, 0, owner.Position);
             attacks.ActivateWaveOrbs(match, owner, readyAt);
             var pending = Assert.Single(match.WaveOrbAttacks.PendingAttacks);
@@ -95,10 +95,10 @@ public sealed class WaveOrbAttackServiceTests
             match.RegisterParticipant(second);
             var orb = first.Orbs.AddItem(107000030);
             attacks.ActivateWaveOrbs(match, first, now);
-            Assert.True(first.WaveOrbNextAttackAtUtc.ContainsKey(orb.ItemUid));
-            Assert.Empty(second.WaveOrbNextAttackAtUtc);
+            Assert.NotNull(first.WaveOrbNextAttackAt(orb.ItemUid));
+            Assert.Null(second.WaveOrbNextAttackAt(orb.ItemUid));
             first.Status = PlayerMatchStatus.ELIMINATED;
-            var readyAt = first.WaveOrbNextAttackAtUtc[orb.ItemUid];
+            var readyAt = first.WaveOrbNextAttackAt(orb.ItemUid)!.Value;
             attacks.ActivateWaveOrbs(match, first, readyAt);
             Assert.Empty(match.WaveOrbAttacks.PendingAttacks);
         }

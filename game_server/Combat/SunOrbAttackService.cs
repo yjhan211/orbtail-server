@@ -4,7 +4,6 @@ using game_server.matches;
 using game_server.monsters;
 using game_server.orbs;
 using game_server.players;
-using game_server.players.bots;
 using game_server.sessions;
 using MessagePack;
 using network.common;
@@ -27,12 +26,12 @@ internal sealed class SunOrbAttackService(
     private static readonly bool SwarmCrossfireEnabled = true;
 
     // 아이소 바닥면 정규화 계수 — 접촉 판정·물폭탄 반경과 같은 dy×2.
-    // 봇 회피(SwarmBotDodgePolicy)와 같은 기하를 써야 해서 정책 상수를 별칭한다 (#297).
-    private const float SwarmGroundYScale = SwarmBotDodgePolicy.SwarmGroundYScale;
+    // 봇 회피와 같은 기하를 써야 해서 공용 상수를 별칭한다.
+    private const float SwarmGroundYScale = SwarmCombatGeometry.GroundYScale;
     // 몬스터 몸통 여유 — 앞머리가 몸 가장자리를 스쳐도 맞는다 (접촉 반경 0.32와 같은 급).
     private const float SwarmCrossfireMonsterRadius = SwarmCombatGeometry.MonsterRadius;
     // 플레이어 몸통 여유 — 중심점만 재면 캡슐 가장자리가 몸을 스치는 장면에서 "지나갔는데 안 맞는다". 몸 폭의 절반쯤.
-    private const float SwarmCrossfirePlayerRadius = SwarmBotDodgePolicy.SwarmCrossfirePlayerRadius;
+    private const float SwarmCrossfirePlayerRadius = SwarmCombatGeometry.PlayerRadius;
 
     /// <summary>이 발사가 교차사격 모양(태양 폭발 투사체)으로 처리되는가 — 유도탄 경로를 대체한다.</summary>
     public static bool IsSwarmCrossfireWeapon(int weaponItemId) => IsSwarmCrossfireSun(weaponItemId);

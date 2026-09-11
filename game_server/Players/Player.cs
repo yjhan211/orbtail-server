@@ -71,7 +71,7 @@ public class Player
     private readonly Dictionary<long, DateTime> _windOrbNextAttackAtUtc = new();
     private readonly Dictionary<long, DateTime> _windOrbEngagedAtUtc = new();
     /// <summary>파도 오브 UID별 다음 발동 시각. 매치 잠금 안에서 접근한다.</summary>
-    internal Dictionary<long, DateTime> WaveOrbNextAttackAtUtc { get; } = new();
+    private readonly Dictionary<long, DateTime> _waveOrbNextAttackAtUtc = new();
     /// <summary>소환석 잔액과 성공한 소환 횟수. 비용·후보·지급 규칙은 PlayerOrbGrowthService에 있다.</summary>
     public SummonStoneState SummonStones { get; internal set; }
 
@@ -395,6 +395,42 @@ public class Player
         }
 
         return (nowUtc - engagedAtUtc).TotalSeconds >= durationSeconds;
+    }
+
+    /// <summary>
+    ///     파도 오브가 발동할 시각이 됐는지. 처음 본 오브는 위상만큼 미룬 첫 발동 시각만 잡고 false를 돌려준다.
+    ///     발동이 확정되면 ScheduleNextWaveOrbAttack으로 다음 시각을 잡는다.
+    /// </summary>
+    internal bool IsWaveOrbDue(long itemUid, DateTime nowUtc, double intervalSeconds, double firstPhase)
+    {
+        if (!_waveOrbNextAttackAtUtc.TryGetValue(itemUid, out DateTime nextAttackAtUtc))
+        {
+            _waveOrbNextAttackAtUtc[itemUid] = nowUtc.AddSeconds(intervalSeconds * firstPhase);
+            return false;
+        }
+
+        return nowUtc >= nextAttackAtUtc;
+    }
+
+    internal void ScheduleNextWaveOrbAttack(long itemUid, DateTime nowUtc, double intervalSeconds) =>
+        _waveOrbNextAttackAtUtc[itemUid] = nowUtc.AddSeconds(intervalSeconds);
+
+    internal DateTime? WaveOrbNextAttackAt(long itemUid) =>
+        _waveOrbNextAttackAtUtc.TryGetValue(itemUid, out DateTime nextAttackAtUtc) ? nextAttackAtUtc : null;
+
+    /// <summary>오브가 절단·드롭으로 사라지면 그 UID의 발동 시각을 지운다.</summary>
+    internal void ForgetOrbTimers(long itemUid)
+    {
+        _windOrbNextAttackAtUtc.Remove(itemUid);
+        _windOrbEngagedAtUtc.Remove(itemUid);
+        _waveOrbNextAttackAtUtc.Remove(itemUid);
+    }
+
+    internal void ClearOrbTimers()
+    {
+        _windOrbNextAttackAtUtc.Clear();
+        _windOrbEngagedAtUtc.Clear();
+        _waveOrbNextAttackAtUtc.Clear();
     }
 
     /// <summary>이동 구간에서 획득 반경에 닿은 바닥 아이템. 다음 자동 줍기 틱이 집는다.</summary>
