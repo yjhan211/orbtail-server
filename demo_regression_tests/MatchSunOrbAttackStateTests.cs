@@ -6,7 +6,7 @@ using network.common.data.models;
 
 namespace demo_regression_tests;
 
-public sealed class SunOrbAttackStateTests
+public sealed class MatchSunOrbAttackStateTests
 {
     private static readonly DateTime NowUtc =
         new(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -14,7 +14,7 @@ public sealed class SunOrbAttackStateTests
     [Fact]
     public void ShapeQueries_PreserveTelegraphBoundariesAnchorsAndRemovalLifecycle()
     {
-        SunOrbAttackState state = CreateState();
+        MatchSunOrbAttackState state = CreateState();
         SwarmCrossfireShape first = CreateShape(
             eventId: 1,
             ownerId: 10,
@@ -62,7 +62,7 @@ public sealed class SunOrbAttackStateTests
     public void DodgeSnapshot_IsGroundScaledImmutableAndPublishedAfterCompletedRemovalPass()
     {
         const long matchingId = 43001;
-        SunOrbAttackState state = CreateState(matchingId);
+        MatchSunOrbAttackState state = CreateState(matchingId);
         SwarmCrossfireShape first = CreateShape(
             eventId: 1,
             ownerId: 10,
@@ -125,7 +125,7 @@ public sealed class SunOrbAttackStateTests
     [Fact]
     public void SunBurn_RefreshesPayloadAndUsesInclusiveDueAndExpiryBoundaries()
     {
-        SunOrbAttackState state = CreateState();
+        MatchSunOrbAttackState state = CreateState();
         const long victimId = 20;
         var applied = new List<(long VictimId, SwarmSunBurnState Burn)>();
 
@@ -197,7 +197,7 @@ public sealed class SunOrbAttackStateTests
     [Fact]
     public void SunBurn_CallbackFailureDoesNotAdvanceOrRemoveState()
     {
-        SunOrbAttackState state = CreateState();
+        MatchSunOrbAttackState state = CreateState();
         const long victimId = 20;
         state.SetSunBurn(
             victimId,
@@ -222,7 +222,7 @@ public sealed class SunOrbAttackStateTests
     [Fact]
     public void Convergence_UsesInclusiveOneSecondWindowAndResetsAfterIt()
     {
-        SunOrbAttackState state = CreateState();
+        MatchSunOrbAttackState state = CreateState();
 
         SwarmCrossfireConvergenceObservation first = state.TrackConvergence(100, NowUtc);
         SwarmCrossfireConvergenceObservation exactBoundary =
@@ -242,7 +242,7 @@ public sealed class SunOrbAttackStateTests
         Assert.Equal(2, state.ConvergenceWindowCount);
     }
 
-    private static SunOrbAttackState CreateState(long matchingId = 43000) =>
+    private static MatchSunOrbAttackState CreateState(long matchingId = 43000) =>
         TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance)
             .GetOrCreate(matchingId).SunOrbAttacks;
 

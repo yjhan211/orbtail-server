@@ -21,10 +21,10 @@ public readonly record struct SwarmBotDodgeAdvice(float DirectionX, float Direct
 public partial class BotPlayerManager
 {
     // 같은 매치의 문 상태를 이동 판정에 사용한다.
-    private readonly DoorState _doors;
+    private readonly MatchDoorState _doors;
 
     // 회피 판단 시 같은 매치의 최신 공격 스냅샷을 읽는다.
-    private readonly SunOrbAttackState _sunOrbAttacks;
+    private readonly MatchSunOrbAttackState _sunOrbAttacks;
 
     // 배회 폴백(잔상 사냥 실패 시)에서 최저 인원 방으로 흩어질 확률 — 봇이 한 방에 뭉치지 않게.
     private const double SwarmWanderScatterProbability = 0.3;
@@ -52,7 +52,7 @@ public partial class BotPlayerManager
 
     private readonly Random _rng = Random.Shared;
 
-    internal BotPlayerManager(long matchingId, ILogger logger, DoorState doors, SunOrbAttackState sunOrbAttacks, GameEventLogManager eventLogs)
+    internal BotPlayerManager(long matchingId, ILogger logger, MatchDoorState doors, MatchSunOrbAttackState sunOrbAttacks, GameEventLogManager eventLogs)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
         _matchingId = matchingId;

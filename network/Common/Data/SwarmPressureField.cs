@@ -88,11 +88,10 @@ namespace network.common.data
 
         /// <summary>
         ///     매치 경과 시간(초)의 안전 반경. 서버 판정과 클라 경계 렌더가 같은 시계를 읽는다.
-        ///     자기장이 꺼졌거나 유예 중이면 전 맵이 안전(double.MaxValue)이다.
+        ///     유예 중이면 전 맵이 안전(double.MaxValue)이다.
         /// </summary>
         public static double GetSafeDistanceAtElapsed(double elapsedSeconds)
         {
-            if (!Config.SWARM_PRESSURE_FIELD_ENABLED) return double.MaxValue;
             double shrinkElapsed = elapsedSeconds - HoldSeconds;
             if (shrinkElapsed <= 0) return double.MaxValue;
             double progress = Math.Min(1d, shrinkElapsed / ShrinkSeconds);

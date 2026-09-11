@@ -1,4 +1,4 @@
-using game_server.matches.items;
+using game_server.matches;
 using game_server.players;
 using network.common;
 using network.common.data.models;
@@ -13,7 +13,7 @@ public sealed class GroundItemLandingTests
     public void PickupUsesReducedRadiusAfterLanding(int itemId, float radius)
     {
         var clock = new Clock();
-        var items = new GroundItemManager(984401, clock);
+        var items = new MatchGroundItemState(clock);
         var item = Assert.Single(items.SpawnItems(Config.SWARM_MATCH_GROUND_AREA, 0, 0, [itemId]));
         clock.Advance(TimeSpan.FromSeconds(1));
         Assert.Equal(GroundItemClaimStatus.TooFar, items.TryClaim(item.GroundItemUid, 1,
@@ -26,7 +26,7 @@ public sealed class GroundItemLandingTests
     public void LandingBlocksBothCandidatesAndClaimUntilExactDeadline()
     {
         var clock = new Clock();
-        var items = new GroundItemManager(984402, clock);
+        var items = new MatchGroundItemState(clock);
         var item = Assert.Single(items.SpawnItems(Config.SWARM_MATCH_GROUND_AREA, 0, 0, [Config.KEY_GROUND_ITEM_ID]));
         var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
         var at = new Vector3f(item.PositionX, item.PositionY, 0);

@@ -85,7 +85,7 @@ internal sealed class SunOrbAttackService(
         if (!SwarmCrossfireEnabled)
             return;
 
-        SunOrbAttackState sunOrbAttacks = runtime.SunOrbAttacks;
+        MatchSunOrbAttackState sunOrbAttacks = runtime.SunOrbAttacks;
         IReadOnlyList<SwarmArenaCombatTarget>? monsters = null;
         int shapesBefore = sunOrbAttacks.ShapeCount;
         for (int index = sunOrbAttacks.ShapeCount - 1; index >= 0; index--)

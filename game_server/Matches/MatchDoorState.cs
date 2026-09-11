@@ -4,11 +4,12 @@ using network.common.data;
 namespace game_server.matches;
 
 /// <summary>
-///     매치 하나의 열린 문을 보관한다. MatchRuntime이 생성과 종료를 책임진다.
-///     읽기·변경·정리는 호출자가 매치 잠금 안에서 수행한다. 내부에서는 별도 잠금을 잡지 않는다.
-///     종료 후에는 다시 초기화하거나 열 수 없다.
+///     매치별 문 개폐 상태를 관리한다.
+///     초기 열린 문을 설정하고, 문 열기와 구역 폐쇄에 따른 닫기를 반영한다.
+///     MatchRuntime이 소유하며, 호출자는 매치 잠금을 보유해야 한다.
+///     종료 정리 후에는 다시 초기화하거나 문을 열 수 없다.
 /// </summary>
-internal sealed class DoorState
+internal sealed class MatchDoorState
 {
     private readonly HashSet<int> _openDoors = [];
     private bool _initialized;
@@ -17,12 +18,11 @@ internal sealed class DoorState
     public void Initialize(IEnumerable<AreaType>? initiallyLockedAreas = null)
     {
         var lockedAreas = initiallyLockedAreas?.ToHashSet() ?? [];
-        int[] initiallyOpenDoorIds = GameDoorData.GetAll()
-            .Where(door => !lockedAreas.Contains(door.AreaType) && door.IsInitiallyOpen)
-            .Select(door => door.DoorId)
-            .ToArray();
+        int[] initiallyOpenDoorIds = GameDoorData.GetAll().Where(door => !lockedAreas.Contains(door.AreaType) && door.IsInitiallyOpen).Select(door => door.DoorId).ToArray();
         if (_cleared || _initialized)
+        {
             return;
+        }
         _openDoors.UnionWith(initiallyOpenDoorIds);
         _initialized = true;
     }
@@ -30,22 +30,28 @@ internal sealed class DoorState
     public bool OpenDoor(int doorId)
     {
         if (_cleared)
+        {
             return false;
+        }
         _initialized = true;
         return _openDoors.Add(doorId);
     }
 
     public IReadOnlyList<int> CloseDoorsForAreas(IEnumerable<AreaType> areas)
     {
-        int[] doorIds = areas.Distinct()
-            .SelectMany(GameDoorData.GetByAreaType)
-            .Select(door => door.DoorId).Distinct().ToArray();
+        int[] doorIds = areas.Distinct().SelectMany(GameDoorData.GetByAreaType).Select(door => door.DoorId).Distinct().ToArray();
         if (_cleared)
+        {
             return [];
+        }
         var changed = new List<int>();
         foreach (int doorId in doorIds)
+        {
             if (_openDoors.Remove(doorId))
+            {
                 changed.Add(doorId);
+            }
+        }
         return changed;
     }
 

@@ -53,40 +53,6 @@ public sealed class MatchTelemetryTests
     }
 
     [Fact]
-    public void ClosureWarningTracksAdditionalExploreExitAndReentry()
-    {
-        const long matchingId = 195002;
-        var log = TestGameEventLogs.Create();
-
-        log.LogClosureWarningSnapshot(
-            matchingId,
-            202,
-            ["Library"],
-            "Library",
-            health: 40,
-            inventorySlotsUsed: 5,
-            inventorySlotCapacity: 6,
-            closureAtUnixMs: DateTimeOffset.UtcNow.AddSeconds(15).ToUnixTimeMilliseconds(),
-            isBot: false);
-        log.LogExploreStart(matchingId, 202, 88, "Library", isBot: false);
-        log.LogMove(matchingId, 202, "Library", "Corridor1F", isBot: false);
-        log.LogMove(matchingId, 202, "Corridor1F", "Library", isBot: false);
-
-        var events = log.GetRecent(matchingId, 5_000);
-        var snapshot = Assert.Single(events, entry => entry.Type == GameEventType.ClosureWarningSnapshot);
-        Assert.Equal(40, snapshot.Health);
-        Assert.Equal(5, snapshot.InventorySlotsUsed);
-
-        var exit = Assert.Single(events, entry => entry.Type == GameEventType.ClosureWarningExit);
-        Assert.Equal(1, exit.AdditionalExploreCount);
-        Assert.NotNull(exit.ExitedAtUnixMs);
-
-        var reentry = Assert.Single(events, entry => entry.Type == GameEventType.ClosureWarningReentry);
-        Assert.Equal(1, reentry.AdditionalExploreCount);
-        Assert.NotNull(reentry.ReenteredAtUnixMs);
-    }
-
-    [Fact]
     public void MilestoneAndEndEventsExposeCombatAndTieBreakEvidence()
     {
         const long matchingId = 195003;

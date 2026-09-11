@@ -182,8 +182,6 @@ internal sealed class BotDecisionService(
 
     // 폐쇄 조기 철수 (#226 F): 경고 잔여가 (기본 + 오브당 가산) 이하로 내려오면 나간다 —
     // 긴 꼬리는 문 통과가 느리고, 폐쇄 잔류 꼬리는 무보상 파괴된다.
-    private const double SwarmBotClosureEvacuateBaseSeconds = 4d;
-    private const double SwarmBotClosureEvacuatePerOrbSeconds = 0.5d;
 
     // 자기장 대피 여유 (셀, #272): 경계에 이만큼 다가서면 미리 물러나고, 두 배 안쪽까지 들어간다.
     // 5셀 = 약 18초 여유. School2는 경계가 초당 약 0.28셀로 조여 3셀이면 11초뿐이라 합류에서 통로로 이송하는
@@ -364,29 +362,6 @@ internal sealed class BotDecisionService(
                     fieldEvacuationArea,
                     fieldEvacuationCell,
                     BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fieldEvacuationCell));
-            }
-        }
-
-        // 0.3) 폐쇄 조기 철수 (#226 F): 경고 구역에서는 꼬리 길이에 비례해 일찍 나간다.
-        var closureSnapshot = runtime.Closures.GetClientStateSnapshot();
-        if (closureSnapshot.WarningAreas.Contains(bot.Player.CurrentArea))
-        {
-            int trailOrbCount = orbTrails.CountOrbs(runtime, bot.Player);
-            double evacuateLeadSeconds = SwarmBotClosureEvacuateBaseSeconds +
-                                         trailOrbCount * SwarmBotClosureEvacuatePerOrbSeconds;
-            if (closureSnapshot.WarningSeconds <= evacuateLeadSeconds)
-            {
-                // 대피는 도주 예외 — 왕복 억제를 우회해 어디로든 즉시 나간다.
-                runtime.BotTactics.FleeDirective.Add(botPlayerId);
-                // 목적지는 자기장 안쪽 대피 구역 (#272 수리): 전 구역 최근접 후보는 곧 경고가
-                // 뜰 바깥 방을 고를 수 있다 — 원형 자기장에서 안전은 항상 안쪽이다.
-                var (closureEvacuationArea, closureEvacuationCell) =
-                    ResolveSwarmFieldEvacuationTarget(runtime, bot.Player.Position!);
-                return new SwarmBotDirective(
-                    SwarmBotMode.Escort,
-                    closureEvacuationArea,
-                    closureEvacuationCell,
-                    BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, closureEvacuationCell));
             }
         }
 

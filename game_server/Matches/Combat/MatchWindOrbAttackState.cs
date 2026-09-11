@@ -8,7 +8,7 @@ namespace game_server.matches.combat;
 ///     매치 내 바람 공격의 피해자 면역·상처 상태를 보관한다.
 ///     개인 발동 시각·시동 상태는 Player가 소유하며, 모든 변경은 매치 잠금 안에서 수행한다.
 /// </summary>
-public sealed class WindOrbAttackState
+public sealed class MatchWindOrbAttackState
 {
     private readonly Dictionary<long, DateTime> _victimImmuneUntilUtc = new();
     private readonly Dictionary<long, DateTime> _woundsUntilUtc = new();

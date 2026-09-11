@@ -44,8 +44,8 @@ public sealed class MatchFieldServiceTests
         {
             match.RegisterParticipant(first);
             match.RegisterParticipant(second);
-            match.Closures.InitializeMatching().GameStartTime =
-                DateTime.UtcNow.AddSeconds(-network.common.Config.SWARM_MATCH_DURATION_SECONDS - 100);
+            match.Closures.InitializeMatching([]);
+            match.Closures.GameStartTime = DateTime.UtcNow.AddSeconds(-network.common.Config.SWARM_MATCH_DURATION_SECONDS - 100);
             Assert.Empty(match.GetSessions());
             Assert.True(MatchFieldService.GetDamagePerTick(match, first.Position, DateTime.UtcNow) >= 2);
 
@@ -96,17 +96,14 @@ public sealed class MatchFieldServiceTests
         var first = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947005);
         var second = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947006);
         var now = new DateTime(2026, 9, 7, 0, 0, 0, DateTimeKind.Utc);
-        first.Closures.InitializeMatching().GameStartTime =
-            now.AddSeconds(-SwarmPressureField.HoldSeconds - SwarmPressureField.ShrinkSeconds / 2);
-        second.Closures.InitializeMatching().GameStartTime = now;
-        double expected = Config.SWARM_PRESSURE_FIELD_ENABLED
-            ? SwarmPressureField.GetSafeDistanceAtProgress(0.5)
-            : double.MaxValue;
+        first.Closures.InitializeMatching([]);
+        first.Closures.GameStartTime = now.AddSeconds(-SwarmPressureField.HoldSeconds - SwarmPressureField.ShrinkSeconds / 2);
+        second.Closures.InitializeMatching([]);
+        second.Closures.GameStartTime = now;
+        double expected = SwarmPressureField.GetSafeDistanceAtProgress(0.5);
         Assert.Equal(expected, first.Closures.GetSafeDistance(now));
         Assert.Equal(double.MaxValue, second.Closures.GetSafeDistance(now));
-        double endExpected = Config.SWARM_PRESSURE_FIELD_ENABLED
-            ? SwarmPressureField.GetSafeDistanceAtProgress(1)
-            : double.MaxValue;
+        double endExpected = SwarmPressureField.GetSafeDistanceAtProgress(1);
         Assert.Equal(endExpected, first.Closures.GetSafeDistance(now.AddSeconds(SwarmPressureField.ShrinkSeconds)));
     }
 
@@ -123,9 +120,8 @@ public sealed class MatchFieldServiceTests
         var cell = new network.common.data.models.Cell((int)center.X, (int)center.Y);
         match.Bots.RegisterBots(network.common.Config.SWARM_MATCH_MAP,
             [-1, -2], new Dictionary<long, network.common.data.models.Cell> { [-1] = cell, [-2] = cell });
-        var closure = match.Closures.InitializeMatching(wavesOverride: MatchFieldService.SwarmFieldDerivedWaves.Value);
-        Assert.NotEmpty(closure.Waves);
-        closure.GameStartTime = DateTime.UtcNow.AddSeconds(-network.common.Config.SWARM_MATCH_DURATION_SECONDS - 100);
+        match.Closures.InitializeMatching(MatchFieldService.SwarmFieldClosureSchedule.Value);
+        match.Closures.GameStartTime = DateTime.UtcNow.AddSeconds(-network.common.Config.SWARM_MATCH_DURATION_SECONDS - 100);
         var bots = match.Bots.GetBots().ToList();
         foreach (var bot in bots) match.RegisterParticipant(bot.Player);
         var healthBefore = bots.Select(bot => bot.Player.Health).ToArray();

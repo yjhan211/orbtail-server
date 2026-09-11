@@ -45,7 +45,7 @@ public sealed class MatchGameplayStateTests
     [Fact]
     public void WindOrbAttackState_PreservesTimingBoundariesAndEngagementReset()
     {
-        var state = new WindOrbAttackState();
+        var state = new MatchWindOrbAttackState();
         var player = new Player { Profile = new PlayerInfo { PlayerId = 10 } };
         DateTime nowUtc = new(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc);
 

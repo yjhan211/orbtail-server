@@ -20,7 +20,7 @@ public sealed class SwarmRetaliationWindow
 }
 
 /// <summary>오브 트레일·절단·반격 창·내구 상태.</summary>
-public sealed class TrailCombatState
+public sealed class MatchTrailCombatState
 {
     public readonly Dictionary<long, List<Vector3f>> OrbTrails = new();
     public readonly Dictionary<long, Vector3f> TrailLastTickPositions = new();

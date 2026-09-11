@@ -9,7 +9,7 @@ internal static class TestGameEventLogs
 {
     public static GameEventLogManager Create()
     {
-        var states = new ConcurrentDictionary<long, EventLogState>();
-        return new GameEventLogManager(id => states.GetOrAdd(id, _ => new EventLogState()));
+        var states = new ConcurrentDictionary<long, MatchEventLogState>();
+        return new GameEventLogManager(id => states.GetOrAdd(id, _ => new MatchEventLogState()));
     }
 }

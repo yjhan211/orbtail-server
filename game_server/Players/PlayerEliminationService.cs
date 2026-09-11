@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.items;
 using game_server.matches.logging;
 using game_server.matches.results;
 using game_server.sessions;
@@ -51,7 +50,6 @@ internal sealed class PlayerEliminationService(
             eliminatedBot.LoopWaitUntil = DateTime.MinValue;
         }
 
-        runtime.GroundItems.ReleaseClaimReservationsForPlayer(eliminatedPlayerId);
         gameEventLogManager.LogElimination(matchingId, eliminatedPlayerId, reason.ToString(), isBot: eliminatedBot != null, attackerPlayerId: resolvedAttackerPlayerId);
 
         var position = eliminatedPlayer.Position;
@@ -62,7 +60,7 @@ internal sealed class PlayerEliminationService(
             var droppedItemIds = new List<int>();
             foreach (var item in removedItems)
             {
-                if (!GroundItemPolicy.ShouldDropOnElimination(item.ItemId))
+                if (!MatchGroundItemState.ShouldDropOnElimination(item.ItemId))
                 {
                     continue;
                 }

@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.items;
 using game_server.matches.results;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -12,7 +11,7 @@ namespace demo_regression_tests;
 /// </summary>
 internal static class MatchTestServices
 {
-    public static GroundItemManager GroundItems(long matchingId = 1, TimeProvider? timeProvider = null) => new(matchingId, timeProvider);
+    public static MatchGroundItemState GroundItems(TimeProvider? timeProvider = null) => new(timeProvider);
     public static MatchRuntime Runtime(long matchingId, ILogger logger) => TestGameSessionServices.CreateMatchRuntimeStore(logger).GetOrCreate(matchingId);
-    public static AreaClosureState Closures(Func<DateTime>? utcNow = null) => new(utcNow);
+    public static MatchAreaClosureState Closures(Func<DateTime>? utcNow = null) => new(utcNow);
 }

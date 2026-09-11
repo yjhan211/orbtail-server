@@ -62,7 +62,6 @@ namespace network.common
         // 배틀아이템 조합 프로토콜
 
         // 구역 폐쇄 프로토콜
-        G_TO_C_AREA_CLOSURE_WARNING,  // 폐쇄 30초 전 경고
         G_TO_C_AREA_CLOSED,           // 구역 폐쇄 확정
 
         // 탈락 프로토콜

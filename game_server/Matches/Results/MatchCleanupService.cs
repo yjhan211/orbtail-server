@@ -47,7 +47,7 @@ internal sealed class MatchCleanupService(
         if (eventLogs.TryBeginFinalization(matchingId))
         {
             var endedAtUtc = DateTime.UtcNow;
-            var startedAtUtc = runtime.Closures.GetMatchingState()?.GameStartTime ?? endedAtUtc;
+            var startedAtUtc = runtime.Closures.GameStartTime ?? endedAtUtc;
             var finalPlayerStats = new List<MatchFinalPlayerStats>();
             foreach (var row in runtime.BuildGameResult())
             {

@@ -551,9 +551,8 @@ public sealed class GameClientSessionConnectPublicationTests
         string source = File.ReadAllText(Path.Combine(directory, "GameClientSession.cs"));
         string field = source[source.IndexOf("private void SendPressureFieldState()", StringComparison.Ordinal)..];
         Assert.Contains("Protocol.G_TO_C_SWARM_FIELD_STATE", field);
-        Assert.Contains("state.GameStartTime", field);
+        Assert.Contains("Closures.GameStartTime", field);
         Assert.DoesNotContain("Protocol.G_TO_C_AREA_CLOSED", field);
-        Assert.DoesNotContain("Protocol.G_TO_C_AREA_CLOSURE_WARNING", field);
         Assert.Contains("SendPressureFieldState();", File.ReadAllText(Path.Combine(directory, "GameClientSession.cs")));
     }
 

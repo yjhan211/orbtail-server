@@ -10,6 +10,11 @@ using network.packets;
 
 namespace game_server.matches;
 
+/// <summary>
+///     매치의 구역 폐쇄와 자기장 피해를 처리한다.
+///     폐쇄된 구역의 문을 닫고 잔류 오브를 제거하며, 자기장 피해로 동시에 탈락하는 참가자의 순위를 결정한다.
+///     상태는 MatchRuntime이 소유하고, 호출자는 매치 잠금을 보유해야 한다.
+/// </summary>
 internal class MatchFieldService(
     GameEventLogManager eventLogs,
     PlayerOrbTrailService orbTrails,
@@ -18,10 +23,10 @@ internal class MatchFieldService(
     PlayerEliminationService matchEliminations,
     MatchResultService matchResults)
 {
-    internal static readonly Lazy<IReadOnlyList<ClosureWaveDefinition>> SwarmFieldDerivedWaves =
+    internal static readonly Lazy<IReadOnlyList<(AreaType Area, int ClosureAtSeconds)>> SwarmFieldClosureSchedule =
         new(() => SwarmPressureField.GetKnownAreas()
-                .Select(area => new ClosureWaveDefinition(SwarmPressureField.GetAreaClosureSeconds(area), [area], 0))
-                .OrderBy(wave => wave.ClosureAtSeconds)
+                .Select(area => (Area: area, ClosureAtSeconds: SwarmPressureField.GetAreaClosureSeconds(area)))
+                .OrderBy(entry => entry.ClosureAtSeconds)
                 .ToList()
                 .AsReadOnly(),
             LazyThreadSafetyMode.ExecutionAndPublication);
@@ -37,19 +42,18 @@ internal class MatchFieldService(
         }
 
         var sessions = runtime.GetSessions();
-        bool isNewSchedule = runtime.Closures.GetMatchingState() == null;
-        var schedule = runtime.Closures.InitializeMatching(wavesOverride: Config.SWARM_PRESSURE_FIELD_ENABLED ? SwarmFieldDerivedWaves.Value : null);
-        if (isNewSchedule)
+        var closures = runtime.Closures;
+        if (closures.InitializeMatching(SwarmFieldClosureSchedule.Value))
         {
-            eventLogs.LogSystem(runtime.MatchingId, "closure_schedule " + string.Join("|", schedule.Waves.Select(wave => $"{wave.ClosureAtSeconds}s:{string.Join(',', wave.Areas)}")));
+            eventLogs.LogSystem(runtime.MatchingId, "closure_schedule " + string.Join("|", SwarmFieldClosureSchedule.Value.Select(entry => $"{entry.ClosureAtSeconds}s:{entry.Area}")));
         }
-        if (Config.SWARM_PRESSURE_FIELD_ENABLED && !runtime.InitialFieldStateSent)
+        if (!runtime.InitialFieldStateSent)
         {
             runtime.InitialFieldStateSent = true;
             using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_FIELD_STATE);
             packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_FIELD_STATE
             {
-                StartedAtUnixMs = new DateTimeOffset(schedule.GameStartTime).ToUnixTimeMilliseconds()
+                StartedAtUnixMs = new DateTimeOffset(closures.GameStartTime!.Value).ToUnixTimeMilliseconds()
             }));
             foreach (var session in sessions)
             {
@@ -57,23 +61,8 @@ internal class MatchFieldService(
             }
         }
 
-        var closureTick = runtime.Closures.CheckClosureSchedule();
-        foreach (var area in closureTick.WarningAreas)
-        {
-            using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
-            {
-                AreaType = area,
-                SecondsRemaining = closureTick.WarningSeconds,
-                ClosureAtUnixMs = closureTick.ClosureAtUnixMs
-            }));
-            foreach (var session in sessions)
-            {
-                session.TrySend(packet);
-            }
-        }
-
-        foreach (var area in closureTick.ClosedAreas)
+        var closedAreas = closures.CloseDueAreas();
+        foreach (var area in closedAreas)
         {
             eventLogs.LogClosure(runtime.MatchingId, area.ToString());
             using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
@@ -88,21 +77,21 @@ internal class MatchFieldService(
             }
         }
 
-        if (closureTick.ClosedAreas.Count == 0)
+        if (closedAreas.Count == 0)
         {
             return;
         }
 
-        foreach (int doorId in runtime.Doors.CloseDoorsForAreas(closureTick.ClosedAreas))
+        foreach (int doorId in runtime.Doors.CloseDoorsForAreas(closedAreas))
         {
-            using var packet = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.SUCCESS, 0);
+            using var packet = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false);
             foreach (var session in sessions)
             {
                 session.TrySend(packet);
             }
         }
 
-        var closedAreas = closureTick.ClosedAreas.ToHashSet();
+        var closedAreaSet = closedAreas.ToHashSet();
         foreach (var owner in runtime.GetAlivePlayers())
         {
             if (owner.Position is not { } ownerPosition)
@@ -110,7 +99,7 @@ internal class MatchFieldService(
                 continue;
             }
             var ownerCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, ownerPosition);
-            if (closedAreas.Contains(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, ownerCell)))
+            if (closedAreaSet.Contains(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, ownerCell)))
             {
                 continue;
             }
@@ -124,7 +113,7 @@ internal class MatchFieldService(
                 var orbPosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, ownerPosition, orbTiers);
                 var orbCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, orbPosition);
                 var orbArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, orbCell);
-                if (!closedAreas.Contains(orbArea))
+                if (!closedAreaSet.Contains(orbArea))
                 {
                     break;
                 }
@@ -187,7 +176,7 @@ internal class MatchFieldService(
             runtime.AutoAttack.Clear();
             if (lastPlayerId > 0)
             {
-                matchResults.FinalizeMatch(matchingId, lastPlayerId, MatchEndReason.LastSurvivor);
+                matchResults.FinalizeMatch(matchingId, lastPlayerId);
                 return;
             }
             matchCleanup.EndBotOnlyMatchIfSettled(matchingId, lastPlayerId);

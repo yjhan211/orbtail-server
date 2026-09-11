@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using game_server.matches;
 using game_server.matches.combat;
-using game_server.matches.items;
 using game_server.players.bots;
 using network.common;
 using network.common.data;
@@ -248,7 +247,7 @@ public sealed class SwarmMonsterDirector
     private const float EscalationStage2MoveSpeedMultiplier = 1.1f;
 
     /// <summary>
-    ///     이 매치의 자기장 스폰 위치 계산. 안전 반경은 AreaClosureState, 거리순 셀은 SwarmPressureField에서 읽는다.
+    ///     이 매치의 자기장 스폰 위치 계산. 안전 반경은 MatchAreaClosureState, 거리순 셀은 SwarmPressureField에서 읽는다.
     ///     경계가 통과 중이면 경계 바깥에서, 안전한 구역이면 바깥쪽 띠에서 스폰해 안쪽으로 이동한다.
     /// </summary>
 
@@ -263,12 +262,12 @@ public sealed class SwarmMonsterDirector
     internal DateTime NextMonsterPositionBroadcastAtUtc { get; set; }
 
     private readonly long _matchingId;
-    private readonly AreaClosureState _closures;
+    private readonly MatchAreaClosureState _closures;
     private readonly Func<long, bool> _hasAnyOrb;
     private MatchState? _state;
     private readonly Func<DateTime> _utcNow;
 
-    public SwarmMonsterDirector(long matchingId, AreaClosureState closures, Func<long, bool> hasAnyOrb, Func<DateTime>? utcNow = null)
+    public SwarmMonsterDirector(long matchingId, MatchAreaClosureState closures, Func<long, bool> hasAnyOrb, Func<DateTime>? utcNow = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
         _matchingId = matchingId;
@@ -2155,8 +2154,6 @@ public sealed class SwarmMonsterDirector
 
     private static (Cell Spawn, Cell Anchor)? ResolveFieldSpawn(double safeDistance, AreaType area)
     {
-        if (!Config.SWARM_PRESSURE_FIELD_ENABLED) return null;
-
         var cells = SwarmPressureField.GetAreaCellsByDistance(area);
         if (cells.Count == 0) return null;
 

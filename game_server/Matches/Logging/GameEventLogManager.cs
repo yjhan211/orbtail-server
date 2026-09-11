@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using game_server.matches;
 using game_server.matches.combat;
-using game_server.matches.items;
 using game_server.matches.results;
 using game_server.players.bots;
 using network.common;
@@ -21,15 +20,15 @@ public class GameEventLogManager
     private const int MaxEventsPerMatching = 5_000;
 
 
-    private readonly Func<long, EventLogState?> _getMatchState;
+    private readonly Func<long, MatchEventLogState?> _getMatchState;
     private long _nextSeq;
 
-    internal GameEventLogManager(Func<long, EventLogState?> getMatchState)
+    internal GameEventLogManager(Func<long, MatchEventLogState?> getMatchState)
     {
         _getMatchState = getMatchState ?? throw new ArgumentNullException(nameof(getMatchState));
     }
 
-    private EventLogState GetActiveState(long matchingId)
+    private MatchEventLogState GetActiveState(long matchingId)
     {
         var state = _getMatchState(matchingId);
         if (state == null || state.IsReleased)
@@ -76,7 +75,6 @@ public class GameEventLogManager
             isBot,
             now,
             CreateEntry);
-        LogClosureMovement(matchingId, playerId, fromArea, toArea, isBot, now);
     }
 
     public void LogResource(long matchingId, long playerId, int healthDelta,
@@ -636,10 +634,6 @@ public class GameEventLogManager
         lock (state.SyncRoot)
         {
             state.ExploreStarts[(playerId, interactId)] = now;
-            foreach (var warning in state.ClosureWarnings.Values.Where(warning =>
-                         warning.PlayerId == playerId && string.Equals(warning.Area, area, StringComparison.Ordinal) &&
-                         !warning.ExitedAt.HasValue))
-                warning.AdditionalExploreCount++;
         }
 
         AppendAt(matchingId, GameEventType.ExploreStarted, playerId, isBot,
@@ -669,45 +663,18 @@ public class GameEventLogManager
             });
     }
 
-    public void LogGroundItemPickup(long matchingId, long pickerPlayerId, long discovererPlayerId,
+    public void LogGroundItemPickup(long matchingId, long pickerPlayerId,
         long groundItemUid, int itemId, string area, bool autoUsed, bool isBot)
     {
         TrackEliminationDropPickup(matchingId, groundItemUid, pickerPlayerId);
         Append(matchingId, GameEventType.GroundItemPickedUp, pickerPlayerId, isBot,
-            $"Ground item picked up: uid={groundItemUid}, item={itemId}, discoverer={discovererPlayerId}, autoUsed={autoUsed}.", entry =>
+            $"Ground item picked up: uid={groundItemUid}, item={itemId}, autoUsed={autoUsed}.", entry =>
             {
                 entry.Area = area;
                 entry.GroundItemUid = groundItemUid;
                 entry.ItemId = itemId;
-                entry.DiscovererPlayerId = discovererPlayerId;
                 entry.PickerPlayerId = pickerPlayerId;
                 entry.AutoUsed = autoUsed;
-            });
-    }
-
-    public void LogClosureWarningSnapshot(long matchingId, long playerId, IReadOnlyCollection<string> warningAreas,
-        string currentArea, int health, int inventorySlotsUsed, int inventorySlotCapacity,
-        long closureAtUnixMs, bool isBot)
-    {
-        var now = DateTimeOffset.UtcNow;
-        var state = GetTelemetry(matchingId);
-        lock (state.SyncRoot)
-        {
-            foreach (string warningArea in warningAreas)
-                state.ClosureWarnings[(playerId, warningArea, closureAtUnixMs)] =
-                    new ClosureWarningResponse(playerId, warningArea, now);
-        }
-
-        AppendAt(matchingId, GameEventType.ClosureWarningSnapshot, playerId, isBot,
-            $"Closure warning: areas={string.Join(',', warningAreas)}, current={currentArea}, health={health}, slots={inventorySlotsUsed}/{inventorySlotCapacity}.",
-            now, entry =>
-            {
-                entry.WarningAreas = warningAreas.ToList();
-                entry.Area = currentArea;
-                entry.Health = health;
-                entry.InventorySlotsUsed = inventorySlotsUsed;
-                entry.InventorySlotCapacity = inventorySlotCapacity;
-                entry.ClosureAtUnixMs = closureAtUnixMs;
             });
     }
 
@@ -769,8 +736,8 @@ public class GameEventLogManager
     public static int CalculateDropRecoveryTotal(IEnumerable<int> itemIds) =>
         itemIds.Sum(itemId => itemId switch
         {
-            GroundItemPolicy.BandageItemId => GroundItemPolicy.BandageRecovery,
-            GroundItemPolicy.FirstAidKitItemId => GroundItemPolicy.FirstAidKitRecovery,
+            MatchGroundItemState.BandageItemId => MatchGroundItemState.BandageRecovery,
+            MatchGroundItemState.FirstAidKitItemId => MatchGroundItemState.FirstAidKitRecovery,
             _ => 0
         });
 
@@ -1187,42 +1154,6 @@ public class GameEventLogManager
             });
     }
 
-    private void LogClosureMovement(long matchingId, long playerId, string fromArea, string toArea, bool isBot,
-        DateTimeOffset now)
-    {
-        if (!TryGetTelemetry(matchingId, out var state)) return;
-        var derived = new List<(GameEventType Type, ClosureWarningResponse Warning)>();
-        lock (state.SyncRoot)
-        {
-            foreach (var warning in state.ClosureWarnings.Values.Where(w => w.PlayerId == playerId))
-            {
-                if (string.Equals(fromArea, warning.Area, StringComparison.Ordinal) &&
-                    !string.Equals(toArea, warning.Area, StringComparison.Ordinal) && !warning.ExitedAt.HasValue)
-                {
-                    warning.ExitedAt = now;
-                    derived.Add((GameEventType.ClosureWarningExit, warning));
-                }
-                else if (string.Equals(toArea, warning.Area, StringComparison.Ordinal) &&
-                         warning.ExitedAt.HasValue && !warning.ReenteredAt.HasValue)
-                {
-                    warning.ReenteredAt = now;
-                    derived.Add((GameEventType.ClosureWarningReentry, warning));
-                }
-            }
-        }
-
-        foreach (var (type, warning) in derived)
-            AppendAt(matchingId, type, playerId, isBot,
-                $"Closure response: area={warning.Area}, explores={warning.AdditionalExploreCount}.", now, entry =>
-                {
-                    entry.Area = warning.Area;
-                    entry.AdditionalExploreCount = warning.AdditionalExploreCount;
-                    entry.ElapsedMilliseconds = Math.Max(0, (long)(now - warning.WarnedAt).TotalMilliseconds);
-                    entry.ExitedAtUnixMs = warning.ExitedAt?.ToUnixTimeMilliseconds();
-                    entry.ReenteredAtUnixMs = warning.ReenteredAt?.ToUnixTimeMilliseconds();
-                });
-    }
-
     private GameEventEntry Append(long matchingId, GameEventType type, long playerId, bool isBot, string description,
         Action<GameEventEntry>? configure = null)
     {
@@ -1385,9 +1316,6 @@ public class GameEventLogManager
         public HashSet<long> FirstSummonStoneLoggedPlayerIds { get; } = new();
         public HashSet<long> FirstSuccessfulSummonLoggedPlayerIds { get; } = new();
         public Dictionary<(long PlayerId, int InteractId), DateTimeOffset> ExploreStarts { get; } = new();
-        public Dictionary<(long PlayerId, string Area, long ClosureAtUnixMs), ClosureWarningResponse>
-            ClosureWarnings
-        { get; } = new();
         public List<PendingEliminationDrop> PendingEliminationDrops { get; } = new();
         public Dictionary<long, OrbTelemetry> OrbTelemetry { get; } = new();
         public bool OrbSummariesLogged { get; set; }
@@ -1448,16 +1376,6 @@ public class GameEventLogManager
         bool BoardReachedCapacity,
         int BoardItemCount,
         long? MatchElapsedMilliseconds);
-    internal sealed class ClosureWarningResponse(long playerId, string area, DateTimeOffset warnedAt)
-    {
-        public long PlayerId { get; } = playerId;
-        public string Area { get; } = area;
-        public DateTimeOffset WarnedAt { get; } = warnedAt;
-        public DateTimeOffset? ExitedAt { get; set; }
-        public DateTimeOffset? ReenteredAt { get; set; }
-        public int AdditionalExploreCount { get; set; }
-    }
-
     public readonly record struct ResultStats(
         int KillCount,
         int TotalDamageDealt,
@@ -1642,7 +1560,6 @@ public class GameEventEntry
         copy.BoardItemIds = BoardItemIds?.ToList();
         copy.PreviousBoardItemIds = PreviousBoardItemIds?.ToList();
         copy.AttackTargetPlayerIds = AttackTargetPlayerIds?.ToList();
-        copy.WarningAreas = WarningAreas?.ToList();
         copy.OpenAreas = OpenAreas?.ToList();
         copy.EliminationDroppedItems = EliminationDroppedItems?.ToList();
         copy.DropPickupOrder = DropPickupOrder?.ToList();
@@ -1753,7 +1670,6 @@ public class GameEventEntry
     public long? PriorityExpiresAtUnixMs { get; set; }
     public bool? PriorityExpired { get; set; }
     public bool? AutoUsed { get; set; }
-    public List<string>? WarningAreas { get; set; }
     public List<string>? OpenAreas { get; set; }
     public int? Health { get; set; }
     public int? InventorySlotsUsed { get; set; }

@@ -1,6 +1,5 @@
 using game_server.matches;
 using game_server.matches.combat;
-using game_server.matches.items;
 using game_server.matches.monsters;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -85,7 +84,7 @@ public class SwarmMonsterDirectorTests
         // 일반 22 · 핵 120 · 접촉 40. 단단하게 만드는 방향은 되돌리고 위협은 접촉이 진다.
         // 전역 상한은 구역 목표(= 인당 목표 × 구역 인원)의 합이되 서버 천장 420을 넘지 않는다.
         DateTime now = StartUtc.AddSeconds(255);
-        var manager = new SwarmMonsterDirector(217002, new AreaClosureState(), _ => false, () => now);
+        var manager = new SwarmMonsterDirector(217002, new MatchAreaClosureState(), _ => false, () => now);
         Assert.True(manager.InitializeMatching(1, StartUtc));
 
         var lateTick = manager.Tick(ManyParticipants(8, AreaCenter(Config.SWARM_MATCH_GROUND_AREA)), true, now);
@@ -117,7 +116,7 @@ public class SwarmMonsterDirectorTests
     public void RegionSupply_ReclaimsStrandedMonstersAfterZoneIsVacated()
     {
         DateTime now = StartUtc;
-        var manager = new SwarmMonsterDirector(217004, new AreaClosureState(), _ => false, () => now);
+        var manager = new SwarmMonsterDirector(217004, new MatchAreaClosureState(), _ => false, () => now);
         Assert.True(manager.InitializeMatching(1, StartUtc));
         var room = MatchSpawnData.GetPhaseRoomCandidates()[0];
         Vector3f roomCenter = AreaCenter(room);
@@ -163,7 +162,7 @@ public class SwarmMonsterDirectorTests
         // 예산이 리셋되면 안 된다 — 실측(매치 9687066)에서 한 구역이 페이즈 1 예산 11석 대신
         // 56석을 받았다. 보충 타이머는 버리되 예산 원장은 남긴다.
         DateTime now = StartUtc;
-        var manager = new SwarmMonsterDirector(217003, new AreaClosureState(), _ => false, () => now);
+        var manager = new SwarmMonsterDirector(217003, new MatchAreaClosureState(), _ => false, () => now);
         Assert.True(manager.InitializeMatching(1, StartUtc));
         var room = MatchSpawnData.GetPhaseRoomCandidates()[0];
         Vector3f roomCenter = AreaCenter(room);
@@ -372,7 +371,7 @@ public class SwarmMonsterDirectorTests
     {
         var preGame = CreateManager(() => StartUtc);
         var active = new SwarmMonsterDirector(217005,
-            new AreaClosureState(), _ => false);
+            new MatchAreaClosureState(), _ => false);
         Assert.True(active.InitializeMatching(1, StartUtc));
 
         // 시작 전에는 사람이 아직 없는 방에도 미리 공급하고, 시작 후에는 점유한 방만 공급한다.
@@ -384,7 +383,7 @@ public class SwarmMonsterDirectorTests
     public void Tick_UsesClosureStateInitializedAfterDirectorConstruction()
     {
         const long matchingId = 217006;
-        var closures = new AreaClosureState();
+        var closures = new MatchAreaClosureState();
         var manager = new SwarmMonsterDirector(matchingId, closures, _ => false);
         Assert.True(manager.InitializeMatching(1, StartUtc));
         var room = MatchSpawnData.GetPhaseRoomCandidates()[0];
@@ -395,8 +394,8 @@ public class SwarmMonsterDirectorTests
             .Where(area => area != AreaType.None)
             .Distinct()
             .ToArray();
-        closures.InitializeMatching(wavesOverride: [new ClosureWaveDefinition(0, allAreas, 0)]);
-        closures.CheckClosureSchedule();
+        closures.InitializeMatching(allAreas.Select(area => (area, 0)).ToArray());
+        closures.CloseDueAreas();
         Assert.True(closures.IsAreaClosed(room));
         var result = manager.Tick(Participants(AreaCenter(room), room), false, StartUtc.AddSeconds(0.25));
         Assert.Empty(result.SpawnedMonsters);
@@ -404,7 +403,7 @@ public class SwarmMonsterDirectorTests
 
     private static SwarmMonsterDirector CreateManager(Func<DateTime> clock)
     {
-        var manager = new SwarmMonsterDirector(217001, new AreaClosureState(), _ => false, clock);
+        var manager = new SwarmMonsterDirector(217001, new MatchAreaClosureState(), _ => false, clock);
         Assert.True(manager.InitializeMatching(1, StartUtc));
         return manager;
     }

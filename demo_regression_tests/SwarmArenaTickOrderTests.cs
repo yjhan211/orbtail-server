@@ -302,10 +302,9 @@ public sealed class SwarmArenaTickOrderTests
         // 같은 잠금 안에서 단계마다 상태를 바꾼 직후 그 패킷을 보낸다. 전송 실패는 상태를 되돌리지 않는다.
         AssertInOrder(
             tick,
-            "Closures.InitializeMatching(",
+            "closures.InitializeMatching(",
             "Protocol.G_TO_C_SWARM_FIELD_STATE",
-            "Closures.CheckClosureSchedule()",
-            "Protocol.G_TO_C_AREA_CLOSURE_WARNING",
+            "closures.CloseDueAreas()",
             "eventLogs.LogClosure(",
             "Protocol.G_TO_C_AREA_CLOSED",
             "runtime.Doors.CloseDoorsForAreas(",
@@ -352,9 +351,9 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("_swarmSunBurns", crossfire);
         Assert.DoesNotContain("_swarmCrossfireConvergeWindows", crossfire);
         Assert.DoesNotContain("ClearSunOrbAttackState(", crossfire);
-        Assert.Contains("SunOrbAttackState sunOrbAttacks = runtime.SunOrbAttacks;", crossfire);
+        Assert.Contains("MatchSunOrbAttackState sunOrbAttacks = runtime.SunOrbAttacks;", crossfire);
         Assert.DoesNotContain("MatchRuntimeStore matchRuntimes", crossfire);
-        Assert.Contains("public SunOrbAttackState SunOrbAttacks { get; }", botDodge);
+        Assert.Contains("public MatchSunOrbAttackState SunOrbAttacks { get; }", botDodge);
 
         Assert.Contains("new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks, eventLogs)", botDodge);
         string botMovement = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotPlayerManager.Movement.cs");
@@ -393,10 +392,10 @@ public sealed class SwarmArenaTickOrderTests
 
         string field = ReadNormalizedSource(root, "game_server", "Matches", "MatchFieldService.cs");
         Assert.Contains(
-            "Lazy<IReadOnlyList<ClosureWaveDefinition>> SwarmFieldDerivedWaves",
+            "Lazy<IReadOnlyList<(AreaType Area, int ClosureAtSeconds)>> SwarmFieldClosureSchedule",
             field);
         Assert.Equal(1, CountOccurrences(field, "LazyThreadSafetyMode.ExecutionAndPublication"));
-        Assert.DoesNotContain("SwarmFieldDerivedWaves ??=", field);
+        Assert.DoesNotContain("SwarmFieldClosureSchedule ??=", field);
     }
 
     private static string ReadSwarmArenaTick()

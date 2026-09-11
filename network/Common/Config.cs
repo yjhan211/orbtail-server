@@ -191,15 +191,6 @@ namespace network.common
         public static int SWARM_MATCH_DURATION_SECONDS => SwarmConfigData.GetInt("SWARM_MATCH_DURATION_SECONDS", 300);
 
         /// <summary>
-        ///     #272 자기장 폐쇄 — 운동장 중심 원형 수축 필드(SwarmPressureField)가 폐쇄 시간표의
-        ///     단일 원천. 구역 폐쇄 이벤트(경고·문 잠금·꼬리 파괴)는 필드에서 파생한 구역별
-        ///     완전-밖 시각을 쓰고, 오염은 경계 초과 거리 비례가 전담한다. false면 폐쇄 없음
-        ///     (구 School 고정 웨이브 폴백은 #310에서 제거) — 자기장이 유일 시간표다.
-        ///     끄면 클라 경계 렌더·자기장 오염이 함께 꺼진다.
-        /// </summary>
-        public static readonly bool SWARM_PRESSURE_FIELD_ENABLED = true;
-
-        /// <summary>
         ///     자기장 수축 유예(초) — 개전 후 이 시간 동안 전 맵 안전, 이후 매치 종료까지 안전
         ///     반경이 최대치에서 0으로 선형 수축한다 (종료 시 운동장 중심만 안전). 서버 판정과
         ///     클라 경계 렌더가 같은 값으로 보간한다.

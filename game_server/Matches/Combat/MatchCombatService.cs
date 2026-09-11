@@ -83,7 +83,7 @@ internal class MatchCombatService(
             if (!runtime.Monsters.InitializeMatching(initialPlayerId, DateTime.UtcNow))
                 return;
             LogSwarmPairZoneDistances(runtime);
-            // #272 자기장: 수축 시계는 폐쇄 시계와 같은 앵커(AreaClosureState.GameStartTime)를 쓴다 —
+            // #272 자기장: 수축 시계는 폐쇄 시계와 같은 앵커(MatchAreaClosureState.GameStartTime)를 쓴다 —
             // 무장은 폐쇄 틱(PrepareSwarmScheduledClosureTick)의 최초 InitializeMatching이 담당한다.
             logger.LogInformation(
                 "Swarm pressure field armed: MatchingId={MatchingId}, MaxDistance={MaxDistance}, " +

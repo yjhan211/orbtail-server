@@ -7,11 +7,11 @@ using network.common.data.helpers;
 
 namespace demo_regression_tests;
 
-public sealed class DoorStateTests
+public sealed class MatchDoorStateTests
 {
     private readonly string _networkBasePath;
 
-    public DoorStateTests()
+    public MatchDoorStateTests()
     {
         _networkBasePath = FindNetworkBasePath();
         GameDataHelper.SetBasePath(_networkBasePath);

@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.items;
 using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;

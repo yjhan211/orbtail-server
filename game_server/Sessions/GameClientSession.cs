@@ -404,12 +404,11 @@ public partial class GameClientSession : SessionBase
 
     private void SendPressureFieldState()
     {
-        if (MatchingId <= 0 || !Config.SWARM_PRESSURE_FIELD_ENABLED)
+        if (MatchingId <= 0)
         {
             return;
         }
-        var state = Match.Closures.GetMatchingState();
-        if (state == null)
+        if (Match.Closures.GameStartTime is not { } gameStartTime)
         {
             return;
         }
@@ -417,7 +416,7 @@ public partial class GameClientSession : SessionBase
         using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_FIELD_STATE);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_FIELD_STATE
         {
-            StartedAtUnixMs = new DateTimeOffset(state.GameStartTime).ToUnixTimeMilliseconds()
+            StartedAtUnixMs = new DateTimeOffset(gameStartTime).ToUnixTimeMilliseconds()
         }));
         TrySend(packet);
     }

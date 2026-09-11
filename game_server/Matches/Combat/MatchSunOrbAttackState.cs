@@ -43,7 +43,7 @@ internal readonly record struct SwarmCrossfireConvergenceObservation(
 ///     매치 하나의 태양오브 발사체, 화상, 연속 명중 기록과 봇 회피용 정보를 보관한다.
 ///     상태 변경은 매치 잠금 안에서 수행하며, 봇은 별도로 공개한 회피 정보만 읽는다.
 /// </summary>
-public sealed class SunOrbAttackState
+public sealed class MatchSunOrbAttackState
 {
     private readonly long _matchingId;
     // 매치가 제거·재생성돼도 공격 이벤트 ID를 재사용하지 않는다.
@@ -53,7 +53,7 @@ public sealed class SunOrbAttackState
     private readonly Dictionary<long, (DateTime WindowStartUtc, int Count)> _convergenceWindows = new();
     private SwarmBotDodgePolicy.SwarmCrossfireDodgeThreat[] _dodgeSnapshot = [];
 
-    internal SunOrbAttackState(long matchingId)
+    internal MatchSunOrbAttackState(long matchingId)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
         _matchingId = matchingId;

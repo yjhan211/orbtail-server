@@ -1,6 +1,5 @@
 using game_server;
 using game_server.matches;
-using game_server.matches.items;
 using game_server.matches.logging;
 using game_server.matches.results;
 using game_server.players;
@@ -66,7 +65,7 @@ public sealed class MatchOwnedStateTests
         roster.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11 } });
         TestGameSessionServices.AddSummonStones(runtime, 11, 5);
         TestGameSessionServices.Orbs(runtime, 11).AddItem(107000010);
-        closures.InitializeMatching();
+        closures.InitializeMatching([]);
 
         using (MatchRuntimeStore.Enter(runtime))
             Assert.True(runtime.TryMarkEnded());
@@ -74,12 +73,11 @@ public sealed class MatchOwnedStateTests
         Assert.Null(store.GetOrNull(runtime.MatchingId));
         Assert.Empty(ground.GetSnapshot(area));
         Assert.DoesNotContain(roster.BuildGameResult(), row => row.playerId == 11);
-        Assert.Null(closures.GetMatchingState());
+        Assert.Null(closures.GameStartTime);
         Assert.Equal(Player.SummonStoneState.Empty, TestGameSessionServices.SummonStones(runtime, 11));
         Assert.Throws<InvalidOperationException>(() => TestGameSessionServices.Orbs(runtime, 11));
         Assert.Throws<InvalidOperationException>(() => ground.SpawnItems(area, 0, 0, [107000010]));
         Assert.Throws<InvalidOperationException>(() => TestGameSessionServices.AddSummonStones(runtime, 11, 1));
-        Assert.Throws<InvalidOperationException>(() => closures.InitializeMatching());
         Assert.Equal(7, TestGameSessionServices.SummonStones(sibling, 11).StoneCount);
         Assert.Single(store.ActiveIds());
     }
@@ -89,13 +87,14 @@ public sealed class MatchOwnedStateTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(941005);
-        var states = new MatchingClosureState[16];
-        Parallel.For(0, states.Length, i =>
+        var created = new bool[16];
+        Parallel.For(0, created.Length, i =>
         {
             using (MatchRuntimeStore.Enter(runtime))
-                states[i] = runtime.Closures.InitializeMatching();
+                created[i] = runtime.Closures.InitializeMatching([]);
         });
-        Assert.All(states, state => Assert.Same(runtime.Closures.GetMatchingState(), state));
+        Assert.Single(created, value => value);
+        Assert.NotNull(runtime.Closures.GameStartTime);
     }
 
     [Fact]
@@ -113,8 +112,8 @@ public sealed class MatchOwnedStateTests
     [Fact]
     public void ServerAndSession_DoNotRetainMatchComponentFieldsOrConstructorArguments()
     {
-        Type[] components = [typeof(GroundItemManager),
-            typeof(AreaClosureState)];
+        Type[] components = [typeof(MatchGroundItemState),
+            typeof(MatchAreaClosureState)];
         foreach (Type owner in new[] { typeof(game_server.GameServer), typeof(game_server.sessions.GameClientSession) })
         {
             var fields = owner.GetFields(System.Reflection.BindingFlags.Instance |

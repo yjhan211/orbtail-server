@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.items;
 using game_server.matches.logging;
 using game_server.players.bots;
 using game_server.sessions;
@@ -51,7 +50,7 @@ internal sealed class PlayerPickupService(
         AddReachableItemsInArea(player, match.GroundItems, nextArea, from, to, nextArea != player.CurrentArea ? Config.SWARM_MATCH_MAP : null);
     }
 
-    public static void AddReachableItemsInArea(Player player, GroundItemManager items, AreaType area, Vector3f from, Vector3f to, MapId? transitionMap = null)
+    public static void AddReachableItemsInArea(Player player, MatchGroundItemState items, AreaType area, Vector3f from, Vector3f to, MapId? transitionMap = null)
     {
         if (area == AreaType.None)
         {
@@ -76,7 +75,7 @@ internal sealed class PlayerPickupService(
                 continue;
             }
 
-            float radius = item.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID ? GroundItemManager.SummonStonePickupRadius : GroundItemManager.PickupRadius;
+            float radius = item.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID ? MatchGroundItemState.SummonStonePickupRadius : MatchGroundItemState.PickupRadius;
             float dx = item.PositionX - position.X;
             float dy = item.PositionY - position.Y;
             if (dx * dx + dy * dy > radius * radius)
@@ -175,7 +174,6 @@ internal sealed class PlayerPickupService(
         bool summonStonePickup = false;
         bool bootsPickup = false;
         int healthRecovery = 0;
-        long discovererPlayerId = match.GroundItems.GetDiscovererPlayerId(reachable.GroundItemUid);
 
         var status = match.GroundItems.TryClaim(
             reachable.GroundItemUid,
@@ -202,12 +200,7 @@ internal sealed class PlayerPickupService(
                     return false;
                 }
 
-                var disposition = GroundItemPolicy.Resolve(
-                    groundItem.ItemId,
-                    player.Health,
-                    out healthRecovery,
-                    match.MatchingId,
-                    player.PlayerId);
+                var disposition = MatchGroundItemState.ResolveDisposition(groundItem.ItemId, player.Health, out healthRecovery);
                 if (disposition == GroundItemDisposition.LeaveOnGround)
                 {
                     return false;
@@ -274,7 +267,7 @@ internal sealed class PlayerPickupService(
                 other.TrySend(removed);
             }
         }
-        eventLogs.LogGroundItemPickup(match.MatchingId, player.PlayerId, discovererPlayerId, claimedItem.GroundItemUid, claimedItem.ItemId, player.CurrentArea.ToString(), autoUsed, isBot: player.PlayerId < 0);
+        eventLogs.LogGroundItemPickup(match.MatchingId, player.PlayerId, claimedItem.GroundItemUid, claimedItem.ItemId, player.CurrentArea.ToString(), autoUsed, isBot: player.PlayerId < 0);
         if (!summonStonePickup && !bootsPickup)
         {
             var boardAfterPickup = player.Orbs;

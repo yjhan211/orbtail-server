@@ -1,5 +1,4 @@
 using game_server.matches.combat;
-using game_server.matches.items;
 using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
@@ -56,11 +55,11 @@ internal sealed class MatchRuntime
         _logger = logger;
         _matchSessionCleanup = matchSessionCleanup;
         MatchingId = matchingId;
-        SunOrbAttacks = new SunOrbAttackState(matchingId);
+        SunOrbAttacks = new MatchSunOrbAttackState(matchingId);
         Bots = new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks, eventLogs);
         AutoAttack = new AutoAttackController();
-        GroundItems = new GroundItemManager(matchingId);
-        Closures = new AreaClosureState();
+        GroundItems = new MatchGroundItemState();
+        Closures = new MatchAreaClosureState();
         Monsters = new SwarmMonsterDirector(matchingId, Closures, playerId => GetParticipant(playerId)?.Orbs.HasAnyOrb() ?? false);
     }
 
@@ -73,20 +72,20 @@ internal sealed class MatchRuntime
 
     // 전투와 오브
     public AutoAttackController AutoAttack { get; }
-    public CombatDamageState CombatDamage { get; } = new();
-    public TrailCombatState TrailCombat { get; } = new();
-    public SunOrbAttackState SunOrbAttacks { get; }
-    public WindOrbAttackState WindOrbAttacks { get; } = new();
-    public WaveOrbAttackState WaveOrbAttacks { get; } = new();
+    public MatchCombatDamageState CombatDamage { get; } = new();
+    public MatchTrailCombatState TrailCombat { get; } = new();
+    public MatchSunOrbAttackState SunOrbAttacks { get; }
+    public MatchWindOrbAttackState WindOrbAttacks { get; } = new();
+    public MatchWaveOrbAttackState WaveOrbAttacks { get; } = new();
 
     // 아이템과 재화
-    public GroundItemManager GroundItems { get; }
+    public MatchGroundItemState GroundItems { get; }
 
     // 맵과 진행 상태
-    public DoorState Doors { get; } = new();
-    public AreaClosureState Closures { get; }
-    public OrbRecoveryState OrbRecovery { get; } = new();
-    public EventLogState EventLog { get; } = new();
+    public MatchDoorState Doors { get; } = new();
+    public MatchAreaClosureState Closures { get; }
+    public MatchOrbRecoveryState OrbRecovery { get; } = new();
+    public MatchEventLogState EventLog { get; } = new();
 
     // 틱 실행과 일정
     internal MatchTickLoop? TickLoop

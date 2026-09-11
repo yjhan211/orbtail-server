@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.items;
 using game_server.players;
 using game_server.players.bots;
 using game_server.sessions;
@@ -128,12 +127,12 @@ public sealed class PlayerConditionTests
     public void HeartPickupRequiresMissingHealth()
     {
         Assert.Equal(GroundItemDisposition.LeaveOnGround,
-            GroundItemPolicy.Resolve(GroundItemPolicy.HeartItemId,
+            MatchGroundItemState.ResolveDisposition(MatchGroundItemState.HeartItemId,
                 Config.MAX_HEALTH, out _));
         Assert.Equal(GroundItemDisposition.AutoUse,
-            GroundItemPolicy.Resolve(GroundItemPolicy.HeartItemId,
+            MatchGroundItemState.ResolveDisposition(MatchGroundItemState.HeartItemId,
                 Config.MAX_HEALTH - 1, out int recovery));
-        Assert.Equal(GroundItemPolicy.HeartRecovery, recovery);
+        Assert.Equal(MatchGroundItemState.HeartRecovery, recovery);
     }
 
     [Fact]
