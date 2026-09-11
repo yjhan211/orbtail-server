@@ -1,5 +1,5 @@
-using game_server.players;
 using game_server.matches.combat;
+using game_server.players;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -257,7 +257,6 @@ public partial class GameClientSession
             IsActive = visual.State.IsActive,
             OrbItemIds = visual.OrbItemIds.ToList(),
             FrontOrbHp = visual.State.FrontOrbHp,
-            JamCount = 0, // 기존 클라이언트 패킷 형식만 유지하며 잼은 집계하지 않는다.
             BodyHealth = visual.State.BodyHealth,
             ArmorMask = visual.State.ArmorMask
         }));
