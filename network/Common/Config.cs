@@ -163,17 +163,6 @@ namespace network.common
         public static readonly bool MONSTER_SUMMON_ECONOMY_ENABLED = true;
 
         /// <summary>
-        ///     #229 5단계: 스웜에서 탐색(상자)과 소비품(하트·부츠)을 임시로 끈다.
-        ///     회복은 수면이, 기동력은 바람 오브가 맡는다 — 랜덤 상자가 그 자리를 대신하면
-        ///     빌드로 읽혀야 할 것이 운으로 읽힌다. 데이터·CSV·프리팹·레거시 코드는 남긴다:
-        ///     이 플래그만 되돌리면 다른 모드와 함께 그대로 살아난다.
-        /// </summary>
-        public static readonly bool SWARM_EXPLORE_AND_CONSUMABLES_ENABLED = false;
-
-        /// <summary>스웜에서 탐색·소비품이 꺼졌는지 — 호출부가 매번 두 플래그를 조합하지 않게 한다.</summary>
-        public static bool IsSwarmExploreDisabled() => !SWARM_EXPLORE_AND_CONSUMABLES_ENABLED;
-
-        /// <summary>
         ///     스웜 아레나 매치 정원. School2 신맵은 1인 시작방 8곳 × 합류 4세트 동심원 구조라 정원 = 시작방 수.
         ///     사람은 항상 1명이고 나머지는 봇으로 채운다.
         /// </summary>

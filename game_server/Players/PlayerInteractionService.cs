@@ -107,13 +107,12 @@ internal sealed class PlayerInteractionService
                 continue;
             }
 
-            bool isDoor = definition.DoorId > 0;
-            if (Config.IsSwarmExploreDisabled() && !isDoor)
+            if (definition.DoorId <= 0)
             {
                 continue;
             }
 
-            if (isDoor && runtime.Doors.IsDoorOpen(definition.DoorId))
+            if (runtime.Doors.IsDoorOpen(definition.DoorId))
             {
                 continue;
             }

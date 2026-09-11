@@ -24,14 +24,6 @@ code,message_kr,message_en,message_jp
 304,플레이어가 사망 상태입니다.,The player is dead.,プレイヤーは死亡状態です。
 305,아직 행동할 수 없습니다.,You cannot act yet.,まだ行動できません。
 306,유효하지 않은 게임 상태입니다.,Invalid game state.,無効なゲーム状態です。
-400,상호작용 대상을 찾을 수 없습니다.,Could not find the interaction target.,インタラクト対象が見つかりません。
-401,지금은 상호작용할 수 없습니다.,You cannot interact right now.,今はインタラクトできません。
-402,이미 사용된 오브젝트입니다.,This object has already been used.,既に使用されたオブジェクトです。
-403,이미 탐색 중입니다.,Already exploring.,既に探索中です。
-404,탐색 중이 아닙니다.,Not currently searching.,探索中ではありません。
-405,유효하지 않은 선택입니다.,Invalid selection.,無効な選択です。
-406,해당 행동을 찾을 수 없습니다.,That action could not be found.,該当の行動が見つかりません。
-407,이미 탐색한 선택지입니다.,This option has already been explored.,既に探索した選択肢です。
 408,구역이 일치하지 않습니다.,The area does not match.,エリアが一致しません。
 500,아이템을 찾을 수 없습니다.,Item not found.,アイテムが見つかりません。
 501,보유하지 않은 아이템입니다.,You do not have this item.,所持していないアイテムです。

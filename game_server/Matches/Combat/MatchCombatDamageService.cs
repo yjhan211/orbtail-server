@@ -1,6 +1,6 @@
+using game_server.matches;
 using game_server.matches.items;
 using game_server.matches.logging;
-using game_server.matches;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
@@ -209,37 +209,19 @@ internal sealed class MatchCombatDamageService(
         MatchRuntime runtime,
         MonsterRuntimeInfo defeatedWave,
         IReadOnlyCollection<GameClientSession> sessions,
-        int heartReward = 0,
-        int bootsReward = 0)
+        int heartReward = 0)
     {
-        if (defeatedWave.SummonStoneReward <= 0 && heartReward <= 0 &&
-            bootsReward <= 0)
-            return;
-
-        // #229 5단계: 스웜에서는 이동속도(부츠)·열쇠를 떨구지 않는다. 기동력은 바람 오브가
-        // 맡고, 폐쇄 문은 시간이 여닫는 것이라 열쇠로 뚫는 예외가 없다 — 몹이 떨구면 바닥에
-        // 쓰지 못하는 아이템만 쌓인다.
-        // 하트는 떨군다(회복이 수면밖에 없다는 결정): 상자 탐색을 끈 뒤로 즉시 회복 공급처가 통째로 사라지므로,
-        // 일반 몹 3% 드롭을 이 게이트가 스폰 직전에 지우면 안 된다.
-        if (Config.IsSwarmExploreDisabled())
-        {
-            bootsReward = 0;
-        }
-
         // 소환석은 바닥에 떨어진다 (즉시 귀속 철회): 처치자도 다른 플레이어와 같은 픽업 경쟁 규칙으로 줍는다.
         // 클라는 재화를 자석 반경에서 몸으로 끌어와 픽업을 요청하므로 동선 부담은 작다.
+        // 하트는 떨군다: 회복 공급처가 수면과 이 드롭뿐이다. 부츠·열쇠는 떨구지 않는다 —
+        // 기동력은 바람 오브가 맡고, 폐쇄 문은 시간이 여닫는 것이라 열쇠로 뚫는 예외가 없다.
         int groundStoneReward = defeatedWave.SummonStoneReward;
-
-        if (groundStoneReward <= 0 && heartReward <= 0 &&
-            bootsReward <= 0)
+        if (groundStoneReward <= 0 && heartReward <= 0)
             return;
 
-        // 하트·부츠 (#222 M4): 소환석과 함께 흩어진다 — 픽업 경쟁 규칙 공유.
-        // 잼 낙수는 잼 승점 퇴역과 함께 제거 (#226 D).
         var itemIds = Enumerable.Repeat(
                 Config.SUMMON_STONE_GROUND_ITEM_ID, Math.Max(0, groundStoneReward))
             .Concat(Enumerable.Repeat(Config.HEART_GROUND_ITEM_ID, Math.Max(0, heartReward)))
-            .Concat(Enumerable.Repeat(Config.BOOTS_GROUND_ITEM_ID, Math.Max(0, bootsReward)))
             .ToArray();
         var spawned = runtime.GroundItems.SpawnItems(
             defeatedWave.AreaType,
@@ -326,7 +308,7 @@ internal sealed class MatchCombatDamageService(
             new Dictionary<long, int> { [attackerId] = damage });
         SpawnSwarmSummonStone(runtime,
             damageResult.MonsterState, allSessions,
-            damageResult.HeartReward, damageResult.BootsReward);
+            damageResult.HeartReward);
     }
 
     /// <summary>

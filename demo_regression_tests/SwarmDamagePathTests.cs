@@ -72,31 +72,28 @@ public class SwarmDamagePathTests
     }
 
     /// <summary>
-    ///     #229 5단계: 스웜 탐색·소비품 임시 중단. 데이터·CSV·레거시 코드는 남기고 플래그로만
-    ///     끈다 — 이 게이트가 열리면 회복이 다시 랜덤 상자로 새고 부츠가 기동 축을 가져간다.
+    ///     스웜 탐색·소비품은 은퇴했다. 토글 없이 상호작용 목록은 문만, 몬스터 드롭은 소환석·하트만 다룬다.
+    ///     회복은 수면과 하트가, 기동력은 바람 오브가 맡는다.
     /// </summary>
     [Fact]
-    public void SwarmExploreAndConsumables_StayDisabled()
+    public void SwarmExploreAndConsumables_AreRetired()
     {
-        Assert.True(
-            Config.IsSwarmExploreDisabled(),
-            "스웜 탐색·소비품이 다시 켜졌다 — 회복은 수면이, 기동력은 바람 오브가 맡는다 (#229 5단계).");
+        string root = FindRepositoryRoot();
+        string config = File.ReadAllText(Path.Combine(root, "network", "Common", "Config.cs"));
+        Assert.DoesNotContain("SWARM_EXPLORE_AND_CONSUMABLES_ENABLED", config);
+        Assert.DoesNotContain("IsSwarmExploreDisabled", config);
 
-        // 게이트가 실제로 물려 있어야 한다: 문 목록 필터와 몬스터 소비품 드롭. 상자 시작·봇 개봉 코드는 제거됐다.
-        foreach (var (file, marker) in new[]
-                 {
-                     (Path.Combine("game_server", "Players", "PlayerInteractionService.cs"),
-                         "public List<InteractableObjectState> GetAvailableInteractions"),
-                     (Path.Combine("game_server", "Matches", "Combat", "MatchCombatDamageService.cs"),
-                         "private void SpawnSwarmSummonStone")
-                 })
-        {
-            string source = File.ReadAllText(Path.Combine(FindRepositoryRoot(), file));
-            int start = source.IndexOf(marker, StringComparison.Ordinal);
-            Assert.True(start >= 0, $"{marker}를 찾지 못했다");
-            string body = source.Substring(start, Math.Min(1400, source.Length - start));
-            Assert.Contains("Config.IsSwarmExploreDisabled()", body);
-        }
+        string interactions = File.ReadAllText(Path.Combine(root, "game_server", "Players", "PlayerInteractionService.cs"));
+        int listStart = interactions.IndexOf("public List<InteractableObjectState> GetAvailableInteractions", StringComparison.Ordinal);
+        Assert.True(listStart >= 0);
+        Assert.Contains("if (definition.DoorId <= 0)", interactions[listStart..]);
+
+        string damage = File.ReadAllText(Path.Combine(root, "game_server", "Matches", "Combat", "MatchCombatDamageService.cs"));
+        int spawnStart = damage.IndexOf("private void SpawnSwarmSummonStone", StringComparison.Ordinal);
+        Assert.True(spawnStart >= 0);
+        string spawn = damage.Substring(spawnStart, Math.Min(1400, damage.Length - spawnStart));
+        Assert.DoesNotContain("BOOTS_GROUND_ITEM_ID", spawn);
+        Assert.Contains("HEART_GROUND_ITEM_ID", spawn);
     }
 
     /// <summary>

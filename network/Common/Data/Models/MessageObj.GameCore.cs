@@ -151,13 +151,6 @@ namespace network.common.data.models
         [Key("armorM")] public long ArmorMask { get; set; }
     }
 
-    /// <summary>잼(승점 재화) 지갑 상태 (#222 M3). 픽업·변동 시 소유자에게 전송.</summary>
-    [MessagePackObject]
-    public class G_TO_C_JAM_STATE : IMessagePackObject
-    {
-        [Key("jamCount")] public int JamCount { get; set; }
-    }
-
 
 
 

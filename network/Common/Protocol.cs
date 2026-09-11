@@ -109,8 +109,7 @@ namespace network.common
         C_TO_G_SUMMON_ORB,
         G_TO_C_SUMMON_ORB_RESULT,
 
-        // 잼 승점 재화 (#222 M3) — 소환석과 분리된 지갑 상태
-        G_TO_C_JAM_STATE,
+        // 오브 수 순위표. 이름은 잼 재화 세대의 것이고 JamCounts에 현재 오브 수를 싣는다.
         G_TO_C_JAM_RANKINGS,
 
 
@@ -177,15 +176,7 @@ namespace network.common
         INVALID_GAME_STATE = 306,
         GAME_ENTRY_FAILED = 307, // 게임 입장 초기화 중 실패
 
-        // 상호작용/탐색 (400~499)
-        INTERACTABLE_NOT_FOUND = 400,
-        INTERACTABLE_NOT_AVAILABLE = 401,
-        INTERACTABLE_ALREADY_USED = 402,
-        EXPLORE_ALREADY_IN_PROGRESS = 403,
-        EXPLORE_NOT_IN_PROGRESS = 404,
-        INVALID_SELECTION = 405,
-        ACTION_NOT_FOUND = 406,
-        ACTION_ALREADY_EXPLORED = 407,
+        // 상호작용 (400~499) — 400~407은 탐색 세대와 함께 삭제됨, 번호는 재사용하지 않는다.
         AREA_MISMATCH = 408,
 
         // 아이템/인벤토리 (500~599)
