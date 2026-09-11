@@ -40,7 +40,7 @@ public sealed class PlayerConditionTests
         Assert.Equal(DateTime.MinValue, condition.SleepStartedAtUtc);
         Assert.True(TestGameSessionServices.GetPeriodicBuffCount(condition) > 0);
         Assert.Equal(0, condition.GetSleepRecovery(now.AddSeconds(10), false, 100));
-        condition.TickPeriodicBuffs(100, amount => condition.Recover(amount));
+        foreach (int delta in condition.TickPeriodicBuffs(100)) condition.Recover(delta);
         Assert.Equal(52, condition.Health);
 
         Assert.True(condition.TryStartSleep(now.AddSeconds(10)));
@@ -85,41 +85,39 @@ public sealed class PlayerConditionTests
         var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var condition = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 20 };
         condition.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 3, 2, 4, now);
-        void Apply(int amount) => condition.ChangeHealth(amount, 100);
+        void Apply(DateTime at)
+        {
+            foreach (int delta in condition.TakeDuePeriodicBuffDeltas(at, 100)) condition.ChangeHealth(delta, 100);
+        }
 
-        condition.UpdatePeriodicBuffs(now.AddMilliseconds(999), 100, Apply);
+        Apply(now.AddMilliseconds(999));
         Assert.Equal(20, condition.Health);
-        condition.UpdatePeriodicBuffs(now.AddSeconds(1), 100, Apply);
+        Apply(now.AddSeconds(1));
         Assert.Equal(20, condition.Health);
-        condition.UpdatePeriodicBuffs(now.AddSeconds(2), 100, Apply);
+        Apply(now.AddSeconds(2));
         Assert.Equal(23, condition.Health);
-        condition.UpdatePeriodicBuffs(now.AddSeconds(2), 100, Apply);
+        Apply(now.AddSeconds(2));
         Assert.Equal(23, condition.Health);
-        condition.UpdatePeriodicBuffs(now.AddSeconds(4), 100, Apply);
+        Apply(now.AddSeconds(4));
         Assert.Equal(26, condition.Health);
         Assert.Equal(0, TestGameSessionServices.GetPeriodicBuffCount(condition));
-        condition.UpdatePeriodicBuffs(now.AddSeconds(9), 100, Apply);
+        Apply(now.AddSeconds(9));
         Assert.Equal(26, condition.Health);
     }
 
     [Fact]
-    public void ClearingBuffsResetsScheduleAndCancellationStopsCatchUp()
+    public void ClearingBuffsResetsScheduleAndCatchUpYieldsOneDeltaPerSecond()
     {
         var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var condition = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 20 };
         condition.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 3, 1, 10, now);
         condition.ClearPeriodicBuffs();
+        Assert.Empty(condition.TakeDuePeriodicBuffDeltas(now.AddSeconds(5), 100));
+
         condition.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 3, 1, 10, now.AddSeconds(10));
-        int applied = 0;
-        void Apply(int amount)
-        {
-            applied++;
-            condition.ClearPeriodicBuffs();
-        }
-        condition.UpdatePeriodicBuffs(now.AddSeconds(10.9), 100, Apply);
-        Assert.Equal(0, applied);
-        condition.UpdatePeriodicBuffs(now.AddSeconds(20), 100, Apply);
-        Assert.Equal(1, applied);
+        Assert.Empty(condition.TakeDuePeriodicBuffDeltas(now.AddSeconds(10.9), 100));
+        // 밀린 10초를 한 번에 따라잡되 초당 하나씩만 낸다. 지속 10초라 그 뒤엔 남은 버프가 없다.
+        Assert.Equal(Enumerable.Repeat(3, 10), condition.TakeDuePeriodicBuffDeltas(now.AddSeconds(20), 100));
         Assert.Equal(0, TestGameSessionServices.GetPeriodicBuffCount(condition));
     }
 
@@ -159,12 +157,15 @@ public sealed class PlayerConditionTests
     public void PeriodicHealingAddsHealthAndDamageRemovesHealth()
     {
         var state = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 50 };
-        void Apply(int health) => state.ChangeHealth(health, 100);
+        void Tick()
+        {
+            foreach (int delta in state.TickPeriodicBuffs(100)) state.ChangeHealth(delta, 100);
+        }
         state.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 10, 1, 1);
-        state.TickPeriodicBuffs(100, Apply);
+        Tick();
         Assert.Equal(60, state.Health);
         state.AddPeriodicBuff(BuffSubType.HEALTH_DOWN, 15, 1, 1);
-        state.TickPeriodicBuffs(100, Apply);
+        Tick();
         Assert.Equal(45, state.Health);
     }
 
@@ -211,10 +212,13 @@ public sealed class PlayerConditionTests
         var state = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 0 };
         state.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 10, 1, 2);
         state.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 3, 1, 2);
-        void Apply(int health) => state.ChangeHealth(health, 100);
-        state.TickPeriodicBuffs(100, Apply);
+        void Tick()
+        {
+            foreach (int delta in state.TickPeriodicBuffs(100)) state.ChangeHealth(delta, 100);
+        }
+        Tick();
         Assert.Equal(3, state.Health);
-        state.TickPeriodicBuffs(100, Apply);
+        Tick();
         Assert.Equal(6, state.Health);
         Assert.Equal(0, TestGameSessionServices.GetPeriodicBuffCount(state));
     }

@@ -434,8 +434,8 @@ public sealed class GameClientSessionPublicationTests
         using (session.Match.Enter())
         {
             Assert.True(session.Player.TryStartSleep(now));
-            MatchCombatService.ProcessSleepRecovery(session.Match, [session.Player], now, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog));
-            MatchCombatService.ProcessSleepRecovery(session.Match, [session.Player], now.AddSeconds(1), TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog));
+            TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog).ApplySleepRecovery(session.Match, [session.Player], now);
+            TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog).ApplySleepRecovery(session.Match, [session.Player], now.AddSeconds(1));
         }
         var packet = fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_HEALTH_RECOVERY>(Protocol.G_TO_C_HEALTH_RECOVERY);
@@ -988,7 +988,7 @@ public sealed class GameClientSessionPublicationTests
             "GameClientSession.Orb.cs");
         string doors = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Interactions.cs");
         string connection = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
-        string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
+        string combat = ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatService.cs");
         string bots = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotDecisionService.cs");
         string botPickup = ReadNormalizedSource(root, "game_server", "Players", "PlayerPickupService.cs");
 
@@ -1014,8 +1014,8 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("OnPeriodicBuffTick", playerState);
         Assert.DoesNotContain("_periodicBuffTimer", session);
         Assert.DoesNotContain("new Timer(", playerState);
-        Assert.Contains("ProcessPeriodicBuffs(runtime, players, nowUtc)", combat);
-        Assert.Contains("player.UpdatePeriodicBuffs(nowUtc", combat);
+        Assert.Contains("healthService.ApplyPeriodicBuffs(runtime, players, nowUtc)", combat);
+        Assert.Contains("player.TakeDuePeriodicBuffDeltas(nowUtc", ReadNormalizedSource(root, "game_server", "Players", "PlayerHealthService.cs"));
         Assert.Equal(2, CountOccurrences(playerState, "_interactions.CancelPendingInteractions(match, Player)"));
 
         Assert.DoesNotContain("ProcessUseInGameItem", playerState);
@@ -1037,8 +1037,8 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("RunWithMatchLock", combat);
         Assert.DoesNotContain("RunWithMatchLock", bots);
         Assert.DoesNotContain("RunWithMatchLock", botPickup);
-        Assert.Contains("victim.InterruptDoor()", ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatDamageService.cs"));
-        Assert.Contains("victim.Session?.SendDoorOpenInterrupted(interactId);", ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatDamageService.cs"));
+        Assert.Contains("victim.InterruptDoor()", ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatDamageService.cs"));
+        Assert.Contains("victim.Session?.SendDoorOpenInterrupted(interactId);", ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatDamageService.cs"));
 
         Assert.DoesNotContain(
             "RunWithMatchLock",

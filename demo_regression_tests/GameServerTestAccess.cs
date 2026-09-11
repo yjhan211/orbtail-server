@@ -73,7 +73,7 @@ internal static class GameServerTestAccess
             Microsoft.Extensions.Logging.Abstractions.NullLogger<PlayerPickupService>.Instance);
         Func<MatchRuntime, TimeProvider, MatchTickLoop> createLoop = (runtime, clock) =>
         {
-            var combat = new MatchCombatService(logs, cleanup,
+            var combat = new MatchCombatService(logs,
                 health, combatDamage, results,
                 new PlayerOrbService(health, combatDamage, orbTrails, logs),
                 new OrbVisualStatePublisher(), orbTrails,

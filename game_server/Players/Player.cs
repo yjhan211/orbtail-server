@@ -261,20 +261,27 @@ public class Player
         _nextPeriodicBuffTickAtUtc = null;
     }
 
-    /// <summary>등록 후 첫 1초부터 기존 매치 틱에서 초 단위 버프 처리를 실행한다.</summary>
-    public void UpdatePeriodicBuffs(DateTime nowUtc, int maxHealth, Action<int> apply)
+    /// <summary>
+    ///     등록 후 첫 1초부터 매치 틱마다 초 단위로 진행하고, 실행 시각이 된 체력 변화량(양수 회복·음수 피해)을
+    ///     순서대로 돌려준다. 적용은 호출자가 한다.
+    /// </summary>
+    public List<int> TakeDuePeriodicBuffDeltas(DateTime nowUtc, int maxHealth)
     {
+        var deltas = new List<int>();
         while (_periodicBuffs.Count != 0 && _nextPeriodicBuffTickAtUtc is { } next && nowUtc >= next)
         {
             _nextPeriodicBuffTickAtUtc = next.AddSeconds(1);
-            TickPeriodicBuffs(maxHealth, apply);
+            deltas.AddRange(TickPeriodicBuffs(maxHealth));
         }
         if (_periodicBuffs.Count == 0)
             _nextPeriodicBuffTickAtUtc = null;
+        return deltas;
     }
 
-    public void TickPeriodicBuffs(int maxHealth, Action<int> apply)
+    /// <summary>버프 1초 진행. 이번 초에 발동한 버프의 체력 변화량을 돌려주고 만료된 버프를 뺀다.</summary>
+    public List<int> TickPeriodicBuffs(int maxHealth)
     {
+        var deltas = new List<int>();
         foreach (var buff in _periodicBuffs.ToArray())
         {
             if (!_periodicBuffs.Contains(buff)) continue;
@@ -291,13 +298,14 @@ public class Player
                 };
                 if (canApply)
                 {
-                    apply(buff.Type == BuffSubType.HEALTH_ADD ? buff.Value : -buff.Value);
+                    deltas.Add(buff.Type == BuffSubType.HEALTH_ADD ? buff.Value : -buff.Value);
                 }
                 else if (buff.Duration <= 0 && buff.Type is BuffSubType.HEALTH_ADD or BuffSubType.HEALTH_DOWN)
                     _periodicBuffs.Remove(buff);
             }
             if (buff.Duration > 0 && buff.Remaining <= 0) _periodicBuffs.Remove(buff);
         }
+        return deltas;
     }
 
     public void BeginInteraction(int interactId) => _pending.Add(interactId);

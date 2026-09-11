@@ -187,7 +187,7 @@ public sealed class MatchGameplayServiceTests
     public void PeriodicBuffsHealAndEliminateParticipantsWithoutConnections(long playerId)
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var service = provider.GetRequiredService<MatchCombatService>();
+        var service = provider.GetRequiredService<PlayerHealthService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947800);
         var player = new game_server.players.Player
         {
@@ -201,16 +201,16 @@ public sealed class MatchGameplayServiceTests
             match.RegisterParticipant(survivor);
             Assert.Empty(match.GetSessions());
             player.AddPeriodicBuff(network.common.BuffSubType.HEALTH_ADD, 3, 1, 1, now);
-            service.ProcessPeriodicBuffs(match, [player, survivor], now.AddMilliseconds(999));
+            service.ApplyPeriodicBuffs(match, [player, survivor], now.AddMilliseconds(999));
             Assert.Equal(10, player.Health);
-            service.ProcessPeriodicBuffs(match, [player, survivor], now.AddSeconds(1));
+            service.ApplyPeriodicBuffs(match, [player, survivor], now.AddSeconds(1));
             Assert.Equal(13, player.Health);
             Assert.Equal(3,
                 provider.GetRequiredService<game_server.matches.logging.GameEventLogManager>()
                     .GetResultStats(match.MatchingId, playerId).TotalRecovery);
 
             player.AddPeriodicBuff(network.common.BuffSubType.HEALTH_DOWN, 20, 1, 10, now.AddSeconds(1));
-            service.ProcessPeriodicBuffs(match, [player, survivor], now.AddSeconds(2));
+            service.ApplyPeriodicBuffs(match, [player, survivor], now.AddSeconds(2));
             Assert.Equal(0, player.Health);
             Assert.True(player.IsEliminated);
             Assert.Equal(0, TestGameSessionServices.GetPeriodicBuffCount(player));
@@ -357,16 +357,16 @@ public sealed class MatchGameplayServiceTests
             bot.Player.MarkSwarmCombat(now);
             service.UpdateSleep(match, [bot], now.AddSeconds(2));
             Assert.False(bot.Player.IsSleeping);
-            MatchCombatService.ProcessSleepRecovery(match, [bot.Player], now.AddSeconds(2), TestGameSessionServices.CreateHealthService(store, store.EventLogs));
+            TestGameSessionServices.CreateHealthService(store, store.EventLogs).ApplySleepRecovery(match, [bot.Player], now.AddSeconds(2));
             Assert.Equal(10, bot.Player.Health);
             service.UpdateSleep(match, [bot], now.AddSeconds(3));
             Assert.True(bot.Player.IsSleeping);
-            MatchCombatService.ProcessSleepRecovery(match, [bot.Player], now.AddSeconds(3), TestGameSessionServices.CreateHealthService(store, store.EventLogs));
+            TestGameSessionServices.CreateHealthService(store, store.EventLogs).ApplySleepRecovery(match, [bot.Player], now.AddSeconds(3));
             Assert.Equal(10, bot.Player.Health);
-            MatchCombatService.ProcessSleepRecovery(match, [bot.Player], now.AddSeconds(4), TestGameSessionServices.CreateHealthService(store, store.EventLogs));
+            TestGameSessionServices.CreateHealthService(store, store.EventLogs).ApplySleepRecovery(match, [bot.Player], now.AddSeconds(4));
             int expected = 10 + Math.Max(1, (int)MathF.Round(network.common.Config.MAX_HEALTH * 0.05f));
             Assert.Equal(expected, bot.Player.Health);
-            MatchCombatService.ProcessSleepRecovery(match, [bot.Player], now.AddSeconds(4), TestGameSessionServices.CreateHealthService(store, store.EventLogs));
+            TestGameSessionServices.CreateHealthService(store, store.EventLogs).ApplySleepRecovery(match, [bot.Player], now.AddSeconds(4));
             Assert.Equal(expected, bot.Player.Health);
             bot.Player.MarkSwarmCombat(now.AddSeconds(4));
             service.UpdateSleep(match, [bot], now.AddSeconds(4));

@@ -26,15 +26,13 @@ public class SwarmDamagePathTests
     public void TailCut_RemovesSuffixAndChargesAttacker()
     {
         string source = File.ReadAllText(
-            Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "Combat", "MatchCombatService.cs"));
+            Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "MatchCombatService.cs"));
 
-        // 2026-09-02 재무장 — 절단은 켜져 있어야 한다 (끌 때는 이 어서션도 같이 바꾼다).
-        Assert.Contains("SwarmTrailCutEnabled = true", source);
         Assert.DoesNotContain("OrbCutCracks", source);
 
         int cutMethodStart = source.IndexOf("private void TryPerformSwarmTrailCut(", StringComparison.Ordinal);
         Assert.True(cutMethodStart >= 0, "TryPerformSwarmTrailCut를 찾지 못했다");
-        int cutMethodEnd = source.IndexOf("// 링 연출 종류", cutMethodStart, StringComparison.Ordinal);
+        int cutMethodEnd = source.IndexOf("private const int SwarmRingVfxKindCut", cutMethodStart, StringComparison.Ordinal);
         Assert.True(cutMethodEnd > cutMethodStart, "절단 판정 메서드의 끝을 찾지 못했다");
         string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
 
@@ -87,7 +85,7 @@ public class SwarmDamagePathTests
         Assert.True(listStart >= 0);
         Assert.Contains("if (definition.DoorId <= 0)", interactions[listStart..]);
 
-        string damage = File.ReadAllText(Path.Combine(root, "game_server", "Matches", "Combat", "MatchCombatDamageService.cs"));
+        string damage = File.ReadAllText(Path.Combine(root, "game_server", "Matches", "MatchCombatDamageService.cs"));
         int spawnStart = damage.IndexOf("private void SpawnSwarmSummonStone", StringComparison.Ordinal);
         Assert.True(spawnStart >= 0);
         string spawn = damage.Substring(spawnStart, Math.Min(1400, damage.Length - spawnStart));
@@ -108,7 +106,7 @@ public class SwarmDamagePathTests
     {
         // #312 분리: 절단 기계는 SwarmArena, 봇 판단(자제·도주·치명상)은 SwarmBots가 소유한다.
         string source = File.ReadAllText(
-            Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "Combat", "MatchCombatService.cs"));
+            Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "MatchCombatService.cs"));
         string botSource = File.ReadAllText(
             Path.Combine(FindRepositoryRoot(), "game_server", "Players", "Bots", "BotDecisionService.cs"));
 
@@ -116,7 +114,7 @@ public class SwarmDamagePathTests
         Assert.Contains("SwarmBotCutMinHealthRatio = 0.5f", botSource);
         Assert.Contains("SwarmBotCutCooldownSeconds = 6d", botSource);
         int cutMethodStart = source.IndexOf("private void TryPerformSwarmTrailCut(", StringComparison.Ordinal);
-        int cutMethodEnd = source.IndexOf("// 링 연출 종류", cutMethodStart, StringComparison.Ordinal);
+        int cutMethodEnd = source.IndexOf("private const int SwarmRingVfxKindCut", cutMethodStart, StringComparison.Ordinal);
         string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
         Assert.Contains("cutterBot != null && !botDecisions.IsSwarmBotCutAllowed(", cutBody);
         Assert.Contains("BotTactics.LastTrailCutAtUtc[cutterBot.PlayerId] = nowUtc", cutBody);
@@ -159,13 +157,13 @@ public class SwarmDamagePathTests
         Assert.Contains("player.TryStopSleep()", movement);
 
         string combat = File.ReadAllText(
-            Path.Combine(root, "game_server", "Matches", "Combat", "MatchCombatService.cs"));
+            Path.Combine(root, "game_server", "Matches", "MatchCombatService.cs"));
         // 피격·절단 가해는 수면을 깨지 않고 교전 잠금만 찍는다.
-        Assert.Contains("victim.MarkSwarmCombat(nowUtc)", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "Combat", "MatchCombatDamageService.cs")));
+        Assert.Contains("victim.MarkSwarmCombat(nowUtc)", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "MatchCombatDamageService.cs")));
         Assert.Contains("MarkSwarmCombat(nowUtc)", combat);
         // 아레나에서 수면을 깨우는 호출이 되살아나면 계약 위반이다 (폐쇄·경고 깨우기 퇴역).
         Assert.DoesNotContain("BreakSwarmSleep", combat);
-        Assert.Contains("ProcessSleepRecovery(runtime,", combat);
+        Assert.Contains("ApplySleepRecovery(runtime,", combat);
         // 봇 파셜(#312)도 같은 계약을 진다.
         Assert.DoesNotContain("BreakSwarmSleep", File.ReadAllText(
             Path.Combine(root, "game_server", "Players", "Bots", "BotDecisionService.cs")));

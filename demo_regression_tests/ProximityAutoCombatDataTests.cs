@@ -111,9 +111,9 @@ public class ProximityAutoCombatDataTests
     {
         string repoRoot = FindRepositoryRoot();
         string gameServerSource = ReadNormalizedSource(
-            repoRoot, "game_server", "Matches", "Combat", "MatchCombatService.cs");
+            repoRoot, "game_server", "Matches", "MatchCombatService.cs");
         string sessionSource = ReadNormalizedSource(
-            repoRoot, "game_server", "Matches", "Combat", "MatchCombatDamageService.cs");
+            repoRoot, "game_server", "Matches", "MatchCombatDamageService.cs");
         string mapSource = ReadMapManagerSources(repoRoot);
         string playerSource = ReadNormalizedSource(
             repoRoot, "client", "Assets", "Scripts", "Components", "Player", "Player.cs");
@@ -163,7 +163,7 @@ public class ProximityAutoCombatDataTests
     {
         string root = FindRepositoryRoot();
         string publisher = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "OrbVisualStatePublisher.cs");
-        string combat = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchCombatService.cs");
+        string combat = ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatService.cs");
         string publish = ReadMethodSlice(
             publisher,
             "public void Publish(",
@@ -236,7 +236,7 @@ public class ProximityAutoCombatDataTests
         string mapSource = ReadMapManagerSources(repoRoot);
 
         // #238: 레거시 잔상 공격 파이프라인 퇴역 — 현행 스웜의 몬스터 공격 피드백 계약을 검사한다.
-        string swarmSource = ReadNormalizedSource(repoRoot, "game_server", "Matches", "Combat", "MatchCombatService.cs");
+        string swarmSource = ReadNormalizedSource(repoRoot, "game_server", "Matches", "MatchCombatService.cs");
         Assert.Contains("SendMonsterHitNotification(", swarmSource);
         // 봇 플레이어 ID도 음수라 플레이어 맵 우선 해석이 계약이다 (#219 봇전 연출 증발 수리)
         Assert.Contains(
