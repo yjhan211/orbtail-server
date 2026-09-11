@@ -94,7 +94,7 @@ public sealed class MatchGameplayServiceTests
                 BindingFlags.Instance | BindingFlags.NonPublic)!;
             broadcast.Invoke(service, [match.MatchingId,
                 new List<game_server.sessions.GameClientSession> { TestGameSessionServices.CreateRecipientSession() }]);
-            var signature = match.Progress.OrbRankingsSignature;
+            var signature = match.OrbRankingsSignature;
             Assert.Equal("101:2|-102:1|103:0", signature);
         }
     }

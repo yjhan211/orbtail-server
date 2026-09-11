@@ -33,7 +33,6 @@ public sealed class GameServerDependencyInjectionTests
         Assert.Same(first.CombatDamage, store.GetOrThrow(first.MatchingId).CombatDamage);
         Assert.NotSame(first.CombatDamage, second.CombatDamage);
         Assert.NotSame(first.CombatDamage.CriticalRng, second.CombatDamage.CriticalRng);
-        Assert.NotSame(first.Progress, second.Progress);
     }
 
     [Fact]

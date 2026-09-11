@@ -1,11 +1,11 @@
 using System.Collections.Immutable;
 using game_server;
-using game_server.matches.field;
-using game_server.matches.logging;
 using game_server.matches;
 using game_server.matches.entry;
-using game_server.matches.results;
+using game_server.matches.field;
+using game_server.matches.logging;
 using game_server.matches.monsters;
+using game_server.matches.results;
 using game_server.players;
 using game_server.players.bots;
 using game_server.sessions;
@@ -20,7 +20,7 @@ namespace game_server.matches.combat;
 
 /// <summary>
 ///     매치의 전투 틱 순서를 조율하고 꼬리 절단·점수 만료를 처리한다.
-///     DI 싱글턴이며 순위 방송·시간 종료·접촉 로그의 진행 표시는 MatchRuntime.Progress가 소유한다. 호출자는 해당 매치 잠금을 보유한다.
+///     DI 싱글턴이며 순위 방송·시간 종료·접촉 로그의 진행 표시는 MatchRuntime이 소유한다. 호출자는 해당 매치 잠금을 보유한다.
 ///     봇 판단과 개별 무기·성장·피해 규칙은 각 서비스에 위임한다.
 /// </summary>
 internal class MatchCombatService(
@@ -171,9 +171,9 @@ internal class MatchCombatService(
 
         // 접촉 계측: 접촉이 성립하는지 층별로 남긴다. 이 줄들이 "봇은 접촉 피해를
         // 안 받는다"는 오독을 두 번 걷어냈다 — 실제로는 로깅이 없었고, 그다음엔 배율이 깎고 있었다.
-        if (tick.PlayerDamage.Count > 0 && (!runtime.Progress.NextContactLogAtUtc.HasValue || nowUtc >= runtime.Progress.NextContactLogAtUtc.Value))
+        if (tick.PlayerDamage.Count > 0 && (!runtime.NextContactLogAtUtc.HasValue || nowUtc >= runtime.NextContactLogAtUtc.Value))
         {
-            runtime.Progress.NextContactLogAtUtc = nowUtc.AddSeconds(10);
+            runtime.NextContactLogAtUtc = nowUtc.AddSeconds(10);
             int toBots = tick.PlayerDamage.Count(entry => entry.TargetPlayerId < 0);
             int toHumans = tick.PlayerDamage.Count - toBots;
             eventLogs.LogSystem(
@@ -509,7 +509,7 @@ internal class MatchCombatService(
     private int GetSwarmDraftTier(long matchingId)
     {
         var runtime = matchRuntimes.GetOrThrow(matchingId);
-        var startedAtUtc = runtime.StartsAtUtc ?? runtime.Progress.FallbackStartedAtUtc;
+        var startedAtUtc = runtime.StartsAtUtc ?? runtime.FallbackStartedAtUtc;
         return OrbData.GetDraftTierByElapsed((DateTime.UtcNow - startedAtUtc)?.TotalSeconds);
     }
 
@@ -1142,19 +1142,19 @@ internal class MatchCombatService(
         DateTime nowUtc)
     {
         var runtime = matchRuntimes.GetOrNull(matchingId);
-        if (runtime == null || runtime.Progress.TimeoutResultProcessed || IsMatchTerminal(matchingId))
+        if (runtime == null || runtime.TimeoutResultProcessed || IsMatchTerminal(matchingId))
             return false;
 
         var startedAtUtc = runtime.StartsAtUtc;
         if (startedAtUtc == null)
         {
             // 봇 전용 매치(어드민 검증)는 게이트가 없다 — 스웜 첫 틱을 앵커로 대신 쓴다.
-            if (!runtime.Progress.FallbackStartedAtUtc.HasValue)
+            if (!runtime.FallbackStartedAtUtc.HasValue)
             {
-                runtime.Progress.FallbackStartedAtUtc = nowUtc;
+                runtime.FallbackStartedAtUtc = nowUtc;
                 return false;
             }
-            startedAtUtc = runtime.Progress.FallbackStartedAtUtc.Value;
+            startedAtUtc = runtime.FallbackStartedAtUtc.Value;
         }
 
         if ((nowUtc - startedAtUtc.Value).TotalSeconds < Config.SWARM_MATCH_DURATION_SECONDS)
@@ -1178,7 +1178,7 @@ internal class MatchCombatService(
             .ThenBy(candidate => candidate.PlayerId)
             .ToList();
         long winnerId = candidates.Count > 0 ? candidates[0].PlayerId : 0;
-        runtime.Progress.TimeoutResultProcessed = true;
+        runtime.TimeoutResultProcessed = true;
         // 최종 점수표 (#226 F 계측): 순위 순 pid:오브:티어합 — 300초 목표(1위 11~15) 검증 근거.
         eventLogs.LogSystem(
             matchingId,
@@ -1228,12 +1228,12 @@ internal class MatchCombatService(
             return;
 
         string signature = string.Join("|", entries.Select(entry => $"{entry.PlayerId}:{entry.Orbs}"));
-        var progress = matchRuntimes.GetOrThrow(matchingId).Progress;
-        bool isFirstBroadcast = progress.OrbRankingsSignature == null;
-        if (!isFirstBroadcast && progress.OrbRankingsSignature == signature)
+        var runtime = matchRuntimes.GetOrThrow(matchingId);
+        bool isFirstBroadcast = runtime.OrbRankingsSignature == null;
+        if (!isFirstBroadcast && runtime.OrbRankingsSignature == signature)
             return;
 
-        progress.OrbRankingsSignature = signature;
+        runtime.OrbRankingsSignature = signature;
         if (isFirstBroadcast)
             logger.LogInformation(
                 "Orb rankings broadcast armed: MatchingId={MatchingId}, Participants={Count}, Sessions={Sessions}",

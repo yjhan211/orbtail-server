@@ -146,7 +146,7 @@ internal static class Program
         services.AddSingleton<BotMovementService>();
         services.AddSingleton<BotDecisionService>();
         services.AddSingleton<MatchCombatService>();
-        // 루프만 매치마다 만든다. 전투·자기장 서비스는 싱글턴이고 진행 표시는 MatchRuntime.Progress가 소유한다.
+        // 루프만 매치마다 만든다. 전투·자기장 서비스는 싱글턴이고 진행 표시는 MatchRuntime이 소유한다.
         services.AddSingleton<Func<MatchRuntime, TimeProvider, MatchTickLoop>>(sp =>
         {
             var environment = sp.GetRequiredService<MatchEnvironmentService>();
