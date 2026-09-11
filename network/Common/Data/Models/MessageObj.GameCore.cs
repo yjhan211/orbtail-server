@@ -282,15 +282,6 @@ namespace network.common.data.models
         [Key("objects")] public List<InteractableObjectState> Objects { get; set; }
     }
 
-    [MessagePackObject]
-    public class G_TO_C_INTERACTABLE_UPDATE : IMessagePackObject
-    {
-        [Key("interactId")] public int InteractId { get; set; }
-        [Key("order")] public int Order { get; set; }
-        [Key("isExplored")] public bool IsExplored { get; set; }
-        [Key("exploredBy")] public long ExploredBy { get; set; }
-    }
-
     /// <summary>등장할 객체들의 현재 공간 정보. 이름·외형은 매칭 로스터를 사용한다.</summary>
     [MessagePackObject]
     public class G_TO_C_OBJECT_INFO : IMessagePackObject

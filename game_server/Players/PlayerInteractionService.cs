@@ -92,11 +92,6 @@ internal sealed class PlayerInteractionService
         return true;
     }
 
-    /// <summary>
-    ///     플레이어가 지금 있는 구역에서 할 수 있는 상호작용을 클라이언트에 보낼 형태로 돌려준다.
-    ///     기본 상태 액션이 없는 정의, 탐색이 꺼져 있으면 문이 없는 정의, 이미 열린 문은 뺀다.
-    ///     호출마다 새 DTO를 만들어 응답을 고쳐도 다른 세션에 영향이 없다.
-    /// </summary>
     public List<InteractableObjectState> GetAvailableInteractions(MatchRuntime runtime, Player player)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -112,13 +107,6 @@ internal sealed class PlayerInteractionService
                 continue;
             }
 
-            bool hasDefaultAction = definition.Actions.Any(action => action.State == 0);
-            if (!hasDefaultAction)
-            {
-                continue;
-            }
-
-            // 탐색 세대 상호작용은 문만 남긴다. 이미 연 문은 다시 보이지 않는다.
             bool isDoor = definition.DoorId > 0;
             if (Config.IsSwarmExploreDisabled() && !isDoor)
             {
@@ -133,13 +121,7 @@ internal sealed class PlayerInteractionService
             var interaction = new InteractableObjectState { InteractId = definition.Id };
             foreach (var action in definition.Actions)
             {
-                interaction.Actions.Add(new InteractableActionState
-                {
-                    Order = action.ActionId,
-                    IsExplored = false,
-                    ExploredBy = 0,
-                    State = action.State
-                });
+                interaction.Actions.Add(new InteractableActionState { Order = action.ActionId });
             }
             available.Add(interaction);
         }

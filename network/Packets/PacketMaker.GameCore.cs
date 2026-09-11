@@ -146,21 +146,6 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_INTERACTABLE_UPDATE(int interactId, int order, bool isExplored, long exploredBy)
-    {
-        var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTABLE_UPDATE);
-        G_TO_C_INTERACTABLE_UPDATE body = new()
-        {
-            InteractId = interactId,
-            Order = order,
-            IsExplored = isExplored,
-            ExploredBy = exploredBy
-        };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
     public static Packet G_TO_C_GAME_TIME_WARNING(long matchingId, int remainingSeconds)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_GAME_TIME_WARNING);

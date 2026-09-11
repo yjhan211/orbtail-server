@@ -178,7 +178,7 @@ public sealed class PlayerInteractionServiceTests
     [Fact]
     public void InteractableSnapshots_AreIndependentCopiesOfSharedDefinitions()
     {
-        var definition = GameInteractableData.GetAll().First(item => item.DoorId > 0 && item.Actions.Any(action => action.State == 0));
+        var definition = GameInteractableData.GetAll().First(item => item.DoorId > 0 && item.Actions.Count > 0);
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948602);
         var player = TestGameSessionServices.GetOrRegisterPlayer(match, 11);
@@ -190,9 +190,9 @@ public sealed class PlayerInteractionServiceTests
         Assert.NotEmpty(first);
         Assert.Contains(first, state => state.InteractId == definition.Id);
         Assert.Equal(first.Count, second.Count);
-        first[0].Actions[0].IsExplored = true;
+        first[0].Actions[0].Order = -1;
         first[0].Actions.Clear();
         Assert.NotEmpty(second[0].Actions);
-        Assert.All(second.SelectMany(item => item.Actions), action => Assert.False(action.IsExplored));
+        Assert.All(second.SelectMany(item => item.Actions), action => Assert.True(action.Order >= 0));
     }
 }
