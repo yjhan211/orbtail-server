@@ -186,7 +186,7 @@ public sealed class OrbBoardTests
         Assert.Equal(new[] { first!.ItemUid, second!.ItemUid },
             inventory.GetOrderedOrbs().Select(item => item.ItemUid));
         var actors = new List<ProximityCombatActor>();
-        CombatActorFactory.AddInventoryCombatActors(actors, default, inventory);
+        MatchCombatActorBuilder.AddOrbActors(actors, default, inventory);
         Assert.Equal(new[] { first.ItemUid, second.ItemUid }, actors.Select(actor => actor.WeaponItemUid));
         Assert.True(inventory.TryReplaceOrb(first.ItemUid, 107000011, out _));
         Assert.Equal(first.ItemUid, inventory.GetOrderedOrbs()[0].ItemUid);

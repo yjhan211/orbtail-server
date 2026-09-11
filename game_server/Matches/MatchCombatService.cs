@@ -22,16 +22,12 @@ internal class MatchCombatService(
     OrbVisualStatePublisher orbVisuals,
     PlayerOrbTrailService orbTrails,
     MatchTrailCutService trailCuts,
+    MatchCombatActorBuilder actorBuilder,
     SunOrbAttackService sunOrbAttacks,
     WaveOrbAttackService waveOrbAttacks,
     BotDecisionService botDecisions,
     ILogger<MatchCombatService> logger)
 {
-    private const int SwarmArenaBasicDamage = 12;
-    private static float SwarmArenaBasicRange => Config.SWARM_ORB_ATTACK_RANGE;
-    private const float SwarmArenaBasicAttackIntervalSeconds = 1f;
-    private const int SwarmArenaWeaponItemId = 107000010;
-
     public virtual void ProcessTick(MatchRuntime runtime)
     {
         if (runtime.IsEnded)
@@ -156,7 +152,7 @@ internal class MatchCombatService(
             MonsterSnapshotPublisher.Broadcast(runtime, sessions, runtime.Monsters.GetVisualStates());
         }
 
-        var actors = BuildSwarmArenaCombatActors(runtime, players, nowUtc);
+        var actors = actorBuilder.Build(runtime, players, nowUtc);
         playerOrbs.ProcessOrbRecovery(runtime, actors, nowUtc);
         orbVisuals.Publish(runtime, actors, sessions);
         matchResults.BroadcastOrbRankings(runtime, sessions);
@@ -346,131 +342,4 @@ internal class MatchCombatService(
 
         combatDamage.ApplySwarmAfterimageMonsterHit(runtime, healthService, victim, damage.MonsterId, damage.Damage);
     }
-
-    internal List<ProximityCombatActor> BuildSwarmArenaCombatActors(MatchRuntime runtime, IReadOnlyList<Player> players, DateTime nowUtc)
-    {
-        var actors = new List<ProximityCombatActor>();
-        foreach (var player in players)
-        {
-            if (player.IsEliminated || player.Position == null)
-            {
-                continue;
-            }
-
-            if (!CombatActorFactory.TryCreateSpatialActor(player.PlayerId, Config.SWARM_MATCH_MAP, player.CurrentArea, player.Position, out var spatial))
-            {
-                continue;
-            }
-            var fallback = spatial with
-            {
-                WeaponItemId = SwarmArenaWeaponItemId,
-                AttackRange = SwarmArenaBasicRange,
-                Damage = SwarmArenaBasicDamage,
-                AttackIntervalSeconds = SwarmArenaBasicAttackIntervalSeconds,
-                WeaponItemUid = spatial.PlayerId,
-                TargetPriority = 0
-            };
-            var inventory = runtime.GetOrbs(spatial.PlayerId);
-            var inventoryItems = inventory.GetAllItems().Where(item => item.Count > 0).ToList();
-            if (inventoryItems.Count == 0)
-            {
-                actors.Add(fallback with { WeaponItemId = 0, Damage = 0 });
-                continue;
-            }
-            actors.Add(fallback with { WeaponItemId = 0, Damage = 0 });
-
-            int before = actors.Count;
-            CombatActorFactory.AddInventoryCombatActors(actors,
-                fallback with
-                {
-                    AttackRange = 0f,
-                    Damage = 0,
-                    AttackIntervalSeconds = 0f
-                },
-                inventory);
-            float sunAttackMultiplier = OrbData.GetSunPveAttackMultiplier(inventoryItems);
-            var actorTiers = orbTrails.GetOrbTiersInOrder(runtime, player);
-            int orbCount = actors.Count - before;
-            long nowUnixMs = (long)(nowUtc - DateTime.UnixEpoch).TotalMilliseconds;
-            for (int index = before; index < actors.Count; index++)
-            {
-                var actor = actors[index];
-                var trailPosition = orbTrails.GetOrbPosition(runtime, player, index - before, spatial.Position, actorTiers);
-                actor = actor with
-                {
-                    Position = trailPosition,
-                    Cell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, trailPosition),
-                    TrailOrdinal = index - before
-                };
-                actor = actor with { Untargetable = true };
-                OrbData.TryGetColorAndTier(actor.WeaponItemId, out var orbColor, out _);
-                if (orbColor is OrbColor.Blue or OrbColor.Green)
-                {
-                    actors[index] = actor with { Damage = 0 };
-                    continue;
-                }
-
-                bool crossfireSun = SunOrbAttackService.IsSwarmCrossfireSun(actor.WeaponItemId);
-                float crossfireDamageMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER : 1f;
-                float crossfireCadenceMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER : 1f;
-                OrbData.TryGetColorAndTier(actor.WeaponItemId, out _, out int actorTier);
-                float actorAttackRange = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_RANGE_BY_TIER[Math.Clamp(actorTier, 1, 3) - 1] : SwarmCombatGeometry.SwarmPveSameAreaAttackRange;
-                actors[index] = actor with
-                {
-                    Damage = Math.Max(1, (int)MathF.Round(
-                        OrbData.GetSwarmPveAttackDamage(actor.WeaponItemId) *
-                        sunAttackMultiplier * crossfireDamageMultiplier)),
-                    AttackIntervalSeconds = OrbData.GetSwarmPveAttackIntervalSeconds(
-                        actor.WeaponItemId) * ResolveSwarmOrbCadenceJitter(index - before) *
-                        crossfireCadenceMultiplier,
-                    InitialAttackDelaySeconds = 0f,
-                    AttackRange = actorAttackRange
-                };
-            }
-
-            if (orbCount > 1)
-            {
-                int rotation = (int)(nowUnixMs / 50 % orbCount);
-                if (rotation > 0)
-                {
-                    var rotated = new ProximityCombatActor[orbCount];
-                    for (int offset = 0; offset < orbCount; offset++)
-                    {
-                        rotated[offset] = actors[before + (offset + rotation) % orbCount];
-                    }
-
-                    for (int offset = 0; offset < orbCount; offset++)
-                    {
-                        actors[before + offset] = rotated[offset];
-                    }
-                }
-            }
-        }
-
-        foreach (var target in runtime.Monsters.GetCombatTargets())
-        {
-            actors.Add(new ProximityCombatActor(
-                target.CombatTargetId,
-                target.Area,
-                target.Position,
-                0,
-                0f,
-                0,
-                0f,
-                MapId: Config.SWARM_MATCH_MAP,
-                Cell: ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, target.Position),
-                IsMonsterTarget: true,
-                TargetPriority: 2));
-        }
-
-        return actors;
-    }
-
-    private static float ResolveSwarmOrbCadenceJitter(int slotIndex)
-    {
-        float phase = slotIndex * 0.6180339f;
-        phase -= MathF.Floor(phase);
-        return 0.88f + phase * 0.24f;
-    }
-
 }

@@ -10,24 +10,6 @@ public class OrbPveCombatDataTests
         TestGameData.EnsureBattleItemCombatLoaded();
     }
 
-    [Fact]
-    public void AllColors_ShareTheSameBaseAttackInterval()
-    {
-        // #219 M2 공격 문법 통일: 색별 공속 차이 퇴역.
-        Assert.Equal(1f, OrbData.GetBaseAttackIntervalMultiplier(OrbColor.Blue));
-        Assert.Equal(1f, OrbData.GetBaseAttackIntervalMultiplier(OrbColor.Red));
-        Assert.Equal(1f, OrbData.GetBaseAttackIntervalMultiplier(OrbColor.Green));
-    }
-
-    [Fact]
-    public void AllOrbLines_FireAtTwiceThePreviousRate()
-    {
-        Assert.Equal(0.5f, OrbData.GetAttackIntervalMultiplier(107000003));
-        Assert.Equal(0.5f, OrbData.GetAttackIntervalMultiplier(107000010));
-        Assert.Equal(0.5f, OrbData.GetAttackIntervalMultiplier(107000030));
-        Assert.Equal(1f, OrbData.GetAttackIntervalMultiplier(201000015));
-    }
-
     [Theory]
     [InlineData(107000010, 107000020)]
     [InlineData(107000020, 107000030)]
@@ -42,17 +24,6 @@ public class OrbPveCombatDataTests
         // 색 상성(1.5/0.5) 퇴역 — 클론 비목표(상성 금지).
         Assert.Equal(1f,
             OrbData.GetPveDamageMultiplier(attackerItemId, monsterRewardItemId));
-    }
-
-    [Fact]
-    public void WindOrb_NoLongerModifiesDamageOrCadence()
-    {
-        // 바람 반감·가속 퇴역 — 전 색 동일 데미지·공속.
-        Assert.Equal(1f,
-            OrbData.GetBaseAttackIntervalMultiplier(OrbColor.Green));
-        Assert.Equal(4, OrbData.GetBaseAttackDamage(4, OrbColor.Green));
-        Assert.Equal(7, OrbData.GetBaseAttackDamage(7, OrbColor.Green));
-        Assert.Equal(10, OrbData.GetBaseAttackDamage(10, OrbColor.Green));
     }
 
     [Fact]

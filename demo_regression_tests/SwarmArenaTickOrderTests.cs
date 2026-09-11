@@ -154,7 +154,7 @@ public sealed class SwarmArenaTickOrderTests
             "ApplySleepRecovery(",
             "ProcessSwarmBotDoorUnlocks(",
             "MonsterSnapshotPublisher.Broadcast(",
-            "BuildSwarmArenaCombatActors(",
+            "actorBuilder.Build(",
             "playerOrbs.ProcessOrbRecovery(",
             "orbVisuals.Publish(",
             "matchResults.BroadcastOrbRankings(",

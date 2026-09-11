@@ -30,10 +30,6 @@ namespace network.common.data
     {
         public const float RecoveryTickSeconds = 5f;
         public const float WindChargeSeconds = 2f;
-        public const float WindAttackRangeMultiplier = 1.2f;
-        public const float WindAttackIntervalMultiplier = 0.85f;
-        public const float WindBaseDamageMultiplier = 0.5f;
-        public const float WindBaseAttackIntervalMultiplier = 0.5f;
         public const float WindProjectileSpeedMultiplier = 1.25f;
         public const float SunMarkLifetimeSeconds = 3f;
         public const int SunMarkTriggerCount = 3;
@@ -47,16 +43,10 @@ namespace network.common.data
         // 침수 (#268, 2026-08-25): 소용돌이 피격 시 5초 25% 감속 — 서버(봇·몹)·클라 공용.
         public const float WaveSlowSeconds = 5f;
         public const float WaveSlowMoveSpeedMultiplier = 0.75f;
-        public const float WaveBaseAttackIntervalMultiplier = 1.25f;
-        // The current room-horde pace needs each orb to fire twice as often.
-        public const float OrbAttackIntervalMultiplier = 0.5f;
         // A Wave orb detonates at its primary target and damages every valid target in this radius.
         public const float WaveSplashRadius = 1.8f;
         public const float WaveTierTwoSplashRadius = 2.2f;
         public const float WaveTierThreeSplashRadius = 2.6f;
-        public const float WindPulseRadius = 2.4f;
-        public const float WindTierTwoPulseRadius = 2.8f;
-        public const float WindTierThreePulseRadius = 3.2f;
         public const float PveAdvantageDamageMultiplier = 1.5f;
         public const float PveNeutralDamageMultiplier = 1f;
         public const float PveDisadvantageDamageMultiplier = 0.5f;
@@ -299,22 +289,6 @@ namespace network.common.data
             };
         }
 
-        public static float GetWindPulseRadius(int itemId)
-        {
-            if (!TryGetColorAndTier(itemId, out OrbColor color, out int tier) ||
-                color != OrbColor.Green)
-            {
-                return WindPulseRadius;
-            }
-
-            return tier switch
-            {
-                >= 3 => WindTierThreePulseRadius,
-                2 => WindTierTwoPulseRadius,
-                _ => WindPulseRadius
-            };
-        }
-
         public static float GetPvpProjectileImpactDelaySeconds(int itemId, float distance)
         {
             // 공격 문법 통일: 전 색 같은 미사일 속도. 색 분기(파도 고정 딜레이·바람 고속탄) 퇴역.
@@ -323,29 +297,6 @@ namespace network.common.data
             // 하한 0.08초는 제로 프레임 착탄(순간이동처럼 보임) 방지용 최소치다.
             return Math.Max(0.08f, Math.Max(0f, distance) / HopeProjectileSpeed);
         }
-
-        // #219 M2 공격 문법 통일: 색별 공속·데미지 차이 퇴역 — 색은 시각과 스탯 버프만.
-        public static float GetBaseAttackIntervalMultiplier(OrbColor color) => 1f;
-
-        private static float LegacyBaseAttackIntervalMultiplier(OrbColor color) => color switch
-        {
-            OrbColor.Green => WindBaseAttackIntervalMultiplier,
-            OrbColor.Blue => WaveBaseAttackIntervalMultiplier,
-            _ => 1f
-        };
-
-        public static int GetBaseAttackDamage(int baseDamage, OrbColor color)
-        {
-            // 통일: 바람 데미지 반감 퇴역 — 전 색 동일 기본 데미지.
-            return Math.Max(0, baseDamage);
-        }
-
-        public static float GetAttackIntervalMultiplier(int itemId) => itemId switch
-        {
-            107000003 or 107000004 or 107000006 => OrbAttackIntervalMultiplier,
-            _ when IsOrbItem(itemId) => OrbAttackIntervalMultiplier,
-            _ => 1f
-        };
 
         public static float GetPveDamageMultiplier(int attackerItemId, int monsterRewardItemId)
         {

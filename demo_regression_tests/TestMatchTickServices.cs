@@ -116,7 +116,7 @@ internal static class TestMatchTickServices
 
     private sealed class Combat(Action<long, List<GameClientSession>> run)
         : MatchCombatService(null!, null!, null!,
-            null!, null!, null!, null!, null!, null!, null!, null!, NullLogger<MatchCombatService>.Instance)
+            null!, null!, null!, null!, null!, null!, null!, null!, null!, NullLogger<MatchCombatService>.Instance)
     {
         public override void ProcessTick(MatchRuntime runtime) => run(runtime.MatchingId, runtime.GetSessions());
     }

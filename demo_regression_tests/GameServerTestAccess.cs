@@ -19,6 +19,9 @@ internal static class GameServerTestAccess
     internal static MatchCombatService GetCombat(this GameServer server, long matchingId) =>
         Read<MatchCombatService>(GetLoop(server, matchingId));
 
+    internal static MatchCombatActorBuilder GetActorBuilder(this GameServer server, long matchingId) =>
+        Read<MatchCombatActorBuilder>(GetCombat(server, matchingId));
+
     internal static MatchTickLoop GetLoop(GameServer server, long matchingId)
     {
         var runtime = server.GetMatchRuntimes().GetOrThrow(matchingId);
@@ -77,7 +80,7 @@ internal static class GameServerTestAccess
             var combat = new MatchCombatService(logs,
                 health, combatDamage, results,
                 new PlayerOrbService(health, combatDamage, orbTrails, logs),
-                new OrbVisualStatePublisher(), orbTrails, trailCuts,
+                new OrbVisualStatePublisher(), orbTrails, trailCuts, new MatchCombatActorBuilder(orbTrails),
                 new SunOrbAttackService(TestGameSessionServices.CreateHealthService(runtimes, logs, new game_server.matches.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), combatDamage, logs),
                 new WaveOrbAttackService(health, combatDamage, logs), decisions,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatService>.Instance);

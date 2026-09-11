@@ -248,8 +248,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         runtime.RegisterParticipant(bot);
         foreach (var player in new[] { human, bot })
             Assert.True(TestGameSessionServices.Orbs(runtime, player.PlayerId).TryAddItemWithCapacity(107000010, Config.SWARM_ORB_CAPACITY, out _));
-        var combat = fixture.Server.GetCombat(FirstMatchingId);
-        var actors = combat.BuildSwarmArenaCombatActors(runtime, runtime.GetAlivePlayers(), DateTime.UtcNow);
+        var actorBuilder = fixture.Server.GetActorBuilder(FirstMatchingId);
+        var actors = actorBuilder.Build(runtime, runtime.GetAlivePlayers(), DateTime.UtcNow);
         var humanActors = actors.Where(actor => actor.PlayerId == human.PlayerId).ToList();
         var botActors = actors.Where(actor => actor.PlayerId == bot.PlayerId).ToList();
         Assert.NotEmpty(humanActors);
@@ -260,7 +260,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
         var snapshot = runtime.GetAlivePlayers();
         runtime.TryEliminatePlayer(bot.PlayerId, EliminationReason.HEALTH_ZERO);
-        actors = combat.BuildSwarmArenaCombatActors(runtime, snapshot, DateTime.UtcNow);
+        actors = actorBuilder.Build(runtime, snapshot, DateTime.UtcNow);
         Assert.DoesNotContain(actors, actor => actor.PlayerId == bot.PlayerId);
     }
 
@@ -278,8 +278,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.True(TestGameSessionServices.Orbs(runtime, FirstPlayerId).TryAddItemWithCapacity(107000010, Config.SWARM_ORB_CAPACITY, out _));
         var condition = session.Player;
         var now = DateTime.UtcNow;
-        List<ProximityCombatActor> Build() => fixture.Server.GetCombat(FirstMatchingId)
-            .BuildSwarmArenaCombatActors(runtime, [session.Player], now);
+        List<ProximityCombatActor> Build() => fixture.Server.GetActorBuilder(FirstMatchingId)
+            .Build(runtime, [session.Player], now);
 
         var awake = Build();
         Assert.Contains(awake, actor => actor.WeaponItemId != 0 && actor.Damage > 0);
