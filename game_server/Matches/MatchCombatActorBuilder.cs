@@ -85,26 +85,28 @@ internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails)
                     TrailOrdinal = ordinal,
                     Untargetable = true
                 };
-                OrbData.TryGetColorAndTier(actor.WeaponItemId, out var orbColor, out int orbTier);
+                bool attackOrb = OrbData.TryGetColorAndTier(actor.WeaponItemId, out var orbColor, out int orbTier);
                 if (orbColor is OrbColor.Blue or OrbColor.Green)
                 {
                     actors[index] = actor;
                     continue;
                 }
 
+                var combatData = BattleItemCombatData.Get(actor.WeaponItemId);
+                int baseDamage = attackOrb ? combatData?.Damage ?? 0 : 0;
+                float baseIntervalSeconds = attackOrb ? combatData?.AttackIntervalSeconds ?? 0f : 0f;
+
                 bool crossfireSun = SunOrbAttackService.IsSwarmCrossfireSun(actor.WeaponItemId);
                 float crossfireDamageMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER : 1f;
                 float crossfireCadenceMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER : 1f;
                 float attackRange = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_RANGE_BY_TIER[Math.Clamp(orbTier, 1, 3) - 1] : SwarmCombatGeometry.SwarmPveSameAreaAttackRange;
-                var combatData = BattleItemCombatData.Get(actor.WeaponItemId);
+
+                int damage = Math.Max(1, (int)MathF.Round(baseDamage * sunAttackMultiplier * crossfireDamageMultiplier));
+                float attackIntervalSeconds = baseIntervalSeconds * ResolveSwarmOrbCadenceJitter(ordinal) * crossfireCadenceMultiplier;
                 actors[index] = actor with
                 {
-                    Damage = Math.Max(1, (int)MathF.Round(
-                        OrbData.GetSwarmPveAttackDamage(actor.WeaponItemId) *
-                        sunAttackMultiplier * crossfireDamageMultiplier)),
-                    AttackIntervalSeconds = OrbData.GetSwarmPveAttackIntervalSeconds(
-                        actor.WeaponItemId) * ResolveSwarmOrbCadenceJitter(ordinal) *
-                        crossfireCadenceMultiplier,
+                    Damage = damage,
+                    AttackIntervalSeconds = attackIntervalSeconds,
                     AttackRange = attackRange,
                     ProjectileWidth = combatData?.ProjectileWidth ?? 0f,
                     EffectDurationSeconds = combatData?.EffectDurationSeconds ?? 0f

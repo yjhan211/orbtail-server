@@ -77,21 +77,6 @@ namespace network.common.data
             return BattleItemCombatData.Get(itemId)?.Damage ?? 0;
         }
 
-        /// <summary>
-        ///     PvE 공격 주기 — 전 티어 고정 (2026-08-24 유저 결정, #268): 티어 주기 단축(0.8/0.55/0.4)을
-        ///     퇴역한다. 발사량은 오브 개수가 이미 늘리므로 티어까지 주기를 당기면 이중 가속이고,
-        ///     바람(쿨 1.4s)·파도(2s)는 주기가 고정이라 태양만 티어 DPS가 5배로 벌어졌다.
-        ///     티어 값어치는 발당 피해(12·21·30)와 사거리만 진다 — 세 색 모두 티어 스케일 2.5배로 정렬.
-        ///     기저 0.8초는 #229 상향값 그대로 (초반 구역 보충 초당 1.33마리를 열 수 있는 최소 박자).
-        /// </summary>
-        public static float GetSwarmPveAttackIntervalSeconds(int itemId)
-        {
-            if (!TryGetColorAndTier(itemId, out _, out _))
-                return 0f;
-
-            return BattleItemCombatData.Get(itemId)?.AttackIntervalSeconds ?? 0f;
-        }
-
         public static float GetSwarmWaveBombRadius(int itemId)
         {
             if (!TryGetColorAndTier(itemId, out OrbColor color, out int tier) ||

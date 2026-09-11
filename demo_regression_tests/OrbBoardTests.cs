@@ -28,7 +28,7 @@ public sealed class OrbBoardTests
     public void SunAndWindUseTheSameTierAttackTable(int itemId, int damage, float interval)
     {
         Assert.Equal(damage, OrbData.GetSwarmPveAttackDamage(itemId));
-        Assert.Equal(interval, OrbData.GetSwarmPveAttackIntervalSeconds(itemId));
+        Assert.Equal(interval, BattleItemCombatData.Get(itemId)!.AttackIntervalSeconds);
     }
 
     [Fact]
