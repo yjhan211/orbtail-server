@@ -76,7 +76,8 @@ internal sealed class MatchRuntime
     public MatchTrailCombatState TrailCombat { get; } = new();
     public MatchSunOrbAttackState SunOrbAttacks { get; }
     public MatchWindOrbAttackState WindOrbAttacks { get; } = new();
-    public MatchWaveOrbAttackState WaveOrbAttacks { get; } = new();
+    public List<PendingWaveAttack> PendingWaveAttacks { get; } = new();
+    public Dictionary<(long PlayerId, long ItemUid, int StackIndex), DateTime> OrbRecoveryReadyAtUtc { get; } = new();
 
     // 아이템과 재화
     public MatchGroundItemState GroundItems { get; }
@@ -84,7 +85,6 @@ internal sealed class MatchRuntime
     // 맵과 진행 상태
     public MatchDoorState Doors { get; } = new();
     public MatchAreaClosureState Closures { get; }
-    public MatchOrbRecoveryState OrbRecovery { get; } = new();
     public MatchEventLogState EventLog { get; } = new();
 
     // 틱 실행과 일정

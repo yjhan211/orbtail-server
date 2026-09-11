@@ -24,14 +24,13 @@ internal sealed class WaveOrbAttackService(
         if (!Monitor.IsEntered(runtime.MatchLock))
             throw new InvalidOperationException("Wave orb attacks require the match lock.");
         if (runtime.IsEnded) return;
-        long matchingId = runtime.MatchingId;
         // 1) 기폭: 예약된 소용돌이 정산.
-        for (int index = runtime.WaveOrbAttacks.PendingAttacks.Count - 1; index >= 0; index--)
+        for (int index = runtime.PendingWaveAttacks.Count - 1; index >= 0; index--)
         {
-            var vortex = runtime.WaveOrbAttacks.PendingAttacks[index];
-            if (vortex.MatchingId != matchingId || nowUtc < vortex.ExplodeAtUtc)
+            var vortex = runtime.PendingWaveAttacks[index];
+            if (nowUtc < vortex.ExplodeAtUtc)
                 continue;
-            runtime.WaveOrbAttacks.PendingAttacks.RemoveAt(index);
+            runtime.PendingWaveAttacks.RemoveAt(index);
             Detonate(runtime, vortex.OwnerId, vortex.Area, vortex.Position,
                 vortex.Damage, vortex.Radius, vortex.SourceItemId, nowUtc);
             if (runtime.IsEnded) return;

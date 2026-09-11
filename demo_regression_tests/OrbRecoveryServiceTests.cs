@@ -39,9 +39,9 @@ public sealed class PlayerOrbRecoveryTests
             Assert.Equal(Config.MAX_HEALTH - 12, bot.Player.Health);
             service.ProcessOrbRecovery(match, [first, second], now.AddSeconds(5));
             Assert.Equal(Config.MAX_HEALTH, bot.Player.Health);
-            Assert.Equal(2, match.OrbRecovery.ReadyAtUtc.Count);
+            Assert.Equal(2, match.OrbRecoveryReadyAtUtc.Count);
             service.ProcessOrbRecovery(match, [], now.AddSeconds(6));
-            Assert.Empty(match.OrbRecovery.ReadyAtUtc);
+            Assert.Empty(match.OrbRecoveryReadyAtUtc);
             match.TryMarkEnded();
         }
     }
@@ -88,7 +88,7 @@ public sealed class PlayerOrbRecoveryTests
         {
             match.TryMarkEnded();
             service.ProcessOrbRecovery(match, [actor], DateTime.UtcNow);
-            Assert.Empty(match.OrbRecovery.ReadyAtUtc);
+            Assert.Empty(match.OrbRecoveryReadyAtUtc);
         }
     }
 

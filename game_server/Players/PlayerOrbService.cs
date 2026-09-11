@@ -42,7 +42,7 @@ internal sealed class PlayerOrbService(
             return;
         }
 
-        var nextRecoveryAtUtcByOrb = runtime.OrbRecovery.ReadyAtUtc;
+        var nextRecoveryAtUtcByOrb = runtime.OrbRecoveryReadyAtUtc;
         var activeRecoveryOrbs = new HashSet<(long PlayerId, long ItemUid, int StackIndex)>();
         var recoveryByPlayer = new Dictionary<long, List<(ProximityCombatActor OrbActor, int Amount)>>();
 
@@ -111,7 +111,7 @@ internal sealed class PlayerOrbService(
         {
             if (!activeRecoveryOrbs.Contains((recoveryKey.PlayerId, recoveryKey.ItemUid, recoveryKey.StackIndex)))
             {
-                nextRecoveryAtUtcByOrb.TryRemove(recoveryKey, out _);
+                nextRecoveryAtUtcByOrb.Remove(recoveryKey);
             }
         }
     }
@@ -133,7 +133,6 @@ internal sealed class PlayerOrbService(
             throw new InvalidOperationException("Orb attack owner must belong to the match.");
         }
 
-        long matchingId = runtime.MatchingId;
         var alivePlayers = runtime.GetAlivePlayers();
         IReadOnlyList<SwarmArenaCombatTarget>? monsterTargets = null;
         var orderedOrbs = owner.Orbs.GetOrderedOrbs();
@@ -221,7 +220,7 @@ internal sealed class PlayerOrbService(
                 sunDamageMultiplier = OrbData.GetSunPveAttackMultiplier(orderedOrbs);
             }
             int damage = Math.Max(1, (int)MathF.Round(baseDamage * sunDamageMultiplier * Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER));
-            runtime.WaveOrbAttacks.PendingAttacks.Add((matchingId, owner.PlayerId, owner.CurrentArea, orbPosition, damage, radius, orb.ItemId, nowUtc.AddSeconds(WaveOrbDetonationDelaySeconds)));
+            runtime.PendingWaveAttacks.Add(new PendingWaveAttack(owner.PlayerId, owner.CurrentArea, orbPosition, damage, radius, orb.ItemId, nowUtc.AddSeconds(WaveOrbDetonationDelaySeconds)));
             using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_RING_EFFECT);
             packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_RING_EFFECT
             {
