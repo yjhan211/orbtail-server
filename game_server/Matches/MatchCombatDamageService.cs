@@ -18,6 +18,8 @@ namespace game_server.matches;
 internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
 {
     private const int SwarmRingVfxKindRetaliationBlocked = 6;
+    private static double SwarmCriticalChance => SwarmConfigData.GetDouble("SWARM_CRITICAL_CHANCE", 0.15d);
+    private static float SwarmCriticalMultiplier => SwarmConfigData.GetFloat("SWARM_CRITICAL_MULTIPLIER", 2f);
 
     private static bool RollCritical(MatchRuntime runtime, double chance) => runtime.CombatDamage.CriticalRng.NextDouble() < chance;
 
@@ -70,8 +72,7 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
         return whole;
     }
 
-    public void SendPlayerHitNotification(MatchRuntime runtime, Player? attacker, long targetPlayerId, AreaType area,
-        int weaponItemId, int damage, int targetHealth, bool isPeriodicDamage = false)
+    public void SendPlayerHitNotification(MatchRuntime runtime, Player? attacker, long targetPlayerId, AreaType area, int weaponItemId, int damage, int targetHealth, bool isPeriodicDamage = false)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -168,8 +169,7 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
         victim.MarkSwarmCombat(nowUtc);
         if (victim.InterruptDoor() is { } interactId)
         {
-            eventLogs.LogExploreCancelled(runtime.MatchingId, victim.PlayerId, interactId,
-                victim.CurrentArea.ToString(), "door_unlock_hit", isBot: victim.PlayerId < 0);
+            eventLogs.LogExploreCancelled(runtime.MatchingId, victim.PlayerId, interactId, victim.CurrentArea.ToString(), "door_unlock_hit", isBot: victim.PlayerId < 0);
             victim.Session?.SendDoorOpenInterrupted(interactId);
         }
 
@@ -195,8 +195,7 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
         victim.MarkSwarmCombat(nowUtc);
         if (victim.InterruptDoor() is { } interactId)
         {
-            eventLogs.LogExploreCancelled(runtime.MatchingId, victim.PlayerId, interactId,
-                victim.CurrentArea.ToString(), "door_unlock_hit", isBot: victim.PlayerId < 0);
+            eventLogs.LogExploreCancelled(runtime.MatchingId, victim.PlayerId, interactId, victim.CurrentArea.ToString(), "door_unlock_hit", isBot: victim.PlayerId < 0);
             victim.Session?.SendDoorOpenInterrupted(interactId);
         }
 
@@ -210,8 +209,7 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
         int healthAfter = Math.Max(0, healthBefore - damage);
         bool isLethal = healthBefore > 0 && healthAfter <= 0;
         bool isBot = BotPlayerManager.IsBotPlayerId(victim.PlayerId);
-        eventLogs.LogSwarmAfterimageHit(runtime.MatchingId, monsterId, victim.PlayerId, victim.CurrentArea.ToString(),
-            damage, healthBefore, healthAfter, isLethal, isBot, new DateTimeOffset(nowUtc));
+        eventLogs.LogSwarmAfterimageHit(runtime.MatchingId, monsterId, victim.PlayerId, victim.CurrentArea.ToString(), damage, healthBefore, healthAfter, isLethal, isBot, new DateTimeOffset(nowUtc));
         var session = victim.Session;
         healthService.ApplyDamage(runtime, victim, damage);
 
@@ -231,9 +229,6 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
         });
         session.TrySend(packet);
     }
-
-    private static double SwarmCriticalChance => SwarmConfigData.GetDouble("SWARM_CRITICAL_CHANCE", 0.15d);
-    private static float SwarmCriticalMultiplier => SwarmConfigData.GetFloat("SWARM_CRITICAL_MULTIPLIER", 2f);
 
     public int RollSwarmCriticalDamage(MatchRuntime runtime, int damage, out bool critical)
     {
@@ -342,13 +337,16 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
             return;
         }
 
-        int shock = Math.Max(1,
-            (int)MathF.Round(Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE) * damageScale));
+        int shock = Math.Max(1, (int)MathF.Round(Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE) * damageScale));
         var victim = players.FirstOrDefault(player => player.PlayerId == victimId);
-        if (victim == null || victim.IsEliminated) return;
-        if (victim.IsWounded(DateTime.UtcNow) &&
-            RollCritical(runtime, Config.SWARM_WIND_WOUND_CRIT_CHANCE))
+        if (victim == null || victim.IsEliminated)
+        {
+            return;
+        }
+        if (victim.IsWounded(DateTime.UtcNow) && RollCritical(runtime, Config.SWARM_WIND_WOUND_CRIT_CHANCE))
+        {
             shock = Math.Max(shock + 1, (int)MathF.Round(shock * SwarmCriticalMultiplier));
+        }
 
         var owner = runtime.GetParticipant(ownerId);
         int ownerHealth = owner?.Health ?? -1;
@@ -364,6 +362,10 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Combat damage requires the match lock.");
+        }
+        if (runtime.IsEnded)
+        {
+            return;
         }
         long matchingId = runtime.MatchingId;
         for (int index = runtime.CombatDamage.PendingMonsterHits.Count - 1; index >= 0; index--)
@@ -477,8 +479,7 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
     {
         foreach (var observer in sessions)
         {
-            if (!observer.PlayerId.HasValue || observer.PlayerId.Value == attack.AttackerPlayerId ||
-                observer.Player.CurrentArea != attack.Area)
+            if (!observer.PlayerId.HasValue || observer.PlayerId.Value == attack.AttackerPlayerId || observer.Player.CurrentArea != attack.Area)
             {
                 continue;
             }
