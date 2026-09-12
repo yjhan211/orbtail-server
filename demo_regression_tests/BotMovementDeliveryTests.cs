@@ -25,7 +25,7 @@ public sealed class BotMovementDeliveryTests
         var destination = AddRecipient(store, match.MatchingId, 2, AreaType.S2Ground, timeline);
         var elsewhere = AddRecipient(store, match.MatchingId, 3, AreaType.S2Library1, timeline);
         var otherMatch = AddRecipient(store, 44002, 4, AreaType.S2Ground, timeline);
-        var movement = new BotMovementEvent
+        var movement = new BotMovementResult
         {
             BotPlayerId = -20,
             FromArea = changesArea ? AreaType.S2Gym1 : AreaType.S2Ground,
@@ -82,7 +82,7 @@ public sealed class BotMovementDeliveryTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(44003);
         var service = new BotMovementService(NullLogger<BotMovementService>.Instance);
-        var movement = new BotMovementEvent();
+        var movement = new BotMovementResult();
         Assert.Throws<InvalidOperationException>(() => service.DispatchExternalMovement(match, movement));
         using (match.Enter())
         {

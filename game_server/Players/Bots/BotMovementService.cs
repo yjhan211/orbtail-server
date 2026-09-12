@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using game_server.matches;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
@@ -23,7 +22,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
     private const float IsoVerticalSpeedScale = 1f;
     public static readonly TimeSpan SummonStoneBotReactionDelay = TimeSpan.FromSeconds(2.5);
 
-    public virtual void ProcessTick(MatchRuntime runtime, Func<long, BotMovementDecision> decideMovement)
+    public virtual void ProcessTick(MatchRuntime runtime, Action<long> decideMovement)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -35,18 +34,14 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
         }
         ArgumentNullException.ThrowIfNull(decideMovement);
-        long matchingId = runtime.MatchingId;
-        long tickStartedAt = Stopwatch.GetTimestamp();
         var sessions = runtime.GetSessions();
         var playerAreas = new Dictionary<long, AreaType>();
         foreach (var player in runtime.GetAlivePlayers())
         {
             playerAreas.Add(player.PlayerId, player.CurrentArea);
         }
-        double snapshotElapsedMilliseconds = Stopwatch.GetElapsedTime(tickStartedAt).TotalMilliseconds;
         var result = ProcessBotMovementTick(runtime, playerAreas, decideMovement);
 
-        long broadcastStartedAt = Stopwatch.GetTimestamp();
         foreach (var movement in result.Movements)
         {
             runtime.Bots.GetBot(movement.BotPlayerId)?.Player.AdvanceOrbOrbit(movement.Position);
@@ -55,40 +50,9 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         {
             SendMovement(runtime, movement, sessions);
         }
-        double broadcastElapsedMilliseconds = Stopwatch.GetElapsedTime(broadcastStartedAt).TotalMilliseconds;
-        var batch = runtime.BotMovementMetrics.Record(matchingId,
-            new BotMovementSample(
-                Stopwatch.GetElapsedTime(tickStartedAt).TotalMilliseconds,
-                snapshotElapsedMilliseconds,
-                result.PlanningElapsedMilliseconds,
-                result.WalkingElapsedMilliseconds,
-                broadcastElapsedMilliseconds));
-        if (batch != null)
-        {
-            PublishBotMovementMetrics(batch);
-        }
-    }
-    private void PublishBotMovementMetrics(BotMovementMetricsBatch batch)
-    {
-        double snapshotP95Milliseconds = CalculatePercentile(batch.SnapshotSamples.OrderBy(value => value).ToArray(), 0.95);
-        double planningP95Milliseconds = CalculatePercentile(batch.PlanningSamples.OrderBy(value => value).ToArray(), 0.95);
-        double walkingP95Milliseconds = CalculatePercentile(batch.WalkingSamples.OrderBy(value => value).ToArray(), 0.95);
-        double broadcastP95Milliseconds = CalculatePercentile(batch.BroadcastSamples.OrderBy(value => value).ToArray(), 0.95);
-        logger.LogInformation(
-            "Bot movement tick: MatchingId={MatchingId} avg={Avg:F1}ms max={Max:F1}ms over {Count} ticks; " +
-            "p95 snapshot={SnapshotP95:F1}ms planning={PlanningP95:F1}ms walking={WalkingP95:F1}ms " +
-            "broadcast={BroadcastP95:F1}ms",
-            batch.MatchingId,
-            batch.TotalElapsedMilliseconds / batch.TickSamples.Length,
-            batch.MaxElapsedMilliseconds,
-            batch.TickSamples.Length,
-            snapshotP95Milliseconds,
-            planningP95Milliseconds,
-            walkingP95Milliseconds,
-            broadcastP95Milliseconds);
     }
 
-    private void SendMovement(MatchRuntime runtime, BotMovementEvent movement, IReadOnlyList<GameClientSession> sessions)
+    private void SendMovement(MatchRuntime runtime, BotMovementResult movement, IReadOnlyList<GameClientSession> sessions)
     {
         if (movement.IsAreaTransition)
         {
@@ -127,7 +91,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         }
     }
 
-    public void DispatchExternalMovement(MatchRuntime runtime, BotMovementEvent movement)
+    public void DispatchExternalMovement(MatchRuntime runtime, BotMovementResult movement)
     {
         ArgumentNullException.ThrowIfNull(movement);
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -140,25 +104,6 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         }
         SendMovement(runtime, movement, runtime.GetSessions());
     }
-
-    private static double CalculatePercentile(IReadOnlyList<double> sortedValues, double percentile)
-    {
-        if (sortedValues.Count == 0)
-        {
-            return 0d;
-        }
-
-        double position = (sortedValues.Count - 1) * Math.Clamp(percentile, 0d, 1d);
-        int lowerIndex = (int)Math.Floor(position);
-        int upperIndex = (int)Math.Ceiling(position);
-        if (lowerIndex == upperIndex)
-        {
-            return sortedValues[lowerIndex];
-        }
-        double fraction = position - lowerIndex;
-        return sortedValues[lowerIndex] + (sortedValues[upperIndex] - sortedValues[lowerIndex]) * fraction;
-    }
-
 
     private static float DistanceSquared(Vector3f position, float x, float y)
     {
@@ -191,13 +136,11 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
 
     public class BotWalkingTickResult
     {
-        public List<BotMovementEvent> Movements { get; } = new();
+        public List<BotMovementResult> Movements { get; } = new();
         public long PlanningBotId { get; set; }
-        public double PlanningElapsedMilliseconds { get; set; }
-        public double WalkingElapsedMilliseconds { get; set; }
     }
 
-    public BotWalkingTickResult ProcessBotMovementTick(MatchRuntime runtime, IReadOnlyDictionary<long, AreaType> playerAreas, Func<long, BotMovementDecision> decideMovement)
+    public BotWalkingTickResult ProcessBotMovementTick(MatchRuntime runtime, IReadOnlyDictionary<long, AreaType> playerAreas, Action<long> decideMovement)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -233,7 +176,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
                 if (bot.Player.Velocity.X != 0f || bot.Player.Velocity.Y != 0f)
                 {
                     bot.Player.Velocity = new Vector3f();
-                    result.Movements.Add(new BotMovementEvent
+                    result.Movements.Add(new BotMovementResult
                     {
                         BotPlayerId = bot.PlayerId,
                         FromArea = bot.Player.CurrentArea,
@@ -248,12 +191,11 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
                 continue;
             }
 
-            var movementDecision = decideMovement(bot.PlayerId);
-            if (movementDecision.Mode == BotMovementMode.None)
+            decideMovement(bot.PlayerId);
+            if (bot.DesiredMovementMode == BotMovementMode.None)
             {
                 bot.MovementMode = BotMovementMode.None;
-                bot.Path.Clear();
-                bot.PathIndex = 0;
+                bot.ClearPath();
                 bot.LastWalkStepTime = nowUtc;
                 continue;
             }
@@ -262,19 +204,18 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             bool underFire = (nowUtc - bot.LastDamagedAtUtc).TotalSeconds <= 6d;
             if (canPlanThisTick && (bot.MovementMode == BotMovementMode.None || nowUtc >= bot.MovementModeUntilUtc || underFire))
             {
-                bool changed = bot.MovementMode != movementDecision.Mode;
-                bot.MovementMode = movementDecision.Mode;
+                bool changed = bot.MovementMode != bot.DesiredMovementMode;
+                bot.MovementMode = bot.DesiredMovementMode;
                 const double holdSeconds = 1.5;
                 if (changed || bot.MovementModeUntilUtc <= nowUtc)
                 {
                     bot.MovementModeUntilUtc = nowUtc.AddSeconds(holdSeconds);
                 }
-                bot.MovementDestination = movementDecision.DestinationArea;
-                bot.Path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.CurrentArea, bot.Player.Cell!, movementDecision.DestinationArea, movementDecision.DestinationCell) ?? [];
-                bot.PathIndex = 0;
+                bot.MovementDestination = bot.DesiredMovementArea;
+                bot.SetPath(MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.CurrentArea, bot.Player.Cell!, bot.DesiredMovementArea, bot.DesiredMovementCell) ?? []);
             }
 
-            TrackIdleTime(bot, movementDecision, nowUtc);
+            TrackIdleTime(bot, nowUtc);
             if (bot.PathIndex >= bot.Path.Count)
             {
                 TryStartIdleWander(runtime, bot, nowUtc);
@@ -295,7 +236,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         return result;
     }
 
-    private void TrackIdleTime(Bot bot, BotMovementDecision directive, DateTime nowUtc)
+    private void TrackIdleTime(Bot bot, DateTime nowUtc)
     {
         const float movedThresholdSquared = 0.01f;
         if (bot.IdleWatchLastPosition == null || DistanceSquared(bot.IdleWatchLastPosition, bot.Player.Position!.X, bot.Player.Position!.Y) > movedThresholdSquared)
@@ -317,8 +258,8 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             bot.PlayerId,
             bot.Player.CurrentArea,
             (nowUtc - bot.IdleWatchLastMovedAtUtc).TotalSeconds,
-            directive.Mode,
-            directive.DestinationArea,
+            bot.DesiredMovementMode,
+            bot.DesiredMovementArea,
             Math.Max(0, bot.Path.Count - bot.PathIndex));
     }
 
@@ -346,8 +287,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             if (path == null || path.Count == 0)
                 continue;
 
-            bot.Path = path;
-            bot.PathIndex = 0;
+            bot.SetPath(path);
             return;
         }
     }
@@ -380,7 +320,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         return runtime.Closures.IsAreaClosed(area);
     }
 
-    private BotMovementEvent? WalkStep(MatchRuntime runtime, Bot bot, IReadOnlyDictionary<long, AreaType> playerAreas, bool allowPathPlanning)
+    private BotMovementResult? WalkStep(MatchRuntime runtime, Bot bot, IReadOnlyDictionary<long, AreaType> playerAreas, bool allowPathPlanning)
     {
         var now = DateTime.UtcNow;
         float deltaSec = (float)(now - bot.LastWalkStepTime).TotalSeconds;
@@ -422,8 +362,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             var transitionDoor = GameDoorData.GetDoorForTransition(bot.Player.CurrentArea, nextStep.Area, bot.Player.Cell!, nextStep.Cell);
             if (transitionDoor != null && !runtime.Doors.IsDoorOpen(transitionDoor.DoorId))
             {
-                bot.Path.Clear();
-                bot.PathIndex = 0;
+                bot.ClearPath();
                 bot.MovementDestination = AreaType.None;
                 bot.EvacuationDestination = AreaType.None;
                 bot.LoopWaitUntil = GetRandomWaitDeadline(0.8, 1.4);
@@ -450,8 +389,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         Vector3f velocity;
         if (!GameMapData.IsMoveablePosition(mapId, nextStep.Cell) && GameMapData.IsMoveablePosition(mapId, bot.Player.Cell!))
         {
-            bot.Path.Clear();
-            bot.PathIndex = 0;
+            bot.ClearPath();
             bot.MovementDestination = AreaType.None;
             bot.LoopWaitUntil = GetRandomWaitDeadline(0.4, 0.9);
             return null;
@@ -515,7 +453,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             bot.Player.Rotation = 0f;
         }
 
-        return new BotMovementEvent
+        return new BotMovementResult
         {
             BotPlayerId = bot.PlayerId,
             FromArea = fromArea,
@@ -528,7 +466,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         };
     }
 
-    private bool TryDodgeStep(MatchRuntime runtime, Bot bot, DateTime now, float deltaSec, out BotMovementEvent? movement)
+    private bool TryDodgeStep(MatchRuntime runtime, Bot bot, DateTime now, float deltaSec, out BotMovementResult? movement)
     {
         movement = null;
         if (bot.Player.CurrentArea == AreaType.None)
@@ -537,7 +475,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         }
 
         bool committed = now < bot.SwarmDodgeHoldUntilUtc;
-        var advice = BotDodgePolicy.GetDodgeDirection(runtime.SunCrossfireShapes, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now);
+        var advice = BotDodgeCalculator.CalculateDodge(runtime.SunCrossfireShapes, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now);
         if (advice == null)
         {
             if (!committed)
@@ -547,7 +485,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             if (bot.Player.Velocity.X != 0f || bot.Player.Velocity.Y != 0f)
             {
                 bot.Player.Velocity = new Vector3f(0f, 0f, 0f);
-                movement = new BotMovementEvent
+                movement = new BotMovementResult
                 {
                     BotPlayerId = bot.PlayerId,
                     FromArea = bot.Player.CurrentArea,
@@ -614,7 +552,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             {
                 bot.Player.Rotation = 0f;
             }
-            movement = new BotMovementEvent
+            movement = new BotMovementResult
             {
                 BotPlayerId = bot.PlayerId,
                 FromArea = bot.Player.CurrentArea,
@@ -635,8 +573,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
     private void ChooseNewWanderTarget(MatchRuntime runtime, Bot bot, IReadOnlyDictionary<long, AreaType> playerAreas)
     {
         var mapId = Config.SWARM_MATCH_MAP;
-        bot.Path.Clear();
-        bot.PathIndex = 0;
+        bot.ClearPath();
 
         bool needsGuardianOrb = !bot.Player.Orbs.GetOrderedOrbs().Any(item => OrbData.IsOrbItem(item.ItemId));
 
@@ -670,8 +607,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             return;
         }
 
-        bot.Path = path;
-        bot.PathIndex = 0;
+        bot.SetPath(path);
         bot.MovementDestination = destination;
         bot.LoopWaitUntil = GetRandomWaitDeadline(0.25, 0.6);
         logger.LogInformation("Bot wander move: BotId={Bot}, {From}->{To}, Steps={Steps}", bot.PlayerId, bot.Player.CurrentArea, destination, path.Count);
@@ -711,8 +647,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             return false;
         }
 
-        bot.Path = exit.Path;
-        bot.PathIndex = 0;
+        bot.SetPath(exit.Path);
         bot.MovementDestination = exit.Area;
         bot.LoopWaitUntil = DateTime.MinValue;
         logger.LogDebug("Bot corridor exit: BotId={Bot}, {From}->{To}, Steps={Steps}", bot.PlayerId, bot.Player.CurrentArea, exit.Area, exit.Path.Count);

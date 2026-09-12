@@ -42,8 +42,7 @@ internal sealed class PlayerEliminationService(
 
         if (eliminatedBot != null)
         {
-            eliminatedBot.Path.Clear();
-            eliminatedBot.PathIndex = 0;
+            eliminatedBot.ClearPath();
             eliminatedBot.LoopWaitUntil = DateTime.MinValue;
         }
 

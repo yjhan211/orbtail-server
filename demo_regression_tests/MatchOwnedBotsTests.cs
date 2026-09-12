@@ -66,18 +66,18 @@ public sealed class MatchOwnedBotsTests
         Assert.NotSame(first.Bots, second.Bots);
         var movementService = new BotMovementService(NullLogger<BotMovementService>.Instance);
         using (MatchRuntimeStore.Enter(first))
-            movementService.ProcessTick(first, _ => default);
+            movementService.ProcessTick(first, _ => { });
         using (MatchRuntimeStore.Enter(second))
-            movementService.ProcessTick(second, _ => default);
+            movementService.ProcessTick(second, _ => { });
         using (MatchRuntimeStore.Enter(first))
         {
             first.TryMarkEnded();
 
-            Assert.Throws<InvalidOperationException>(() => movementService.ProcessTick(first, _ => default));
+            Assert.Throws<InvalidOperationException>(() => movementService.ProcessTick(first, _ => { }));
         }
-        Assert.Throws<InvalidOperationException>(() => movementService.ProcessTick(first, _ => default));
+        Assert.Throws<InvalidOperationException>(() => movementService.ProcessTick(first, _ => { }));
         using (MatchRuntimeStore.Enter(second))
-            movementService.ProcessTick(second, _ => default);
+            movementService.ProcessTick(second, _ => { });
     }
 
     [Fact]
@@ -101,11 +101,11 @@ public sealed class MatchOwnedBotsTests
             using (match.Enter())
             {
                 return service.ProcessBotMovementTick(match,
-                    new Dictionary<long, AreaType>(), _ => default).PlanningBotId;
+                    new Dictionary<long, AreaType>(), _ => { }).PlanningBotId;
             }
         }
 
-        Assert.Throws<InvalidOperationException>(() => service.ProcessTick(first, _ => default));
+        Assert.Throws<InvalidOperationException>(() => service.ProcessTick(first, _ => { }));
         Assert.Equal(-2L, SelectNext(first));
         Assert.Equal(-2L, SelectNext(second));
         Assert.Equal(-1L, SelectNext(first));

@@ -30,7 +30,7 @@ public class SwarmBotDodgeTests
     {
         var threats = new[] { LineAlongX() };
         // 축에서 살짝 위(+Y)에 서 있다 → 위로 빠진다.
-        var direction = BotDodgePolicy.GetDodgeDirection(
+        var direction = BotDodgeCalculator.CalculateDodge(
             threats, -900000001, new Vector3f(2f, 0.05f, 0f), AreaType.S2Ground, Now);
 
         Assert.NotNull(direction);
@@ -42,7 +42,7 @@ public class SwarmBotDodgeTests
     public void HoldLastsUntilTheFrontHasPassed()
     {
         // 예고 0.55 + (축 2 - 앞머리 -0.35)/4.5 = 1.07초 뒤 착탄, 몸통 두 배(0.5/4.5)와 여유 0.15를 더한 만큼 커밋.
-        var advice = BotDodgePolicy.GetDodgeDirection(
+        var advice = BotDodgeCalculator.CalculateDodge(
             new[] { LineAlongX() }, -900000001, new Vector3f(2f, 0.05f, 0f), AreaType.S2Ground, Now);
 
         Assert.NotNull(advice);
@@ -53,7 +53,7 @@ public class SwarmBotDodgeTests
     public void BotBelowTheLine_StepsAwayDownward()
     {
         var threats = new[] { LineAlongX() };
-        var direction = BotDodgePolicy.GetDodgeDirection(
+        var direction = BotDodgeCalculator.CalculateDodge(
             threats, -900000001, new Vector3f(2f, -0.05f, 0f), AreaType.S2Ground, Now);
 
         Assert.NotNull(direction);
@@ -65,7 +65,7 @@ public class SwarmBotDodgeTests
     {
         var threats = new[] { LineAlongX() };
         // 반폭 0.35 + 몸 0.25 + 여유 0.2 = 0.8 (바닥면) → 월드 Y로 0.4. 0.6은 밖이다.
-        var direction = BotDodgePolicy.GetDodgeDirection(
+        var direction = BotDodgeCalculator.CalculateDodge(
             threats, -900000001, new Vector3f(2f, 0.6f, 0f), AreaType.S2Ground, Now);
 
         Assert.Null(direction);
@@ -76,7 +76,7 @@ public class SwarmBotDodgeTests
     {
         // 발동 1초 뒤: 앞머리 = -0.35 + 4.5 = 4.15. 축 위치 2에 선 봇은 이미 지나갔다.
         var threats = new[] { LineAlongX(armedInSeconds: -1.0) };
-        var direction = BotDodgePolicy.GetDodgeDirection(
+        var direction = BotDodgeCalculator.CalculateDodge(
             threats, -900000001, new Vector3f(2f, 0f, 0f), AreaType.S2Ground, Now);
 
         Assert.Null(direction);
@@ -85,14 +85,14 @@ public class SwarmBotDodgeTests
     [Fact]
     public void OwnShapeOtherAreaOrFarFuture_DoesNotReact()
     {
-        Assert.Null(BotDodgePolicy.GetDodgeDirection(
+        Assert.Null(BotDodgeCalculator.CalculateDodge(
             new[] { LineAlongX(ownerId: -900000001) }, -900000001,
             new Vector3f(2f, 0f, 0f), AreaType.S2Ground, Now));
-        Assert.Null(BotDodgePolicy.GetDodgeDirection(
+        Assert.Null(BotDodgeCalculator.CalculateDodge(
             new[] { LineAlongX() }, -900000001,
             new Vector3f(2f, 0f, 0f), AreaType.S2Gym1, Now));
         // 축 위치 6(사거리 끝) + 예고 3초 뒤 → 착탄까지 3 + 6.35/4.5 ≈ 4.4초 — 아직 안 움직인다.
-        Assert.Null(BotDodgePolicy.GetDodgeDirection(
+        Assert.Null(BotDodgeCalculator.CalculateDodge(
             new[] { LineAlongX(armedInSeconds: 3.0) }, -900000001,
             new Vector3f(6f, 0f, 0f), AreaType.S2Ground, Now));
     }
@@ -112,7 +112,7 @@ public class SwarmBotDodgeTests
             ArmedAtUtc = Now.AddSeconds(0.55), ExpiresAtUtc = Now.AddSeconds(2.05)
         };
         // 축 위 점 (바닥면 (1,1)) = 월드 (1, 0.5). 살짝 왼쪽(+perp)으로 벗어난 곳.
-        var direction = BotDodgePolicy.GetDodgeDirection(
+        var direction = BotDodgeCalculator.CalculateDodge(
             new[] { threat }, -900000002, new Vector3f(0.98f, 0.52f, 0f), AreaType.S2Ground, Now);
 
         Assert.NotNull(direction);
@@ -131,11 +131,11 @@ public class SwarmBotDodgeTests
             GroundLength = 0.002f, HalfWidth = 0.35f, SweepSpeed = 4.5f,
             ArmedAtUtc = Now.AddSeconds(0.55), ExpiresAtUtc = Now.AddSeconds(2.05)
         };
-        Assert.Null(BotDodgePolicy.GetDodgeDirection(
+        Assert.Null(BotDodgeCalculator.CalculateDodge(
             new[] { threat }, -900000001, new Vector3f(5f, 5f, 0f), AreaType.S2Ground, Now));
 
         // 같은 목록에 정상 모양이 있으면 그 모양에는 반응한다.
-        var direction = BotDodgePolicy.GetDodgeDirection(
+        var direction = BotDodgeCalculator.CalculateDodge(
             new[] { threat, LineAlongX() }, -900000001, new Vector3f(2f, 0.05f, 0f), AreaType.S2Ground, Now);
         Assert.NotNull(direction);
         Assert.True(direction!.Value.DirectionY > 0.99f);

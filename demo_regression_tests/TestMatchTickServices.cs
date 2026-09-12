@@ -123,7 +123,7 @@ internal static class TestMatchTickServices
     private sealed class Movement(Action<MatchRuntime> run)
         : BotMovementService(NullLogger<BotMovementService>.Instance)
     {
-        public override void ProcessTick(MatchRuntime runtime, Func<long, BotMovementDecision> decideMovement) => run(runtime);
+        public override void ProcessTick(MatchRuntime runtime, Action<long> decideMovement) => run(runtime);
     }
 
     private sealed class Field(Action<MatchRuntime, List<GameClientSession>> damage, Action<MatchRuntime> closure)

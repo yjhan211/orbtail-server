@@ -220,7 +220,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             elimination,
             "TryEliminatePlayer(",
-            "eliminatedBot.Path.Clear();",
+            "eliminatedBot.ClearPath();",
             "eliminatedPlayer.Orbs.TakeAllItems(",
             "session.TrySend(eliminatedPacket);",
             "CheckGameOver()");

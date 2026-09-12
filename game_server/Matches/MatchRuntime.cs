@@ -59,7 +59,6 @@ internal sealed class MatchRuntime
     // 매치 식별과 수명·잠금
     public long MatchingId { get; }
     public MatchBots Bots { get; }
-    internal BotMovementMetrics BotMovementMetrics { get; } = new();
     public MatchMonsters Monsters { get; }
 
     // 전투와 오브

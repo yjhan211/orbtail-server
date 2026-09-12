@@ -15,7 +15,6 @@ public class MatchBots
 
     private List<Bot> _bots = [];
     private int _movementPlanningCursor;
-
     public List<Bot> GetBots() => _bots;
     public Bot? GetBot(long playerId) => _bots.FirstOrDefault(b => b.PlayerId == playerId);
     internal MatchBots(ILogger logger)
@@ -35,7 +34,7 @@ public class MatchBots
 
         var bots = botPlayerIds.Select(botPlayerId =>
         {
-            if (!spawnCells.TryGetValue(botPlayerId, out Cell? assignedSpawn))
+            if (!spawnCells.TryGetValue(botPlayerId, out var assignedSpawn))
             {
                 throw new InvalidOperationException($"Bot {botPlayerId} has no spawn assignment in match {matchingId}.");
             }

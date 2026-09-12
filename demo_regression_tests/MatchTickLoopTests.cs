@@ -208,26 +208,6 @@ public sealed class MatchTickLoopTests
         Assert.Equal(new[] { "combat" }, steps);
     }
 
-    [Fact]
-    public void BotMovementService_RecordsOnlyTheSuppliedMatchAndPublishesItsMetrics()
-    {
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
-        var first = store.GetOrCreate(945108);
-        var second = store.GetOrCreate(945109);
-        var service = new BotMovementService(
-            NullLogger<BotMovementService>.Instance);
-        using (MatchRuntimeStore.Enter(first))
-        {
-            service.ProcessTick(first, _ => throw new InvalidOperationException("No bots should request a directive."));
-            Assert.Equal(1, first.BotMovementMetrics.SampleCount);
-            Assert.Equal(0, second.BotMovementMetrics.SampleCount);
-            for (int i = 1; i < BotMovementMetrics.WindowSize; i++)
-                service.ProcessTick(first, _ => throw new InvalidOperationException("No bots."));
-            Assert.Equal(0, first.BotMovementMetrics.SampleCount);
-            first.TryMarkEnded();
-        }
-        using (MatchRuntimeStore.Enter(second)) second.TryMarkEnded();
-    }
 
     [Fact]
     public void TerminalDuringCombatDoesNotRunEnvironmentOrOtherStages()
