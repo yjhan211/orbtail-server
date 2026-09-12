@@ -65,9 +65,6 @@ public sealed class MatchGameplayServiceTests
             Assert.True(service.TryEndOnScoreTimeout(match, deadline));
             Assert.True(match.IsEnded);
             Assert.False(service.TryEndOnScoreTimeout(match, deadline.AddSeconds(1)));
-            var events = provider.GetRequiredService<game_server.matches.logging.GameEventLogManager>().GetForPersistence(match.MatchingId);
-            var result = Assert.Single(events, entry => entry.Type == game_server.matches.logging.GameEventType.MatchEnded);
-            Assert.Equal(winnerId, result.WinnerPlayerId);
         }
     }
 
@@ -197,9 +194,7 @@ public sealed class MatchGameplayServiceTests
             Assert.Equal(10, player.Health);
             service.ApplyPeriodicBuffs(match, [player, survivor], now.AddSeconds(1));
             Assert.Equal(13, player.Health);
-            Assert.Equal(3,
-                provider.GetRequiredService<game_server.matches.logging.GameEventLogManager>()
-                    .GetResultStats(match.MatchingId, playerId).TotalRecovery);
+            Assert.Equal(3, player.RecoveryTotal);
 
             player.AddPeriodicBuff(network.common.BuffSubType.HEALTH_DOWN, 20, 1, 10, now.AddSeconds(1));
             service.ApplyPeriodicBuffs(match, [player, survivor], now.AddSeconds(2));
@@ -352,16 +347,16 @@ public sealed class MatchGameplayServiceTests
             bot.Player.MarkSwarmCombat(now);
             service.UpdateSleep(match, [bot], now.AddSeconds(2));
             Assert.False(bot.Player.IsSleeping);
-            TestGameSessionServices.CreateHealthService(store, store.EventLogs).ApplySleepRecovery(match, [bot.Player], now.AddSeconds(2));
+            TestGameSessionServices.CreateHealthService(store).ApplySleepRecovery(match, [bot.Player], now.AddSeconds(2));
             Assert.Equal(10, bot.Player.Health);
             service.UpdateSleep(match, [bot], now.AddSeconds(3));
             Assert.True(bot.Player.IsSleeping);
-            TestGameSessionServices.CreateHealthService(store, store.EventLogs).ApplySleepRecovery(match, [bot.Player], now.AddSeconds(3));
+            TestGameSessionServices.CreateHealthService(store).ApplySleepRecovery(match, [bot.Player], now.AddSeconds(3));
             Assert.Equal(10, bot.Player.Health);
-            TestGameSessionServices.CreateHealthService(store, store.EventLogs).ApplySleepRecovery(match, [bot.Player], now.AddSeconds(4));
+            TestGameSessionServices.CreateHealthService(store).ApplySleepRecovery(match, [bot.Player], now.AddSeconds(4));
             int expected = 10 + Math.Max(1, (int)MathF.Round(network.common.Config.MAX_HEALTH * 0.05f));
             Assert.Equal(expected, bot.Player.Health);
-            TestGameSessionServices.CreateHealthService(store, store.EventLogs).ApplySleepRecovery(match, [bot.Player], now.AddSeconds(4));
+            TestGameSessionServices.CreateHealthService(store).ApplySleepRecovery(match, [bot.Player], now.AddSeconds(4));
             Assert.Equal(expected, bot.Player.Health);
             bot.Player.MarkSwarmCombat(now.AddSeconds(4));
             service.UpdateSleep(match, [bot], now.AddSeconds(4));

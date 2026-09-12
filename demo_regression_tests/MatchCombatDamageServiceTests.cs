@@ -10,8 +10,8 @@ public sealed class MatchCombatDamageServiceTests
     public void ScheduledHitsWaitUntilDueAndAreConsumedOnceOnlyInTheirOwnMatch()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
-        var combat = TestGameSessionServices.CreateCombatDamageService(store.EventLogs);
-        var health = TestGameSessionServices.CreateHealthService(store, store.EventLogs, new game_server.matches.MatchSummaryFileStore(), NullLogger.Instance);
+        var combat = TestGameSessionServices.CreateCombatDamageService();
+        var health = TestGameSessionServices.CreateHealthService(store, NullLogger.Instance);
         var first = store.GetOrCreate(982003);
         var second = store.GetOrCreate(982004);
         var dueAt = DateTime.UtcNow.AddSeconds(1);

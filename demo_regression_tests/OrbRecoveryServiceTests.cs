@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
@@ -25,8 +24,7 @@ public sealed class PlayerOrbRecoveryTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947301);
-        var service = new PlayerOrbService(
-            TestGameSessionServices.CreateHealthService(store, store.EventLogs), TestGameSessionServices.CreateCombatDamageService(store.EventLogs), new PlayerOrbTrailService(), store.EventLogs);
+        var service = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService(), new PlayerOrbTrailService());
         var bot = new BotPlayerState { PlayerId = 11, Player = { Health = Config.MAX_HEALTH - 12 } };
         var first = new ProximityCombatActor(11, AreaType.None, new Vector3f(0, 0, 0),
             107000040, 0, 0, 0, WeaponItemUid: 1);
@@ -53,8 +51,7 @@ public sealed class PlayerOrbRecoveryTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948021);
-        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store, logs), TestGameSessionServices.CreateCombatDamageService(logs), new PlayerOrbTrailService(), logs);
+        var service = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService(), new PlayerOrbTrailService());
         var player = new Player { Profile = new PlayerInfo { PlayerId = playerId }, Health = Config.MAX_HEALTH - 1 };
         var actor = new ProximityCombatActor(playerId, AreaType.None, new Vector3f(),
             107000040, 0, 0, 0, WeaponItemUid: 1);
@@ -65,9 +62,9 @@ public sealed class PlayerOrbRecoveryTests
             service.ProcessOrbRecovery(match, [actor], now);
             service.ProcessOrbRecovery(match, [actor], now.AddSeconds(5));
             Assert.Equal(Config.MAX_HEALTH, player.Health);
-            Assert.Equal(1, logs.GetResultStats(match.MatchingId, playerId).TotalRecovery);
+            Assert.Equal(1, player.RecoveryTotal);
             service.ProcessOrbRecovery(match, [actor], now.AddSeconds(10));
-            Assert.Equal(1, logs.GetResultStats(match.MatchingId, playerId).TotalRecovery);
+            Assert.Equal(1, player.RecoveryTotal);
             player.ApplyDamage(Config.MAX_HEALTH);
             player.Status = PlayerMatchStatus.ELIMINATED;
             service.ProcessOrbRecovery(match, [actor], now.AddSeconds(15));
@@ -79,8 +76,7 @@ public sealed class PlayerOrbRecoveryTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947304);
-        var service = new PlayerOrbService(
-            TestGameSessionServices.CreateHealthService(store, store.EventLogs), TestGameSessionServices.CreateCombatDamageService(store.EventLogs), new PlayerOrbTrailService(), store.EventLogs);
+        var service = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService(), new PlayerOrbTrailService());
         var actor = new ProximityCombatActor(11, AreaType.None, new Vector3f(),
             107000040, 0, 0, 0, WeaponItemUid: 1);
         Assert.Throws<InvalidOperationException>(() => service.ProcessOrbRecovery(match, [actor], DateTime.UtcNow));
@@ -98,8 +94,7 @@ public sealed class PlayerOrbRecoveryTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var firstMatch = store.GetOrCreate(947302);
         var secondMatch = store.GetOrCreate(947303);
-        var service = new PlayerOrbService(
-            TestGameSessionServices.CreateHealthService(store, store.EventLogs), TestGameSessionServices.CreateCombatDamageService(store.EventLogs), new PlayerOrbTrailService(), store.EventLogs);
+        var service = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService(), new PlayerOrbTrailService());
         var actor = new ProximityCombatActor(11, AreaType.None, new Vector3f(0, 0, 0),
             107000040, 0, 0, 0, WeaponItemUid: 1);
         var now = DateTime.UtcNow;

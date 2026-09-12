@@ -47,7 +47,6 @@ services:
       - /App/game_server/obj
       - /App/network/bin
       - /App/network/obj
-      - match-summary-data-dev:/App/match-summaries
     environment:
       - gameServerId=game-server-0
       # 레지스트리에 광고하는 공개 주소 — 클라이언트가 실제로 접속하는 IP (#339)
@@ -57,8 +56,6 @@ services:
       - natsEndPoint=nats://nats:4222
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_USE_POLLING_FILE_WATCHER=true
-      - MATCH_SUMMARY_DIRECTORY=/App/match-summaries
-      - MATCH_SUMMARY_MAX_FILES=50
     depends_on:
       redis:
         condition: service_healthy
@@ -107,4 +104,3 @@ services:
 volumes:
   redis-data-dev:
   nats-data-dev:
-  match-summary-data-dev:

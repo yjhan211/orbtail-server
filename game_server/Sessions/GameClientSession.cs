@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.players;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -35,7 +34,6 @@ public partial class GameClientSession : SessionBase
     private readonly PlayerMovementService _movement;
     private readonly PlayerInteractionService _interactions;
     private readonly PlayerOrbGrowthService _orbGrowth;
-    private readonly GameEventLogManager _gameEventLogManager;
 
     private MatchRuntime? _match;
     internal Player Player = null!;
@@ -57,7 +55,6 @@ public partial class GameClientSession : SessionBase
         Func<GameClientSession, bool> removeSessionCallback,
         MatchCleanupService matchCleanup,
         Func<long, GameClientSession, GameClientSession?> registerSessionCallback,
-        GameEventLogManager gameEventLogManager,
         PlayerOrbGrowthService orbGrowth,
         PlayerMovementService movement,
         PlayerInteractionService interactions,
@@ -72,7 +69,6 @@ public partial class GameClientSession : SessionBase
         _matchCleanup = matchCleanup;
         _registerSessionCallback = registerSessionCallback;
 
-        _gameEventLogManager = gameEventLogManager;
         _orbGrowth = orbGrowth;
         _movement = movement;
         _interactions = interactions;
@@ -284,7 +280,6 @@ public partial class GameClientSession : SessionBase
                 SendSummonStoneState();
                 SendDoorStateList();
                 SendPressureFieldState();
-                LogInitialInventory();
 
                 SyncPlayersOnEntry();
                 EnsureConnectionActive();
@@ -417,14 +412,6 @@ public partial class GameClientSession : SessionBase
         }));
         TrySend(packet);
     }
-
-    private void LogInitialInventory()
-    {
-        var inventory = Player.Orbs;
-        _gameEventLogManager.LogOrbBoardTransition(MatchingId, PlayerId.Value, inventory.GetAllItems(),
-            inventory.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0, Player.CurrentArea.ToString(), "connection_sync", isBot: false);
-    }
-
     private void SendConnectFailure(ErrorCode errorCode)
     {
         using var packet = CreateConnectResultPacket(false, errorCode);

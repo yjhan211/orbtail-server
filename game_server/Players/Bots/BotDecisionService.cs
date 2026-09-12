@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.sessions;
@@ -19,7 +18,6 @@ namespace game_server.players.bots;
 ///     이동 지시의 실제 실행은 BotMovementService가 맡는다.
 /// </summary>
 internal sealed class BotDecisionService(
-    GameEventLogManager eventLogs,
     PlayerOrbGrowthService growth,
     PlayerOrbTrailService orbTrails,
     PlayerInteractionService interactions,
@@ -638,7 +636,6 @@ internal sealed class BotDecisionService(
                 runtime, weakerRival.Value.PlayerId, weakerRival.Value.Position);
             // 추격 계측 (#229 8단계): 조우는 나는데 절단이 0건인 원인을 가르려면 "추격이
             // 발동은 했는가"와 "발동하고도 못 잘랐는가"를 구분해야 한다. 매치 요약에 남긴다.
-            LogSwarmChaseIssued(runtime, botPlayerId, weakerRival.Value.PlayerId, chaseTarget);
             var chaseCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, chaseTarget);
             var chaseArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, chaseCell);
             bool chaseCellUsable = chaseArea != AreaType.None &&
@@ -1019,29 +1016,6 @@ internal sealed class BotDecisionService(
         position = player.Position;
         return true;
     }
-
-    private void LogSwarmChaseIssued(MatchRuntime runtime, long chaserId, long targetId, Vector3f aimPoint)
-    {
-        var target = runtime.GetParticipant(targetId);
-        if (target == null)
-            return;
-
-        var chaser = runtime.Bots.GetBot(chaserId);
-        if (chaser == null)
-            return;
-
-        var now = DateTime.UtcNow;
-        if (chaser.ChaseLogThrottle.TryGetValue(targetId, out var lastAtUtc) &&
-            (now - lastAtUtc).TotalSeconds < 3d)
-            return;
-
-        chaser.ChaseLogThrottle[targetId] = now;
-        eventLogs.LogSystem(runtime.MatchingId,
-            $"swarm_chase chaser={chaserId} target={targetId} " +
-            $"targetOrbs={orbTrails.CountOrbs(runtime, target)} " +
-            $"aim=({aimPoint.X:F1},{aimPoint.Y:F1})");
-    }
-
     /// <summary>구역 전체가 현재 경계 밖(폐쇄·자기장)인가 — 봇 대피·스팟 필터의 기준.</summary>
     private bool IsSwarmAreaOutside(MatchRuntime runtime, AreaType area) =>
         runtime.Closures.IsAreaClosed(area) ||

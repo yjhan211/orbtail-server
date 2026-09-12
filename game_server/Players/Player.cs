@@ -108,6 +108,12 @@ public class Player
     public DateTime WaveSlowUntilUtc { get; set; }
     /// <summary>잔상 접촉 피해 면역이 끝나는 시각. 한 번 맞으면 잠깐 연속 피격을 막는다.</summary>
     public DateTime MonsterContactImmuneUntilUtc { get; set; }
+
+    // 정산 통계. 결과 화면 행이 읽고, 동시 탈락 판정은 PvP 피해만 본다. 몹 상대 수치는 PvP와 섞지 않는다.
+    public int PvpDamageDealt { get; set; }
+    public int MonsterKillCount { get; set; }
+    public int MonsterDamageDealt { get; set; }
+    public int RecoveryTotal { get; set; }
     /// <summary>PvP 피해의 소수점 잔여. 정수 체력 피해로 넘어갈 때까지 누적한다.</summary>
     internal float PvpDamageCarry { get; set; }
 

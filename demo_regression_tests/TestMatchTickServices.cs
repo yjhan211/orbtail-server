@@ -22,7 +22,7 @@ internal static class TestMatchTickServices
         new(runtime, store, logger, pickup,
             new MatchEntryFailureHandler(store, new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance), new game_server.matches.MatchSessionCleanupService(new InMemoryRedisOperations(), new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger), logger), new Combat(combat), new Field(damage, closure),
             new Movement(movement),
-            new BotDecisionService(null!, null!, null!, null!, NullLogger<BotDecisionService>.Instance),
+            new BotDecisionService(null!, null!, null!, NullLogger<BotDecisionService>.Instance),
             clock);
 
     // 실제 ProcessTick을 실행해 시간 조건과 단계별 호출 여부를 검증한다.
@@ -39,7 +39,7 @@ internal static class TestMatchTickServices
             _runtime = runtime;
 
             _loop = CreateLoop(runtime, store, NullLogger.Instance,
-                new PlayerPickupService(store.EventLogs, TestGameSessionServices.CreateHealthService(store, store.EventLogs), NullLogger<PlayerPickupService>.Instance),
+                new PlayerPickupService(TestGameSessionServices.CreateHealthService(store), NullLogger<PlayerPickupService>.Instance),
                 (_, _) => { },
                 (match, _) =>
                 {
@@ -115,13 +115,13 @@ internal static class TestMatchTickServices
 
     private sealed class Combat(Action<long, List<GameClientSession>> run)
         : MatchCombatService(null!, null!, null!,
-            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!)
+            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!)
     {
         public override void ProcessTick(MatchRuntime runtime) => run(runtime.MatchingId, runtime.GetSessions());
     }
 
     private sealed class Movement(Action<MatchRuntime> run)
-        : BotMovementService(null!, NullLogger<BotMovementService>.Instance)
+        : BotMovementService(NullLogger<BotMovementService>.Instance)
     {
         public override void ProcessTick(MatchRuntime runtime, Func<long, SwarmBotDirective> resolveDirective) => run(runtime);
     }

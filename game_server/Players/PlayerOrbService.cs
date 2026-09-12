@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.matches.monsters;
 using MessagePack;
 using network.common;
@@ -16,8 +15,7 @@ namespace game_server.players;
 internal sealed class PlayerOrbService(
     PlayerHealthService healthService,
     MatchCombatDamageService combatDamage,
-    PlayerOrbTrailService orbTrails,
-    GameEventLogManager eventLogs)
+    PlayerOrbTrailService orbTrails)
 {
     private const float SwarmGroundYScale = GroundGeometry.GroundYScale;
     private const float SwarmCrossfireMonsterRadius = GroundGeometry.MonsterRadius;
@@ -496,7 +494,6 @@ internal sealed class PlayerOrbService(
             throw new InvalidOperationException("Wind orb attack owner must belong to the match.");
         }
 
-        long matchingId = runtime.MatchingId;
         var alivePlayers = runtime.GetAlivePlayers();
         var activeSessions = runtime.GetSessions().Where(session => !session.IsGameEnded).ToList();
         IReadOnlyList<Monster>? monsterTargets = null;
@@ -579,19 +576,15 @@ internal sealed class PlayerOrbService(
             }
 
             int damage = Math.Max(1, (int)MathF.Round(OrbData.GetSwarmPveAttackDamage(orb.ItemId) * sunDamageMultiplier * Config.SWARM_WIND_BLADE_DAMAGE_MULTIPLIER));
-            int monsterHits = 0;
             if (monstersInRadius != null)
             {
                 foreach (var monster in monstersInRadius)
                 {
-                    monsterHits++;
-                    monster.RecordAttackEvent();
                     int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, damage, out bool critical);
                     combatDamage.ApplySwarmMonsterHitNow(runtime, monster.CombatTargetId, monster.MonsterId, owner.PlayerId, orb.ItemId, owner.CurrentArea, monsterDamage, critical, nowUtc, activeSessions);
                 }
             }
 
-            int shocks = 0;
             if (playersInRadius != null)
             {
                 foreach (var participant in playersInRadius)
@@ -601,8 +594,7 @@ internal sealed class PlayerOrbService(
                         continue;
                     }
 
-                    shocks++;
-                    combatDamage.ApplySwarmShock(runtime, healthService, owner.PlayerId, orb.ItemId, owner.CurrentArea, participant.PlayerId, $"WIND_BLADE_HIT ordinal={ordinal}", alivePlayers);
+                    combatDamage.ApplySwarmShock(runtime, healthService, owner.PlayerId, orb.ItemId, owner.CurrentArea, participant.PlayerId, alivePlayers);
                     if (runtime.IsEnded)
                     {
                         return;
@@ -627,10 +619,6 @@ internal sealed class PlayerOrbService(
                 }
             }
 
-            if (monsterHits > 0 || shocks > 0)
-            {
-                eventLogs.LogSystem(matchingId, $"WIND_BLADE owner={owner.PlayerId} ordinal={ordinal} at=({orbPosition.X:F2},{orbPosition.Y:F2}) " + $"radius={radius:F2} damage={damage} monsters={monsterHits} shocks={shocks}");
-            }
         }
     }
 }

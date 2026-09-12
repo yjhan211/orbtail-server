@@ -3,7 +3,6 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using game_server;
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.players;
 using game_server.sessions;
 using MessagePack;
@@ -19,150 +18,8 @@ using network.infrastructure.redis;
 
 namespace demo_regression_tests;
 
-public sealed class MatchSummaryPersistenceTests : IDisposable
+public sealed class MatchEndLifecycleTests
 {
-    private readonly string _directory = Path.Combine(
-        Path.GetTempPath(),
-        $"manitto-match-summary-persistence-tests-{Guid.NewGuid():N}");
-
-    [Theory]
-    [InlineData(false, "LastHumanLeft", 0)]
-    [InlineData(true, "LastSurvivorBotOnly", 11)]
-    public void NoHumanCleanup_CapturesOnce_AndPersistsAfterOuterLock(
-        bool botOnly, string expectedReason, long expectedWinner)
-    {
-        const long matchingId = 42091;
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
-        var runtime = store.GetOrCreate(matchingId);
-        runtime.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11 } });
-        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        logs.BeginMatch(matchingId, seed: 17);
-        var summaries = new MatchSummaryFileStore(_directory);
-        var service = new MatchCleanupService(store,
-            logs, summaries, NullLogger.Instance);
-        using (MatchRuntimeStore.Enter(runtime))
-        {
-            if (botOnly)
-                service.EndBotOnlyMatchIfSettled(matchingId, 11);
-            else
-                service.CleanupIfNoHumanSessionsRemain(matchingId);
-            service.CleanupIfNoHumanSessionsRemain(matchingId);
-
-            Assert.True(runtime.IsEnded);
-            Assert.Null(ReadSummary(matchingId));
-            Assert.Same(runtime, store.GetOrNull(matchingId));
-        }
-        Assert.Equal(1, summaries.ReadRawEvents(matchingId).Count(entry => entry.Type == GameEventType.MatchAbandoned));
-        Assert.Null(store.GetOrNull(matchingId));
-        var summary = Assert.IsType<MatchSummaryDocument>(ReadSummary(matchingId));
-        Assert.Equal(expectedReason, summary.EndReason);
-        Assert.Equal(expectedWinner, summary.WinnerPlayerId);
-        service.CleanupIfNoHumanSessionsRemain(matchingId);
-        Assert.Equal(1, summaries.ReadRawEvents(matchingId).Count(entry => entry.Type == GameEventType.MatchAbandoned));
-    }
-    [Fact]
-    public void Capture_FreezesMetadataAndMutableEventGraphAcrossCleanup()
-    {
-        const long matchingId = 42001;
-        var eventLogs = TestGameEventLogs.Create();
-        eventLogs.BeginMatch(matchingId, seed: 17);
-        eventLogs.LogMatchEnded(
-            matchingId,
-            winnerPlayerId: 101,
-            endReason: "captured-event-reason",
-            tieBreakCriterion: "last_survivor",
-            [new MatchFinalPlayerStats(101, 1, 120, 2, 400, 30, 6)]);
-        int eventCount = eventLogs.GetForPersistence(matchingId).Count;
-
-        MatchSummaryDocument? request = MatchSummaryFileStore.Prepare(
-            eventLogs,
-            NullLogger.Instance,
-            matchingId,
-            endReason: "captured-request-reason",
-            winnerId: 101, out var capturedEvents);
-
-        Assert.NotNull(request);
-        Assert.Equal(matchingId, request!.MatchingId);
-        Assert.Equal("captured-request-reason", request.EndReason);
-        Assert.Equal(101, request.WinnerPlayerId);
-        Assert.Equal(eventCount, capturedEvents.Count);
-
-        GameEventEntry finalEvent = Assert.Single(
-            eventLogs.GetForPersistence(matchingId),
-            entry => entry.Type == GameEventType.MatchEnded);
-        finalEvent.EndReason = "mutated-live-reason";
-        finalEvent.FinalPlayerStats!.Clear();
-        eventLogs.Clear(matchingId);
-
-        var store = new MatchSummaryFileStore(_directory, maxSummaries: 5);
-        store.Save(request, capturedEvents, NullLogger.Instance);
-
-        MatchSummaryDocument summary = Assert.IsType<MatchSummaryDocument>(ReadSummary(matchingId));
-        Assert.Equal("captured-request-reason", summary.EndReason);
-        Assert.Equal(101, summary.WinnerPlayerId);
-        Assert.Equal(eventCount, summary.RawEventCount);
-
-        GameEventEntry persistedFinalEvent = Assert.Single(
-            store.ReadRawEvents(matchingId),
-            entry => entry.Type == GameEventType.MatchEnded);
-        Assert.Equal("captured-event-reason", persistedFinalEvent.EndReason);
-        MatchFinalPlayerStats persistedStats = Assert.Single(persistedFinalEvent.FinalPlayerStats!);
-        Assert.Equal(101, persistedStats.PlayerId);
-        Assert.Equal(6, persistedStats.OrbCount);
-    }
-
-    [Fact]
-    public void Capture_WhenSnapshotFails_ReturnsNull()
-    {
-        MatchSummaryDocument? request = MatchSummaryFileStore.Prepare(
-            null!,
-            NullLogger.Instance,
-            matchingId: 42002,
-            endReason: "failure",
-            winnerId: 0, out _);
-
-        Assert.Null(request);
-    }
-
-    [Fact]
-    public void NormalAndNoHumanFinalization_KeepCaptureAndPostCommitPersistenceOrdering()
-    {
-        string root = FindRepositoryRoot();
-        string source = ReadNormalizedSource(root, "game_server", "Matches", "MatchResultService.cs");
-        string finalization = ReadMethodSlice(source, "public void FinalizeMatch(", "public bool TryEndOnScoreTimeout(");
-
-        static void InOrder(string body, params string[] markers)
-        {
-            int previous = -1;
-            foreach (string marker in markers)
-            {
-                int index = Find(body, marker);
-                Assert.True(index > previous, $"Expected '{marker}' after the previous finalization step.");
-                previous = index;
-            }
-        }
-
-        // 종료 확정·결과 생성·로그 캡처·패킷 전송은 잠금 안, 완료 통지·파일 저장은 잠금 해제 후.
-        InOrder(finalization,
-            "matchRuntimes.GetOrNull(matchingId)", "runtime.Enter()", "runtime.TryMarkEnded()",
-            "MessagePackSerializer.Serialize(new G_TO_C_GAME_RESULT", "gameEventLogManager.TryBeginFinalization(",
-            "gameEventLogManager.LogMatchEnded(", "Final match event logging failed;",
-            "MatchSummaryFileStore.Prepare(", "Final match summary capture failed;",
-            "Protocol.G_TO_C_GAME_RESULT", "session.TrySend(resultPacket);",
-            "Protocol.G_TO_C_GAME_END", "session.TrySend(endPacket);",
-            "session.MarkGameEndedAndPrepareLifecyclePublication()", "runtime.AfterRelease.Add(lifecyclePublication);",
-            "runtime.AfterRelease.Add(() => matchSummaryFileStore.Save(capturedSummary, capturedEvents, logger));");
-        Assert.Contains("if (capturedSummary != null)", finalization);
-        Assert.Single(Regex.Matches(finalization, @"matchSummaryFileStore\.Save\s*\("));
-
-        string cleanup = ReadNormalizedSource(root, "game_server", "Matches", "MatchCleanupService.cs");
-        string noHumans = cleanup.Substring(Find(cleanup, "public void CleanupIfNoHumanSessionsRemain("));
-        InOrder(noHumans, "runtime.Enter()", "runtime.TryMarkEnded();", "eventLogs.LogMatchAbandoned(",
-            "MatchSummaryFileStore.Prepare(", "if (summaryRequest != null)",
-            "runtime.AfterRelease.Add(() => summaryFileStore.Save(summaryRequest, capturedEvents, logger));");
-        Assert.Single(Regex.Matches(noHumans, @"summaryFileStore\.Save\s*\("));
-        Assert.DoesNotContain(".TrySend(", noHumans);
-    }
     [Theory]
     [InlineData(MatchingLifecycleSubjects.PlayerLeft)]
     [InlineData(MatchingLifecycleSubjects.PlayerCompleted)]
@@ -514,23 +371,6 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         Assert.Contains("if (IsEnded && !_cleanupStarted)", exit);
         Assert.Contains("startRedisCleanup = true;", exit);
     }
-    private MatchSummaryDocument? ReadSummary(long matchingId)
-    {
-        string path = Path.Combine(_directory, $"match-{matchingId}.json");
-        if (!File.Exists(path))
-        {
-            return null;
-        }
-        return System.Text.Json.JsonSerializer.Deserialize<MatchSummaryDocument>(
-            File.ReadAllText(path),
-            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
-    }
-    public void Dispose()
-    {
-        if (Directory.Exists(_directory))
-            Directory.Delete(_directory, recursive: true);
-    }
-
     private static int Find(string source, string marker)
     {
         int index = source.IndexOf(marker, StringComparison.Ordinal);

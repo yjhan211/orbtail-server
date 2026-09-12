@@ -1,6 +1,5 @@
 using game_server;
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.sessions;
@@ -18,17 +17,15 @@ internal static class TestGameSessionServices
     {
         var movement = new MonsterMovementService();
         var spawns = new MatchMonsterSpawnService(movement);
-        return new MatchCombatService(null!, null!, null!, null!, null!, null!,
+        return new MatchCombatService(null!, null!, null!, null!, null!,
             null!, null!, null!, null!, null!, new MonsterCombatService(spawns), spawns, movement);
     }
 
-    public static PlayerHealthService CreateHealthService(MatchRuntimeStore store, GameEventLogManager logs,
-        MatchSummaryFileStore? summaries = null, Microsoft.Extensions.Logging.ILogger? logger = null) =>
-        new(logs, CreateEliminationService(store, logs, summaries ?? new MatchSummaryFileStore(), logger ?? NullLogger.Instance),
-            NullLogger<PlayerHealthService>.Instance);
+    public static PlayerHealthService CreateHealthService(MatchRuntimeStore store, Microsoft.Extensions.Logging.ILogger? logger = null) =>
+        new(CreateEliminationService(store, logger ?? NullLogger.Instance), NullLogger<PlayerHealthService>.Instance);
 
-    public static PlayerOrbGrowthService CreatePlayerOrbGrowthService(MatchRuntimeStore store, GameEventLogManager logs) =>
-        new(logs, NullLogger<PlayerOrbGrowthService>.Instance);
+    public static PlayerOrbGrowthService CreatePlayerOrbGrowthService() =>
+        new(NullLogger<PlayerOrbGrowthService>.Instance);
     internal static void StartGameplay(this MatchRuntime runtime)
     {
         typeof(MatchRuntime).GetField("_startsAtUtc", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
@@ -48,13 +45,11 @@ internal static class TestGameSessionServices
     // 송신 계획의 수신자 참조를 검사하기 위한 소켓 없는 세션.
     public static GameClientSession CreateRecipientSession()
     {
-        var logs = TestGameEventLogs.Create();
         var store = CreateMatchRuntimeStore(NullLogger.Instance);
         return new GameClientSession(
             new network.core.TcpConnection(), NullLogger.Instance, new InMemoryRedisOperations(),
             static _ => false, CreateMatchCleanupService(), static (_, _) => null,
-            logs,
-            CreatePlayerOrbGrowthService(store, logs), CreateMovementService(logs), new PlayerInteractionService(), new FakeGameSessionLifecycle(), static () => false,
+            CreatePlayerOrbGrowthService(), CreateMovementService(), new PlayerInteractionService(), new FakeGameSessionLifecycle(), static () => false,
             new FakeMatchEntryFailureHandler(),
             matchEntry: CreateEntryService(null, store, NullLogger.Instance));
     }
@@ -62,9 +57,8 @@ internal static class TestGameSessionServices
     // 실제 Loop의 첫 처리 단계만 바꿔 틱 지연·예외·종료를 재현한다.
     public static Func<MatchRuntime, TimeProvider, MatchTickLoop> CreateTickLoopFactory(MatchRuntimeStore store, Action<MatchRuntime> processTick)
     {
-        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         return (runtime, clock) => TestMatchTickServices.CreateLoop(runtime, store, NullLogger<MatchTickLoop>.Instance,
-            new PlayerPickupService(logs, CreateHealthService(store, logs), NullLogger<PlayerPickupService>.Instance),
+            new PlayerPickupService(CreateHealthService(store), NullLogger<PlayerPickupService>.Instance),
             (matchingId, _) => processTick(store.GetOrThrow(matchingId)),
             (_, _) => { }, _ => { }, _ => { }, clock);
     }
@@ -88,11 +82,11 @@ internal static class TestGameSessionServices
             new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
         return new MatchRuntimeStore(logger.For<MatchRuntime>(), lifecycle);
     }
-    public static MatchCombatDamageService CreateCombatDamageService(GameEventLogManager logs) =>
-        new(logs, new MonsterCombatService(new MatchMonsterSpawnService(new MonsterMovementService())));
+    public static MatchCombatDamageService CreateCombatDamageService() =>
+        new(new MonsterCombatService(new MatchMonsterSpawnService(new MonsterMovementService())));
 
-    public static PlayerMovementService CreateMovementService(GameEventLogManager logs) =>
-        new(logs, NullLogger<PlayerMovementService>.Instance);
+    public static PlayerMovementService CreateMovementService() =>
+        new(NullLogger<PlayerMovementService>.Instance);
 
     public static PlayerMovementService GetMovement(GameClientSession session) =>
         (PlayerMovementService)typeof(GameClientSession).GetField("_movement",
@@ -137,8 +131,7 @@ internal static class TestGameSessionServices
         redis ??= new InMemoryRedisOperations();
         return new GameMatchEntryService(redis, store, logger,
             new GameEntryTicketService(new RedisGameEntryTicketStore(redis), new GameEntryTicketOptions()),
-            new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
-            new GameEventLogManager(id => store.GetOrNull(id)?.EventLog));
+            new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" });
     }
 
     /// <summary>참가자·봇·미등록 순으로 플레이어를 찾고, 없으면 참가자로 등록한다.</summary>
@@ -177,21 +170,13 @@ internal static class TestGameSessionServices
 
     public static PlayerEliminationService CreateEliminationService(
         MatchRuntimeStore store,
-        GameEventLogManager logs,
-        MatchSummaryFileStore summaries,
         Microsoft.Extensions.Logging.ILogger logger)
     {
-        var results = new MatchResultService(store, logs, summaries, logger);
-        return new PlayerEliminationService(logs, results, logger);
+        var results = new MatchResultService(store, logger);
+        return new PlayerEliminationService(results, logger);
     }
-    public static MatchCleanupService CreateMatchCleanupService()
-    {
-        var store = CreateMatchRuntimeStore(NullLogger.Instance);
-        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var cleanup = new MatchCleanupService(store, logs,
-            new MatchSummaryFileStore(), NullLogger.Instance);
-        return cleanup;
-    }
+    public static MatchCleanupService CreateMatchCleanupService() =>
+        new(CreateMatchRuntimeStore(NullLogger.Instance), NullLogger.Instance);
 }
 
 internal sealed class FakeGameSessionLifecycle(Func<long, long, Action?>? prepareCompletion = null)

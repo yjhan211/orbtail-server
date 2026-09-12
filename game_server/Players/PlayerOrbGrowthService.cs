@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.logging;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -12,7 +11,6 @@ namespace game_server.players;
 ///     소환석 상태는 Player가, 오브 인벤토리는 매치 런타임이 소유하며, 호출자는 해당 매치 잠금을 보유해야 한다.
 /// </summary>
 internal sealed class PlayerOrbGrowthService(
-    GameEventLogManager eventLogs,
     ILogger<PlayerOrbGrowthService> logger)
 {
     public const int NormalMonsterReward = 1;
@@ -126,15 +124,7 @@ internal sealed class PlayerOrbGrowthService(
         }
 
         long playerId = player.PlayerId;
-        var area = player.CurrentArea;
         var attempt = TrySummon(runtime, player, itemId => player.Orbs.TryAddItemWithCapacity(itemId, Config.SWARM_ORB_CAPACITY, out var added) ? added : null);
-        if (attempt is { Success: true, AddedItem: not null })
-        {
-            var inventory = player.Orbs;
-            eventLogs.LogOrbBoardTransition(runtime.MatchingId, playerId, inventory.GetAllItems(), inventory.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0, area.ToString(), "summon", isBot: playerId < 0);
-        }
-
-        eventLogs.LogOrbSummonAttempt(runtime.MatchingId, playerId, attempt.Success, attempt.ErrorCode, attempt.ItemId, attempt.State.StoneCount, attempt.State.NextCost, attempt.State.SuccessfulSummonCount, area.ToString(), isBot: playerId < 0);
         return attempt;
     }
 
@@ -173,7 +163,6 @@ internal sealed class PlayerOrbGrowthService(
         var inventory = player.Orbs;
         bool replaced = inventory.TryReplaceOrb(target.ItemUid, upgradedItemId, out _);
 
-        eventLogs.LogSystem(matchingId, $"ORB_UPGRADED player={playerId} bot={playerId < 0} group={orbGroupId} ordinal={ordinal} " + $"uid={target.ItemUid} tier={tier}->{tier + 1} cost={cost} replaced={replaced}");
         logger.LogInformation("Orb upgrade: MatchingId={MatchingId}, PlayerId={PlayerId}, TargetItemId={TargetItemId}, Success={Success}, Result={Result}, Ordinal={Ordinal}", matchingId, playerId, targetItemId, replaced, upgradedItemId, ordinal);
         return (replaced, upgradedItemId, ordinal);
     }

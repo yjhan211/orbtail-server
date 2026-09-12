@@ -1,6 +1,5 @@
 using game_server;
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
@@ -146,8 +145,7 @@ public sealed class MatchOwnedStateTests
             TestGameSessionServices.Orbs(runtime, botId).AddItem(107000010);
         }
         var bot = match.Bots.GetBot(botId)!;
-        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = TestGameSessionServices.CreateEliminationService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance);
+        var service = TestGameSessionServices.CreateEliminationService(store, NullLogger.Instance);
         bot.PathIndex = 3;
         bot.LoopWaitUntil = DateTime.UtcNow.AddMinutes(1);
         using (MatchRuntimeStore.Enter(match))
@@ -188,8 +186,7 @@ public sealed class MatchOwnedStateTests
         }
         match.RegisterParticipant(player);
         match.RegisterParticipant(new Player { Profile = new PlayerInfo { PlayerId = 11 } });
-        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = TestGameSessionServices.CreateEliminationService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance);
+        var service = TestGameSessionServices.CreateEliminationService(store, NullLogger.Instance);
         using (match.Enter())
         {
             service.EliminatePlayer(match, player, EliminationReason.PRESSURE_FIELD,
@@ -204,7 +201,6 @@ public sealed class MatchOwnedStateTests
             Assert.Equal(5, player.EliminationRank);
             Assert.Equal(11, player.AttackerPlayerId);
             Assert.Equal(eliminatedAt, player.EliminatedAt);
-            Assert.Single(logs.GetRecent(match.MatchingId), entry => entry.Type == GameEventType.Eliminate);
             Assert.Equal((true, (long?)11), match.CheckGameOver());
             Assert.False(match.IsEnded);
         }
@@ -221,8 +217,7 @@ public sealed class MatchOwnedStateTests
             Position = new Vector3f(0, 0, 0)
         };
         match.RegisterParticipant(player);
-        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = TestGameSessionServices.CreateEliminationService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance);
+        var service = TestGameSessionServices.CreateEliminationService(store, NullLogger.Instance);
         using (match.Enter())
         {
             TestGameSessionServices.Orbs(match, player.PlayerId).AddItem(107000010);
@@ -232,7 +227,6 @@ public sealed class MatchOwnedStateTests
             Assert.Equal(player.CurrentArea, player.EliminatedArea);
             Assert.Empty(TestGameSessionServices.Orbs(match, player.PlayerId).GetAllItems());
             Assert.Single(match.GroundItems.GetItemsInArea(player.CurrentArea));
-            Assert.Single(logs.GetRecent(match.MatchingId), entry => entry.Type == GameEventType.EliminationDrop);
         }
     }
 }

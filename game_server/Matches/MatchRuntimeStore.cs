@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using game_server.matches.logging;
 using Microsoft.Extensions.Logging;
 
 namespace game_server.matches;
@@ -16,13 +15,11 @@ internal sealed class MatchRuntimeStore
     private readonly ConcurrentDictionary<long, MatchRuntime> _runtimes = new();
 
     internal event Action<MatchRuntime>? MatchCreated;
-    internal GameEventLogManager EventLogs { get; }
 
     internal MatchRuntimeStore(ILogger<MatchRuntime> runtimeLogger, MatchSessionCleanupService matchSessionCleanup)
     {
         _runtimeLogger = runtimeLogger;
         _matchSessionCleanup = matchSessionCleanup ?? throw new ArgumentNullException(nameof(matchSessionCleanup));
-        EventLogs = new GameEventLogManager(id => GetOrNull(id)?.EventLog);
     }
 
     public int Count => _runtimes.Count;
@@ -35,7 +32,7 @@ internal sealed class MatchRuntimeStore
             return existing;
         }
 
-        var newRuntime = new MatchRuntime(this, matchingId, _runtimeLogger, _matchSessionCleanup, EventLogs);
+        var newRuntime = new MatchRuntime(this, matchingId, _runtimeLogger, _matchSessionCleanup);
         lock (newRuntime.MatchLock)
         {
             var runtime = _runtimes.GetOrAdd(matchingId, newRuntime);

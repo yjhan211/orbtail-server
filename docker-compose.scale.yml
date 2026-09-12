@@ -18,7 +18,6 @@ services:
       - /App/game_server/obj
       - /App/network/bin
       - /App/network/obj
-      - match-summary-data-dev-2:/App/match-summaries
     environment:
       - gameServerId=game-server-1
       - GAME_SERVER_PUBLIC_HOST=${GAME_SERVER_IP:-192.168.0.167}
@@ -27,7 +26,6 @@ services:
       - natsEndPoint=nats://nats:4222
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_USE_POLLING_FILE_WATCHER=true
-      - MATCH_SUMMARY_DIRECTORY=/App/match-summaries
     depends_on:
       - redis
       - nats
@@ -61,4 +59,3 @@ services:
     restart: unless-stopped
 
 volumes:
-  match-summary-data-dev-2:

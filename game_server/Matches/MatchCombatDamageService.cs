@@ -1,4 +1,3 @@
-using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
@@ -15,7 +14,7 @@ namespace game_server.matches;
 ///     플레이어·몬스터 피해와 지연 타격을 처리하고, 피격 로그와 알림을 남긴다.
 ///     플레이어의 체력 변경·탈락 처리는 PlayerHealthService에 위임한다.
 /// </summary>
-internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, MonsterCombatService monsters)
+internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
 {
     private const int SwarmRingVfxKindRetaliationBlocked = 6;
     private static double SwarmCriticalChance => SwarmConfigData.GetDouble("SWARM_CRITICAL_CHANCE", 0.15d);
@@ -136,7 +135,10 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, Mo
         }
 
         RecordCombatContact(runtime, victim, sourcePlayerId, DateTime.UtcNow);
-        eventLogs.LogHit(runtime.MatchingId, sourcePlayerId, victim.PlayerId, weaponItemId, damage, victim.Health > 0 && victim.Health - damage <= 0, BotPlayerManager.IsBotPlayerId(sourcePlayerId), DateTimeOffset.UtcNow);
+        if (runtime.GetParticipant(sourcePlayerId) is { } attackerPlayer)
+        {
+            attackerPlayer.PvpDamageDealt += damage;
+        }
 
         var session = victim.Session;
         healthService.ApplyDamage(runtime, victim, damage, sourcePlayerId);
@@ -169,7 +171,6 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, Mo
         victim.MarkSwarmCombat(nowUtc);
         if (victim.InterruptDoor() is { } interactId)
         {
-            eventLogs.LogExploreCancelled(runtime.MatchingId, victim.PlayerId, interactId, victim.CurrentArea.ToString(), "door_unlock_hit", isBot: victim.PlayerId < 0);
             victim.Session?.SendDoorOpenInterrupted(interactId);
         }
 
@@ -195,7 +196,6 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, Mo
         victim.MarkSwarmCombat(nowUtc);
         if (victim.InterruptDoor() is { } interactId)
         {
-            eventLogs.LogExploreCancelled(runtime.MatchingId, victim.PlayerId, interactId, victim.CurrentArea.ToString(), "door_unlock_hit", isBot: victim.PlayerId < 0);
             victim.Session?.SendDoorOpenInterrupted(interactId);
         }
 
@@ -205,11 +205,6 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, Mo
             bot.LastDamagedAtUtc = nowUtc;
         }
 
-        int healthBefore = victim.Health;
-        int healthAfter = Math.Max(0, healthBefore - damage);
-        bool isLethal = healthBefore > 0 && healthAfter <= 0;
-        bool isBot = BotPlayerManager.IsBotPlayerId(victim.PlayerId);
-        eventLogs.LogSwarmAfterimageHit(runtime.MatchingId, monsterId, victim.PlayerId, victim.CurrentArea.ToString(), damage, healthBefore, healthAfter, isLethal, isBot, new DateTimeOffset(nowUtc));
         var session = victim.Session;
         healthService.ApplyDamage(runtime, victim, damage);
 
@@ -249,11 +244,6 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, Mo
 
         int[] itemIds = Enumerable.Repeat(Config.SUMMON_STONE_GROUND_ITEM_ID, Math.Max(0, groundStoneReward)).Concat(Enumerable.Repeat(Config.HEART_GROUND_ITEM_ID, Math.Max(0, heartReward))).ToArray();
         var spawned = runtime.GroundItems.SpawnItems(defeated.Area, defeated.Position.X, defeated.Position.Y, itemIds);
-        foreach (var item in spawned)
-        {
-            eventLogs.LogGroundItemSpawned(runtime.MatchingId, 0, item.GroundItemUid, item.ItemId, defeated.Area.ToString(), 0, isBot: false);
-        }
-
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)defeated.Area, spawned.ToList());
         foreach (var session in sessions.Where(session => session.Player.CurrentArea == defeated.Area))
         {
@@ -283,12 +273,12 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, Mo
             return;
         }
 
-        eventLogs.RecordMonsterHit(runtime.MatchingId, attackerId, damage, damageResult.Killed);
         var attacker = runtime.GetParticipant(attackerId);
+        RecordMonsterHit(attacker, damage, damageResult.Killed);
         SendMonsterHitNotification(runtime, attacker, monsterId, area, weaponItemId, damage, critical, showDamageOnly: true);
         if (damageResult.Killed && damageResult.Monster != null)
         {
-            SettleSwarmMonsterKill(runtime, damageResult, attackerId, damage, allSessions);
+            SettleSwarmMonsterKill(runtime, damageResult, attackerId, allSessions);
         }
     }
 
@@ -296,7 +286,6 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, Mo
         MatchRuntime runtime,
         MonsterDamageResult damageResult,
         long attackerId,
-        int damage,
         List<GameClientSession> allSessions)
     {
         if (damageResult.Monster is not { } defeated)
@@ -304,17 +293,6 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, Mo
             return;
         }
 
-        eventLogs.LogSystem(runtime.MatchingId,
-            $"monster_lifetime kind={defeated.Kind} area={defeated.Area} " +
-            $"aliveSeconds={(defeated.DiedAtUtc - defeated.SpawnedAtUtc).TotalSeconds:F1} attackEvents={defeated.AttackEventCount} " +
-            $"killer={attackerId}");
-        eventLogs.LogSwarmAfterimageKilled(
-            runtime.MatchingId, defeated.MonsterId,
-            defeated.Area.ToString(),
-            isCore: defeated.Kind == MonsterKind.RunawayGoblin,
-            firstAttackerPlayerId: attackerId,
-            lastAttackerPlayerId: attackerId,
-            new Dictionary<long, int> { [attackerId] = damage });
         SpawnSwarmSummonStone(runtime, defeated, damageResult.SummonStoneReward, defeated.HeartReward, allSessions);
     }
 
@@ -323,7 +301,6 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, Mo
         int weaponItemId,
         AreaType area,
         long victimId,
-        string label,
         IReadOnlyList<Player> players,
         float damageScale = 1f,
         bool isPeriodicDamage = false)
@@ -350,11 +327,9 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, Mo
 
         var owner = runtime.GetParticipant(ownerId);
         int ownerHealth = owner?.Health ?? -1;
-        int healthBefore = victim.Health;
         ApplyProximityAutoCombatHit(runtime, healthService, victim, ownerId, area, weaponItemId, shock, isPeriodicDamage, ownerHealth);
         int healthAfter = victim.Health;
         SendPlayerHitNotification(runtime, owner, victimId, area, weaponItemId, shock, healthAfter, isPeriodicDamage);
-        eventLogs.LogSystem(runtime.MatchingId, $"{label} owner={ownerId} victim={victimId} weapon={weaponItemId} " + $"healthBefore={healthBefore} healthAfter={healthAfter}");
     }
 
     public void ProcessPendingMonsterHits(MatchRuntime runtime, DateTime nowUtc, List<GameClientSession> sessions)
@@ -367,7 +342,6 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, Mo
         {
             return;
         }
-        long matchingId = runtime.MatchingId;
         for (int index = runtime.CombatDamage.PendingMonsterHits.Count - 1; index >= 0; index--)
         {
             var hit = runtime.CombatDamage.PendingMonsterHits[index];
@@ -380,12 +354,12 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, Mo
             var damageResult = monsters.ApplyMonsterDamage(runtime, hit.CombatTargetId, hit.AttackerId, hit.Damage, nowUtc);
             if (damageResult.Applied)
             {
-                eventLogs.RecordMonsterHit(matchingId, hit.AttackerId, hit.Damage, damageResult.Killed);
+                RecordMonsterHit(runtime.GetParticipant(hit.AttackerId), hit.Damage, damageResult.Killed);
             }
 
             if (damageResult.Applied && damageResult.Killed && damageResult.Monster != null)
             {
-                SettleSwarmMonsterKill(runtime, damageResult, hit.AttackerId, hit.Damage, sessions);
+                SettleSwarmMonsterKill(runtime, damageResult, hit.AttackerId, sessions);
             }
         }
     }
@@ -493,6 +467,23 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, Mo
                 WeaponItemId = attack.WeaponItemId
             }));
             observer.TrySend(packet);
+        }
+    }
+
+    /// <summary>몹 피해·처치 누적. PvP 수치와 따로 세어 동시 탈락 판정에 섞이지 않게 한다.</summary>
+    private void RecordMonsterHit(Player? attacker, int damage, bool killed)
+    {
+        if (attacker == null)
+        {
+            return;
+        }
+        if (damage > 0)
+        {
+            attacker.MonsterDamageDealt += damage;
+        }
+        if (killed)
+        {
+            attacker.MonsterKillCount++;
         }
     }
 }

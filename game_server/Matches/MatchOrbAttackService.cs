@@ -1,4 +1,3 @@
-using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
 using MessagePack;
@@ -15,8 +14,7 @@ namespace game_server.matches;
 /// </summary>
 internal sealed class MatchOrbAttackService(
     PlayerHealthService healthService,
-    MatchCombatDamageService combatDamage,
-    GameEventLogManager eventLogs)
+    MatchCombatDamageService combatDamage)
 {
     private const float SwarmGroundYScale = GroundGeometry.GroundYScale;
     private const float SwarmCrossfirePlayerRadius = GroundGeometry.PlayerRadius;
@@ -94,7 +92,6 @@ internal sealed class MatchOrbAttackService(
         {
             return;
         }
-        long matchingId = runtime.MatchingId;
         var players = runtime.GetAlivePlayers();
         var allSessions = runtime.GetSessions().Where(session => !session.IsGameEnded).ToList();
         if (!SwarmCrossfireEnabled)
@@ -132,8 +129,6 @@ internal sealed class MatchOrbAttackService(
                 }
 
                 shape.HitMonsters.Add(monster.CombatTargetId);
-                eventLogs.LogCrossfireHit(matchingId, monster.CombatTargetId, nowUtc);
-                monster.RecordAttackEvent();
                 int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, shape.Damage, out bool critical);
                 combatDamage.ApplySwarmMonsterHitNow(runtime, monster.CombatTargetId, monster.MonsterId, shape.OwnerId, shape.WeaponItemId, shape.Area, monsterDamage, critical, nowUtc, allSessions);
             }
@@ -156,7 +151,7 @@ internal sealed class MatchOrbAttackService(
                 }
 
                 shape.HitVictims.Add(participant.PlayerId);
-                combatDamage.ApplySwarmShock(runtime, healthService, shape.OwnerId, shape.WeaponItemId, shape.Area, participant.PlayerId, $"ORB_CROSSFIRE_HIT event={shape.EventId} shape=pierce anchor={shape.AnchorMonsterId}", players);
+                combatDamage.ApplySwarmShock(runtime, healthService, shape.OwnerId, shape.WeaponItemId, shape.Area, participant.PlayerId, players);
                 if (runtime.IsEnded)
                 {
                     return;
@@ -212,11 +207,9 @@ internal sealed class MatchOrbAttackService(
                         session.TrySend(detonationPacket);
                     }
                 }
-                eventLogs.LogSystem(matchingId, $"ORB_CROSSFIRE_DETONATE event={shape.EventId} owner={shape.OwnerId} " + $"at=({detonation.X:F2},{detonation.Y:F2}) radius={shape.BlastRadius:F2} visualOnly=true");
             }
             else
             {
-                eventLogs.LogSystem(matchingId, $"ORB_CROSSFIRE_VANISH event={shape.EventId} owner={shape.OwnerId}");
             }
         }
     }
@@ -284,7 +277,7 @@ internal sealed class MatchOrbAttackService(
 
             if (nowUtc >= burn.NextTickAtUtc)
             {
-                combatDamage.ApplySwarmShock(runtime, healthService, burn.OwnerId, burn.WeaponItemId, burn.Area, victim.PlayerId, "SUN_BURN_TICK", players, Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER, isPeriodicDamage: true);
+                combatDamage.ApplySwarmShock(runtime, healthService, burn.OwnerId, burn.WeaponItemId, burn.Area, victim.PlayerId, players, Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER, isPeriodicDamage: true);
                 burn = burn with { NextTickAtUtc = burn.NextTickAtUtc.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS) };
                 victim.SunBurn = burn;
             }
@@ -303,7 +296,6 @@ internal sealed class MatchOrbAttackService(
             throw new InvalidOperationException("Wave orb attacks require the match lock.");
         }
         if (runtime.IsEnded) return;
-        long matchingId = runtime.MatchingId;
         for (int index = runtime.PendingWaveAttacks.Count - 1; index >= 0; index--)
         {
             var vortex = runtime.PendingWaveAttacks[index];
@@ -327,7 +319,6 @@ internal sealed class MatchOrbAttackService(
                 }
                 int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, vortex.Damage, out bool critical);
                 target.ReserveDamage(monsterDamage);
-                target.RecordAttackEvent();
                 combatDamage.ScheduleMonsterHit(runtime, new PendingMonsterHit(target.CombatTargetId, vortex.OwnerId, monsterDamage, nowUtc));
                 target.ApplySlow(OrbData.WaveSlowSeconds, nowUtc);
                 hitCount++;
@@ -357,7 +348,7 @@ internal sealed class MatchOrbAttackService(
                 }
 
                 soaked++;
-                combatDamage.ApplySwarmShock(runtime, healthService, vortex.OwnerId, vortex.SourceItemId, vortex.Area, participant.PlayerId, "WAVE_VORTEX_HIT", players, Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER);
+                combatDamage.ApplySwarmShock(runtime, healthService, vortex.OwnerId, vortex.SourceItemId, vortex.Area, participant.PlayerId, players, Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER);
                 if (runtime.IsEnded)
                 {
                     return;
@@ -385,7 +376,6 @@ internal sealed class MatchOrbAttackService(
 
             if (hitCount > 0 || soaked > 0)
             {
-                eventLogs.LogSystem(matchingId, $"wave_vortex_hit owner={vortex.OwnerId} area={vortex.Area} monsters={hitCount} " + $"notified={notifiedCount} playersSoaked={soaked} radius={vortex.Radius:F2} " + $"damage={vortex.Damage} item={vortex.SourceItemId}");
             }
         }
     }

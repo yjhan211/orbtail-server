@@ -1,7 +1,6 @@
 using System.Collections.Immutable;
 using System.Diagnostics;
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -15,7 +14,6 @@ namespace game_server.players.bots;
 ///     봇의 전술 판단은 전달받은 함수에 위임한다.
 /// </summary>
 internal class BotMovementService(
-    GameEventLogManager eventLogs,
     ILogger<BotMovementService> logger)
 {
     // MatchTickLoop가 전투 뒤 같은 매치 잠금 안에서 봇 이동을 실행한다.
@@ -42,7 +40,6 @@ internal class BotMovementService(
             Stopwatch.GetElapsedTime(tickStartedAt).TotalMilliseconds;
         SwarmBotMovementPlan plan = runtime.Bots.PrepareMovementTick(
             runtime.Closures, runtime.GroundItems,
-            eventLogs,
             runtime.GetAlivePlayers(),
             observers,
             resolveDirective);
@@ -64,13 +61,8 @@ internal class BotMovementService(
         if (batch != null)
             PublishBotMovementMetrics(batch);
     }
-
     private void PublishBotMovementMetrics(SwarmBotTickMetricsBatch batch)
     {
-        double[] sortedTickSamples = batch.TickSamples.OrderBy(value => value).ToArray();
-        double p50Milliseconds = CalculatePercentile(sortedTickSamples, 0.50);
-        double p95Milliseconds = CalculatePercentile(sortedTickSamples, 0.95);
-        double p99Milliseconds = CalculatePercentile(sortedTickSamples, 0.99);
         double snapshotP95Milliseconds = CalculatePercentile(
             batch.SnapshotSamples.OrderBy(value => value).ToArray(),
             0.95);
@@ -95,16 +87,6 @@ internal class BotMovementService(
             planningP95Milliseconds,
             walkingP95Milliseconds,
             broadcastP95Milliseconds);
-        eventLogs.LogBotMovementTickPerformance(
-            batch.MatchingId,
-            p50Milliseconds,
-            p95Milliseconds,
-            p99Milliseconds,
-            snapshotP95Milliseconds,
-            planningP95Milliseconds,
-            walkingP95Milliseconds,
-            broadcastP95Milliseconds,
-            batch.TickSamples.Length);
     }
 
     private static ImmutableArray<SwarmBotObserverSnapshot> CaptureSwarmBotObservers(
@@ -181,7 +163,6 @@ internal class BotMovementService(
         ImmutableArray<SwarmBotObserverSnapshot> observers =
             CaptureSwarmBotObservers(matchingId, sessionSnapshot);
         SwarmBotMovementPlan plan = runtime.Bots.PrepareExternalMovement(
-            eventLogs,
             movement,
             runtime.GetAlivePlayers(),
             observers);

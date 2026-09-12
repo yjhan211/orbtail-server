@@ -1,4 +1,3 @@
-using game_server.matches.logging;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -21,8 +20,7 @@ internal sealed class GameMatchEntryService(
     MatchRuntimeStore matchRuntimes,
     ILogger logger,
     GameEntryTicketService ticketService,
-    GameServerNodeOptions nodeOptions,
-    GameEventLogManager eventLogs)
+    GameServerNodeOptions nodeOptions)
 {
     private static long _botIdCounter;
 
@@ -141,15 +139,7 @@ internal sealed class GameMatchEntryService(
                 runtime.Doors.Initialize();
                 runtime.InitializeMatch(mode, spawnCells, roster);
 
-                int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
-                eventLogs.BeginMatch(matchingId, matchSeed);
-                foreach (long playerId in participantIds)
-                {
-                    var spawnCell = spawnCells[playerId];
-                    var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, spawnCell);
-                    eventLogs.SetPlayerArea(matchingId, playerId, area.ToString());
-                    eventLogs.LogSpawnAssignment(matchingId, playerId, matchSeed, MatchSpawnData.GetAnchorIndex(spawnCell), spawnCell.X, spawnCell.Y, area.ToString(), isBot: playerId < 0);
-                }
+                logger.LogInformation("Match started: MatchingId={MatchingId}, Participants={ParticipantCount}, Bots={BotCount}", matchingId, participantIds.Count, botPlayerIds.Count);
             }
         }
         catch (Exception ex)

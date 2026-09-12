@@ -1,4 +1,3 @@
-using game_server.matches.logging;
 using game_server.players;
 using game_server.players.bots;
 using game_server.sessions;
@@ -15,7 +14,6 @@ namespace game_server.matches;
 ///     절단 결과를 로그와 패킷으로 알린다.
 /// </summary>
 internal sealed class MatchTrailCutService(
-    GameEventLogManager eventLogs,
     PlayerOrbTrailService orbTrails,
     MatchCombatDamageService combatDamage,
     PlayerHealthService healthService,
@@ -88,23 +86,7 @@ internal sealed class MatchTrailCutService(
 
         foreach (var pair in expiredPairs)
         {
-            var window = runtime.CutRetaliationWindows[pair];
             runtime.CutRetaliationWindows.Remove(pair);
-            AreaType? cutterArea = null;
-            AreaType? victimArea = null;
-            foreach (var participant in participants)
-            {
-                if (participant.PlayerId == pair.CutterId)
-                {
-                    cutterArea = participant.Area;
-                }
-                if (participant.PlayerId == pair.VictimId)
-                {
-                    victimArea = participant.Area;
-                }
-            }
-            bool bothDisengaged = cutterArea == null || victimArea == null || cutterArea != victimArea;
-            eventLogs.LogSwarmRetaliationWindow(runtime.MatchingId, pair.CutterId, pair.VictimId, window.BlockedDamage, window.BlockedHits, window.BlockedCuts, window.Retaliated, bothDisengaged, window.OpenedArea.ToString());
         }
     }
 
@@ -209,7 +191,6 @@ internal sealed class MatchTrailCutService(
         int cutterHealthBefore = cutter.Health;
         if (cutterHealthBefore - SwarmSingleCutHealthCost <= 0)
         {
-            eventLogs.LogSystem(runtime.MatchingId, $"ORB_SINGLE_CUT_REFUSED attacker={cutterId} victim={victimId} targetOrbUid={cutOrbUid} " + $"targetIndex={cutOrdinal} reason=cost attackerHealth={cutterHealthBefore}");
             return;
         }
 
@@ -223,16 +204,6 @@ internal sealed class MatchTrailCutService(
         cutter.MarkSwarmCombat(nowUtc);
 
         var victim = runtime.GetParticipant(victimId)!;
-        var victimOrbsBeforeCut = runtime.GetOrbs(victimId).GetOrderedOrbs();
-        int victimOrbsBefore = victimOrbsBeforeCut.Count;
-        int victimAttackOrbsBefore = 0;
-        foreach (var victimOrb in victimOrbsBeforeCut)
-        {
-            if (OrbData.TryGetColorAndTier(victimOrb.ItemId, out _, out _))
-            {
-                victimAttackOrbsBefore++;
-            }
-        }
         var destroyedOrbs = orbTrails.DestroyOrbsFromOrdinal(runtime, victim, cutOrdinal);
         if (destroyedOrbs.Count == 0)
         {
@@ -290,37 +261,5 @@ internal sealed class MatchTrailCutService(
 
         combatDamage.RecordCombatContact(runtime, victim, cutterId, nowUtc);
 
-        int victimOrbsAfter = orbTrails.CountOrbs(runtime, victim);
-        int victimAttackOrbsAfter = 0;
-        foreach (var remainingOrb in runtime.GetOrbs(victimId).GetOrderedOrbs())
-        {
-            if (OrbData.TryGetColorAndTier(remainingOrb.ItemId, out _, out _))
-            {
-                victimAttackOrbsAfter++;
-            }
-        }
-        var rankingAfterCut = new List<(long PlayerId, int OrbCount, int TierSum)>();
-        foreach (var alivePlayer in runtime.GetAlivePlayers())
-        {
-            var (orbCount, tierSum) = runtime.GetOrbs(alivePlayer.PlayerId).GetOrbScore();
-            rankingAfterCut.Add((alivePlayer.PlayerId, orbCount, tierSum));
-        }
-        rankingAfterCut = rankingAfterCut
-            .OrderByDescending(entry => entry.OrbCount)
-            .ThenByDescending(entry => entry.TierSum)
-            .ThenBy(entry => entry.PlayerId)
-            .ToList();
-
-        int victimRankAfterCut = 0;
-        for (int index = 0; index < rankingAfterCut.Count; index++)
-        {
-            if (rankingAfterCut[index].PlayerId == victimId)
-            {
-                victimRankAfterCut = index + 1;
-                break;
-            }
-        }
-
-        eventLogs.LogSwarmTrailCut(runtime.MatchingId, cutterId, victimId, cutOrdinal, destroyedOrbs.Count, victimOrbsBefore, victimOrbsAfter, victimAttackOrbsBefore, victimAttackOrbsAfter, victimRankAfterCut, cutArea.ToString());
     }
 }

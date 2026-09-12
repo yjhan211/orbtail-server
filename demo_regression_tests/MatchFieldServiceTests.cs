@@ -1,6 +1,5 @@
 using game_server;
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.players.bots;
 using game_server.sessions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -142,12 +141,10 @@ public sealed class MatchFieldServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var sessions = new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance);
-        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var eliminations = TestGameSessionServices.CreateEliminationService(
-            store, logs, new MatchSummaryFileStore(), NullLogger.Instance);
-        var results = new MatchResultService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance);
-        return new MatchFieldService(logs, new game_server.players.PlayerOrbTrailService(), TestGameSessionServices.CreateHealthService(store, logs),
-            new MatchCleanupService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance),
+        var eliminations = TestGameSessionServices.CreateEliminationService(store, NullLogger.Instance);
+        var results = new MatchResultService(store, NullLogger.Instance);
+        return new MatchFieldService(NullLogger<MatchFieldService>.Instance, new game_server.players.PlayerOrbTrailService(), TestGameSessionServices.CreateHealthService(store),
+            new MatchCleanupService(store, NullLogger.Instance),
             eliminations, results);
     }
 }

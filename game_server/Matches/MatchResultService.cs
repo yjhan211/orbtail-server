@@ -1,4 +1,3 @@
-using game_server.matches.logging;
 using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -11,13 +10,11 @@ namespace game_server.matches;
 /// <summary>
 ///     매치 종료를 한 번만 확정하고 참가자별 결과와 순위를 만든다.
 ///     매치 잠금 안에서 결과·종료 패킷을 전송하고 각 세션에 게임 종료 상태를 반영한다.
-///     완료 알림과 요약 파일 저장은 매치 잠금이 풀린 뒤 실행한다.
+///     완료 알림은 매치 잠금이 풀린 뒤 실행한다.
 ///     탈락자에게 보여 줄 중간 결과표도 생성한다.
 /// </summary>
 internal sealed class MatchResultService(
     MatchRuntimeStore matchRuntimes,
-    GameEventLogManager gameEventLogManager,
-    MatchSummaryFileStore matchSummaryFileStore,
     ILogger logger)
 {
     public void FinalizeMatch(long matchingId,
@@ -37,7 +34,6 @@ internal sealed class MatchResultService(
         if (endReason != MatchEndReason.LastSurvivor && !runtime.IsEnded)
         {
             logger.LogInformation("Swarm match resolved: matchingId={MatchingId}, WinnerId={WinnerId}, Criterion={Criterion}", matchingId, winnerId, tieBreakCriterion);
-            gameEventLogManager.LogSystem(matchingId, $"survivor_settlement winner={winnerId} reason={endReason} criterion={tieBreakCriterion}");
         }
 
         if (!runtime.TryMarkEnded())
@@ -54,41 +50,6 @@ internal sealed class MatchResultService(
             IsTimeout = isTimeout,
             Players = players
         });
-
-        MatchSummaryDocument? summaryRequest = null;
-        IReadOnlyList<GameEventEntry> capturedEvents = [];
-        if (gameEventLogManager.TryBeginFinalization(matchingId))
-        {
-            try
-            {
-                var finalPlayerStats = new List<MatchFinalPlayerStats>(players.Count);
-                foreach (var player in players)
-                {
-                    finalPlayerStats.Add(new MatchFinalPlayerStats(
-                        player.PlayerId,
-                        player.Rank,
-                        player.SurvivalTimeSeconds,
-                        player.KillCount,
-                        player.TotalDamageDealt,
-                        player.TotalRecovery,
-                        player.OrbCount));
-                }
-                gameEventLogManager.LogMatchEnded(matchingId, winnerId, endReason.ToString(), tieBreakCriterion.ToString(), finalPlayerStats);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Final match event logging failed; summary capture will continue: MatchingId={MatchingId}", matchingId);
-            }
-
-            try
-            {
-                summaryRequest = MatchSummaryFileStore.Prepare(gameEventLogManager, logger, matchingId, endReason.ToString(), winnerId, out capturedEvents);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Final match summary capture failed; terminal publication will continue: MatchingId={MatchingId}", matchingId);
-            }
-        }
 
         foreach (var session in sessionSnapshot)
         {
@@ -137,12 +98,6 @@ internal sealed class MatchResultService(
             {
                 logger.LogWarning(ex, "Match terminal publication failed: MatchingId={MatchingId}, PlayerId={PlayerId}, Component={Component}", matchingId, session.PlayerId, "MarkGameEnded");
             }
-        }
-
-        var capturedSummary = summaryRequest;
-        if (capturedSummary != null)
-        {
-            runtime.AfterRelease.Add(() => matchSummaryFileStore.Save(capturedSummary, capturedEvents, logger));
         }
     }
 
@@ -193,7 +148,7 @@ internal sealed class MatchResultService(
         {
             scoreLog.Add($"{candidate.PlayerId}:{candidate.OrbCount}:{candidate.TierSum}");
         }
-        gameEventLogManager.LogSystem(runtime.MatchingId, "match_score_result " + string.Join(",", scoreLog));
+        logger.LogInformation("Match score result: MatchingId={MatchingId}, Scores={Scores}", runtime.MatchingId, string.Join(",", scoreLog));
 
         FinalizeMatch(runtime.MatchingId, winnerId, MatchEndReason.OrbScoreTimeout);
         return true;
@@ -289,7 +244,6 @@ internal sealed class MatchResultService(
         foreach (var row in resultRows)
         {
             var player = runtime.GetParticipant(row.playerId)!;
-            var stats = gameEventLogManager.GetResultStats(runtime.MatchingId, row.playerId);
             var orbs = runtime.GetOrbs(row.playerId);
             bool isWinner = row.playerId == winnerId;
             killCountsByPlayerId.TryGetValue(row.playerId, out int pvpKillCount);
@@ -304,9 +258,9 @@ internal sealed class MatchResultService(
                 MaxHealth = Config.MAX_HEALTH,
                 WearItemIdList = player.Profile.WearItemIdList is { Count: > 0 } wearItemIds ? new List<int>(wearItemIds) : new List<int>(),
                 SurvivalTimeSeconds = Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
-                KillCount = pvpKillCount + stats.MonsterKillCount,
-                TotalDamageDealt = stats.TotalDamageDealt + stats.MonsterDamageDealt,
-                TotalRecovery = stats.TotalRecovery,
+                KillCount = pvpKillCount + player.MonsterKillCount,
+                TotalDamageDealt = player.PvpDamageDealt + player.MonsterDamageDealt,
+                TotalRecovery = player.RecoveryTotal,
                 AttackerPlayerId = row.attackerPlayerId,
                 EliminatedArea = row.eliminatedArea,
                 Rank = isWinner ? 1 : row.eliminationRank,

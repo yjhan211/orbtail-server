@@ -97,7 +97,6 @@ public sealed class SessionPacketProcessingTests
         var active = (int)typeof(TcpConnection).GetField("StateActive", flags)!.GetRawConstantValue()!;
         typeof(TcpConnection).GetField("_state", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(connection, active);
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
-        var logs = TestGameEventLogs.Create();
         var session = new GameClientSession(
             connection,
             NullLogger.Instance,
@@ -105,9 +104,8 @@ public sealed class SessionPacketProcessingTests
             static _ => false, TestGameSessionServices.CreateMatchCleanupService(),
             static (_, _) => null,
 
-            logs,
-            TestGameSessionServices.CreatePlayerOrbGrowthService(store, logs),
-            TestGameSessionServices.CreateMovementService(logs),
+            TestGameSessionServices.CreatePlayerOrbGrowthService(),
+            TestGameSessionServices.CreateMovementService(),
             new PlayerInteractionService(),
 
             new FakeGameSessionLifecycle(),

@@ -190,7 +190,6 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             healthNotification,
             "var change = player.ApplyDamage(damage);",
-            "eventLogs.LogResource(match.MatchingId,",
             "player.Session?.SendHealth(change);",
             "eliminations.EliminatePlayer(");
 
@@ -200,7 +199,6 @@ public sealed class SwarmArenaTickOrderTests
             "public void ApplySwarmAfterimageMonsterHit(");
         AssertInOrder(
             applyProximityHit,
-            "eventLogs.LogHit(",
             "healthService.ApplyDamage(runtime, victim, damage, sourcePlayerId);",
             "PacketMaker.G_TO_C_COMBAT_HIT(",
             "session.TrySend(packet);");
@@ -301,14 +299,13 @@ public sealed class SwarmArenaTickOrderTests
             "closures.InitializeMatching(",
             "Protocol.G_TO_C_SWARM_FIELD_STATE",
             "closures.CloseDueAreas()",
-            "eventLogs.LogClosure(",
+            "Area closed:",
             "Protocol.G_TO_C_AREA_CLOSED",
             "runtime.Doors.CloseDoorsForAreas(",
             "PacketMaker.G_TO_C_DOOR_STATE_UPDATE(",
             "DestroyOrbsFromOrdinal(",
             "SendOrbUpdate(",
-            "Protocol.G_TO_C_ORB_RING_EFFECT",
-            "eventLogs.LogSystem(");
+            "Protocol.G_TO_C_ORB_RING_EFFECT");
         Assert.DoesNotContain("catch", tick);
     }
 
@@ -350,7 +347,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("MatchRuntimeStore matchRuntimes", crossfire);
         Assert.Contains("public List<SwarmCrossfireShape> SunCrossfireShapes { get; } = new();", botDodge);
 
-        Assert.Contains("new BotPlayerManager(matchingId, logger, Doors, SunCrossfireShapes, eventLogs)", botDodge);
+        Assert.Contains("new BotPlayerManager(matchingId, logger, Doors, SunCrossfireShapes)", botDodge);
         string botMovement = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotPlayerManager.Movement.cs");
         Assert.Contains("_sunCrossfireShapes, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now", botMovement);
         Assert.DoesNotContain("matchRuntimes.GetOrThrow(matchingId).Swarm", botDodge);

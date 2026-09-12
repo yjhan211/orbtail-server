@@ -1,7 +1,6 @@
 using System.Collections.Immutable;
 using System.Diagnostics;
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.sessions;
@@ -27,7 +26,6 @@ public partial class BotPlayerManager
     internal SwarmBotMovementPlan PrepareMovementTick(
         MatchAreaClosureState closures,
         MatchGroundItemState groundItems,
-        GameEventLogManager gameEventLogManager,
         IReadOnlyList<Player> players,
         IReadOnlyList<SwarmBotObserverSnapshot> observers,
         Func<long, SwarmBotDirective> directiveProvider)
@@ -53,7 +51,6 @@ public partial class BotPlayerManager
 
         long preparationStartedAt = Stopwatch.GetTimestamp();
         SwarmBotMovementPlan plan = PrepareResult(
-            gameEventLogManager,
             matchingId,
             movementResult.Movements,
             players,
@@ -74,7 +71,6 @@ public partial class BotPlayerManager
     ///     not advance the orb orbit because the existing cut-dummy controls never did so.
     /// </summary>
     internal SwarmBotMovementPlan PrepareExternalMovement(
-        GameEventLogManager gameEventLogManager,
         BotMovementEvent movement,
         IReadOnlyList<Player> players,
         IReadOnlyList<SwarmBotObserverSnapshot> observers)
@@ -85,7 +81,6 @@ public partial class BotPlayerManager
 
         long preparationStartedAt = Stopwatch.GetTimestamp();
         SwarmBotMovementPlan plan = PrepareResult(
-            gameEventLogManager,
             matchingId,
             [movement],
             players,
@@ -101,7 +96,6 @@ public partial class BotPlayerManager
     }
 
     private SwarmBotMovementPlan PrepareResult(
-        GameEventLogManager gameEventLogManager,
         long matchingId,
         IReadOnlyCollection<BotMovementEvent> movements,
         IReadOnlyList<Player> players,
@@ -114,8 +108,6 @@ public partial class BotPlayerManager
         foreach (BotMovementEvent movement in movements)
         {
             SwarmBotMovementDispatch? dispatch = PrepareMovement(
-                gameEventLogManager,
-                matchingId,
                 movement,
                 players,
                 observers,
@@ -134,8 +126,6 @@ public partial class BotPlayerManager
     }
 
     private SwarmBotMovementDispatch? PrepareMovement(
-        GameEventLogManager gameEventLogManager,
-        long matchingId,
         BotMovementEvent movement,
         IReadOnlyList<Player> players,
         IReadOnlyList<SwarmBotObserverSnapshot> observers,
@@ -146,16 +136,6 @@ public partial class BotPlayerManager
             bot?.Player.AdvanceOrbOrbit(movement.Position);
 
         long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        if (movement.IsAreaTransition)
-        {
-            gameEventLogManager.LogMove(
-                matchingId,
-                movement.BotPlayerId,
-                movement.FromArea.ToString(),
-                movement.ToArea.ToString(),
-                isBot: true);
-        }
-
         ImmutableArray<GameClientSession> leaveRecipients = movement.IsAreaTransition
             ? SelectRecipients(observers, observer => observer.Area == movement.FromArea)
             : ImmutableArray<GameClientSession>.Empty;

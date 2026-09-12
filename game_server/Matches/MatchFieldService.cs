@@ -1,6 +1,6 @@
-using game_server.matches.logging;
 using game_server.players;
 using MessagePack;
+using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -14,7 +14,7 @@ namespace game_server.matches;
 ///     상태는 MatchRuntime이 소유하고, 호출자는 매치 잠금을 보유해야 한다.
 /// </summary>
 internal class MatchFieldService(
-    GameEventLogManager eventLogs,
+    ILogger<MatchFieldService> logger,
     PlayerOrbTrailService orbTrails,
     PlayerHealthService healthService,
     MatchCleanupService matchCleanup,
@@ -41,10 +41,7 @@ internal class MatchFieldService(
 
         var sessions = runtime.GetSessions();
         var closures = runtime.Closures;
-        if (closures.InitializeMatching(SwarmFieldClosureSchedule.Value))
-        {
-            eventLogs.LogSystem(runtime.MatchingId, "closure_schedule " + string.Join("|", SwarmFieldClosureSchedule.Value.Select(entry => $"{entry.ClosureAtSeconds}s:{entry.Area}")));
-        }
+        closures.InitializeMatching(SwarmFieldClosureSchedule.Value);
         if (!runtime.InitialFieldStateSent)
         {
             runtime.InitialFieldStateSent = true;
@@ -62,7 +59,7 @@ internal class MatchFieldService(
         var closedAreas = closures.CloseDueAreas();
         foreach (var area in closedAreas)
         {
-            eventLogs.LogClosure(runtime.MatchingId, area.ToString());
+            logger.LogInformation("Area closed: MatchingId={MatchingId}, Area={Area}", runtime.MatchingId, area);
             using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
             packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSED
             {
@@ -149,7 +146,6 @@ internal class MatchFieldService(
                     viewer.Session?.TrySend(ringPacket);
                 }
             }
-            eventLogs.LogSystem(runtime.MatchingId, $"closure_orb_destroyed player={owner.PlayerId} from={firstClosedOrdinal} count={destroyedOrbs.Count}");
         }
     }
 
@@ -196,7 +192,7 @@ internal class MatchFieldService(
             return;
         }
 
-        var resolution = ResolveEliminationOrder(lethalTargets.Select(target => new MatchSettlementCandidate(target.Player.PlayerId, target.HealthBefore, eventLogs.GetResultStats(matchingId, target.Player.PlayerId).TotalDamageDealt, target.Damage)));
+        var resolution = ResolveEliminationOrder(lethalTargets.Select(target => new MatchSettlementCandidate(target.Player.PlayerId, target.HealthBefore, target.Player.PvpDamageDealt, target.Damage)));
         var eliminationBestToWorst = resolution.BestToWorst.ToList();
         if (lethalTargets.Count == aliveCount)
         {
@@ -205,8 +201,7 @@ internal class MatchFieldService(
 
         if (resolution.BestToWorst.Count > 1)
         {
-            string orderedPlayers = string.Join(",", resolution.BestToWorst.Select(candidate => candidate.PlayerId));
-            eventLogs.LogSystem(matchingId, $"environment_tiebreak criterion={resolution.DecisiveCriterion} best_to_worst={orderedPlayers}");
+            logger.LogInformation("Simultaneous elimination tie-break: MatchingId={MatchingId}, Criterion={Criterion}, BestToWorst={Order}", runtime.MatchingId, resolution.DecisiveCriterion, string.Join(",", resolution.BestToWorst.Select(candidate => candidate.PlayerId)));
         }
 
         int rank = aliveCount;

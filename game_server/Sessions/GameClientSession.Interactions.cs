@@ -47,11 +47,6 @@ public partial class GameClientSession
                     : _interactions.StartDoor(match, Player, msg.InteractId, info.DoorId, Environment.TickCount64);
             }
 
-            if (error == ErrorCode.SUCCESS)
-            {
-                _gameEventLogManager.LogExploreStart(MatchingId, PlayerId.Value, msg.InteractId, Player.CurrentArea.ToString(), isBot: false);
-            }
-
             using var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_OPEN_ACK, PlayerId.Value);
             packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_DOOR_OPEN_ACK
             {
@@ -174,7 +169,6 @@ public partial class GameClientSession
     {
         foreach (int interactId in canceledIds)
         {
-            _gameEventLogManager.LogExploreCancelled(MatchingId, PlayerId.GetValueOrDefault(), interactId, Player.CurrentArea.ToString(), reason, isBot: false);
             using var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_OPEN_ACK, PlayerId.GetValueOrDefault());
             packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_DOOR_OPEN_ACK
             {

@@ -22,7 +22,6 @@ public sealed class Monster
     public DateTime NextContactAtUtc { get; set; }
     public DateTime DiedAtUtc { get; set; }
     public DateTime SpawnedAtUtc { get; set; }
-    public int AttackEventCount { get; set; }
     public float ScatterAngle { get; init; }
     public DateTime WaveSlowUntilUtc { get; set; }
     public int SummonStoneReward { get; init; }
@@ -83,14 +82,6 @@ public sealed class Monster
         Alive = false;
         DiedAtUtc = nowUtc;
         return true;
-    }
-
-    public void RecordAttackEvent()
-    {
-        if (Alive)
-        {
-            AttackEventCount++;
-        }
     }
 
     public void ApplySlow(float slowSeconds, DateTime nowUtc)

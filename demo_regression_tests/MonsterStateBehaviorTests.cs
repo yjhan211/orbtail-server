@@ -26,15 +26,12 @@ public sealed class MonsterStateBehaviorTests
     {
         var monster = new Monster { Alive = true, Health = 10 };
         monster.ReserveDamage(6);
-        monster.RecordAttackEvent();
         monster.ApplySlow(2, Now);
         monster.ApplyDamage(10, Now);
 
         monster.ReserveDamage(9);
-        monster.RecordAttackEvent();
         monster.ApplySlow(10, Now);
         Assert.Equal(6, monster.PendingDamage);
-        Assert.Equal(1, monster.AttackEventCount);
         Assert.Equal(Now.AddSeconds(2), monster.WaveSlowUntilUtc);
         monster.ReleaseReservedDamage(3);
         Assert.Equal(3, monster.PendingDamage);

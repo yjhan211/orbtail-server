@@ -61,8 +61,6 @@ public class BotPlayerState
     public DateTime? LastTrailCutAtUtc { get; set; }
     /// <summary>치명상 — 남은 체력 40% 이하에서 진입, 55% 이상에서 해제.</summary>
     public bool Wounded { get; set; }
-    /// <summary>추격 로그 스로틀 — 같은 표적은 3초에 한 번만 남긴다. 판단은 50ms마다 돈다.</summary>
-    public Dictionary<long, DateTime> ChaseLogThrottle { get; } = new();
 
     // 유휴 감시 (#222): 6초 이상 제자리면 원인 진단 로그를 남긴다 — "가만히 서 있는 봇" 추적.
     public Vector3f? IdleWatchLastPosition { get; set; }

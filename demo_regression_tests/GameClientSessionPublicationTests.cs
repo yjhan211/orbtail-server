@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using game_server;
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
@@ -80,14 +79,14 @@ public sealed class GameClientSessionPublicationTests
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
         fixture.SetHealth(session, Config.MAX_HEALTH - 10);
         fixture.ConnectionFor(session).ThrowOnceOn = Protocol.G_TO_C_PLAYER_STATS_UPDATE;
-        var health = TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog);
+        var health = TestGameSessionServices.CreateHealthService(fixture.Store);
 
         using (session.Match.Enter())
         {
             var change = health.Recover(session.Match, session.Player, 10);
             Assert.Equal(10, change.Recovered);
             Assert.Equal(Config.MAX_HEALTH, session.Player.Health);
-            Assert.Equal(10, fixture.EventLog.GetResultStats(70001, 101).TotalRecovery);
+            Assert.Equal(10, session.Player.RecoveryTotal);
         }
     }
 
@@ -100,7 +99,7 @@ public sealed class GameClientSessionPublicationTests
         fixture.CreateSession(70001, 103, (AreaType)50);
         fixture.SetHealth(victim, 5);
         fixture.ConnectionFor(victim).ThrowOnceOn = Protocol.G_TO_C_PLAYER_STATS_UPDATE;
-        var health = TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog);
+        var health = TestGameSessionServices.CreateHealthService(fixture.Store);
 
         using (victim.Match.Enter())
         {
@@ -129,7 +128,7 @@ public sealed class GameClientSessionPublicationTests
         player.CurrentArea = session.Player.CurrentArea;
         match.RegisterParticipant(player);
         match.Bots.GetBots().Add(bot);
-        var pickup = new PlayerPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<PlayerPickupService>.Instance);
+        var pickup = new PlayerPickupService(TestGameSessionServices.CreateHealthService(fixture.Store), NullLogger<PlayerPickupService>.Instance);
         using (match.Enter())
         {
             player.DetachSession(session);
@@ -159,7 +158,7 @@ public sealed class GameClientSessionPublicationTests
         var player = session.Player;
         player.Health = 37;
         player.DetachSession(session);
-        var combat = TestGameSessionServices.CreateCombatDamageService(fixture.EventLog);
+        var combat = TestGameSessionServices.CreateCombatDamageService();
         using (session.Match.Enter())
         {
             combat.SendPlayerHitNotification(session.Match, player, 999, (AreaType)50, 123, 7, 61);
@@ -202,7 +201,7 @@ public sealed class GameClientSessionPublicationTests
         int expectedHealth = Config.MAX_HEALTH - missingHealth + Math.Min(10, missingHealth);
         using (session.Match.Enter())
         {
-            var change = TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog).Recover(session.Match, session.Player, 10);
+            var change = TestGameSessionServices.CreateHealthService(fixture.Store).Recover(session.Match, session.Player, 10);
             Assert.Equal(expectedHealth, session.Player.Health);
             Assert.Equal(Math.Min(10, missingHealth), change.Recovered);
         }
@@ -266,8 +265,8 @@ public sealed class GameClientSessionPublicationTests
         var session = fixture.CreateSession(70001, 102, (AreaType)50);
         using (session.Match.Enter())
         {
-            var combat = TestGameSessionServices.CreateCombatDamageService(fixture.EventLog);
-            combat.ApplyProximityAutoCombatHit(session.Match, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), session.Player, 101, (AreaType)50, 123, 5, isPeriodicDamage: true, sourceHealth: 73);
+            var combat = TestGameSessionServices.CreateCombatDamageService();
+            combat.ApplyProximityAutoCombatHit(session.Match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), session.Player, 101, (AreaType)50, 123, 5, isPeriodicDamage: true, sourceHealth: 73);
         }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(101, hit.AttackerId);
@@ -291,8 +290,8 @@ public sealed class GameClientSessionPublicationTests
         int before = bot.Player.Health;
         using (match.Enter())
         {
-            TestGameSessionServices.CreateCombatDamageService(fixture.EventLog).ApplyProximityAutoCombatHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), session.Player, 101, (AreaType)50, 123, 5);
-            TestGameSessionServices.CreateCombatDamageService(fixture.EventLog).ApplyProximityAutoCombatHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), bot.Player, 101, (AreaType)50, 123, 5);
+            TestGameSessionServices.CreateCombatDamageService().ApplyProximityAutoCombatHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), session.Player, 101, (AreaType)50, 123, 5);
+            TestGameSessionServices.CreateCombatDamageService().ApplyProximityAutoCombatHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), bot.Player, 101, (AreaType)50, 123, 5);
         }
         Assert.Equal(before - 5, bot.Player.Health);
         Assert.Equal(session.Player.Health, bot.Player.Health);
@@ -318,8 +317,8 @@ public sealed class GameClientSessionPublicationTests
         using (match.Enter())
         {
             if (match.GetParticipant(bot.PlayerId) == null) match.RegisterParticipant(bot.Player);
-            TestGameSessionServices.CreateCombatDamageService(fixture.EventLog).ApplySwarmAfterimageMonsterHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), session.Player, 42, 5);
-            TestGameSessionServices.CreateCombatDamageService(fixture.EventLog).ApplySwarmAfterimageMonsterHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), bot.Player, 42, 5);
+            TestGameSessionServices.CreateCombatDamageService().ApplySwarmAfterimageMonsterHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), session.Player, 42, 5);
+            TestGameSessionServices.CreateCombatDamageService().ApplySwarmAfterimageMonsterHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), bot.Player, 42, 5);
         }
         Assert.Equal(before - 5, bot.Player.Health);
         Assert.Equal(session.Player.Health, bot.Player.Health);
@@ -336,7 +335,7 @@ public sealed class GameClientSessionPublicationTests
         using (match.Enter())
         {
             if (match.GetParticipant(bot.PlayerId) == null) match.RegisterParticipant(bot.Player);
-            TestGameSessionServices.CreateCombatDamageService(fixture.EventLog).ApplySwarmAfterimageMonsterHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), bot.Player, 42, Config.MAX_HEALTH);
+            TestGameSessionServices.CreateCombatDamageService().ApplySwarmAfterimageMonsterHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), bot.Player, 42, Config.MAX_HEALTH);
             Assert.Equal(0, bot.Player.Health);
             Assert.True(bot.Player.IsEliminated);
         }
@@ -347,7 +346,7 @@ public sealed class GameClientSessionPublicationTests
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
-        var combat = TestGameSessionServices.CreateCombatDamageService(fixture.EventLog);
+        var combat = TestGameSessionServices.CreateCombatDamageService();
         using (session.Match.Enter())
         {
             combat.SendMonsterHitNotification(session.Match, session.Player, 42, (AreaType)50, 123, 9, critical: true, showDamageOnly: true);
@@ -368,8 +367,8 @@ public sealed class GameClientSessionPublicationTests
         int healthBefore = session.Player.Health;
         using (session.Match.Enter())
         {
-            var combat = TestGameSessionServices.CreateCombatDamageService(fixture.EventLog);
-            combat.ApplySwarmAfterimageMonsterHit(session.Match, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance), session.Player, 42, 1);
+            var combat = TestGameSessionServices.CreateCombatDamageService();
+            combat.ApplySwarmAfterimageMonsterHit(session.Match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), session.Player, 42, 1);
         }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(CombatEntityKind.Monster, hit.AttackerKind);
@@ -384,7 +383,7 @@ public sealed class GameClientSessionPublicationTests
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
-        var combat = TestGameSessionServices.CreateCombatDamageService(fixture.EventLog);
+        var combat = TestGameSessionServices.CreateCombatDamageService();
         session.Player.Health = 37;
         using (session.Match.Enter())
         {
@@ -403,8 +402,7 @@ public sealed class GameClientSessionPublicationTests
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
         fixture.SetHealth(session, Config.MAX_HEALTH - 3);
-        var recoveryService = new PlayerOrbService(
-            TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), TestGameSessionServices.CreateCombatDamageService(fixture.EventLog), new PlayerOrbTrailService(), fixture.EventLog);
+        var recoveryService = new PlayerOrbService(TestGameSessionServices.CreateHealthService(fixture.Store), TestGameSessionServices.CreateCombatDamageService(), new PlayerOrbTrailService());
         var actor = new ProximityCombatActor(101, (AreaType)50, new Vector3f(0, 0, 0),
             107000040, 0, 0, 0, WeaponItemUid: 1);
         var now = DateTime.UtcNow;
@@ -443,8 +441,8 @@ public sealed class GameClientSessionPublicationTests
         using (session.Match.Enter())
         {
             Assert.True(session.Player.TryStartSleep(now));
-            TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog).ApplySleepRecovery(session.Match, [session.Player], now);
-            TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog).ApplySleepRecovery(session.Match, [session.Player], now.AddSeconds(1));
+            TestGameSessionServices.CreateHealthService(fixture.Store).ApplySleepRecovery(session.Match, [session.Player], now);
+            TestGameSessionServices.CreateHealthService(fixture.Store).ApplySleepRecovery(session.Match, [session.Player], now.AddSeconds(1));
         }
         var packet = fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_HEALTH_RECOVERY>(Protocol.G_TO_C_HEALTH_RECOVERY);
@@ -692,7 +690,7 @@ public sealed class GameClientSessionPublicationTests
         GroundItemInfo item = fixture.SpawnAtSession(session, itemId);
         int stonesBefore = TestGameSessionServices.SummonStones(fixture.Store.GetOrThrow(70001), 101).StoneCount;
 
-        await RunPickupTickAsync(session, fixture.Store, fixture.EventLog);
+        await RunPickupTickAsync(session, fixture.Store);
 
         IReadOnlyList<Protocol> protocols = fixture.ConnectionFor(session).DeliveredProtocols;
         if (expectedPrefix.HasValue)
@@ -717,7 +715,7 @@ public sealed class GameClientSessionPublicationTests
         fixture.SetHealth(session, 20);
         GroundItemInfo item = fixture.SpawnAtSession(session, Config.HEART_GROUND_ITEM_ID);
 
-        await RunPickupTickAsync(session, fixture.Store, fixture.EventLog);
+        await RunPickupTickAsync(session, fixture.Store);
 
         Assert.Equal(
             [
@@ -739,9 +737,9 @@ public sealed class GameClientSessionPublicationTests
         RecordingSession session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
         GroundItemInfo item = fixture.SpawnAtSession(session, itemId);
 
-        await RunPickupTickAsync(session, fixture.Store, fixture.EventLog);
+        await RunPickupTickAsync(session, fixture.Store);
 
-        await RunPickupTickAsync(session, fixture.Store, fixture.EventLog);
+        await RunPickupTickAsync(session, fixture.Store);
         Assert.Empty(fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.NotNull(fixture.Store.GetOrThrow(70001).GroundItems.GetItem(item.GroundItemUid));
         Assert.DoesNotContain(TestGameSessionServices.Orbs(fixture.Store.GetOrThrow(70001), 101).GetAllItems(),
@@ -880,7 +878,7 @@ public sealed class GameClientSessionPublicationTests
             Assert.True(releaseDispatch.Wait(TimeSpan.FromSeconds(5)));
         };
 
-        Task message = Task.Run(() => RunPickupTickAsync(session, fixture.Store, fixture.EventLog));
+        Task message = Task.Run(() => RunPickupTickAsync(session, fixture.Store));
         Assert.True(enteredDispatch.Wait(TimeSpan.FromSeconds(5)));
 
         // 핸들러가 잠금을 쥔 채 송신 중이면 종료는 번들 전체가 끝날 때까지 기다린다.
@@ -919,7 +917,7 @@ public sealed class GameClientSessionPublicationTests
         RecordingTcpConnection connection = fixture.ConnectionFor(session);
         connection.ThrowOnceOn = Protocol.G_TO_C_GROUND_ITEM_REMOVED;
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => RunPickupTickAsync(session, fixture.Store, fixture.EventLog));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => RunPickupTickAsync(session, fixture.Store));
 
         Assert.Equal(1, TestGameSessionServices.SummonStones(session.Match, session.PlayerId!.Value).StoneCount);
         Assert.Null(fixture.Store.GetOrThrow(70001).GroundItems.GetItem(item.GroundItemUid));
@@ -942,7 +940,7 @@ public sealed class GameClientSessionPublicationTests
         GroundItemInfo item = fixture.SpawnAtSession(session, Config.HEART_GROUND_ITEM_ID);
         fixture.ConnectionFor(session).ThrowOnceOn = Protocol.G_TO_C_GROUND_ITEM_REMOVED;
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => RunPickupTickAsync(session, fixture.Store, fixture.EventLog));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => RunPickupTickAsync(session, fixture.Store));
 
         Assert.Equal(
             [Protocol.G_TO_C_PLAYER_STATS_UPDATE],
@@ -970,10 +968,10 @@ public sealed class GameClientSessionPublicationTests
             Assert.True(release.Wait(TimeSpan.FromSeconds(5)));
         };
 
-        Task firstTask = Task.Run(() => RunPickupTickAsync(first, fixture.Store, fixture.EventLog));
+        Task firstTask = Task.Run(() => RunPickupTickAsync(first, fixture.Store));
         Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
 
-        Task secondTask = RunPickupTickAsync(second, fixture.Store, fixture.EventLog);
+        Task secondTask = RunPickupTickAsync(second, fixture.Store);
         await secondTask.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(1, TestGameSessionServices.SummonStones(second.Match, second.PlayerId!.Value).StoneCount);
         Assert.False(firstTask.IsCompleted);
@@ -1042,7 +1040,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Contains("using (match.Enter())", doors);
         Assert.DoesNotContain("ProcessDoorOpenRequest", doors);
         Assert.DoesNotContain("RunWithMatchLock(", ReadMethodSlice(connection,
-            "private async Task HandleConnect(", "private void LogInitialInventory("));
+            "private async Task HandleConnect(", "private void SyncPlayersOnEntry("));
         Assert.DoesNotContain("RunWithMatchLock", combat);
         Assert.DoesNotContain("RunWithMatchLock", bots);
         Assert.DoesNotContain("RunWithMatchLock", botPickup);
@@ -1283,7 +1281,7 @@ public sealed class GameClientSessionPublicationTests
         using (match.Enter())
         {
             player.DetachSession(session);
-            new PlayerPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<PlayerPickupService>.Instance)
+            new PlayerPickupService(TestGameSessionServices.CreateHealthService(fixture.Store), NullLogger<PlayerPickupService>.Instance)
                 .PickUp(match, player);
         }
         Assert.Equal(1, TestGameSessionServices.SummonStones(match, player.PlayerId).StoneCount);
@@ -1311,7 +1309,7 @@ public sealed class GameClientSessionPublicationTests
         registry.Register(101, current);
         TestGameSessionServices.SetMovementProperty(current, "Position", new Vector3f(item.PositionX + 20, item.PositionY, 0));
         using (match.Enter())
-            new PlayerPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<PlayerPickupService>.Instance)
+            new PlayerPickupService(TestGameSessionServices.CreateHealthService(fixture.Store), NullLogger<PlayerPickupService>.Instance)
                 .PickUp(match, new[] { current.Player });
 
         Assert.Equal(0, TestGameSessionServices.SummonStones(current.Match, current.PlayerId!.Value).StoneCount);
@@ -1332,8 +1330,7 @@ public sealed class GameClientSessionPublicationTests
         using (match.Enter())
         {
             Assert.True(TestGameSessionServices.Orbs(match, 101).TryAddItemWithCapacity(107000010, Config.GetOrbCapacity(), out _));
-            var eliminations = TestGameSessionServices.CreateEliminationService(
-                fixture.Store, fixture.EventLog, fixture.Summaries, NullLogger.Instance);
+            var eliminations = TestGameSessionServices.CreateEliminationService(fixture.Store, NullLogger.Instance);
             eliminations.EliminatePlayer(match, eliminated.Player, EliminationReason.HEALTH_ZERO, deferGameOver: true);
             eliminations.EliminatePlayer(match, eliminated.Player, EliminationReason.HEALTH_ZERO, deferGameOver: true);
 
@@ -1364,17 +1361,17 @@ public sealed class GameClientSessionPublicationTests
     private static MatchTickLoop CreatePickupTickLoop(SessionFixture fixture, MatchRuntime runtime)
     {
         var loop = TestMatchTickServices.CreateLoop(runtime, fixture.Store, NullLogger.Instance,
-            new PlayerPickupService(fixture.EventLog, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), NullLogger<PlayerPickupService>.Instance),
+            new PlayerPickupService(TestGameSessionServices.CreateHealthService(fixture.Store), NullLogger<PlayerPickupService>.Instance),
             static (_, _) => { },
             static (_, _) => { }, static _ => { }, static _ => { });
         fixture.TickLoops.Add(loop);
         return loop;
     }
 
-    private static Task RunPickupTickAsync(GameClientSession session, MatchRuntimeStore store, GameEventLogManager eventLogs)
+    private static Task RunPickupTickAsync(GameClientSession session, MatchRuntimeStore store)
     {
         using (session.Match.Enter())
-            new PlayerPickupService(eventLogs, TestGameSessionServices.CreateHealthService(store, eventLogs), NullLogger<PlayerPickupService>.Instance).PickUp(session.Match, session.Player);
+            new PlayerPickupService(TestGameSessionServices.CreateHealthService(store), NullLogger<PlayerPickupService>.Instance).PickUp(session.Match, session.Player);
         return Task.CompletedTask;
     }
 
@@ -1423,10 +1420,6 @@ public sealed class GameClientSessionPublicationTests
     {
         private readonly List<GameClientSession> _sessions = [];
         private readonly Dictionary<GameClientSession, RecordingTcpConnection> _connections = [];
-        private readonly string _summaryDirectory = Path.Combine(
-            Path.GetTempPath(),
-            "orbtail-session-publication-tests",
-            Guid.NewGuid().ToString("N"));
 
         public SessionFixture()
         {
@@ -1440,8 +1433,6 @@ public sealed class GameClientSessionPublicationTests
         public MatchRuntimeStore Store { get; }
         public ConcurrentQueue<string>? CleanupTimeline { get; set; }
 
-        public GameEventLogManager EventLog { get; } = TestGameEventLogs.Create();
-        public MatchSummaryFileStore Summaries => new(_summaryDirectory);
 
         public RecordingSession CreateSession(long matchingId, long playerId, AreaType area, Func<GameClientSession, bool>? removeSession = null)
         {
@@ -1453,9 +1444,6 @@ public sealed class GameClientSessionPublicationTests
             var session = new RecordingSession(
                 connection,
                 _sessions,
-
-                EventLog,
-                Summaries,
                 Store, removeSession);
             SetIdentity(session, matchingId, playerId, area);
             _sessions.Add(session);
@@ -1509,10 +1497,6 @@ public sealed class GameClientSessionPublicationTests
         public void Dispose()
         {
             foreach (var loop in TickLoops) loop.Stop();
-            foreach (long matchingId in _sessions.Select(session => session.MatchingId).Distinct())
-
-                if (Directory.Exists(_summaryDirectory))
-                    Directory.Delete(_summaryDirectory, recursive: true);
         }
 
         private static void SetIdentity(
@@ -1553,21 +1537,16 @@ public sealed class GameClientSessionPublicationTests
         public RecordingSession(
             TcpConnection connection,
             List<GameClientSession> sessions,
-
-            GameEventLogManager eventLog,
-            MatchSummaryFileStore summaries,
             MatchRuntimeStore matchRuntimes, Func<GameClientSession, bool>? removeSession = null)
             : base(
                 connection,
                 NullLogger.Instance,
                 null!,
                 removeSession ?? (static _ => false),
-                new MatchCleanupService(matchRuntimes, eventLog, summaries, NullLogger.Instance),
+                new MatchCleanupService(matchRuntimes, NullLogger.Instance),
                 static (_, _) => null,
-
-                eventLog,
-                TestGameSessionServices.CreatePlayerOrbGrowthService(matchRuntimes, eventLog),
-                TestGameSessionServices.CreateMovementService(eventLog),
+                TestGameSessionServices.CreatePlayerOrbGrowthService(),
+                TestGameSessionServices.CreateMovementService(),
                 new PlayerInteractionService(),
                 new FakeGameSessionLifecycle(),
                 static () => false,

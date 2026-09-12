@@ -45,9 +45,7 @@ public class SwarmDamagePathTests
         Assert.Contains("SwarmConfigData.GetDouble(\"SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS\", 8d)", source);
         Assert.Equal("35", ReadSwarmConfigValue("SWARM_SINGLE_CUT_HEALTH_COST"));
         Assert.Equal("8", ReadSwarmConfigValue("SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS"));
-        Assert.Contains("ORB_SINGLE_CUT_REFUSED", cutBody);
         Assert.Contains("BlockHealingUntil(healLockUntil)", cutBody);
-        Assert.Contains("eventLogs.LogSwarmTrailCut(", cutBody);
         // 0.8초 재접촉 억제 시작값.
         Assert.Contains("SwarmConfigData.GetDouble(\"SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS\", 0.8d)", source);
         Assert.Equal("0.8", ReadSwarmConfigValue("SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS"));
@@ -285,28 +283,5 @@ public class SwarmDamagePathTests
                 Assert.Contains((door.DoorId, (int)side), unlockSides);
             }
         }
-    }
-
-    [Fact]
-    public void MonsterHits_AccumulateSeparatelyFromPvpDamage()
-    {
-        // #229: 스웜 전투는 전부 몹 상대인데 어떤 카운터에도 안 쌓여 결과가 "처치 0회"였다.
-        // 단 PvP 피해와 같은 칸에 넣으면 안 된다 — 그 칸은 동시 탈락 시 생존자를 가르는
-        // 기준(MatchFieldService.ResolveEliminationOrder)이라 의미가 섞이면 판정이 바뀐다.
-        var manager = TestGameEventLogs.Create();
-        const long matchingId = 771001;
-        const long playerId = 4242;
-
-        manager.RecordMonsterHit(matchingId, playerId, 12, killed: false);
-        manager.RecordMonsterHit(matchingId, playerId, 12, killed: true);
-        manager.RecordMonsterHit(matchingId, playerId, 21, killed: true);
-
-        var stats = manager.GetResultStats(matchingId, playerId);
-        Assert.Equal(2, stats.MonsterKillCount);
-        Assert.Equal(45, stats.MonsterDamageDealt);
-
-        // PvP 칸은 건드리지 않는다.
-        Assert.Equal(0, stats.KillCount);
-        Assert.Equal(0, stats.TotalDamageDealt);
     }
 }

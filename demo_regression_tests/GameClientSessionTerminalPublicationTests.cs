@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using game_server;
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.players;
 using game_server.sessions;
 using MessagePack;
@@ -31,7 +30,7 @@ public sealed class GameClientSessionTerminalPublicationTests
     }
 
     [Fact]
-    public async Task EndMatch_WaitsForMatchLock_ThenPublishesResultBeforeCleanupLifecycleAndSummary()
+    public async Task EndMatch_WaitsForMatchLock_ThenPublishesResultBeforeCleanupLifecycle()
     {
         const long matchingId = 73001;
         const long otherMatchingId = 73901;
@@ -123,17 +122,13 @@ public sealed class GameClientSessionTerminalPublicationTests
         Assert.Equal(1, fixture.CleanupCount);
         Assert.True(runtime.IsEnded);
         Assert.Null(fixture.Store.GetOrNull(matchingId));
-        Assert.Single(fixture.SummaryFiles);
         Assert.All(recipientIds, playerId =>
             Assert.Equal(1, fixture.LifecycleDispatchCounts.GetValueOrDefault(playerId)));
 
         string[] timeline = fixture.Timeline.ToArray();
         int lastPacket = Array.FindLastIndex(timeline, entry => entry.StartsWith("packet:", StringComparison.Ordinal));
         int firstLifecycle = Array.FindIndex(timeline, entry => entry.StartsWith("lifecycle:", StringComparison.Ordinal));
-        int lastLifecycle = Array.FindLastIndex(timeline, entry => entry.StartsWith("lifecycle:", StringComparison.Ordinal));
-        int summary = Array.IndexOf(timeline, "summary");
         Assert.True(lastPacket >= 0 && lastPacket < firstLifecycle, string.Join(" | ", timeline));
-        Assert.True(lastLifecycle < summary, string.Join(" | ", timeline));
         Assert.False(fixture.LockHeldDuringLifecycle ?? true);
     }
 
@@ -181,7 +176,6 @@ public sealed class GameClientSessionTerminalPublicationTests
         }
 
         Assert.Equal(1, fixture.CleanupCount);
-        Assert.Single(fixture.SummaryFiles);
         Assert.Null(fixture.Store.GetOrNull(matchingId));
     }
 
@@ -226,7 +220,6 @@ public sealed class GameClientSessionTerminalPublicationTests
         Assert.Equal(1, fixture.LifecycleDispatchCounts.GetValueOrDefault(endFailure.PlayerId!.Value));
         Assert.All(sessions, session => Assert.True(session.IsGameEnded));
         Assert.Equal(1, fixture.CleanupCount);
-        Assert.Single(fixture.SummaryFiles);
         Assert.Null(fixture.Store.GetOrNull(matchingId));
 
         TerminalDelivery[] deliveries = fixture.Deliveries.ToArray();
@@ -245,7 +238,6 @@ public sealed class GameClientSessionTerminalPublicationTests
         using var fixture = new TerminalFixture();
         fixture.Results.FinalizeMatch(73990, 101, MatchEndReason.PressureFieldSettlement);
         Assert.Empty(fixture.Deliveries);
-        Assert.Empty(fixture.SummaryFiles);
 
         var runtime = fixture.Store.GetOrCreate(73991);
         using (runtime.Enter())
@@ -253,7 +245,6 @@ public sealed class GameClientSessionTerminalPublicationTests
             Assert.True(runtime.TryMarkEnded());
             fixture.Results.FinalizeMatch(73991, 101, MatchEndReason.PressureFieldSettlement);
             Assert.Empty(fixture.Deliveries);
-            Assert.Empty(fixture.SummaryFiles);
             Assert.Equal(0, fixture.CleanupCount);
         }
 
@@ -262,7 +253,6 @@ public sealed class GameClientSessionTerminalPublicationTests
         fixture.Results.FinalizeMatch(73991, 101, MatchEndReason.PressureFieldSettlement);
         Assert.Equal(1, fixture.CleanupCount);
         Assert.Empty(fixture.Deliveries);
-        Assert.Empty(fixture.SummaryFiles);
     }
     private static string FindRepositoryRoot()
     {
@@ -281,10 +271,6 @@ public sealed class GameClientSessionTerminalPublicationTests
     {
         private readonly List<GameClientSession> _sessions = [];
         private readonly Dictionary<GameClientSession, RecordingTcpConnection> _connections = [];
-        private readonly string _summaryDirectory = Path.Combine(
-            Path.GetTempPath(),
-            "orbtail-terminal-publication-tests",
-            Guid.NewGuid().ToString("N"));
         private long _deliverySequence;
         private int _cleanupCount;
 
@@ -302,16 +288,11 @@ public sealed class GameClientSessionTerminalPublicationTests
         public ConcurrentDictionary<long, int> LifecycleDispatchCounts { get; } = new();
         public TimelineLogger Logger { get; }
 
-        public GameEventLogManager EventLog { get; } = TestGameEventLogs.Create();
-        public MatchSummaryFileStore Summaries => new(_summaryDirectory);
-        public MatchResultService Results => new(Store, EventLog, Summaries, Logger);
+        public MatchResultService Results => new(Store, Logger);
         public long? ThrowPrepareCompletionForPlayerId { get; set; }
         public MatchRuntime? TrackedRuntime { get; set; }
         public bool? LockHeldDuringLifecycle { get; private set; }
         public int CleanupCount => Volatile.Read(ref _cleanupCount);
-        public IReadOnlyList<string> SummaryFiles => Directory.Exists(_summaryDirectory)
-            ? Directory.EnumerateFiles(_summaryDirectory, "match-*.json").ToList()
-            : [];
         public IReadOnlyList<TerminalDelivery> Deliveries => _connections.Values
             .SelectMany(connection => connection.Deliveries)
             .OrderBy(delivery => delivery.Sequence)
@@ -328,9 +309,6 @@ public sealed class GameClientSessionTerminalPublicationTests
                 connection,
                 Logger,
                 _sessions,
-
-                EventLog,
-                Summaries,
                 Store,
                 PrepareGameCompletion);
             SetIdentity(session, matchingId, playerId, status);
@@ -380,8 +358,6 @@ public sealed class GameClientSessionTerminalPublicationTests
 
         public void Dispose()
         {
-            if (Directory.Exists(_summaryDirectory))
-                Directory.Delete(_summaryDirectory, recursive: true);
         }
 
         private Action? PrepareGameCompletion(long playerId, long matchingId)
@@ -443,9 +419,6 @@ public sealed class GameClientSessionTerminalPublicationTests
             TcpConnection connection,
             ILogger logger,
             List<GameClientSession> sessions,
-
-            GameEventLogManager eventLog,
-            MatchSummaryFileStore summaries,
             MatchRuntimeStore matchRuntimes,
             Func<long, long, Action?> prepareGameCompletion)
             : base(
@@ -454,10 +427,8 @@ public sealed class GameClientSessionTerminalPublicationTests
                 null!,
                 static _ => false, TestGameSessionServices.CreateMatchCleanupService(),
                 static (_, _) => null,
-
-                eventLog,
-                TestGameSessionServices.CreatePlayerOrbGrowthService(matchRuntimes, eventLog),
-                TestGameSessionServices.CreateMovementService(eventLog),
+                TestGameSessionServices.CreatePlayerOrbGrowthService(),
+                TestGameSessionServices.CreateMovementService(),
                 new PlayerInteractionService(),
                 new FakeGameSessionLifecycle(prepareGameCompletion),
                 static () => false,
@@ -540,9 +511,6 @@ public sealed class GameClientSessionTerminalPublicationTests
             Exception? exception,
             Func<TState, Exception?, string> formatter)
         {
-            string message = formatter(state, exception);
-            if (message.StartsWith("Match summary persisted:", StringComparison.Ordinal))
-                timeline.Enqueue("summary");
         }
     }
 

@@ -1,6 +1,5 @@
 using System.Net;
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.players;
 using game_server.sessions;
 using Microsoft.Extensions.Configuration;
@@ -37,7 +36,6 @@ internal sealed class GameServer(
     GameServerNodeOptions nodeOptions,
     GameSessionRegistry sessions,
     MatchRuntimeStore matchRuntimes,
-    GameEventLogManager eventLogs,
     GameMatchEntryService matchEntry,
     MatchEntryFailureHandler entryFailureHandler,
     MatchCleanupService matchCleanup,
@@ -199,7 +197,6 @@ internal sealed class GameServer(
                 sessions.Remove,
                 matchCleanup,
                 sessions.Register,
-                eventLogs,
                 orbGrowth,
                 movement,
                 interactions,

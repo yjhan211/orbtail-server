@@ -1,4 +1,3 @@
-using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
@@ -45,13 +44,13 @@ internal sealed class MatchRuntime
 
     internal readonly List<Action> AfterRelease = new();
 
-    internal MatchRuntime(MatchRuntimeStore runtimeStore, long matchingId, ILogger<MatchRuntime> logger, MatchSessionCleanupService matchSessionCleanup, GameEventLogManager eventLogs)
+    internal MatchRuntime(MatchRuntimeStore runtimeStore, long matchingId, ILogger<MatchRuntime> logger, MatchSessionCleanupService matchSessionCleanup)
     {
         _runtimeStore = runtimeStore;
         _logger = logger;
         _matchSessionCleanup = matchSessionCleanup;
         MatchingId = matchingId;
-        Bots = new BotPlayerManager(matchingId, logger, Doors, SunCrossfireShapes, eventLogs);
+        Bots = new BotPlayerManager(matchingId, logger, Doors, SunCrossfireShapes);
         GroundItems = new MatchGroundItemState();
         Closures = new MatchAreaClosureState();
         Monsters = new MatchMonsters();
@@ -75,7 +74,6 @@ internal sealed class MatchRuntime
     // 맵과 진행 상태
     public MatchDoorState Doors { get; } = new();
     public MatchAreaClosureState Closures { get; }
-    public MatchEventLogState EventLog { get; } = new();
 
     // 틱 실행과 일정
     internal MatchTickLoop? TickLoop
@@ -377,7 +375,6 @@ internal sealed class MatchRuntime
                     player.ReachableItems.Clear();
                 }
                 Doors.Clear();
-                EventLog.Release();
                 GroundItems.Release();
                 _participants.Clear();
                 _aliveCount = 0;

@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -15,7 +14,6 @@ namespace game_server.players;
 ///     호출자는 해당 매치의 잠금을 보유해야 한다.
 /// </summary>
 internal sealed class PlayerEliminationService(
-    GameEventLogManager gameEventLogManager,
     MatchResultService matchResults,
     ILogger logger)
 {
@@ -49,7 +47,7 @@ internal sealed class PlayerEliminationService(
             eliminatedBot.LoopWaitUntil = DateTime.MinValue;
         }
 
-        gameEventLogManager.LogElimination(matchingId, eliminatedPlayerId, reason.ToString(), isBot: eliminatedBot != null, attackerPlayerId: resolvedAttackerPlayerId);
+        logger.LogInformation("Player eliminated: MatchingId={MatchingId}, PlayerId={PlayerId}, Reason={Reason}, AttackerPlayerId={AttackerPlayerId}", runtime.MatchingId, eliminatedPlayerId, reason, resolvedAttackerPlayerId);
 
         var position = eliminatedPlayer.Position;
         if (position != null && eliminatedArea != AreaType.None)
@@ -78,8 +76,6 @@ internal sealed class PlayerEliminationService(
 
             if (removedItems.Count > 0)
             {
-                var emptyBoard = eliminatedPlayer.Orbs;
-                gameEventLogManager.LogOrbBoardTransition(matchingId, eliminatedPlayerId, emptyBoard.GetAllItems(), 0, eliminatedArea.ToString(), "elimination_drop", isBot: eliminatedBot != null);
                 foreach (var item in removedItems)
                 {
                     eliminatedSession?.SendOrbUpdate(new InGameItemInfo
@@ -93,7 +89,6 @@ internal sealed class PlayerEliminationService(
             }
             if (droppedItemIds.Count > 0)
             {
-                gameEventLogManager.LogEliminationDrop(matchingId, eliminatedPlayerId, eliminatedArea.ToString(), droppedItemIds, spawnedItems, GameEventLogManager.CalculateDropRecoveryTotal(droppedItemIds), isBot: eliminatedBot != null);
                 if (spawnedItems.Count > 0)
                 {
                     var targetSessions = new List<GameClientSession>();

@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.players;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -23,9 +22,7 @@ public sealed class PlayerServiceStateTests
         GameDataHelper.Initialize();
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948011);
-        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = new PlayerMovementService(
-            logs, NullLogger<PlayerMovementService>.Instance);
+        var service = new PlayerMovementService(NullLogger<PlayerMovementService>.Instance);
         var player = new Player { Profile = new PlayerInfo { PlayerId = playerId } };
         match.RegisterParticipant(player);
         var spawn = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, MatchSpawnData.GetPhaseRoomCandidates()[0]);
@@ -53,7 +50,7 @@ public sealed class PlayerServiceStateTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948012);
-        var health = TestGameSessionServices.CreateHealthService(store, store.EventLogs);
+        var health = TestGameSessionServices.CreateHealthService(store);
         var player = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 5 };
         Assert.Throws<InvalidOperationException>(() => health.ApplyDamage(match, player, 5, handleElimination: false));
         Assert.Equal(5, player.Health);
@@ -73,10 +70,7 @@ public sealed class PlayerServiceStateTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948010);
-        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = new PlayerHealthService(logs,
-            TestGameSessionServices.CreateEliminationService(store, logs, new MatchSummaryFileStore(), NullLogger.Instance),
-            NullLogger<PlayerHealthService>.Instance);
+        var service = new PlayerHealthService(TestGameSessionServices.CreateEliminationService(store, NullLogger.Instance), NullLogger<PlayerHealthService>.Instance);
         var player = new Player { Profile = new PlayerInfo { PlayerId = 1 }, Health = 50 };
         var other = new Player { Profile = new PlayerInfo { PlayerId = 2 }, Health = 40 };
         match.RegisterParticipant(player);
@@ -91,8 +85,8 @@ public sealed class PlayerServiceStateTests
             Assert.Null(other.Session);
             Assert.Equal(60, player.Health);
             Assert.Equal(35, other.Health);
-            Assert.Equal(10, logs.GetResultStats(match.MatchingId, player.PlayerId).TotalRecovery);
-            Assert.Equal(0, logs.GetResultStats(match.MatchingId, other.PlayerId).TotalRecovery);
+            Assert.Equal(10, player.RecoveryTotal);
+            Assert.Equal(0, other.RecoveryTotal);
         }
     }
 }

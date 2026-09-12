@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.players;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -29,12 +28,7 @@ public sealed class PlayerEliminationInventoryDropTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(matchingId);
         var player = RegisterPlayer(match, playerId);
-        var eventLogs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = TestGameSessionServices.CreateEliminationService(
-            store,
-            eventLogs,
-            new MatchSummaryFileStore(),
-            NullLogger.Instance);
+        var service = TestGameSessionServices.CreateEliminationService(store, NullLogger.Instance);
 
         TestGameSessionServices.Orbs(match, playerId).AddItem(HopeOrbT1);
         TestGameSessionServices.Orbs(match, playerId).AddItem(ForgetOrbT1);
@@ -65,12 +59,7 @@ public sealed class PlayerEliminationInventoryDropTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(matchingId);
         var player = RegisterPlayer(match, botPlayerId);
-        var eventLogs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = TestGameSessionServices.CreateEliminationService(
-            store,
-            eventLogs,
-            new MatchSummaryFileStore(),
-            NullLogger.Instance);
+        var service = TestGameSessionServices.CreateEliminationService(store, NullLogger.Instance);
 
         TestGameSessionServices.Orbs(match, botPlayerId).AddItem(HopeOrbT1);
 
@@ -90,9 +79,6 @@ public sealed class PlayerEliminationInventoryDropTests
 
         Assert.Empty(TestGameSessionServices.Orbs(match, botPlayerId).GetAllItems());
         Assert.Single(match.GroundItems.GetItemsInArea(player.CurrentArea));
-        Assert.Single(
-            eventLogs.GetRecent(matchingId),
-            entry => entry.Type == GameEventType.EliminationDrop);
     }
 
     private static Player RegisterPlayer(MatchRuntime match, long playerId)

@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.logging;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
@@ -8,7 +7,6 @@ using network.packets;
 namespace game_server.players;
 
 internal sealed class PlayerHealthService(
-    GameEventLogManager eventLogs,
     PlayerEliminationService eliminations,
     ILogger<PlayerHealthService> logger)
 {
@@ -30,9 +28,8 @@ internal sealed class PlayerHealthService(
             logger.LogInformation("Player {PlayerId} Health: {OldHealth}→{Health} ({Delta:+#;-#;0})", player.PlayerId, change.Before, change.After, change.RequestedDelta);
             if (change.Recovered > 0)
             {
-                eventLogs.RecordRecovery(match.MatchingId, player.PlayerId, change.Recovered);
+                player.RecoveryTotal += change.Recovered;
             }
-            eventLogs.LogResource(match.MatchingId, player.PlayerId, change.RequestedDelta, change.After, reason: "", isBot: player.PlayerId < 0);
             try
             {
                 player.Session?.SendHealth(change);
@@ -65,9 +62,8 @@ internal sealed class PlayerHealthService(
             logger.LogInformation("Player {PlayerId} Health: {OldHealth}→{Health} ({Delta:+#;-#;0})", player.PlayerId, change.Before, change.After, change.RequestedDelta);
             if (change.Recovered > 0)
             {
-                eventLogs.RecordRecovery(match.MatchingId, player.PlayerId, change.Recovered);
+                player.RecoveryTotal += change.Recovered;
             }
-            eventLogs.LogResource(match.MatchingId, player.PlayerId, change.RequestedDelta, change.After, reason: "", isBot: player.PlayerId < 0);
             try
             {
                 player.Session?.SendHealth(change);

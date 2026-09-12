@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.players;
 using game_server.players.bots;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -37,7 +36,7 @@ public sealed class MatchTickLoopTests
             if (stage == failingStage) throw failure;
         }
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
-            new PlayerPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
+            new PlayerPickupService(TestGameSessionServices.CreateHealthService(fixture.Store), NullLogger<PlayerPickupService>.Instance),
             (_, _) => Process("combat"),
             (_, _) => Process("environment"), _ => Process("movement"), _ => { });
         fixture.Loops.Add(loop);
@@ -65,7 +64,7 @@ public sealed class MatchTickLoopTests
         }
         // 실제 시간을 기다리지 않고 다음 환경 정산이 실행되도록 준비한다.
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
-            new PlayerPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
+            new PlayerPickupService(TestGameSessionServices.CreateHealthService(fixture.Store), NullLogger<PlayerPickupService>.Instance),
             (_, _) => Record("combat"),
             (_, _) => Record("environment"),
             runtime =>
@@ -93,7 +92,7 @@ public sealed class MatchTickLoopTests
         var combatIds = new List<long>();
         int movements = 0;
         var loop = TestMatchTickServices.CreateLoop(first.Match, first.Store, NullLogger.Instance,
-            new PlayerPickupService(first.Store.EventLogs, TestGameSessionServices.CreateHealthService(first.Store, first.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
+            new PlayerPickupService(TestGameSessionServices.CreateHealthService(first.Store), NullLogger<PlayerPickupService>.Instance),
             (id, _) =>
             {
                 combatIds.Add(id);
@@ -107,7 +106,7 @@ public sealed class MatchTickLoopTests
         Assert.Throws<InvalidOperationException>(loop.ProcessTick);
         Assert.False(Monitor.IsEntered(first.Match.MatchLock));
         var secondLoop = TestMatchTickServices.CreateLoop(second, first.Store, NullLogger.Instance,
-            new PlayerPickupService(first.Store.EventLogs, TestGameSessionServices.CreateHealthService(first.Store, first.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
+            new PlayerPickupService(TestGameSessionServices.CreateHealthService(first.Store), NullLogger<PlayerPickupService>.Instance),
             (id, _) => combatIds.Add(id), (_, _) => { }, _ => { }, _ => { });
         secondLoop.ProcessTick();
         secondLoop.Stop();
@@ -123,7 +122,7 @@ public sealed class MatchTickLoopTests
         int movements = 0;
         int combats = 0;
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
-            new PlayerPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
+            new PlayerPickupService(TestGameSessionServices.CreateHealthService(fixture.Store), NullLogger<PlayerPickupService>.Instance),
             (_, _) =>
             {
                 combats++;
@@ -152,7 +151,7 @@ public sealed class MatchTickLoopTests
         using var attempted = new ManualResetEventSlim();
         int calls = 0;
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
-            new PlayerPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
+            new PlayerPickupService(TestGameSessionServices.CreateHealthService(fixture.Store), NullLogger<PlayerPickupService>.Instance),
             (_, _) => Interlocked.Increment(ref calls), (_, _) => { }, _ => { }, _ => { });
         Task holder = Task.Run(() =>
         {
@@ -199,7 +198,7 @@ public sealed class MatchTickLoopTests
         fixture.Store.GetOrThrow(fixture.Match.MatchingId).PrepareEntry(11);
         var steps = new List<string>();
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
-            new PlayerPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
+            new PlayerPickupService(TestGameSessionServices.CreateHealthService(fixture.Store), NullLogger<PlayerPickupService>.Instance),
             (_, _) => steps.Add("combat"),
             (_, _) => steps.Add("environment"), _ => steps.Add("movement"), _ => { });
 
@@ -215,8 +214,7 @@ public sealed class MatchTickLoopTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(945108);
         var second = store.GetOrCreate(945109);
-        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = new BotMovementService(logs,
+        var service = new BotMovementService(
             NullLogger<BotMovementService>.Instance);
         using (MatchRuntimeStore.Enter(first))
         {
@@ -226,10 +224,6 @@ public sealed class MatchTickLoopTests
             for (int i = 1; i < SwarmBotTickMetrics.WindowSize; i++)
                 service.ProcessTick(first, _ => throw new InvalidOperationException("No bots."));
             Assert.Equal(0, first.BotTickMetrics.SampleCount);
-            var entry = Assert.Single(logs.GetRecent(first.MatchingId),
-                e => e.Type == GameEventType.SurvivorBotMovementTickPerformance);
-            Assert.Equal(SwarmBotTickMetrics.WindowSize, entry.BotMovementTickSampleCount);
-            Assert.Empty(logs.GetRecent(second.MatchingId));
             first.TryMarkEnded();
         }
         using (MatchRuntimeStore.Enter(second)) second.TryMarkEnded();
@@ -241,7 +235,7 @@ public sealed class MatchTickLoopTests
         using var fixture = new Fixture(945110);
         int laterStages = 0;
         var loop = TestMatchTickServices.CreateLoop(fixture.Match, fixture.Store, NullLogger.Instance,
-            new PlayerPickupService(fixture.Store.EventLogs, TestGameSessionServices.CreateHealthService(fixture.Store, fixture.Store.EventLogs), NullLogger<PlayerPickupService>.Instance),
+            new PlayerPickupService(TestGameSessionServices.CreateHealthService(fixture.Store), NullLogger<PlayerPickupService>.Instance),
             (_, _) => fixture.Match.TryMarkEnded(),
             (_, _) => laterStages++,
             _ => laterStages++,

@@ -41,7 +41,6 @@ public sealed class SwarmBotMovementPlanTests
 
         var match = CreateMatch();
         SwarmBotMovementPlan plan = match.Bots.PrepareExternalMovement(
-            TestGameEventLogs.Create(),
             movement,
             [],
             observers);

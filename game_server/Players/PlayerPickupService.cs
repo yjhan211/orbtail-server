@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.players.bots;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
@@ -15,7 +14,7 @@ namespace game_server.players;
 ///     획득한 아이템의 효과를 적용하고 결과를 전송하며, 이벤트 로그를 남긴다.
 ///     획득 후보는 Player가 보관하며, 호출자는 해당 매치 잠금을 보유해야 한다.
 /// </summary>
-internal sealed class PlayerPickupService(GameEventLogManager eventLogs, PlayerHealthService healthService, ILogger<PlayerPickupService> logger)
+internal sealed class PlayerPickupService(PlayerHealthService healthService, ILogger<PlayerPickupService> logger)
 {
     private const int MaximumReachableItems = 1024;
     private const float PickupRadius = Config.GROUND_ITEM_PICKUP_RADIUS;
@@ -230,15 +229,10 @@ internal sealed class PlayerPickupService(GameEventLogManager eventLogs, PlayerH
         {
             var summonState = PlayerOrbGrowthService.AddSummonStones(match, player, 1);
             player.Session?.SendSummonStoneState(1, claimedItem.PositionX, claimedItem.PositionY);
-            eventLogs.LogSummonStoneAward(match.MatchingId, player.PlayerId, monsterId: 0, amount: 1, summonState.StoneCount, player.CurrentArea.ToString(), isCore: false, isBot: player.PlayerId < 0);
         }
         else if (autoUsed)
         {
-            var change = healthService.Recover(match, player, healthRecovery);
-            int requested = healthRecovery;
-            int recovered = change.Recovered;
-            eventLogs.LogRecoveryUse(match.MatchingId, player.PlayerId, claimedItem.ItemId, recovered, source: "ground_auto_use", isBot: player.PlayerId < 0);
-            eventLogs.LogPelletPickupOutcome(match.MatchingId, player.PlayerId, claimedItem.ItemId, requested, recovered, recovered == 0 ? "wasted" : recovered == requested ? "effective" : "partial_waste", isBot: player.PlayerId < 0);
+            healthService.Recover(match, player, healthRecovery);
         }
         else if (addedItem != null)
         {
@@ -261,12 +255,6 @@ internal sealed class PlayerPickupService(GameEventLogManager eventLogs, PlayerH
             {
                 other.TrySend(removed);
             }
-        }
-        eventLogs.LogGroundItemPickup(match.MatchingId, player.PlayerId, claimedItem.GroundItemUid, claimedItem.ItemId, player.CurrentArea.ToString(), autoUsed, isBot: player.PlayerId < 0);
-        if (!summonStonePickup && !bootsPickup)
-        {
-            var boardAfterPickup = player.Orbs;
-            eventLogs.LogOrbBoardTransition(match.MatchingId, player.PlayerId, boardAfterPickup.GetAllItems(), boardAfterPickup.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0, player.CurrentArea.ToString(), "pickup", isBot: player.PlayerId < 0);
         }
         using var result = PacketMaker.G_TO_C_GROUND_ITEM_PICKUP_RESULT(claimedItem.GroundItemUid, claimedItem.ItemId, true, autoUsed, ErrorCode.SUCCESS);
         player.Session?.TrySend(result);

@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
@@ -19,9 +18,8 @@ public sealed class MatchOrbAttackServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947604);
-        var service = new MatchOrbAttackService(
-            TestGameSessionServices.CreateHealthService(store, store.EventLogs), TestGameSessionServices.CreateCombatDamageService(store.EventLogs), store.EventLogs);
-        var attacks = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store, store.EventLogs), TestGameSessionServices.CreateCombatDamageService(store.EventLogs), new PlayerOrbTrailService(), store.EventLogs);
+        var service = new MatchOrbAttackService(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService());
+        var attacks = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService(), new PlayerOrbTrailService());
         var owner = new Player { Profile = new PlayerInfo { PlayerId = 11 } };
         var now = DateTime.UtcNow;
         Assert.Throws<InvalidOperationException>(() => service.ProcessSunCrossfires(match, now));
@@ -47,8 +45,7 @@ public sealed class MatchOrbAttackServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947601);
-        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = new MatchOrbAttackService(TestGameSessionServices.CreateHealthService(store, logs, new game_server.matches.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), TestGameSessionServices.CreateCombatDamageService(logs), logs);
+        var service = new MatchOrbAttackService(TestGameSessionServices.CreateHealthService(store, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), TestGameSessionServices.CreateCombatDamageService());
         var now = DateTime.UtcNow;
         var owner = new BotPlayerState { PlayerId = 11 };
         var victim = new BotPlayerState { PlayerId = 12 };
@@ -94,8 +91,7 @@ public sealed class MatchOrbAttackServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(947602);
         var second = store.GetOrCreate(947603);
-        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var service = new MatchOrbAttackService(TestGameSessionServices.CreateHealthService(store, logs, new game_server.matches.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), TestGameSessionServices.CreateCombatDamageService(logs), logs);
+        var service = new MatchOrbAttackService(TestGameSessionServices.CreateHealthService(store, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), TestGameSessionServices.CreateCombatDamageService());
         var now = DateTime.UtcNow;
         var burned = new BotPlayerState { PlayerId = 12 };
         using (MatchRuntimeStore.Enter(first))
@@ -200,30 +196,8 @@ public sealed class MatchOrbAttackServiceTests
         Assert.Equal(Config.MAX_HEALTH - tickDamage * 4, victim.Player.Health);
         Assert.Null(victim.Player.SunBurn);
     }
-
-    [Fact]
-    public void Convergence_UsesInclusiveOneSecondWindowAndResetsAfterIt()
-    {
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
-        var match = store.GetOrCreate(43003);
-        var logs = store.EventLogs;
-
-        SwarmCrossfireConvergenceObservation first = logs.LogCrossfireHit(match.MatchingId, 100, NowUtc);
-        SwarmCrossfireConvergenceObservation exactBoundary = logs.LogCrossfireHit(match.MatchingId, 100, NowUtc.AddSeconds(1));
-        SwarmCrossfireConvergenceObservation afterBoundary = logs.LogCrossfireHit(match.MatchingId, 100, NowUtc.AddSeconds(1).AddTicks(1));
-        SwarmCrossfireConvergenceObservation otherTarget = logs.LogCrossfireHit(match.MatchingId, 200, NowUtc.AddSeconds(1).AddTicks(1));
-
-        Assert.Equal(1, first.HitCount);
-        Assert.Equal(0d, first.WindowMilliseconds);
-        Assert.Equal(2, exactBoundary.HitCount);
-        Assert.Equal(1000d, exactBoundary.WindowMilliseconds);
-        Assert.Equal(1, afterBoundary.HitCount);
-        Assert.Equal(0d, afterBoundary.WindowMilliseconds);
-        Assert.Equal(1, otherTarget.HitCount);
-    }
-
     private static MatchOrbAttackService CreateService(MatchRuntimeStore store) =>
-        new(TestGameSessionServices.CreateHealthService(store, store.EventLogs), TestGameSessionServices.CreateCombatDamageService(store.EventLogs), store.EventLogs);
+        new(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService());
 
     private static SwarmCrossfireShape CreateShape(
         long eventId,

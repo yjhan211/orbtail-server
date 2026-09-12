@@ -1,7 +1,6 @@
 using System.Reflection;
 using game_server;
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
@@ -31,9 +30,6 @@ internal static class GameServerTestAccess
     }
     internal static PlayerOrbGrowthService GetOrbGrowth(this GameServer server) => Read<PlayerOrbGrowthService>(server);
 
-    internal static GameEventLogManager GetEventLogs(this GameServer server) =>
-        Read<GameEventLogManager>(server);
-
     internal static MatchEntryFailureHandler GetEntryFailureHandler(this GameServer server) =>
         Read<MatchEntryFailureHandler>(server);
 
@@ -53,35 +49,32 @@ internal static class GameServerTestAccess
         var lifecycle = new MatchSessionCleanupService(new InMemoryRedisOperations(),
             new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
         runtimes ??= new MatchRuntimeStore(logger.For<MatchRuntime>(), matchSessionCleanup: lifecycle);
-        var logs = runtimes.EventLogs;
-        var summaries = new MatchSummaryFileStore();
         var entryFailure = new MatchEntryFailureHandler(runtimes, sessions, lifecycle, logger);
-        var growth = new PlayerOrbGrowthService(logs,
+        var growth = new PlayerOrbGrowthService(
             Microsoft.Extensions.Logging.Abstractions.NullLogger<PlayerOrbGrowthService>.Instance);
         var orbTrails = new PlayerOrbTrailService();
-        var cleanup = new MatchCleanupService(runtimes, logs, summaries, logger);
-        var matchEliminations = TestGameSessionServices.CreateEliminationService(
-            runtimes, logs, summaries, logger);
-        var health = TestGameSessionServices.CreateHealthService(runtimes, logs, summaries, logger);
-        var combatDamage = TestGameSessionServices.CreateCombatDamageService(logs);
-        var results = new MatchResultService(runtimes, logs, summaries, logger);
-        var movement = new BotMovementService(logs,
+        var cleanup = new MatchCleanupService(runtimes, logger);
+        var matchEliminations = TestGameSessionServices.CreateEliminationService(runtimes, logger);
+        var health = TestGameSessionServices.CreateHealthService(runtimes);
+        var combatDamage = TestGameSessionServices.CreateCombatDamageService();
+        var results = new MatchResultService(runtimes, logger);
+        var movement = new BotMovementService(
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotMovementService>.Instance);
         var interactions = new PlayerInteractionService();
-        var decisions = new BotDecisionService(logs, growth, orbTrails, interactions,
+        var decisions = new BotDecisionService(growth, orbTrails, interactions,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotDecisionService>.Instance);
-        var field = new MatchFieldService(logs, orbTrails, health,
+        var field = new MatchFieldService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchFieldService>.Instance, orbTrails, health,
             cleanup, matchEliminations, results);
-        var trailCuts = new MatchTrailCutService(logs, orbTrails, combatDamage, health, decisions);
-        var groundPickup = new PlayerPickupService(logs, health,
+        var trailCuts = new MatchTrailCutService(orbTrails, combatDamage, health, decisions);
+        var groundPickup = new PlayerPickupService(health,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<PlayerPickupService>.Instance);
         Func<MatchRuntime, TimeProvider, MatchTickLoop> createLoop = (runtime, clock) =>
         {
-            var combat = new MatchCombatService(logs,
+            var combat = new MatchCombatService(
                 health, combatDamage, results,
-                new PlayerOrbService(health, combatDamage, orbTrails, logs),
+                new PlayerOrbService(health, combatDamage, orbTrails),
                 orbTrails, trailCuts, new MatchCombatActorBuilder(orbTrails), new MatchAutoAttackService(),
-                new MatchOrbAttackService(health, combatDamage, logs), decisions, new MonsterCombatService(new MatchMonsterSpawnService(new MonsterMovementService())),
+                new MatchOrbAttackService(health, combatDamage), decisions, new MonsterCombatService(new MatchMonsterSpawnService(new MonsterMovementService())),
                 new MatchMonsterSpawnService(new MonsterMovementService()), new MonsterMovementService());
 
             return new MatchTickLoop(runtime, runtimes, logger, groundPickup,
@@ -100,12 +93,12 @@ internal static class GameServerTestAccess
                 NodeId = "game-server-test",
                 PublicHost = "127.0.0.1"
             },
-            sessions: sessions, matchRuntimes: runtimes, eventLogs: logs,
+            sessions: sessions, matchRuntimes: runtimes,
             matchEntry: TestGameSessionServices.CreateEntryService(new InMemoryRedisOperations(), runtimes, logger),
             entryFailureHandler: entryFailure,
             matchCleanup: cleanup,
             orbGrowth: growth,
-            movement: new PlayerMovementService(logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<PlayerMovementService>.Instance),
+            movement: new PlayerMovementService(Microsoft.Extensions.Logging.Abstractions.NullLogger<PlayerMovementService>.Instance),
             interactions: interactions,
             tickService: new MatchTickService(runtimes, createLoop, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchTickService>.Instance));
     }

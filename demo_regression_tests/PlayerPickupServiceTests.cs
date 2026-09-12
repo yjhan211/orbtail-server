@@ -206,8 +206,7 @@ public sealed class PlayerPickupServiceTests
 
     private static PlayerPickupService CreateService(MatchRuntimeStore store) =>
         new(
-            store.EventLogs,
-            TestGameSessionServices.CreateHealthService(store, store.EventLogs),
+            TestGameSessionServices.CreateHealthService(store),
             NullLogger<PlayerPickupService>.Instance);
 
     private static Vector3f At(GroundItemInfo item, float dx, float dy) => new(item.PositionX + dx, item.PositionY + dy, 0);

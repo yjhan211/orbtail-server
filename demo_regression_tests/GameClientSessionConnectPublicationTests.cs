@@ -660,7 +660,6 @@ public sealed class GameClientSessionConnectPublicationTests
         {
             Activate(Connection);
             Store.GetOrCreate(matchingId);
-            var logs = TestGameEventLogs.Create();
             var session = new GameClientSession(
                 Connection,
                 NullLogger.Instance,
@@ -668,9 +667,8 @@ public sealed class GameClientSessionConnectPublicationTests
                 static _ => false, TestGameSessionServices.CreateMatchCleanupService(),
                 static (_, _) => null,
 
-                logs,
-                TestGameSessionServices.CreatePlayerOrbGrowthService(Store, TestGameEventLogs.Create()),
-                TestGameSessionServices.CreateMovementService(logs),
+                TestGameSessionServices.CreatePlayerOrbGrowthService(),
+                TestGameSessionServices.CreateMovementService(),
                 new PlayerInteractionService(),
 
                 new FakeGameSessionLifecycle(),

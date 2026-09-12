@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using game_server;
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.players;
 using game_server.players.bots;
 using game_server.sessions;
@@ -23,37 +22,6 @@ namespace demo_regression_tests;
 
 public sealed class GameClientSessionGrowthOrbPublicationTests
 {
-    [Fact]
-    public async Task SummonEvents_AreRecordedBeforeInventorySendFailure()
-    {
-        using var fixture = new SessionFixture();
-        var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
-        var runtime = fixture.Store.GetOrThrow(FirstMatchingId);
-        var connection = fixture.ConnectionFor(session);
-        fixture.Store.GetOrThrow(FirstMatchingId).StartGameplay();
-        try
-        {
-            TestGameSessionServices.AddSummonStones(runtime, FirstPlayerId, 20);
-            connection.ThrowOnceOn = Protocol.G_TO_C_ORB_UPDATE;
-            connection.BeforeSend = protocol =>
-            {
-                if (protocol != Protocol.G_TO_C_ORB_UPDATE) return;
-                Assert.Contains(fixture.EventLog.GetRecent(FirstMatchingId),
-                    entry => entry.Type == GameEventType.SurvivorOrbBoardState && entry.Outcome == "summon");
-            };
-            await SendAsync(session, Protocol.C_TO_G_SUMMON_ORB, new C_TO_G_SUMMON_ORB());
-            var events = fixture.EventLog.GetRecent(FirstMatchingId);
-            Assert.Single(events, entry => entry.Type == GameEventType.SurvivorOrbBoardState && entry.Outcome == "summon");
-            Assert.Single(events, entry => entry.Type == GameEventType.OrbSummonSucceeded);
-            Assert.Contains(Protocol.G_TO_C_ORB_UPDATE, connection.AttemptedProtocols);
-            Assert.DoesNotContain(Protocol.G_TO_C_ORB_UPDATE, connection.DeliveredProtocols);
-        }
-        finally
-        {
-
-        }
-    }
-
     [Fact]
     public async Task AutomaticSummon_ChargesPublishedCostWithoutDraftOrChoice()
     {
@@ -524,33 +492,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(107000010, result.TargetItemId);
         Assert.Equal(Config.ORB_UPGRADE_GROUP, result.Action);
     }
-
-    [Fact]
-    public async Task UpgradeLogFailure_ReportsErrorWithoutSuccessAndReleasesLock()
-    {
-        using var fixture = new SessionFixture();
-        bool logAttempted = false;
-        var failingLog = new GameEventLogManager(_ =>
-        {
-            logAttempted = true;
-            throw new InvalidOperationException("event storage unavailable");
-        });
-        var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId, growthEventLog: failingLog);
-        var runtime = session.Match;
-        Assert.True(TestGameSessionServices.Orbs(runtime, FirstPlayerId).TryAddItemWithCapacity(107000010,
-            Config.SWARM_ORB_CAPACITY, out _));
-        TestGameSessionServices.AddSummonStones(runtime, FirstPlayerId, 20);
-        await SendAsync(session, Protocol.C_TO_G_UPGRADE_ORB,
-            new C_TO_G_UPGRADE_ORB { Action = Config.ORB_UPGRADE_GROUP, TargetItemId = 107000010 });
-        Assert.True(logAttempted);
-        Assert.Equal([Protocol.G_TO_C_ERROR], fixture.ConnectionFor(session).DeliveredProtocols);
-        // 기록 실패 전 적용된 강화는 되돌리지 않는다. 성공 응답은 보내지 않고 잠금은 해제한다.
-        Assert.Equal(1, runtime.GetParticipant(FirstPlayerId)!.GetOrbUpgradeCount(10700001));
-        Assert.False(Monitor.IsEntered(runtime.MatchLock));
-        fixture.MarkTerminal(FirstMatchingId);
-        Assert.Null(fixture.Store.GetOrNull(FirstMatchingId));
-    }
-
     [Fact]
     public async Task DifferentMatches_DispatchIndependentlyWhileFirstUpgradeTransportIsBlocked()
     {
@@ -725,19 +666,17 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         {
             Server = CreateServer();
             Store = Server.GetMatchRuntimes();
-            EventLog = Server.GetEventLogs();
 
 
         }
 
         public GameServer Server { get; }
         public MatchRuntimeStore Store { get; }
-        public GameEventLogManager EventLog { get; }
 
 
         public GameClientSession CreateSession(
             long matchingId,
-            long playerId, GameEventLogManager? growthEventLog = null)
+            long playerId)
         {
             Store.GetOrCreate(matchingId);
             Store.GetOrNull(matchingId)!.Doors.Initialize();
@@ -750,10 +689,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 null!,
                 static _ => false, TestGameSessionServices.CreateMatchCleanupService(),
                 static (_, _) => null,
-
-                EventLog,
-                growthEventLog == null ? Server.GetOrbGrowth() : TestGameSessionServices.CreatePlayerOrbGrowthService(Store, growthEventLog),
-                TestGameSessionServices.CreateMovementService(EventLog),
+                Server.GetOrbGrowth(),
+                TestGameSessionServices.CreateMovementService(),
                 new PlayerInteractionService(),
 
                 new FakeGameSessionLifecycle(),

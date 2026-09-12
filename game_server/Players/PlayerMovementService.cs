@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.logging;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -13,7 +12,6 @@ namespace game_server.players;
 ///     전송할 공간 정보를 생성하며 패킷 전송은 세션이 담당한다.
 /// </summary>
 internal sealed class PlayerMovementService(
-    GameEventLogManager eventLog,
     ILogger<PlayerMovementService> logger)
 {
     private const float MinimumReceiptDeltaSeconds = 0f;
@@ -157,7 +155,6 @@ internal sealed class PlayerMovementService(
         {
             logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}", player.PlayerId, currentCell.X, currentCell.Y, oldArea, newArea);
             player.CurrentArea = newArea;
-            eventLog.LogMove(match.MatchingId, player.PlayerId, oldArea.ToString(), newArea.ToString(), isBot: player.PlayerId < 0);
         }
 
         return new MovementResult(validation, currentCell, serverTimestamp, oldArea, player.CurrentArea, null, sleepStopped);

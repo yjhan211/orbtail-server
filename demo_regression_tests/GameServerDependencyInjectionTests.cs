@@ -1,7 +1,6 @@
 using System.Reflection;
 using game_server;
 using game_server.matches;
-using game_server.matches.logging;
 using game_server.players;
 using game_server.players.bots;
 using game_server.sessions;
@@ -20,13 +19,11 @@ public sealed class GameServerDependencyInjectionTests
     public void CombatDamageStateAndCriticalRandomBelongToEachMatchButTheServiceIsShared()
     {
         using var provider = CreateProvider();
-        var logs = provider.GetRequiredService<GameEventLogManager>();
         var store = provider.GetRequiredService<MatchRuntimeStore>();
         var first = store.GetOrCreate(990011);
         var second = store.GetOrCreate(990012);
 
         Assert.Same(provider.GetRequiredService<MatchCombatDamageService>(), provider.GetRequiredService<MatchCombatDamageService>());
-        Assert.Same(logs, store.EventLogs);
         Assert.Same(first.CombatDamage, store.GetOrThrow(first.MatchingId).CombatDamage);
         Assert.NotSame(first.CombatDamage, second.CombatDamage);
         Assert.NotSame(first.CombatDamage.CriticalRng, second.CombatDamage.CriticalRng);
@@ -84,8 +81,6 @@ public sealed class GameServerDependencyInjectionTests
     public void GameServerUsesTheRegistrySingletonRegisteredByProgram()
     {
         using var provider = CreateProvider();
-        // 로그를 먼저 요청해도 저장소와 순환 없이 조립되어야 한다.
-        provider.GetRequiredService<game_server.matches.logging.GameEventLogManager>();
         var registry = provider.GetRequiredService<GameSessionRegistry>();
         var server = provider.GetRequiredService<GameServer>();
         var injectedRegistry = typeof(GameServer)
@@ -99,7 +94,6 @@ public sealed class GameServerDependencyInjectionTests
         Type[] serviceTypes =
         [
             typeof(game_server.matches.MatchRuntimeStore),
-            typeof(game_server.matches.logging.GameEventLogManager),
             typeof(game_server.matches.GameMatchEntryService),
             typeof(game_server.matches.MatchEntryFailureHandler),
             typeof(game_server.matches.MatchTickService)
@@ -143,10 +137,6 @@ public sealed class GameServerDependencyInjectionTests
             .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         Assert.DoesNotContain(fields, field => field.FieldType == typeof(GameServer));
         Assert.DoesNotContain(fields, field => field.FieldType == typeof(game_server.sessions.GameClientSession));
-        Assert.DoesNotContain(
-            typeof(game_server.sessions.GameClientSession)
-                .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic),
-            field => field.FieldType == typeof(game_server.matches.MatchSummaryFileStore));
     }
     internal static ServiceProvider CreateProvider(network.infrastructure.messaging.INatsClient? natsClient = null,
         Action<IServiceCollection>? configure = null)

@@ -1,6 +1,5 @@
 using game_server;
 using game_server.matches;
-using game_server.matches.logging;
 using MessagePack;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -203,37 +202,12 @@ public sealed class GameMatchEntryServiceTests
         Assert.True(runtime.IsSetupComplete);
         Assert.Single(runtime.GetPlayerProfiles(), player => player.PlayerId < 0);
         Assert.Single(runtime.Bots.GetBots());
-        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        var events = logs.GetRecent(runtime.MatchingId);
-        Assert.Single(events, entry => entry.Type == GameEventType.MatchStarted);
-        Assert.Equal(runtime.GetPlayerProfiles().Count, events.Count(entry => entry.Type == GameEventType.SpawnAssignment));
-        var spawn = Assert.Single(events, entry => entry.Type == GameEventType.SpawnAssignment && entry.IsBot);
         var bot = Assert.Single(runtime.Bots.GetBots());
-        Assert.True(spawn.IsBot);
-        Assert.Equal(bot.PlayerId, spawn.PlayerId);
-        Assert.Equal(bot.Player.Cell!.X, spawn.CellX);
-        Assert.Equal(bot.Player.Cell!.Y, spawn.CellY);
+        Assert.NotNull(bot.Player.Cell);
 
         await service.PrepareMatchAsync(runtime.MatchingId, runtime);
-        Assert.Equal(events.Select(entry => entry.Seq), logs.GetRecent(runtime.MatchingId).Select(entry => entry.Seq));
+        Assert.Single(runtime.Bots.GetBots());
     }
-
-    [Fact]
-    public async Task HumanOnlyCompositionAlsoStartsMatchLog()
-    {
-        var (service, redis, store, runtime) = await Prepare(981010);
-        await redis.HashSetAsync(MatchingRedisKeys.Key(runtime.MatchingId), MatchingRedisKeys.ManifestField,
-            MessagePackSerializer.Serialize(new MatchManifest { HumanPlayerIds = [1001], BotCount = 0, Mode = MatchMode.Normal }));
-        await service.PrepareMatchAsync(runtime.MatchingId, runtime);
-        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
-        Assert.Single(logs.GetRecent(runtime.MatchingId), entry => entry.Type == GameEventType.MatchStarted);
-        var spawn = Assert.Single(logs.GetRecent(runtime.MatchingId), entry => entry.Type == GameEventType.SpawnAssignment);
-        Assert.False(spawn.IsBot);
-        Assert.Equal(1001L, spawn.PlayerId);
-        Assert.Equal(runtime.SpawnCells[1001].X, spawn.CellX);
-        Assert.Equal(runtime.SpawnCells[1001].Y, spawn.CellY);
-    }
-
     [Fact]
     public async Task ConsumeTicketPropagatesStoreFailureToSession()
     {

@@ -137,7 +137,6 @@ public class ProximityAutoCombatDataTests
             FindRepositoryRoot(), "game_server", "Players", "PlayerOrbService.cs");
         Assert.Contains("MatchRuntime runtime", source);
         Assert.Contains("var change = healthService.Recover(runtime, player, requestedRecovery);", source);
-        Assert.DoesNotContain("eventLogs.RecordRecovery(", source);
         Assert.DoesNotContain("matchingBots", source);
     }
     [Fact]

@@ -1,4 +1,3 @@
-using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
@@ -16,7 +15,6 @@ namespace game_server.matches;
 ///     오브·몬스터 공격, 상태 효과, 지연 타격을 순서대로 처리하고 자동공격 목록을 결정한 뒤 피해 적용을 각 서비스에 위임한다.
 /// </summary>
 internal class MatchCombatService(
-    GameEventLogManager eventLogs,
     PlayerHealthService healthService,
     MatchCombatDamageService combatDamage,
     MatchResultService matchResults,
@@ -298,7 +296,6 @@ internal class MatchCombatService(
                 float distance = origin != null && anchor != null ? Vector3f.Distance(origin, anchor) : Config.SWARM_ORB_ATTACK_RANGE;
                 double delaySeconds = OrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, distance);
                 targetMonster!.ReserveDamage(monsterDamage);
-                targetMonster.RecordAttackEvent();
                 combatDamage.ScheduleMonsterHit(runtime, new PendingMonsterHit(attack.TargetPlayerId, attack.AttackerPlayerId, monsterDamage, nowUtc.AddSeconds(delaySeconds)));
                 continue;
             }
