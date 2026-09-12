@@ -22,6 +22,7 @@ namespace network.common.data
         private static readonly ConcurrentDictionary<string, int> _intCache = new();
         private static readonly ConcurrentDictionary<string, double> _doubleCache = new();
         private static readonly ConcurrentDictionary<string, float[]> _floatArrayCache = new();
+        private static readonly ConcurrentDictionary<string, int[]> _intArrayCache = new();
 
         public static void Initialize(List<CsvRow> rows)
         {
@@ -30,6 +31,7 @@ namespace network.common.data
             _intCache.Clear();
             _doubleCache.Clear();
             _floatArrayCache.Clear();
+            _intArrayCache.Clear();
 
             foreach (var row in rows)
             {
@@ -54,6 +56,14 @@ namespace network.common.data
         public static double GetDouble(string key, double fallback) =>
             _raw.TryGetValue(key, out var value)
                 ? _doubleCache.GetOrAdd(key, _ => double.Parse(value, CultureInfo.InvariantCulture))
+                : fallback;
+
+        public static int[] GetIntArray(string key, int[] fallback) =>
+            _raw.TryGetValue(key, out var value)
+                ? _intArrayCache.GetOrAdd(key, _ => value
+                    .Split('|')
+                    .Select(part => int.Parse(part.Trim(), CultureInfo.InvariantCulture))
+                    .ToArray())
                 : fallback;
 
         public static float[] GetFloatArray(string key, float[] fallback) =>

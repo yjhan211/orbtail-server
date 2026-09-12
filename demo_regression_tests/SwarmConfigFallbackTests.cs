@@ -108,6 +108,33 @@ public class SwarmConfigFallbackTests
         Assert.Throws<ArgumentException>(() => SwarmSupplyPhaseDefinition.CreateFromData(row));
     }
 
+    [Fact]
+    public void BotSettings_LoadIntegerIdsExactlyAndClearCacheOnReload()
+    {
+        var rows = CsvHelper.LoadCsv(Path.Combine(FindRepositoryRoot(), "network", "Common", "csv", "swarm_config.csv"));
+        try
+        {
+            SwarmConfigData.Initialize(rows);
+            Assert.Equal(new[] { 101000003, 102000003, 104000005, 105000005, 106000003 }, network.common.Config.SWARM_BOT_DEFAULT_WEAR_ITEM_IDS);
+            Assert.Equal(new[] { 103000001, 103000004, 103000005, 103000006 }, network.common.Config.SWARM_BOT_CUSTOMIZATION_ITEM_IDS);
+            Assert.Equal(0.15d, network.common.Config.SWARM_BOT_INITIAL_DECISION_DELAY_MIN_SECONDS);
+            Assert.Equal(1.2d, network.common.Config.SWARM_BOT_INITIAL_DECISION_DELAY_MAX_SECONDS);
+
+            SwarmConfigData.Initialize(new List<CsvRow>
+            {
+                new(new[] { "id", "value" }, new[] { "SWARM_BOT_DEFAULT_WEAR_ITEM_IDS", "101000001|102000002" }),
+                new(new[] { "id", "value" }, new[] { "SWARM_BOT_CUSTOMIZATION_ITEM_IDS", "103000006" })
+            });
+            Assert.Equal(new[] { 101000001, 102000002, 103000006 }, game_server.players.bots.MatchBots.BuildBotWearItems(-1));
+        }
+        finally
+        {
+            SwarmConfigData.Initialize(rows);
+        }
+        Assert.Equal(new[] { 101000003, 102000003, 104000005, 105000005, 106000003, 103000004 },
+            game_server.players.bots.MatchBots.BuildBotWearItems(-1));
+    }
+
     private static double ParseCodeNumber(string text)
     {
         string[] parts = text.Split('/');

@@ -11,26 +11,6 @@ namespace game_server.players.bots;
 /// </summary>
 public class MatchBots
 {
-    private const double BotInitialDecisionDelayMinSeconds = 0.15;
-    private const double BotInitialDecisionDelayMaxSeconds = 1.2;
-
-    private static readonly int[] BotDefaultWearItemIds =
-    {
-        101000003, // Hair
-        102000003, // Face
-        104000005, // Top
-        105000005, // Bottom
-        106000003  // Shoes
-    };
-
-    private static readonly int[] BotCustomizationItems =
-    {
-        103000001,
-        103000004,
-        103000005,
-        103000006
-    };
-
     private readonly ILogger _logger;
 
     private List<Bot> _bots = [];
@@ -46,6 +26,12 @@ public class MatchBots
     public void RegisterBots(long matchingId, IReadOnlyList<long> botPlayerIds, IReadOnlyDictionary<long, Cell> spawnCells)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
+        double minDecisionDelay = Config.SWARM_BOT_INITIAL_DECISION_DELAY_MIN_SECONDS;
+        double maxDecisionDelay = Config.SWARM_BOT_INITIAL_DECISION_DELAY_MAX_SECONDS;
+        if (!double.IsFinite(minDecisionDelay) || !double.IsFinite(maxDecisionDelay) || minDecisionDelay < 0 || maxDecisionDelay < minDecisionDelay)
+        {
+            throw new InvalidOperationException("Invalid bot initial decision delay range.");
+        }
 
         var bots = botPlayerIds.Select(botPlayerId =>
         {
@@ -74,8 +60,8 @@ public class MatchBots
                     Position = startPosition,
                     Rotation = 0f
                 },
-                LoopWaitUntil = now.AddSeconds(BotInitialDecisionDelayMinSeconds + Random.Shared.NextDouble() *
-                    (BotInitialDecisionDelayMaxSeconds - BotInitialDecisionDelayMinSeconds))
+                LoopWaitUntil = now.AddSeconds(minDecisionDelay + Random.Shared.NextDouble() *
+                    (maxDecisionDelay - minDecisionDelay))
             };
         }).ToList();
 
@@ -87,9 +73,14 @@ public class MatchBots
 
     internal static List<int> BuildBotWearItems(long playerId)
     {
-        var list = new List<int>(BotDefaultWearItemIds);
-        int idx = (int)(Math.Abs(playerId) % BotCustomizationItems.Length);
-        list.Add(BotCustomizationItems[idx]);
+        var list = new List<int>(Config.SWARM_BOT_DEFAULT_WEAR_ITEM_IDS);
+        var customizationItems = Config.SWARM_BOT_CUSTOMIZATION_ITEM_IDS;
+        if (customizationItems.Length == 0)
+        {
+            throw new InvalidOperationException("Bot customization items must not be empty.");
+        }
+        int idx = (int)(Math.Abs(playerId) % customizationItems.Length);
+        list.Add(customizationItems[idx]);
 
         return list;
     }

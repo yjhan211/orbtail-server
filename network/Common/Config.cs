@@ -11,6 +11,11 @@ namespace network.common
     /// </summary>
     public class Config
     {
+        public static double SWARM_BOT_INITIAL_DECISION_DELAY_MIN_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_INITIAL_DECISION_DELAY_MIN_SECONDS", 0.15d);
+        public static double SWARM_BOT_INITIAL_DECISION_DELAY_MAX_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_INITIAL_DECISION_DELAY_MAX_SECONDS", 1.2d);
+        public static int[] SWARM_BOT_DEFAULT_WEAR_ITEM_IDS => SwarmConfigData.GetIntArray("SWARM_BOT_DEFAULT_WEAR_ITEM_IDS", new[] { 101000003, 102000003, 104000005, 105000005, 106000003 });
+        public static int[] SWARM_BOT_CUSTOMIZATION_ITEM_IDS => SwarmConfigData.GetIntArray("SWARM_BOT_CUSTOMIZATION_ITEM_IDS", new[] { 103000001, 103000004, 103000005, 103000006 });
+
         /// <summary>환경 피해 정산 간격(초). 실행 주기와 피해 계산에서 같은 값을 사용한다.</summary>
         public const int ENVIRONMENTAL_TICK_INTERVAL_SECONDS = 5;
 
