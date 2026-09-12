@@ -23,15 +23,7 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
 
     // 공급 기준 데이터
     private static readonly AreaType SwarmInwardOriginArea = Config.SWARM_MATCH_GROUND_AREA;
-    private static readonly SwarmSupplyPhaseDefinition[] DefaultSupplyPhases =
-    [
-        new(0, 100d, 8, 16, 10, 48, 90), // 0:00~1:40 폐쇄 전
-        new(1, 150d, 12, 17, 14, 60, 100), // 1:40~2:30 1차
-        new(2, 200d, 16, 19, 20, 72, 110), // 2:30~3:20 2차
-        new(3, 250d, 22, 21, 28, 96, 120), // 3:20~4:10 3차
-        new(4, double.MaxValue, 28, 22, 40, 120, 120) // 4:10~5:00 최종 수렴
-    ];
-    private static IReadOnlyList<SwarmSupplyPhaseDefinition> SupplyPhases => SwarmSupplyPhaseData.IsLoaded ? SwarmSupplyPhaseData.GetAll() : DefaultSupplyPhases;
+    private static IReadOnlyList<SwarmSupplyPhaseDefinition> SupplyPhases => SwarmSupplyPhaseData.GetAll();
 
     // 접촉 공격과 시간대별 강화
     private static double EscalationStage1AtSeconds => Config.SWARM_MONSTER_ESCALATION_STAGE1_AT_SECONDS;

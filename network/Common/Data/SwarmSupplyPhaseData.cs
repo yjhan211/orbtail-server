@@ -11,8 +11,7 @@ namespace network.common.data
 {
     /// <summary>
     ///     잔상 공급 페이즈 곡선 (swarm_supply_phase.csv, #335). 폐쇄 단계별 인당 목표·HP·접촉 피해·석 예산을
-    ///     phase_index 오름차순으로 든다. 미로드 시 GetAll이 빈 목록을 돌려주고 소비부(MatchMonsterService)가
-    ///     코드 기본 곡선으로 폴백한다 — swarm_config.csv와 같은 계약.
+    ///     phase_index 오름차순으로 든다. 필수 데이터이며 빈 목록이나 잘못된 곡선은 초기화 시 거부한다.
     ///     until_seconds가 0 이하면 매치 끝까지(최종 페이즈)로 읽는다.
     /// </summary>
     public static class SwarmSupplyPhaseData
@@ -21,8 +20,6 @@ namespace network.common.data
 
         public static void Initialize(List<CsvRow> data)
         {
-            _phases.Clear();
-
             var byIndex = new Dictionary<int, SwarmSupplyPhaseDefinition>();
             foreach (var row in data)
             {
@@ -31,8 +28,10 @@ namespace network.common.data
                     throw new ArgumentException($"Duplicate swarm supply phase data: phase_index={definition.PhaseIndex}");
             }
 
-            _phases.AddRange(byIndex.Values.OrderBy(definition => definition.PhaseIndex));
-            Validate();
+            var phases = byIndex.Values.OrderBy(definition => definition.PhaseIndex).ToList();
+            Validate(phases);
+            _phases.Clear();
+            _phases.AddRange(phases);
         }
 
         public static SwarmSupplyPhaseDefinition? Get(int phaseIndex) =>
@@ -46,19 +45,21 @@ namespace network.common.data
         ///     phase_index는 0부터 빈틈없이 이어지고, until_seconds는 단조 증가하며, 마지막 페이즈만 무한이다 —
         ///     소비부의 선형 탐색(GetSupplyPhaseIndex)이 이 순서를 전제한다.
         /// </summary>
-        public static void Validate()
+        public static void Validate() => Validate(_phases);
+
+        private static void Validate(IReadOnlyList<SwarmSupplyPhaseDefinition> phases)
         {
-            if (_phases.Count == 0)
-                return;
+            if (phases.Count == 0)
+                throw new ArgumentException("swarm_supply_phase.csv must contain supply phases.");
 
             double previousUntil = 0d;
-            for (int index = 0; index < _phases.Count; index++)
+            for (int index = 0; index < phases.Count; index++)
             {
-                var phase = _phases[index];
+                var phase = phases[index];
                 if (phase.PhaseIndex != index)
                     throw new ArgumentException($"Swarm supply phase_index must be contiguous from 0: got {phase.PhaseIndex} at {index}");
 
-                bool last = index == _phases.Count - 1;
+                bool last = index == phases.Count - 1;
                 if (last != phase.IsFinal)
                     throw new ArgumentException($"Only the last swarm supply phase may have until_seconds <= 0: phase_index={phase.PhaseIndex}");
                 if (!last && phase.UntilSeconds <= previousUntil)
@@ -97,6 +98,8 @@ namespace network.common.data
         public static SwarmSupplyPhaseDefinition CreateFromData(CsvRow row)
         {
             double untilSeconds = double.Parse(row["until_seconds"], CultureInfo.InvariantCulture);
+            if (double.IsNaN(untilSeconds) || double.IsInfinity(untilSeconds))
+                throw new ArgumentException("Swarm supply until_seconds must be finite.");
             var definition = new SwarmSupplyPhaseDefinition(
                 int.Parse(row["phase_index"], CultureInfo.InvariantCulture),
                 untilSeconds <= 0d ? double.MaxValue : untilSeconds,

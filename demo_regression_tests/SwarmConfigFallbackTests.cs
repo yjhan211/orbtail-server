@@ -1,7 +1,5 @@
 using System.Globalization;
-using System.Reflection;
 using System.Text.RegularExpressions;
-using game_server.matches.monsters;
 using network.common.data;
 using network.common.data.helpers;
 
@@ -10,7 +8,7 @@ namespace demo_regression_tests;
 /// <summary>
 ///     밸런스 원천 = CSV (#292·#296·#335). 코드 폴백 기본값은 CSV가 없을 때(테스트·부트스트랩 초기)만
 ///     쓰이는 안전망이라 CSV 값과 같아야 한다 — 어긋나면 "CSV를 고쳤는데 테스트는 옛값으로 도는" 조용한
-///     드리프트가 생긴다. 여기서 스칼라 키 전부와 디렉터 페이즈 곡선을 잠근다.
+///     드리프트가 생긴다. 스칼라 폴백의 일치와 필수 공급 CSV의 검증 계약을 확인한다.
 /// </summary>
 public class SwarmConfigFallbackTests
 {
@@ -53,7 +51,7 @@ public class SwarmConfigFallbackTests
     }
 
     [Fact]
-    public void SupplyPhaseCsv_MatchesDirectorFallbackCurve()
+    public void SupplyPhaseCsv_LoadsRequiredCurve()
     {
         string root = FindRepositoryRoot();
         var rows = CsvHelper.LoadCsv(Path.Combine(root, "network", "Common", "csv", "swarm_supply_phase.csv"));
@@ -61,15 +59,14 @@ public class SwarmConfigFallbackTests
             .OrderBy(phase => phase.PhaseIndex)
             .ToList();
 
-        var field = typeof(MatchMonsterService).GetField(
-            "DefaultSupplyPhases", BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(field);
-        var fallback = (SwarmSupplyPhaseDefinition[])field!.GetValue(null)!;
+        SwarmSupplyPhaseData.Initialize(rows);
+        var loaded = SwarmSupplyPhaseData.GetAll();
 
-        Assert.Equal(fallback.Length, fromCsv.Count);
-        for (int index = 0; index < fallback.Length; index++)
+        Assert.NotEmpty(loaded);
+        Assert.Equal(loaded.Count, fromCsv.Count);
+        for (int index = 0; index < loaded.Count; index++)
         {
-            var expected = fallback[index];
+            var expected = loaded[index];
             var actual = fromCsv[index];
             Assert.Equal(expected.PhaseIndex, actual.PhaseIndex);
             Assert.Equal(expected.UntilSeconds, actual.UntilSeconds);
@@ -83,6 +80,32 @@ public class SwarmConfigFallbackTests
         // 마지막 페이즈만 무한 — 선형 탐색(GetSupplyPhaseIndex)의 전제.
         Assert.True(fromCsv[^1].IsFinal);
         Assert.All(fromCsv.SkipLast(1), phase => Assert.False(phase.IsFinal));
+    }
+
+    [Fact]
+    public void SupplyPhaseCsv_RejectsEmptyAndInvalidCurvesWithoutReplacingLoadedData()
+    {
+        var rows = CsvHelper.LoadCsv(Path.Combine(FindRepositoryRoot(), "network", "Common", "csv", "swarm_supply_phase.csv"));
+        SwarmSupplyPhaseData.Initialize(rows);
+        var original = SwarmSupplyPhaseData.GetAll().ToArray();
+
+        Assert.Throws<ArgumentException>(() => SwarmSupplyPhaseData.Initialize([]));
+        Assert.Throws<ArgumentException>(() => SwarmSupplyPhaseData.Initialize([rows[0], rows[0]]));
+        Assert.Throws<ArgumentException>(() => SwarmSupplyPhaseData.Initialize(rows.Skip(1).ToList()));
+        Assert.Throws<ArgumentException>(() => SwarmSupplyPhaseData.Initialize(rows.SkipLast(1).ToList()));
+        Assert.Equal(original, SwarmSupplyPhaseData.GetAll());
+    }
+
+    [Theory]
+    [InlineData("NaN")]
+    [InlineData("Infinity")]
+    [InlineData("-Infinity")]
+    public void SupplyPhaseCsv_RejectsNonFiniteTime(string time)
+    {
+        var row = new CsvRow(
+            ["phase_index", "until_seconds", "per_player_target", "normal_hp", "contact_damage", "core_hp", "stone_budget"],
+            ["0", time, "8", "16", "10", "48", "90"]);
+        Assert.Throws<ArgumentException>(() => SwarmSupplyPhaseDefinition.CreateFromData(row));
     }
 
     private static double ParseCodeNumber(string text)
