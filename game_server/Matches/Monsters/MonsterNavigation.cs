@@ -40,7 +40,7 @@ internal static class MonsterNavigation
         var planned = new List<Vector3f>(steps.Count + 2) { from };
         foreach (var step in steps)
         {
-            planned.Add(BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, step.Cell));
+            planned.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, step.Cell));
         }
         planned.Add(to);
 

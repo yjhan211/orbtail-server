@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-using game_server.players.bots;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -43,7 +41,6 @@ internal sealed class MonsterSupplyService
     private const int AnchorAreaEdgeMargin = 3;
 
     private static readonly AreaType SwarmInwardOriginArea = Config.SWARM_MATCH_GROUND_AREA;
-    private static readonly ConcurrentDictionary<AreaType, float> InfiltrationExitBearings = new();
     private static readonly SwarmSupplyPhaseDefinition[] DefaultSupplyPhases =
     [
         new(0, 100d, 8, 16, 10, 48, 90), // 0:00~1:40 폐쇄 전
@@ -73,8 +70,13 @@ internal sealed class MonsterSupplyService
         return perPlayerTarget * linearPlayers + (int)Math.Round(perPlayerTarget * SupplyCrowdExtraRatio * crowdPlayers);
     }
 
-    public void ProcessRegionSupply(MatchRuntime runtime, MatchMonsterState state, DateTime now, MonsterTickResult result, bool preMatch)
+    public void ProcessTick(MatchRuntime runtime, DateTime now, MonsterTickResult result, bool preMatch)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Monster supply requires the match lock.");
+        }
+        var state = runtime.Monsters;
         double elapsed = (now - state.StartsAtUtc).TotalSeconds;
         state.MaxParticipantCount = Math.Max(state.MaxParticipantCount, state.LastParticipants.Length);
         int phaseIndex = GetSupplyPhaseIndex(elapsed);
@@ -111,7 +113,7 @@ internal sealed class MonsterSupplyService
             state.SupplyZones.Remove(zone);
         }
 
-        ReclaimStrandedMonsters(runtime, state, occupied, now);
+        ReclaimStrandedMonsters(runtime, occupied, now);
         int aliveGlobal = CountAliveGlobal(state);
         int globalCap = Math.Min(SupplyGlobalAliveHardCap, occupied.Values.Sum(roster => GetSupplyZoneTarget(phase.PerPlayerTarget, roster.Count)));
 
@@ -170,7 +172,7 @@ internal sealed class MonsterSupplyService
             }
 
             want = Math.Max(0, want);
-            int spawned = SpawnSupplyMonsters(runtime, state, zone, want, includeCore, phaseIndex, now, result, runtime.Closures.IsAreaClosed, infiltrate: true, roster: roster, isOrbless: playerId => MatchMonsterService.IsPlayerOrbless(runtime, playerId));
+            int spawned = SpawnSupplyMonsters(runtime, zone, want, includeCore, phaseIndex, now, result, roster);
             if (spawned == 0)
             {
                 zoneState.NextTopUpAtUtc = now.AddSeconds(SupplyBlockedRetrySeconds);
@@ -184,8 +186,9 @@ internal sealed class MonsterSupplyService
         }
     }
 
-    private void ReclaimStrandedMonsters(MatchRuntime runtime, MatchMonsterState state, Dictionary<AreaType, List<long>> occupied, DateTime now)
+    private void ReclaimStrandedMonsters(MatchRuntime runtime, Dictionary<AreaType, List<long>> occupied, DateTime now)
     {
+        var state = runtime.Monsters;
         foreach (var zone in occupied.Keys)
         {
             state.ZoneVacatedAtUtc.Remove(zone);
@@ -223,8 +226,13 @@ internal sealed class MonsterSupplyService
 
     private static int CountAliveGlobal(MatchMonsterState state) => state.Entities.Values.Count(monster => monster.Alive);
 
-    public int ConsumeSupplyStoneBudget(MatchMonsterState state, Monster monster, DateTime now)
+    public int ConsumeSupplyStoneBudget(MatchRuntime runtime, Monster monster, DateTime now)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Monster supply requires the match lock.");
+        }
+        var state = runtime.Monsters;
         int reward = monster.SummonStoneReward;
         if (reward <= 0)
         {
@@ -265,12 +273,9 @@ internal sealed class MonsterSupplyService
     private static int CountAliveInArea(MatchMonsterState state, AreaType area) =>
         state.Entities.Values.Count(monster => monster.Alive && monster.HomeArea == area);
 
-    private int SpawnSupplyMonsters(
-        MatchRuntime runtime, MatchMonsterState state, AreaType area, int normals, bool includeCore,
-        int phaseIndex, DateTime now, MonsterTickResult result,
-        Func<AreaType, bool>? isAreaBlocked = null, bool infiltrate = true,
-        IReadOnlyList<long>? roster = null, Func<long, bool>? isOrbless = null)
+    private int SpawnSupplyMonsters(MatchRuntime runtime, AreaType area, int normals, bool includeCore, int phaseIndex, DateTime now, MonsterTickResult result, IReadOnlyList<long> roster)
     {
+        var state = runtime.Monsters;
         var phase = SupplyPhases[phaseIndex];
         var ownerLoad = new Dictionary<long, int>();
         if (roster is { Count: > 0 })
@@ -305,7 +310,7 @@ internal sealed class MonsterSupplyService
             bool chosenOrbless = false;
             foreach ((long playerId, int load) in ownerLoad)
             {
-                bool orbless = isOrbless?.Invoke(playerId) == true;
+                bool orbless = !runtime.GetOrbs(playerId).HasAnyOrb();
                 if (chosenOrbless && !orbless)
                 {
                     continue;
@@ -332,15 +337,15 @@ internal sealed class MonsterSupplyService
             return chosen;
         }
 
-        infiltrate = infiltrate && area != SwarmInwardOriginArea;
-        var center = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
+        bool infiltrate = area != SwarmInwardOriginArea;
+        var center = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
         var anchors = new List<Vector3f>(CampsPerArea);
         for (int anchorIndex = 0; anchorIndex < CampsPerArea; anchorIndex++)
         {
             var customAnchorCell = GameMonsterCampData.GetAnchor(area, anchorIndex);
             if (customAnchorCell != null)
             {
-                anchors.Add(MonsterNavigation.ClampToAreaWalkable(BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, InsetAnchorFromAreaEdge(customAnchorCell, area)), center, area));
+                anchors.Add(MonsterNavigation.ClampToAreaWalkable(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, InsetAnchorFromAreaEdge(customAnchorCell, area)), center, area));
                 continue;
             }
 
@@ -393,11 +398,11 @@ internal sealed class MonsterSupplyService
             var fieldSpawn = ResolveFieldSpawn(runtime.Closures.GetSafeDistance(now), area);
             if (fieldSpawn != null)
             {
-                position = MonsterNavigation.ClampToAreaWalkable(BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Spawn), packAnchor, area);
-                var fieldAnchorWorld = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Anchor);
+                position = MonsterNavigation.ClampToAreaWalkable(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Spawn), packAnchor, area);
+                var fieldAnchorWorld = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Anchor);
                 destination = MonsterNavigation.ClampToAreaWalkable(new Vector3f(fieldAnchorWorld.X + MathF.Cos(angle) * SupplyScatterRadius, fieldAnchorWorld.Y + MathF.Sin(angle) * SupplyScatterRadius, 0f), fieldAnchorWorld, area);
             }
-            else if (infiltrate && TryPlanInfiltration(state, area, destination, isAreaBlocked, out var origin, out var planned))
+            else if (infiltrate && TryPlanInfiltration(runtime, area, destination, out var origin, out var planned))
             {
                 position = origin;
                 spawnArea = SwarmInwardOriginArea;
@@ -437,8 +442,8 @@ internal sealed class MonsterSupplyService
                 ContactDamageValue = contactDamage,
                 Kind = kind,
                 MaxHealthValue = maxHp,
-                AttackRangeValue = definition.AttackRange > 0f ? definition.AttackRange : MatchMonsterService.ContactRange,
-                AttackCooldownValue = MatchMonsterService.HasWaveInsignia(insignia) && !isCore ? WaveInsigniaAttackCooldownSeconds : definition.AttackCooldownSeconds,
+                AttackRangeValue = definition.AttackRange > 0f ? definition.AttackRange : Monster.BaseContactRadius,
+                AttackCooldownValue = insignia == MonsterInsignia.Wave && !isCore ? WaveInsigniaAttackCooldownSeconds : definition.AttackCooldownSeconds,
                 AnchorX = fieldSpawn != null ? destination.X : position.X,
                 AnchorY = fieldSpawn != null ? destination.Y : position.Y,
                 OwnerPlayerId = ClaimOwner()
@@ -461,34 +466,36 @@ internal sealed class MonsterSupplyService
         return spawnPlan.Count;
     }
 
-    private static bool TryPlanInfiltration(MatchMonsterState state, AreaType destinationArea, Vector3f destination, Func<AreaType, bool>? isAreaBlocked, out Vector3f origin, out List<Vector3f> route)
+    private static bool TryPlanInfiltration(MatchRuntime runtime, AreaType destinationArea, Vector3f destination, out Vector3f origin, out List<Vector3f> route)
     {
         route = null!;
-        var originCenter = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, SwarmInwardOriginArea));
-        float baseAngle = ResolveInfiltrationExitBearing(destinationArea, destination, originCenter, isAreaBlocked);
+        var originCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, SwarmInwardOriginArea));
+        var state = runtime.Monsters;
+        float baseAngle = ResolveInfiltrationExitBearing(runtime, destinationArea, destination, originCenter);
         double golden = (state.NextInfiltrationOriginOrdinal++ * InfiltrationGoldenAngle) % 1d;
         float angle = baseAngle + (float)((golden - 0.5d) * 2d) * InfiltrationOriginJitterRadians;
         origin = MonsterNavigation.ClampToAreaWalkable(new Vector3f(originCenter.X + MathF.Cos(angle) * InfiltrationOriginRadius, originCenter.Y + MathF.Sin(angle) * InfiltrationOriginRadius, 0f), originCenter, SwarmInwardOriginArea);
 
         var burst = MonsterNavigation.ClampToAreaWalkable(new Vector3f(origin.X + MathF.Cos(angle) * InfiltrationBurstDistance, origin.Y + MathF.Sin(angle) * InfiltrationBurstDistance, 0f), originCenter, SwarmInwardOriginArea);
-        if (MonsterNavigation.IsSegmentWalkable(origin, burst) && MonsterNavigation.TryPlanRoute(SwarmInwardOriginArea, burst, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(candidate, destinationArea, isAreaBlocked), out route))
+        if (MonsterNavigation.IsSegmentWalkable(origin, burst) && MonsterNavigation.TryPlanRoute(SwarmInwardOriginArea, burst, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out route))
         {
             route.Insert(0, burst);
             return true;
         }
 
-        return MonsterNavigation.TryPlanRoute(SwarmInwardOriginArea, origin, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(candidate, destinationArea, isAreaBlocked), out route);
+        return MonsterNavigation.TryPlanRoute(SwarmInwardOriginArea, origin, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out route);
     }
 
-    private static float ResolveInfiltrationExitBearing(AreaType destinationArea, Vector3f destination, Vector3f originCenter, Func<AreaType, bool>? isAreaBlocked)
+    private static float ResolveInfiltrationExitBearing(MatchRuntime runtime, AreaType destinationArea, Vector3f destination, Vector3f originCenter)
     {
-        if (InfiltrationExitBearings.TryGetValue(destinationArea, out float cached))
+        var bearings = runtime.Monsters.InfiltrationExitBearings;
+        if (bearings.TryGetValue(destinationArea, out float cached))
         {
             return cached;
         }
 
         float fallback = MathF.Atan2(destination.Y - originCenter.Y, destination.X - originCenter.X);
-        if (!MonsterNavigation.TryPlanRoute(SwarmInwardOriginArea, originCenter, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(candidate, destinationArea, isAreaBlocked), out var probe))
+        if (!MonsterNavigation.TryPlanRoute(SwarmInwardOriginArea, originCenter, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out var probe))
         {
             return fallback;
         }
@@ -503,18 +510,17 @@ internal sealed class MonsterSupplyService
                 continue;
             }
             float bearing = MathF.Atan2(dy, dx);
-            InfiltrationExitBearings[destinationArea] = bearing;
+            bearings[destinationArea] = bearing;
             return bearing;
         }
 
-        InfiltrationExitBearings[destinationArea] = fallback;
+        bearings[destinationArea] = fallback;
         return fallback;
     }
 
-    private static bool IsInfiltrationRouteBlocked(AreaType candidate, AreaType destinationArea,
-        Func<AreaType, bool>? isAreaBlocked)
+    private static bool IsInfiltrationRouteBlocked(MatchRuntime runtime, AreaType candidate, AreaType destinationArea)
     {
-        if (isAreaBlocked?.Invoke(candidate) == true)
+        if (runtime.Closures.IsAreaClosed(candidate))
         {
             return true;
         }
@@ -543,8 +549,8 @@ internal sealed class MonsterSupplyService
             return new Vector3f(0f, 0f, 0f);
         }
 
-        var center = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
-        var origin = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, SwarmInwardOriginArea));
+        var center = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
+        var origin = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, SwarmInwardOriginArea));
         float dx = origin.X - center.X;
         float dy = origin.Y - center.Y;
         float length = MathF.Sqrt(dx * dx + dy * dy);

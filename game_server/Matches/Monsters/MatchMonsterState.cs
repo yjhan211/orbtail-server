@@ -22,6 +22,7 @@ public sealed class MatchMonsterState
     public int HitsTaken { get; set; }
     public int Kills { get; set; }
     public Dictionary<MonsterInsignia, int> InsigniaHits { get; } = new();
+    public Dictionary<AreaType, float> InfiltrationExitBearings { get; } = new();
     public Dictionary<AreaType, MonsterSupplyZoneState> SupplyZones { get; } = new();
     public Dictionary<AreaType, DateTime> ZoneVacatedAtUtc { get; } = new();
     public Dictionary<(AreaType Area, int PhaseIndex), (double Available, DateTime RefilledAtUtc)> SupplyStoneBucket { get; } = new();
@@ -54,13 +55,14 @@ public sealed class MatchMonsterState
         ContactImmuneUntilUtc.Clear();
         LastParticipants = [];
         InsigniaHits.Clear();
+        InfiltrationExitBearings.Clear();
         SupplyZones.Clear();
         ZoneVacatedAtUtc.Clear();
         SupplyStoneBucket.Clear();
         SupplyCoreRewarded.Clear();
     }
 
-    public bool HasWaveInsignia(int monsterId) => Entities.TryGetValue(monsterId, out var monster) && MatchMonsterService.HasWaveInsignia(monster.Insignia);
+    public bool HasWaveInsignia(int monsterId) => Entities.TryGetValue(monsterId, out var monster) && monster.Insignia == MonsterInsignia.Wave;
 
     private Monster? FindAliveByCombatTarget(long combatTargetId)
     {

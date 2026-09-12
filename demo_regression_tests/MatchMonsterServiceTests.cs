@@ -221,17 +221,17 @@ public class MatchMonsterServiceTests
     {
         // 판정 = 보이는 몸통 (#229). 클라 ResolveKindScale과 같은 사다리라
         // 한쪽만 바뀌면 스프라이트와 판정이 어긋난다 — 여기서 잠근다.
-        Assert.Equal(MatchMonsterService.ContactRange,
-            MatchMonsterService.GetContactRadius(MonsterKind.Skeleton), 3);
-        Assert.Equal(MatchMonsterService.ContactRange * 1.4f,
-            MatchMonsterService.GetContactRadius(MonsterKind.DartGoblin), 3);
-        Assert.Equal(MatchMonsterService.ContactRange * 2.4f,
-            MatchMonsterService.GetContactRadius(MonsterKind.RunawayGoblin), 3);
-        Assert.Equal(MatchMonsterService.ContactRange * 1.8f,
-            MatchMonsterService.GetContactRadius(MonsterKind.Bowler), 3);
+        Assert.Equal(Monster.BaseContactRadius,
+            Monster.GetContactRadius(MonsterKind.Skeleton), 3);
+        Assert.Equal(Monster.BaseContactRadius * 1.4f,
+            Monster.GetContactRadius(MonsterKind.DartGoblin), 3);
+        Assert.Equal(Monster.BaseContactRadius * 2.4f,
+            Monster.GetContactRadius(MonsterKind.RunawayGoblin), 3);
+        Assert.Equal(Monster.BaseContactRadius * 1.8f,
+            Monster.GetContactRadius(MonsterKind.Bowler), 3);
 
         // 해골 반경은 몸통 반폭(0.31, 클라 실측)을 넘지 않는다.
-        Assert.True(MatchMonsterService.GetContactRadius(MonsterKind.Skeleton) <= 0.32f);
+        Assert.True(Monster.GetContactRadius(MonsterKind.Skeleton) <= 0.32f);
     }
 
     [Fact]

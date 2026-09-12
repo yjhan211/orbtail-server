@@ -1,10 +1,15 @@
 using network.common;
+using network.common.data;
 using network.common.data.models;
 
 namespace game_server.matches.monsters;
 
 public sealed class Monster
 {
+    public const float BaseContactRadius = 0.32f;
+
+    public static float GetContactRadius(MonsterKind kind) => BaseContactRadius * (SwarmMonsterData.Get((int)kind)?.ContactRadiusScale ?? 1f);
+
     public int MonsterId { get; init; }
     public long CombatTargetId { get; init; }
     public MonsterInsignia Insignia { get; init; }

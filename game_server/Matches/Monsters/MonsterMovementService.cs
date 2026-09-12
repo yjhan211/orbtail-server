@@ -1,4 +1,4 @@
-using game_server.players.bots;
+using game_server.matches;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -47,8 +47,9 @@ internal sealed class MonsterMovementService
         return found && MonsterNavigation.IsSegmentWalkable(monster.Position, nearest.Position);
     }
 
-    private static long ClaimLeastLoadedOwner(MatchMonsterState state, AreaType area, IReadOnlyList<PlayerPositionSnapshot> participants, Func<long, bool>? isOrbless)
+    private static long ClaimLeastLoadedOwner(MatchRuntime runtime, AreaType area, IReadOnlyList<PlayerPositionSnapshot> participants)
     {
+        var state = runtime.Monsters;
         long chosen = 0;
         int least = int.MaxValue;
         bool chosenOrbless = false;
@@ -69,7 +70,7 @@ internal sealed class MonsterMovementService
                 }
             }
 
-            bool orbless = isOrbless?.Invoke(participant.PlayerId) == true;
+            bool orbless = !runtime.GetOrbs(participant.PlayerId).HasAnyOrb();
             if (chosenOrbless && !orbless)
             {
                 continue;
@@ -163,7 +164,7 @@ internal sealed class MonsterMovementService
         }
 
         monster.MarchBudgetSeconds -= deltaSeconds;
-        float remaining = (float)(MonsterNavigation.MonsterMoveSpeed * monster.MarchSpeedScale * GetMonsterWaveSlowMultiplier(monster) * deltaSeconds);
+        float remaining = (float)(MonsterNavigation.MonsterMoveSpeed * monster.MarchSpeedScale * GetMonsterWaveSlowMultiplier(monster, now) * deltaSeconds);
         while (remaining > 0f && monster.MarchIndex < monster.MarchWaypoints.Count)
         {
             var waypoint = ResolveLaneWaypoint(monster);
@@ -222,9 +223,9 @@ internal sealed class MonsterMovementService
 
     private const double ChasePlanIntervalSeconds = 0.4d;
 
-    private static float GetMonsterWaveSlowMultiplier(Monster monster)
+    private static float GetMonsterWaveSlowMultiplier(Monster monster, DateTime now)
     {
-        return DateTime.UtcNow < monster.WaveSlowUntilUtc ? OrbData.WaveSlowMoveSpeedMultiplier : 1f;
+        return now < monster.WaveSlowUntilUtc ? OrbData.WaveSlowMoveSpeedMultiplier : 1f;
     }
 
     public void RescueMonsterFromBlockedCell(Monster monster)
@@ -239,7 +240,7 @@ internal sealed class MonsterMovementService
             return;
         }
 
-        var areaCenter = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, monster.Area));
+        var areaCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, monster.Area));
         var rescued = MonsterNavigation.ClampToAreaWalkable(monster.Position, areaCenter, monster.Area);
         if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, rescued)))
         {
@@ -274,7 +275,7 @@ internal sealed class MonsterMovementService
     {
         if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, monster.Position)))
         {
-            var areaCenter = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, monster.Area));
+            var areaCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, monster.Area));
             monster.Position = MonsterNavigation.ClampToAreaWalkable(monster.Position, areaCenter, monster.Area);
         }
 
@@ -302,15 +303,14 @@ internal sealed class MonsterMovementService
         monster.Aggro = true;
     }
 
-    public void UpdateSupplyMonsterMovement(
-        MatchMonsterState state,
-        Monster monster,
-        IReadOnlyList<PlayerPositionSnapshot> participants,
-        DateTime now,
-        double deltaSeconds,
-        bool holdAtThreshold = false,
-        Func<long, bool>? isOrbless = null)
+    public void Move(MatchRuntime runtime, Monster monster, DateTime now, double deltaSeconds, bool holdAtThreshold)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Monster movement requires the match lock.");
+        }
+        var state = runtime.Monsters;
+        IReadOnlyList<PlayerPositionSnapshot> participants = state.LastParticipants;
         if (monster.Infiltrating)
         {
             bool leaveMarch = !holdAtThreshold && (HasParticipantWithinAggro(monster, participants) || (monster.MarchIsPursuit && HasDirectLineToParticipant(monster, participants)));
@@ -366,7 +366,7 @@ internal sealed class MonsterMovementService
         {
             long departedOwnerId = monster.OwnerPlayerId;
             monster.OwnerPlayerId = 0;
-            long reassigned = ClaimLeastLoadedOwner(state, monster.Area, participants, isOrbless);
+            long reassigned = ClaimLeastLoadedOwner(runtime, monster.Area, participants);
             if (reassigned != 0)
             {
                 monster.OwnerPlayerId = reassigned;
@@ -436,15 +436,15 @@ internal sealed class MonsterMovementService
                 {
                     patrolPoint = anchor;
                 }
-                MoveTowardPlayer(monster, patrolPoint, deltaSeconds);
+                MoveTowardPlayer(monster, patrolPoint, deltaSeconds, now);
                 return;
             }
-            MoveTowardPlayer(monster, anchor, deltaSeconds);
+            MoveTowardPlayer(monster, anchor, deltaSeconds, now);
             return;
         }
 
         monster.ChaseTargetPlayerId = target.PlayerId;
-        if (monster.AttackRangeValue > MatchMonsterService.ContactRange)
+        if (monster.AttackRangeValue > Monster.BaseContactRadius)
         {
             float holdRange = monster.AttackRangeValue * RangedHoldRangeRatio;
             if (GroundGeometry.IsWithinGroundRadius(monster.Position, target.Position, holdRange))
@@ -469,10 +469,10 @@ internal sealed class MonsterMovementService
             }
         }
 
-        MoveTowardPlayer(monster, target.Position, deltaSeconds);
+        MoveTowardPlayer(monster, target.Position, deltaSeconds, now);
     }
 
-    private static void MoveTowardPlayer(Monster monster, Vector3f playerPosition, double deltaSeconds)
+    private static void MoveTowardPlayer(Monster monster, Vector3f playerPosition, double deltaSeconds, DateTime now)
     {
         var target = playerPosition;
         float dx = target.X - monster.Position.X;
@@ -483,7 +483,7 @@ internal sealed class MonsterMovementService
             return;
         }
 
-        float step = (float)(MonsterNavigation.MonsterMoveSpeed * GetMonsterWaveSlowMultiplier(monster) * deltaSeconds);
+        float step = (float)(MonsterNavigation.MonsterMoveSpeed * GetMonsterWaveSlowMultiplier(monster, now) * deltaSeconds);
         if (step > distance)
         {
             step = distance;

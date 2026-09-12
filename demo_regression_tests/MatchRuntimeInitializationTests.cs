@@ -22,15 +22,15 @@ public sealed class MatchRuntimeInitializationTests
         Assert.False(TestGameSessionServices.Orbs(first, playerId).HasAnyOrb());
         Assert.Equal(isOrb, TestGameSessionServices.Orbs(first, playerId).TryAddItemWithCapacity(itemId, 8, out var item));
         Assert.Equal(isOrb, TestGameSessionServices.Orbs(first, playerId).HasAnyOrb());
-        Assert.Equal(!isOrb, MatchMonsterService.IsPlayerOrbless(first, playerId));
+        Assert.Equal(!isOrb, !first.GetOrbs(playerId).HasAnyOrb());
         Assert.False(TestGameSessionServices.Orbs(second, playerId).HasAnyOrb());
-        Assert.True(MatchMonsterService.IsPlayerOrbless(second, playerId));
+        Assert.True(!second.GetOrbs(playerId).HasAnyOrb());
         Assert.Equal(isOrb ? 1 : 0, TestGameSessionServices.Orbs(first, playerId).GetOrbScore().OrbCount);
         Assert.Equal((0, 0), TestGameSessionServices.Orbs(second, playerId).GetOrbScore());
         if (item != null)
             TestGameSessionServices.Orbs(first, playerId).TryRemoveItem(item.ItemUid, 1, out _);
         Assert.Equal((0, 0), TestGameSessionServices.Orbs(first, playerId).GetOrbScore());
         Assert.False(TestGameSessionServices.Orbs(first, playerId).HasAnyOrb());
-        Assert.True(MatchMonsterService.IsPlayerOrbless(first, playerId));
+        Assert.True(!first.GetOrbs(playerId).HasAnyOrb());
     }
 }

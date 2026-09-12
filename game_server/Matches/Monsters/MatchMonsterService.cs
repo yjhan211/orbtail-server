@@ -4,7 +4,6 @@ namespace game_server.matches.monsters;
 
 internal sealed class MatchMonsterService(MonsterSupplyService supply, MonsterMovementService movement)
 {
-    public const float ContactRange = 0.32f;
     private const long CombatTargetIdUpperBound = -1_000_000_000_000L;
     private const double DeadPruneAfterSeconds = 3d;
     private const double EscalationStage1AtSeconds = 120d;
@@ -15,10 +14,7 @@ internal sealed class MatchMonsterService(MonsterSupplyService supply, MonsterMo
     public static float BowlerSplashRadius => SwarmConfigData.GetFloat("SWARM_MONSTER_BOWLER_SPLASH_RADIUS", 1.5f);
     public static float WaveInsigniaSplashRadius => SwarmConfigData.GetFloat("SWARM_MONSTER_WAVE_SPLASH_RADIUS", 2.2f);
 
-    public static bool HasWaveInsignia(MonsterInsignia insignia) => insignia == MonsterInsignia.Wave;
-    public static float GetContactRadius(MonsterKind kind) => ContactRange * (SwarmMonsterData.Get((int)kind)?.ContactRadiusScale ?? 1f);
     public static bool IsCombatTargetId(long actorId) => actorId < CombatTargetIdUpperBound;
-    internal static bool IsPlayerOrbless(MatchRuntime runtime, long playerId) => !runtime.GetOrbs(playerId).HasAnyOrb();
     private static int GetEscalationStage(double elapsedSeconds) => elapsedSeconds >= EscalationStage2AtSeconds ? 2 : elapsedSeconds >= EscalationStage1AtSeconds ? 1 : 0;
 
     public MonsterTickResult Tick(MatchRuntime runtime, IReadOnlyCollection<PlayerPositionSnapshot> participants, bool isGameplayActive, DateTime nowUtc)
@@ -44,7 +40,7 @@ internal sealed class MatchMonsterService(MonsterSupplyService supply, MonsterMo
             ? deltaSeconds * EscalationStage2MoveSpeedMultiplier
             : deltaSeconds;
 
-        supply.ProcessRegionSupply(runtime, state, now, result, preMatch);
+        supply.ProcessTick(runtime, now, result, preMatch);
         foreach (var monster in state.Entities.Values)
         {
             if (!monster.Alive || now < monster.ActivatesAtUtc)
@@ -52,14 +48,14 @@ internal sealed class MatchMonsterService(MonsterSupplyService supply, MonsterMo
                 continue;
             }
 
-            movement.UpdateSupplyMonsterMovement(state, monster, state.LastParticipants, now, moveDeltaSeconds, preMatch, playerId => IsPlayerOrbless(runtime, playerId));
+            movement.Move(runtime, monster, now, moveDeltaSeconds, preMatch);
             movement.RescueMonsterFromBlockedCell(monster);
             if (now < monster.NextContactAtUtc)
             {
                 continue;
             }
 
-            float attackRange = monster.Aggro && monster.AttackRangeValue > ContactRange ? monster.AttackRangeValue : GetContactRadius(monster.Kind);
+            float attackRange = monster.Aggro && monster.AttackRangeValue > Monster.BaseContactRadius ? monster.AttackRangeValue : Monster.GetContactRadius(monster.Kind);
             const float verticalScale = 2f;
             foreach (var participant in state.LastParticipants)
             {
@@ -90,7 +86,7 @@ internal sealed class MatchMonsterService(MonsterSupplyService supply, MonsterMo
                 }
 
                 result.PlayerDamage.Add(new MonsterContactDamage(monster.MonsterId, participant.PlayerId, monster.Area, monster.ContactDamageValue));
-                bool waveInsignia = HasWaveInsignia(monster.Insignia);
+                bool waveInsignia = monster.Insignia == MonsterInsignia.Wave;
                 if (waveInsignia || monster.Kind == MonsterKind.Bowler)
                 {
                     float splashRadius = waveInsignia ? WaveInsigniaSplashRadius : BowlerSplashRadius;
@@ -186,7 +182,7 @@ internal sealed class MatchMonsterService(MonsterSupplyService supply, MonsterMo
                 state.Kills++;
             }
             monsterInfo = monster.ToMonsterRuntimeInfo();
-            monsterInfo.SummonStoneReward = supply.ConsumeSupplyStoneBudget(state, monster, diedAtUtc);
+            monsterInfo.SummonStoneReward = supply.ConsumeSupplyStoneBudget(runtime, monster, diedAtUtc);
         }
 
         return new MonsterDamageResult(true, killed, monster.MonsterId, monsterInfo, monster.HeartReward, monster.BootsReward, monster.KeyReward, monster.Kind, AliveSeconds: killed ? (monster.DiedAtUtc - monster.SpawnedAtUtc).TotalSeconds : 0d, AttackEventCount: monster.AttackEventCount);
