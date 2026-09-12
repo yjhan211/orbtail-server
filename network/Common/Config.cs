@@ -291,6 +291,12 @@ namespace network.common
         public static float SWARM_ORB_ATTACK_RANGE => SwarmConfigData.GetFloat("SWARM_ORB_ATTACK_RANGE", 2.5f);
 
         /// <summary>
+        ///     PvE 오브 사거리(바닥면 단위). 사거리가 구역 전체를 덮으면 후미 절단과 머리 절단의 위험이 같아지므로,
+        ///     오브가 자기 열 좌표 주변만 덮는 국소 화망으로 잡는다 — 깊게 자를수록 앞열 오브들의 사거리가 겹치는 자리로 들어가야 한다 (#227).
+        /// </summary>
+        public static float SWARM_PVE_SAME_AREA_ATTACK_RANGE => SwarmConfigData.GetFloat("SWARM_PVE_SAME_AREA_ATTACK_RANGE", 7f);
+
+        /// <summary>
         ///     오브 궤도 (#232): 오브는 본체 주위 타원 궤도를 돈다 — 이동한 거리만큼 돌고 멈추면 선다.
         ///     위상 = 시드 + 이동 거리 × 도/단위.
         ///     서버가 검증 이동으로 적산해 G_TO_C_MOVE에 실어 보내고(권위), 클라는 자기 트랜스폼 이동으로

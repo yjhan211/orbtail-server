@@ -99,7 +99,7 @@ internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails)
                 bool crossfireSun = MatchOrbAttackService.IsSunCrossfireWeapon(actor.WeaponItemId);
                 float crossfireDamageMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER : 1f;
                 float crossfireCadenceMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER : 1f;
-                float attackRange = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_RANGE_BY_TIER[Math.Clamp(orbTier, 1, 3) - 1] : SwarmCombatGeometry.SwarmPveSameAreaAttackRange;
+                float attackRange = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_RANGE_BY_TIER[Math.Clamp(orbTier, 1, 3) - 1] : Config.SWARM_PVE_SAME_AREA_ATTACK_RANGE;
 
                 int damage = Math.Max(1, (int)MathF.Round(baseDamage * sunAttackMultiplier * crossfireDamageMultiplier));
                 float attackIntervalSeconds = baseIntervalSeconds * ResolveSwarmOrbCadenceJitter(ordinal) * crossfireCadenceMultiplier;

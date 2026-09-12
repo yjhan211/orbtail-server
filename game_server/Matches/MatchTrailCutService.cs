@@ -165,17 +165,17 @@ internal sealed class MatchTrailCutService(
                 {
                     continue;
                 }
-                bool stillInsideOrb = latched && SwarmCombatGeometry.IsInsideOrbHitEllipse(previousPosition, orbHitPoint);
+                bool stillInsideOrb = latched && GroundGeometry.IsInsideOrbHitEllipse(previousPosition, orbHitPoint);
                 if (stillInsideOrb)
                 {
                     continue;
                 }
 
-                bool crossed = SwarmCombatGeometry.TrySegmentHitsPoint(previousPosition, currentPosition, orbHitPoint, out float crossingT);
+                bool crossed = GroundGeometry.TrySegmentHitsPoint(previousPosition, currentPosition, orbHitPoint, out float crossingT);
                 if (!crossed)
                 {
                     var linkStart = ordinal == 0 ? ownerPosition : orbPoints[ordinal - 1];
-                    crossed = SwarmCombatGeometry.TrySegmentIntersection(previousPosition, currentPosition, linkStart, orbPoints[ordinal], out crossingT);
+                    crossed = GroundGeometry.TrySegmentIntersection(previousPosition, currentPosition, linkStart, orbPoints[ordinal], out crossingT);
                 }
 
                 if (!crossed)

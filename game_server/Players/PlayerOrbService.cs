@@ -20,8 +20,8 @@ internal sealed class PlayerOrbService(
     PlayerOrbTrailService orbTrails,
     GameEventLogManager eventLogs)
 {
-    private const float SwarmGroundYScale = SwarmCombatGeometry.GroundYScale;
-    private const float SwarmCrossfireMonsterRadius = SwarmCombatGeometry.MonsterRadius;
+    private const float SwarmGroundYScale = GroundGeometry.GroundYScale;
+    private const float SwarmCrossfireMonsterRadius = GroundGeometry.MonsterRadius;
     private const float SwarmCrossfireMonsterBodyHeight = 0.6f;
     private const int OrbRingEffectKindWaveOrb = 2;
     private const float SwarmCrossfireWallProbeStep = 0.2f;
@@ -183,7 +183,7 @@ internal sealed class PlayerOrbService(
                 {
                     continue;
                 }
-                if (!SwarmCombatGeometry.IsWithinGroundRadius(orbPosition, monsterTarget.Position, radius + SwarmCombatGeometry.MonsterRadius))
+                if (!GroundGeometry.IsWithinGroundRadius(orbPosition, monsterTarget.Position, radius + GroundGeometry.MonsterRadius))
                 {
                     continue;
                 }
@@ -207,7 +207,7 @@ internal sealed class PlayerOrbService(
                     {
                         continue;
                     }
-                    if (!SwarmCombatGeometry.IsWithinGroundRadius(orbPosition, participant.Position, radius + SwarmCombatGeometry.PlayerRadius))
+                    if (!GroundGeometry.IsWithinGroundRadius(orbPosition, participant.Position, radius + GroundGeometry.PlayerRadius))
                     {
                         continue;
                     }
@@ -534,7 +534,7 @@ internal sealed class PlayerOrbService(
                     continue;
                 }
 
-                if (!SwarmCombatGeometry.IsWithinGroundRadius(orbPosition, monster.Position, radius + SwarmCombatGeometry.MonsterRadius))
+                if (!GroundGeometry.IsWithinGroundRadius(orbPosition, monster.Position, radius + GroundGeometry.MonsterRadius))
                 {
                     continue;
                 }
@@ -555,7 +555,7 @@ internal sealed class PlayerOrbService(
                     continue;
                 }
 
-                if (!SwarmCombatGeometry.IsWithinGroundRadius(orbPosition, participant.Position!, radius + SwarmCombatGeometry.PlayerRadius))
+                if (!GroundGeometry.IsWithinGroundRadius(orbPosition, participant.Position!, radius + GroundGeometry.PlayerRadius))
                 {
                     continue;
                 }

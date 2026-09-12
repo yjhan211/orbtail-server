@@ -168,7 +168,8 @@ internal class MatchCombatService(
                         return false;
                     }
 
-                    if (!SwarmCombatGeometry.IsWithinSwarmOrbRange(attacker, target))
+                    float range = attacker.AttackRange > 0f ? attacker.AttackRange : Config.SWARM_ORB_ATTACK_RANGE;
+                    if (!GroundGeometry.IsWithinGroundRadius(attacker.Position, target.Position, range))
                     {
                         return false;
                     }

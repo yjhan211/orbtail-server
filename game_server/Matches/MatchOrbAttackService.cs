@@ -21,10 +21,10 @@ internal sealed class MatchOrbAttackService(
     MatchCombatDamageService combatDamage,
     GameEventLogManager eventLogs)
 {
-    private const float SwarmGroundYScale = SwarmCombatGeometry.GroundYScale;
-    private const float SwarmCrossfirePlayerRadius = SwarmCombatGeometry.PlayerRadius;
+    private const float SwarmGroundYScale = GroundGeometry.GroundYScale;
+    private const float SwarmCrossfirePlayerRadius = GroundGeometry.PlayerRadius;
     private const float SwarmCrossfirePlayerBodyHeight = 0.9f;
-    private const float SwarmCrossfireMonsterRadius = SwarmCombatGeometry.MonsterRadius;
+    private const float SwarmCrossfireMonsterRadius = GroundGeometry.MonsterRadius;
     private const float SwarmCrossfireMonsterBodyHeight = 0.6f;
     private static readonly bool SwarmCrossfireEnabled = true;
     private static long _lastEventId;
@@ -316,7 +316,6 @@ internal sealed class MatchOrbAttackService(
 
             var players = runtime.GetAlivePlayers();
             var owner = runtime.GetParticipant(vortex.OwnerId);
-            float radiusSquared = vortex.Radius * vortex.Radius;
             int hitCount = 0;
             int notifiedCount = 0;
             foreach (var target in runtime.Monsters.GetCombatTargets())
@@ -325,9 +324,7 @@ internal sealed class MatchOrbAttackService(
                 {
                     continue;
                 }
-                float dx = target.Position.X - vortex.Position.X;
-                float dy = (target.Position.Y - vortex.Position.Y) * 2f;
-                if (dx * dx + dy * dy > radiusSquared)
+                if (!GroundGeometry.IsWithinGroundRadius(vortex.Position, target.Position, vortex.Radius))
                 {
                     continue;
                 }
@@ -356,8 +353,8 @@ internal sealed class MatchOrbAttackService(
                     continue;
                 }
 
-                if (!SwarmCombatGeometry.IsWithinGroundRadius(vortex.Position, participant.Position,
-                        vortex.Radius + SwarmCombatGeometry.PlayerRadius))
+                if (!GroundGeometry.IsWithinGroundRadius(vortex.Position, participant.Position,
+                        vortex.Radius + GroundGeometry.PlayerRadius))
                 {
                     continue;
                 }

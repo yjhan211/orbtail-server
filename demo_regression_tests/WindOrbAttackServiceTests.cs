@@ -5,6 +5,7 @@ using game_server.players;
 using game_server.players.bots;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 
 namespace demo_regression_tests;
@@ -103,7 +104,7 @@ public sealed class WindOrbAttackServiceTests
     [InlineData(0f, 0.51f, false)]
     public void GroundRadius_UsesScaledYAndIncludesBoundary(float x, float y, bool expected)
     {
-        Assert.Equal(expected, SwarmCombatGeometry.IsWithinGroundRadius(
+        Assert.Equal(expected, GroundGeometry.IsWithinGroundRadius(
             new Vector3f(0, 0, 0), new Vector3f(x, y, 0), 1));
     }
 }

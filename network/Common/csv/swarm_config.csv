@@ -18,6 +18,7 @@ SWARM_STARTING_ORB_GRANT_COUNT,3,시작 지급 무작위 T1 오브 수 (#232 4�
 SWARM_STARTING_STONE_GRANT,5,시작 지급 소환석 (#232 4단계)
 SWARM_ORB_DESTROY_REFUND_STONES,1,오브 파괴 환급 소환석
 SWARM_ORB_ATTACK_RANGE,2.5,기본 오브 사거리 — battle_item_combat.csv attack_range와 동기
+SWARM_PVE_SAME_AREA_ATTACK_RANGE,7,PvE 오브 사거리(바닥면) — 국소 화망: 오브가 자기 열 좌표 주변만 덮는다
 SWARM_PVP_ATTACK_RANGE,5,유저간 사격 사거리 (본체 기준)
 SWARM_PVP_ORB_COUNT,3,유저간 사격 참여 오브 수 (앞열)
 SWARM_BOSS_ATTACK_RANGE,4.1,보스 사거리 — swarm_monster.csv 보스 행과 동기

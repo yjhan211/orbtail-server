@@ -26,10 +26,6 @@ public partial class BotPlayerManager
         return dx * dx + dy * dy;
     }
 
-    private static Cell WorldToCell(Vector3f position) =>
-        new((int)MathF.Floor(position.X + 2f * position.Y),
-            (int)MathF.Floor(2f * position.Y - position.X));
-
     /// <summary>Bot movement speed matches the player fixed movement speed.</summary>
     private const float BotWalkSpeed = 5f;
 
@@ -572,7 +568,7 @@ public partial class BotPlayerManager
             }
             float step = ScaledWalkSpeed(dirX, dirY, multiplier) * deltaSec;
             var candidate = new Vector3f(bot.Player.Position!.X + dirX * step, bot.Player.Position!.Y + dirY * step, 0f);
-            var candidateCell = WorldToCell(candidate);
+            var candidateCell = MapCoordinateConverter.WorldToCell(mapId, candidate);
             if (!GameMapData.IsMoveablePosition(mapId, candidateCell) ||
                 GameMapData.GetCurrentArea(mapId, candidateCell) != bot.Player.CurrentArea)
                 continue;

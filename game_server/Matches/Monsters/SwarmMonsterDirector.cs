@@ -362,9 +362,7 @@ public sealed class SwarmMonsterDirector
                     if (monster.ChaseTargetPlayerId != 0 &&
                         probeParticipant.PlayerId != monster.ChaseTargetPlayerId) continue;
 
-                    float pdx = probeParticipant.Position.X - monster.Position.X;
-                    float pdy = (probeParticipant.Position.Y - monster.Position.Y) * 2f;
-                    float pd = MathF.Sqrt(pdx * pdx + pdy * pdy);
+                    float pd = GroundGeometry.GroundDistance(monster.Position, probeParticipant.Position);
                     if (pd < probeNearest) probeNearest = pd;
                     probeSameArea++;
                     probeDistanceSum += pd;
@@ -2041,10 +2039,8 @@ public sealed class SwarmMonsterDirector
             // 정지 판정도 공격 판정과 같은 타원(dy×2)으로 잰다 (유저 제보 "접근 다
             // 안 했는데 멈춰 있다": 평면 원으로 재면 세로 접근 개체가 타원 사거리(dy ≤ 사거리/2)
             // 밖에서 멈춰 영영 공격을 못 하고 서 있었다).
-            float holdDx = target.Position.X - monster.Position.X;
-            float holdDy = (target.Position.Y - monster.Position.Y) * 2f;
             float holdRange = monster.AttackRangeValue * RangedHoldRangeRatio;
-            if (holdDx * holdDx + holdDy * holdDy <= holdRange * holdRange)
+            if (GroundGeometry.IsWithinGroundRadius(monster.Position, target.Position, holdRange))
                 return;
         }
 
