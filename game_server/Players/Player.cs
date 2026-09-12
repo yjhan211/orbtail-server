@@ -106,6 +106,8 @@ public class Player
     public DateTime HealLockUntilUtc { get; set; } = DateTime.MinValue;
     /// <summary>파도 오브 감속이 끝나는 시각.</summary>
     public DateTime WaveSlowUntilUtc { get; set; }
+    /// <summary>잔상 접촉 피해 면역이 끝나는 시각. 한 번 맞으면 잠깐 연속 피격을 막는다.</summary>
+    public DateTime MonsterContactImmuneUntilUtc { get; set; }
     /// <summary>PvP 피해의 소수점 잔여. 정수 체력 피해로 넘어갈 때까지 누적한다.</summary>
     internal float PvpDamageCarry { get; set; }
 

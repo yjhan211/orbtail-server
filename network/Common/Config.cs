@@ -134,9 +134,6 @@ namespace network.common
         /// </summary>
         public static float SWARM_BOSS_ATTACK_RANGE => SwarmConfigData.GetFloat("SWARM_BOSS_ATTACK_RANGE", 4.1f);
 
-        /// <summary>격화 1단계 시각(초) — 폐쇄 웨이브와 동기</summary>
-        public static double SWARM_MONSTER_ESCALATION_STAGE1_AT_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_ESCALATION_STAGE1_AT_SECONDS", 120d);
-
         /// <summary>격화 2단계 시각(초) — 이후 이속만 소폭 상승</summary>
         public static double SWARM_MONSTER_ESCALATION_STAGE2_AT_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_ESCALATION_STAGE2_AT_SECONDS", 230d);
 

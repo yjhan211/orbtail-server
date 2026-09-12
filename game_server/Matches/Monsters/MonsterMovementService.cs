@@ -1,4 +1,3 @@
-using game_server.matches;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -11,7 +10,6 @@ namespace game_server.matches.monsters;
 /// </summary>
 internal sealed class MonsterMovementService
 {
-    /// <summary>행군 예산 = 경로 실거리를 이속으로 나눈 시간 × 여유, 최소치 보장. 예산이 다한 행군은 걷어낸다.</summary>
     public static double ComputeMarchBudgetSeconds(Vector3f start, IReadOnlyList<Vector3f> route)
     {
         double length = 0d;
@@ -310,14 +308,12 @@ internal sealed class MonsterMovementService
         monster.Aggro = true;
     }
 
-    public void Move(MatchRuntime runtime, Monster monster, DateTime now, double deltaSeconds, bool holdAtThreshold)
+    public void Move(MatchRuntime runtime, Monster monster, IReadOnlyList<PlayerPositionSnapshot> participants, DateTime now, double deltaSeconds, bool holdAtThreshold)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Monster movement requires the match lock.");
         }
-        var state = runtime.Monsters;
-        IReadOnlyList<PlayerPositionSnapshot> participants = state.LastParticipants;
         if (monster.Infiltrating)
         {
             bool leaveMarch = !holdAtThreshold && (HasParticipantWithinAggro(monster, participants) || (monster.MarchIsPursuit && HasDirectLineToParticipant(monster, participants)));

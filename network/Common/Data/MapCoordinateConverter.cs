@@ -38,6 +38,22 @@ namespace network.common.data
             return (world.X, world.Y);
         }
 
+        /// <summary>from 구역 스폰 중심에서 to 구역 스폰 중심을 향한 단위 벡터. 같은 구역이거나 겹치면 영벡터.</summary>
+        public static Vector3f GetAreaDirection(MapId mapId, AreaType from, AreaType to)
+        {
+            if (from == to)
+            {
+                return new Vector3f(0f, 0f, 0f);
+            }
+
+            var origin = CellToWorld(mapId, GameMapData.GetAreaSpawnCell(mapId, from));
+            var target = CellToWorld(mapId, GameMapData.GetAreaSpawnCell(mapId, to));
+            float dx = target.X - origin.X;
+            float dy = target.Y - origin.Y;
+            float length = (float)Math.Sqrt(dx * dx + dy * dy);
+            return length < 0.001f ? new Vector3f(0f, 0f, 0f) : new Vector3f(dx / length, dy / length, 0f);
+        }
+
         private static (float X, float Y) GetGridOrigin(MapId mapId)
         {
             var mapInfo = GameMapData.GetMapInfo(mapId);

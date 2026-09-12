@@ -21,9 +21,9 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
     private const int FirstMonsterId = 7_000_000;
     private const long FirstCombatTargetId = -4_000_000_000_000_000_000L;
     private const int AnchorAreaEdgeMargin = 3;
+    private static readonly int InsigniaCount = Enum.GetValues<MonsterInsignia>().Length;
 
     public static bool IsCombatTargetId(long actorId) => actorId < CombatTargetIdUpperBound;
-    private static int GetEscalationStage(double elapsedSeconds) => elapsedSeconds >= Config.SWARM_MONSTER_ESCALATION_STAGE2_AT_SECONDS ? 2 : elapsedSeconds >= Config.SWARM_MONSTER_ESCALATION_STAGE1_AT_SECONDS ? 1 : 0;
 
     public List<MonsterContactDamage> ProcessTick(MatchRuntime runtime, IReadOnlyCollection<PlayerPositionSnapshot> participants, bool isGameplayActive, DateTime nowUtc)
     {
@@ -41,14 +41,19 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
         var now = nowUtc;
         double deltaSeconds = Math.Clamp((now - state.LastTickAtUtc).TotalSeconds, 0d, 0.25d);
         state.LastTickAtUtc = now;
-        state.LastParticipants = participants.ToArray();
+        var snapshot = new PlayerPositionSnapshot[participants.Count];
+        int snapshotIndex = 0;
+        foreach (var participant in participants)
+        {
+            snapshot[snapshotIndex++] = participant;
+        }
 
         bool preMatch = !isGameplayActive;
-        double moveDeltaSeconds = GetEscalationStage((now - state.StartsAtUtc).TotalSeconds) >= 2
+        double moveDeltaSeconds = (now - state.StartsAtUtc).TotalSeconds >= Config.SWARM_MONSTER_ESCALATION_STAGE2_AT_SECONDS
             ? deltaSeconds * Config.SWARM_MONSTER_ESCALATION_STAGE2_MOVE_SPEED_MULTIPLIER
             : deltaSeconds;
 
-        ProcessSupply(runtime, now, preMatch);
+        ProcessSupply(runtime, snapshot, now, preMatch);
         foreach (var monster in state.Entities.Values)
         {
             if (!monster.Alive || now < monster.ActivatesAtUtc)
@@ -56,7 +61,7 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
                 continue;
             }
 
-            movement.Move(runtime, monster, now, moveDeltaSeconds, preMatch);
+            movement.Move(runtime, monster, snapshot, now, moveDeltaSeconds, preMatch);
             movement.RescueMonsterFromBlockedCell(monster);
             if (now < monster.NextContactAtUtc)
             {
@@ -65,7 +70,7 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
 
             float attackRange = monster.Aggro && monster.AttackRangeValue > Monster.BaseContactRadius ? monster.AttackRangeValue : Monster.GetContactRadius(monster.Kind);
             const float verticalScale = 2f;
-            foreach (var participant in state.LastParticipants)
+            foreach (var participant in snapshot)
             {
                 if (participant.Area != monster.Area)
                 {
@@ -78,13 +83,14 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
                     continue;
                 }
 
-                if (state.ContactImmuneUntilUtc.TryGetValue(participant.PlayerId, out var immuneUntil) && now < immuneUntil)
+                var player = runtime.GetParticipant(participant.PlayerId);
+                if (player == null || now < player.MonsterContactImmuneUntilUtc)
                 {
                     continue;
                 }
 
                 monster.NextContactAtUtc = now.AddSeconds(monster.AttackCooldownValue);
-                state.ContactImmuneUntilUtc[participant.PlayerId] = now.AddSeconds(Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS);
+                player.MonsterContactImmuneUntilUtc = now.AddSeconds(Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS);
                 monster.Aggro = true;
                 monster.ChaseTargetPlayerId = participant.PlayerId;
                 contacts.Add(new MonsterContactDamage(monster.MonsterId, participant.PlayerId, monster.Area, monster.ContactDamageValue));
@@ -92,7 +98,7 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
                 if (waveInsignia || monster.Kind == MonsterKind.Bowler)
                 {
                     float splashRadius = waveInsignia ? Config.SWARM_MONSTER_WAVE_SPLASH_RADIUS : Config.SWARM_MONSTER_BOWLER_SPLASH_RADIUS;
-                    foreach (var splashed in state.LastParticipants)
+                    foreach (var splashed in snapshot)
                     {
                         if (splashed.PlayerId == participant.PlayerId || splashed.Area != monster.Area)
                         {
@@ -105,11 +111,12 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
                             continue;
                         }
 
-                        if (state.ContactImmuneUntilUtc.TryGetValue(splashed.PlayerId, out var splashImmune) && now < splashImmune)
+                        var splashedPlayer = runtime.GetParticipant(splashed.PlayerId);
+                        if (splashedPlayer == null || now < splashedPlayer.MonsterContactImmuneUntilUtc)
                         {
                             continue;
                         }
-                        state.ContactImmuneUntilUtc[splashed.PlayerId] = now.AddSeconds(Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS);
+                        splashedPlayer.MonsterContactImmuneUntilUtc = now.AddSeconds(Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS);
                         contacts.Add(new MonsterContactDamage(monster.MonsterId, splashed.PlayerId, monster.Area, monster.ContactDamageValue));
                     }
                 }
@@ -203,7 +210,7 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
         return perPlayerTarget * linearPlayers + (int)Math.Round(perPlayerTarget * Config.SWARM_MONSTER_SUPPLY_CROWD_EXTRA_RATIO * crowdPlayers);
     }
 
-    private void ProcessSupply(MatchRuntime runtime, DateTime now, bool preMatch)
+    private void ProcessSupply(MatchRuntime runtime, IReadOnlyList<PlayerPositionSnapshot> participants, DateTime now, bool preMatch)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -211,11 +218,11 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
         }
         var state = runtime.Monsters;
         double elapsed = (now - state.StartsAtUtc).TotalSeconds;
-        state.MaxParticipantCount = Math.Max(state.MaxParticipantCount, state.LastParticipants.Length);
+        state.MaxParticipantCount = Math.Max(state.MaxParticipantCount, participants.Count);
         int phaseIndex = GetSupplyPhaseIndex(elapsed);
         var phase = SwarmSupplyPhaseData.GetAll()[phaseIndex];
         var occupied = new Dictionary<AreaType, List<long>>();
-        foreach (var participant in state.LastParticipants)
+        foreach (var participant in participants)
         {
             if (participant.Area == AreaType.None || runtime.Closures.IsAreaClosed(participant.Area))
             {
@@ -241,16 +248,44 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
             }
         }
 
-        foreach (var zone in state.SupplyZones.Keys.Where(zone => !occupied.ContainsKey(zone)).ToList())
+        var vacatedZones = new List<AreaType>();
+        foreach (var zone in state.SupplyZones.Keys)
+        {
+            if (!occupied.ContainsKey(zone))
+            {
+                vacatedZones.Add(zone);
+            }
+        }
+        foreach (var zone in vacatedZones)
         {
             state.SupplyZones.Remove(zone);
         }
 
         ReclaimStrandedMonsters(runtime, occupied, now);
-        int aliveGlobal = CountAliveGlobal(state);
-        int globalCap = Math.Min(Config.SWARM_MONSTER_SUPPLY_GLOBAL_ALIVE_HARD_CAP, occupied.Values.Sum(roster => GetSupplyZoneTarget(phase.PerPlayerTarget, roster.Count)));
+        int aliveGlobal = 0;
+        foreach (var monster in state.Entities.Values)
+        {
+            if (monster.Alive)
+            {
+                aliveGlobal++;
+            }
+        }
+        int zoneTargetSum = 0;
+        foreach (var roster in occupied.Values)
+        {
+            zoneTargetSum += GetSupplyZoneTarget(phase.PerPlayerTarget, roster.Count);
+        }
+        int globalCap = Math.Min(Config.SWARM_MONSTER_SUPPLY_GLOBAL_ALIVE_HARD_CAP, zoneTargetSum);
 
-        foreach (var (zone, roster) in occupied.OrderBy(pair => CountAliveInArea(state, pair.Key)))
+        // 생존이 적은 구역부터 채운다. 동률은 점유 순서를 유지한다.
+        var zonesByAlive = new List<(AreaType Zone, List<long> Roster, int Alive, int Order)>(occupied.Count);
+        foreach (var (zone, roster) in occupied)
+        {
+            zonesByAlive.Add((zone, roster, CountAliveInArea(state, zone), zonesByAlive.Count));
+        }
+        zonesByAlive.Sort(static (left, right) => left.Alive != right.Alive ? left.Alive.CompareTo(right.Alive) : left.Order.CompareTo(right.Order));
+
+        foreach (var (zone, roster, _, _) in zonesByAlive)
         {
             int zoneTarget = GetSupplyZoneTarget(phase.PerPlayerTarget, roster.Count);
             if (aliveGlobal >= globalCap)
@@ -295,7 +330,16 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
                 continue;
             }
 
-            bool includeCore = phaseIndex >= Config.SWARM_MONSTER_SUPPLY_CORE_FIRST_PHASE_INDEX && !HasAliveCore(state, zone) && aliveInZone < zoneTarget && aliveGlobal < globalCap;
+            bool hasAliveCore = false;
+            foreach (var monster in state.Entities.Values)
+            {
+                if (monster.Alive && monster.HomeArea == zone && monster.Kind == MonsterKind.RunawayGoblin)
+                {
+                    hasAliveCore = true;
+                    break;
+                }
+            }
+            bool includeCore = phaseIndex >= Config.SWARM_MONSTER_SUPPLY_CORE_FIRST_PHASE_INDEX && !hasAliveCore && aliveInZone < zoneTarget && aliveGlobal < globalCap;
             int room = zoneTarget - aliveInZone - (includeCore ? 1 : 0);
             int want = Math.Min(Config.SWARM_MONSTER_SUPPLY_TOP_UP_COUNT, room);
             want = Math.Min(want, globalCap - aliveGlobal - (includeCore ? 1 : 0));
@@ -305,7 +349,7 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
             }
 
             want = Math.Max(0, want);
-            int spawned = SpawnSupplyMonsters(runtime, zone, want, includeCore, phaseIndex, now, roster);
+            int spawned = SpawnSupplyMonsters(runtime, participants, zone, want, includeCore, phaseIndex, now, roster);
             if (spawned == 0)
             {
                 zoneState.NextTopUpAtUtc = now.AddSeconds(Config.SWARM_MONSTER_SUPPLY_BLOCKED_RETRY_SECONDS);
@@ -357,8 +401,6 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
         }
     }
 
-    private static int CountAliveGlobal(MatchMonsterState state) => state.Entities.Values.Count(monster => monster.Alive);
-
     private int ConsumeSupplyStoneBudget(MatchRuntime runtime, Monster monster, DateTime now)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -384,7 +426,11 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
             bucket = (Config.SWARM_MONSTER_SUPPLY_STONE_BUCKET_BURST, now);
         }
 
-        double refillPerSecond = GetSupplyStoneRefillPerSecond(phaseIndex);
+        var phases = SwarmSupplyPhaseData.GetAll();
+        double until = phases[phaseIndex].UntilSeconds;
+        double from = phaseIndex == 0 ? 0d : phases[phaseIndex - 1].UntilSeconds;
+        double durationSeconds = until > Config.SWARM_MATCH_DURATION_SECONDS ? Math.Max(1d, Config.SWARM_MATCH_DURATION_SECONDS - from) : Math.Max(1d, until - from);
+        double refillPerSecond = phases[phaseIndex].StoneBudget / durationSeconds;
         double elapsedSeconds = Math.Max(0d, (now - bucket.RefilledAtUtc).TotalSeconds);
         double available = Math.Min(Config.SWARM_MONSTER_SUPPLY_STONE_BUCKET_BURST, bucket.Available + elapsedSeconds * refillPerSecond);
         int granted = Math.Min(reward, (int)Math.Floor(available));
@@ -392,21 +438,20 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
         return granted;
     }
 
-    private static double GetSupplyStoneRefillPerSecond(int phaseIndex)
+    private static int CountAliveInArea(MatchMonsterState state, AreaType area)
     {
-        double until = SwarmSupplyPhaseData.GetAll()[phaseIndex].UntilSeconds;
-        double from = phaseIndex == 0 ? 0d : SwarmSupplyPhaseData.GetAll()[phaseIndex - 1].UntilSeconds;
-        double durationSeconds = until > Config.SWARM_MATCH_DURATION_SECONDS ? Math.Max(1d, Config.SWARM_MATCH_DURATION_SECONDS - from) : Math.Max(1d, until - from);
-        return SwarmSupplyPhaseData.GetAll()[phaseIndex].StoneBudget / durationSeconds;
+        int count = 0;
+        foreach (var monster in state.Entities.Values)
+        {
+            if (monster.Alive && monster.HomeArea == area)
+            {
+                count++;
+            }
+        }
+        return count;
     }
 
-    private static bool HasAliveCore(MatchMonsterState state, AreaType area) =>
-        state.Entities.Values.Any(monster => monster.Alive && monster.HomeArea == area && monster.Kind == MonsterKind.RunawayGoblin);
-
-    private static int CountAliveInArea(MatchMonsterState state, AreaType area) =>
-        state.Entities.Values.Count(monster => monster.Alive && monster.HomeArea == area);
-
-    private int SpawnSupplyMonsters(MatchRuntime runtime, AreaType area, int normals, bool includeCore, int phaseIndex, DateTime now, IReadOnlyList<long> roster)
+    private int SpawnSupplyMonsters(MatchRuntime runtime, IReadOnlyList<PlayerPositionSnapshot> participants, AreaType area, int normals, bool includeCore, int phaseIndex, DateTime now, IReadOnlyList<long> roster)
     {
         var state = runtime.Monsters;
         var phase = SwarmSupplyPhaseData.GetAll()[phaseIndex];
@@ -478,31 +523,66 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
             var customAnchorCell = GameMonsterCampData.GetAnchor(area, anchorIndex);
             if (customAnchorCell != null)
             {
-                anchors.Add(MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, InsetAnchorFromAreaEdge(customAnchorCell, area)), center, area));
+                anchors.Add(MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, MapPathfinder.InsetCellFromAreaEdge(Config.SWARM_MATCH_MAP, customAnchorCell, area, AnchorAreaEdgeMargin)), center, area));
                 continue;
             }
 
-            float anchorAngle = anchorIndex * 2.0944f;
+            float anchorAngle = anchorIndex * (MathF.Tau / CampsPerArea);
             anchors.Add(MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(center.X + Config.SWARM_MONSTER_CAMP_ANCHOR_RADIUS * 0.6f * MathF.Cos(anchorAngle), center.Y + Config.SWARM_MONSTER_CAMP_ANCHOR_RADIUS * 0.6f * MathF.Sin(anchorAngle), 0f), center, area));
         }
 
-        var inward = GetInwardDirection(area);
-        var ranked = anchors
-            .Select(anchor => (
-                Anchor: anchor,
-                Distance: NearestParticipantDistance(state, area, anchor),
-                Inwardness: (anchor.X - center.X) * inward.X + (anchor.Y - center.Y) * inward.Y))
-            .Where(entry => infiltrate || entry.Distance >= Config.SWARM_MONSTER_SUPPLY_SAFE_SPAWN_DISTANCE)
-            .OrderByDescending(entry => entry.Distance >= Config.SWARM_MONSTER_SUPPLY_OFFSCREEN_DISTANCE)
-            .ThenByDescending(entry => entry.Inwardness)
-            .ThenByDescending(entry => entry.Distance)
-            .ToList();
+        var inward = MapCoordinateConverter.GetAreaDirection(Config.SWARM_MATCH_MAP, area, Config.SWARM_MATCH_GROUND_AREA);
+        // 화면 밖 앵커 우선, 그다음 안쪽 방향, 그다음 참가자에게서 먼 순. 침투가 아니면 안전 거리 안의 앵커는 뺀다. 동률은 앵커 순서를 유지한다.
+        var ranked = new List<(Vector3f Anchor, float Distance, float Inwardness, int Order)>(anchors.Count);
+        foreach (var anchor in anchors)
+        {
+            float nearestSquared = float.MaxValue;
+            foreach (var participant in participants)
+            {
+                if (participant.Area != area)
+                {
+                    continue;
+                }
+                float dx = participant.Position.X - anchor.X;
+                float dy = participant.Position.Y - anchor.Y;
+                nearestSquared = Math.Min(nearestSquared, dx * dx + dy * dy);
+            }
+            float distance = nearestSquared == float.MaxValue ? float.MaxValue : MathF.Sqrt(nearestSquared);
+            if (!infiltrate && distance < Config.SWARM_MONSTER_SUPPLY_SAFE_SPAWN_DISTANCE)
+            {
+                continue;
+            }
+            float inwardness = (anchor.X - center.X) * inward.X + (anchor.Y - center.Y) * inward.Y;
+            ranked.Add((anchor, distance, inwardness, ranked.Count));
+        }
         if (ranked.Count == 0)
         {
             return 0;
         }
+        ranked.Sort(static (left, right) =>
+        {
+            bool leftOffscreen = left.Distance >= Config.SWARM_MONSTER_SUPPLY_OFFSCREEN_DISTANCE;
+            bool rightOffscreen = right.Distance >= Config.SWARM_MONSTER_SUPPLY_OFFSCREEN_DISTANCE;
+            if (leftOffscreen != rightOffscreen)
+            {
+                return leftOffscreen ? -1 : 1;
+            }
+            if (left.Inwardness != right.Inwardness)
+            {
+                return right.Inwardness.CompareTo(left.Inwardness);
+            }
+            if (left.Distance != right.Distance)
+            {
+                return right.Distance.CompareTo(left.Distance);
+            }
+            return left.Order.CompareTo(right.Order);
+        });
 
-        var freeAnchors = ranked.Select(entry => entry.Anchor).ToList();
+        var freeAnchors = new List<Vector3f>(ranked.Count);
+        foreach (var entry in ranked)
+        {
+            freeAnchors.Add(entry.Anchor);
+        }
         var spawnPlan = new List<(MonsterKind Kind, Vector3f Anchor)>(normals + 1);
         for (int index = 0; index < normals; index++)
         {
@@ -514,7 +594,7 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
             spawnPlan.Add((MonsterKind.RunawayGoblin, freeAnchors[^1]));
         }
 
-        var insignia = (MonsterInsignia)(state.NextSupplyPackOrdinal++ % 3);
+        var insignia = (MonsterInsignia)(state.NextSupplyPackOrdinal++ % InsigniaCount);
         for (int index = 0; index < spawnPlan.Count; index++)
         {
             var packAnchor = spawnPlan[index].Anchor;
@@ -527,7 +607,52 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
             var position = destination;
             var spawnArea = area;
             List<Vector3f>? route = null;
-            var fieldSpawn = ResolveFieldSpawn(runtime.Closures.GetSafeDistance(now), area);
+            // 압박 필드 거리 기준으로 스폰 셀(안전 거리 바깥 띠)과 앵커 셀(구역 안쪽 띠)을 고른다.
+            (Cell Spawn, Cell Anchor)? fieldSpawn = null;
+            var cells = SwarmPressureField.GetAreaCellsByDistance(area);
+            if (cells.Count > 0)
+            {
+                double safeDistance = runtime.Closures.GetSafeDistance(now);
+                bool boundaryCrossing = safeDistance < cells[^1].Distance;
+                double spawnMin = boundaryCrossing ? safeDistance : cells[^1].Distance - Config.SWARM_MONSTER_FIELD_SPAWN_BAND_CELLS;
+                double spawnMax = boundaryCrossing ? safeDistance + Config.SWARM_MONSTER_FIELD_SPAWN_BAND_CELLS : cells[^1].Distance;
+                var spawnBand = new List<Cell>();
+                var anchorBand = new List<Cell>();
+                double anchorMax = cells[0].Distance + Config.SWARM_MONSTER_FIELD_SPAWN_BAND_CELLS;
+                foreach (var entry in cells)
+                {
+                    if (entry.Distance > spawnMin && entry.Distance <= spawnMax)
+                    {
+                        spawnBand.Add(entry.Cell);
+                    }
+                    if (entry.Distance < anchorMax)
+                    {
+                        anchorBand.Add(entry.Cell);
+                    }
+                }
+                if (spawnBand.Count == 0)
+                {
+                    if (boundaryCrossing)
+                    {
+                        foreach (var entry in cells)
+                        {
+                            if (entry.Distance > safeDistance)
+                            {
+                                spawnBand.Add(entry.Cell);
+                            }
+                        }
+                    }
+                    if (spawnBand.Count == 0)
+                    {
+                        spawnBand.Add(cells[^1].Cell);
+                    }
+                }
+                if (anchorBand.Count == 0)
+                {
+                    anchorBand.Add(cells[0].Cell);
+                }
+                fieldSpawn = (spawnBand[state.Rng.Next(spawnBand.Count)], anchorBand[state.Rng.Next(anchorBand.Count)]);
+            }
             if (fieldSpawn != null)
             {
                 position = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Spawn), packAnchor, area);
@@ -593,7 +718,7 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
         return spawnPlan.Count;
     }
 
-    private static bool TryPlanInfiltration(MatchRuntime runtime, AreaType destinationArea, Vector3f destination, out Vector3f origin, out List<Vector3f> route)
+    private bool TryPlanInfiltration(MatchRuntime runtime, AreaType destinationArea, Vector3f destination, out Vector3f origin, out List<Vector3f> route)
     {
         route = null!;
         var originCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, Config.SWARM_MATCH_GROUND_AREA));
@@ -613,7 +738,7 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
         return MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, Config.SWARM_MATCH_GROUND_AREA, origin, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out route);
     }
 
-    private static float ResolveInfiltrationExitBearing(MatchRuntime runtime, AreaType destinationArea, Vector3f destination, Vector3f originCenter)
+    private float ResolveInfiltrationExitBearing(MatchRuntime runtime, AreaType destinationArea, Vector3f destination, Vector3f originCenter)
     {
         var bearings = runtime.Monsters.InfiltrationExitBearings;
         if (bearings.TryGetValue(destinationArea, out float cached))
@@ -645,7 +770,7 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
         return fallback;
     }
 
-    private static bool IsInfiltrationRouteBlocked(MatchRuntime runtime, AreaType candidate, AreaType destinationArea)
+    private bool IsInfiltrationRouteBlocked(MatchRuntime runtime, AreaType candidate, AreaType destinationArea)
     {
         if (runtime.Closures.IsAreaClosed(candidate))
         {
@@ -667,87 +792,6 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
         }
 
         return false;
-    }
-
-    private static Vector3f GetInwardDirection(AreaType area)
-    {
-        if (area == Config.SWARM_MATCH_GROUND_AREA)
-        {
-            return new Vector3f(0f, 0f, 0f);
-        }
-
-        var center = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
-        var origin = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, Config.SWARM_MATCH_GROUND_AREA));
-        float dx = origin.X - center.X;
-        float dy = origin.Y - center.Y;
-        float length = MathF.Sqrt(dx * dx + dy * dy);
-        return length < 0.001f ? new Vector3f(0f, 0f, 0f) : new Vector3f(dx / length, dy / length, 0f);
-    }
-
-    private static float NearestParticipantDistance(MatchMonsterState state, AreaType area, Vector3f anchor)
-    {
-        float nearestSquared = float.MaxValue;
-        foreach (var participant in state.LastParticipants)
-        {
-            if (participant.Area != area)
-            {
-                continue;
-            }
-            float dx = participant.Position.X - anchor.X;
-            float dy = participant.Position.Y - anchor.Y;
-            nearestSquared = Math.Min(nearestSquared, dx * dx + dy * dy);
-        }
-
-        return nearestSquared == float.MaxValue ? float.MaxValue : MathF.Sqrt(nearestSquared);
-    }
-
-    public static Cell InsetAnchorFromAreaEdge(Cell cell, AreaType area)
-    {
-        var region = GameMapData.GetAreas(Config.SWARM_MATCH_MAP).FirstOrDefault(candidate => candidate.AreaType == area);
-        if (region == null)
-        {
-            return cell;
-        }
-
-        int minX = region.Start.X + AnchorAreaEdgeMargin;
-        int maxX = region.End.X - AnchorAreaEdgeMargin;
-        int minY = region.Start.Y + AnchorAreaEdgeMargin;
-        int maxY = region.End.Y - AnchorAreaEdgeMargin;
-        if (minX > maxX || minY > maxY)
-        {
-            return cell;
-        }
-
-        int insetX = Math.Clamp(cell.X, minX, maxX);
-        int insetY = Math.Clamp(cell.Y, minY, maxY);
-        return insetX == cell.X && insetY == cell.Y ? cell : new Cell(insetX, insetY);
-    }
-
-    private static (Cell Spawn, Cell Anchor)? ResolveFieldSpawn(double safeDistance, AreaType area)
-    {
-        var cells = SwarmPressureField.GetAreaCellsByDistance(area);
-        if (cells.Count == 0)
-        {
-            return null;
-        }
-
-        bool boundaryCrossing = safeDistance < cells[^1].Distance;
-        double spawnMin = boundaryCrossing ? safeDistance : cells[^1].Distance - Config.SWARM_MONSTER_FIELD_SPAWN_BAND_CELLS;
-        double spawnMax = boundaryCrossing ? safeDistance + Config.SWARM_MONSTER_FIELD_SPAWN_BAND_CELLS : cells[^1].Distance;
-
-        var spawnBand = cells.Where(entry => entry.Distance > spawnMin && entry.Distance <= spawnMax).ToList();
-        if (spawnBand.Count == 0)
-        {
-            spawnBand = boundaryCrossing ? cells.Where(entry => entry.Distance > safeDistance).ToList() : [cells[^1]];
-        }
-
-        var anchorBand = cells.Where(entry => entry.Distance < cells[0].Distance + Config.SWARM_MONSTER_FIELD_SPAWN_BAND_CELLS).ToList();
-        if (anchorBand.Count == 0)
-        {
-            anchorBand = [cells[0]];
-        }
-
-        return (spawnBand[Random.Shared.Next(spawnBand.Count)].Cell, anchorBand[Random.Shared.Next(anchorBand.Count)].Cell);
     }
 
     public bool Initialize(MatchRuntime runtime, DateTime startsAtUtc)

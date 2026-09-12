@@ -558,5 +558,36 @@ namespace network.common.data
             }
             return center;
         }
+
+        /// <summary>구역 경계에서 margin 셀만큼 안쪽으로 셀을 당긴다. 구역이 margin×2보다 좁으면 그대로 둔다.</summary>
+        public static Cell InsetCellFromAreaEdge(MapId mapId, Cell cell, AreaType area, int margin)
+        {
+            GameMapData.AreaRegion? region = null;
+            foreach (var candidate in GameMapData.GetAreas(mapId))
+            {
+                if (candidate.AreaType == area)
+                {
+                    region = candidate;
+                    break;
+                }
+            }
+            if (region == null)
+            {
+                return cell;
+            }
+
+            int minX = region.Start.X + margin;
+            int maxX = region.End.X - margin;
+            int minY = region.Start.Y + margin;
+            int maxY = region.End.Y - margin;
+            if (minX > maxX || minY > maxY)
+            {
+                return cell;
+            }
+
+            int insetX = Math.Clamp(cell.X, minX, maxX);
+            int insetY = Math.Clamp(cell.Y, minY, maxY);
+            return insetX == cell.X && insetY == cell.Y ? cell : new Cell(insetX, insetY);
+        }
     }
 }

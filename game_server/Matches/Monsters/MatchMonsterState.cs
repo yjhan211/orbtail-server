@@ -4,7 +4,7 @@ namespace game_server.matches.monsters;
 
 /// <summary>
 ///     매치 하나의 몬스터 상태. MatchRuntime이 소유하고 매치 잠금 안에서만 읽고 쓴다.
-///     개체 목록·접촉 면역·공급 구역 회계를 드는 필드 홀더다. 조회와 갱신은 모두 MatchMonsterService를 거치고, 매치 정리 때 Release로 비운다.
+///     개체 목록·공급 구역 회계를 드는 필드 홀더다. 조회와 갱신은 모두 MatchMonsterService를 거치고, 매치 정리 때 Release로 비운다.
 /// </summary>
 public sealed class MatchMonsterState
 {
@@ -13,11 +13,9 @@ public sealed class MatchMonsterState
     public DateTime StartsAtUtc { get; set; }
     public DateTime LastTickAtUtc { get; set; }
     public Dictionary<int, Monster> Entities { get; } = new();
-    public Dictionary<long, DateTime> ContactImmuneUntilUtc { get; } = new();
     public Random Rng { get; set; } = new();
     public int NextSerial { get; set; }
     public bool NextMonsterGrantsSummonStone { get; set; } = true;
-    public PlayerPositionSnapshot[] LastParticipants { get; set; } = [];
     public Dictionary<AreaType, float> InfiltrationExitBearings { get; } = new();
     public Dictionary<AreaType, MonsterSupplyZoneState> SupplyZones { get; } = new();
     public Dictionary<AreaType, DateTime> ZoneVacatedAtUtc { get; } = new();
@@ -32,8 +30,6 @@ public sealed class MatchMonsterState
         IsInitialized = false;
         NextSnapshotAtUtc = default;
         Entities.Clear();
-        ContactImmuneUntilUtc.Clear();
-        LastParticipants = [];
         InfiltrationExitBearings.Clear();
         SupplyZones.Clear();
         ZoneVacatedAtUtc.Clear();

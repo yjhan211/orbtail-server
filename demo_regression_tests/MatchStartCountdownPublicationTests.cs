@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data;
+using network.common.data.helpers;
 using network.common.data.models;
 using network.core;
 using network.gameentry;
@@ -24,6 +25,12 @@ namespace demo_regression_tests;
 /// </summary>
 public sealed class MatchStartCountdownPublicationTests
 {
+    public MatchStartCountdownPublicationTests()
+    {
+        GameDataHelper.SetBasePath(Path.Combine(FindRepositoryRoot(), "network"));
+        GameDataHelper.Initialize();
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

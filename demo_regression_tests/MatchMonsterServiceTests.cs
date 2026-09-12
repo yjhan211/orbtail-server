@@ -1,5 +1,6 @@
 using game_server.matches;
 using game_server.matches.monsters;
+using game_server.players;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data;
@@ -419,6 +420,14 @@ public class MatchMonsterServiceTests
             var known = Runtime.Monsters.Entities.Keys.ToHashSet();
             using (Runtime.Enter())
             {
+                // 접촉 면역은 Player가 들므로 스냅샷의 참가자를 매치에 등록해 둔다.
+                foreach (var participant in participants)
+                {
+                    if (Runtime.GetParticipant(participant.PlayerId) == null)
+                    {
+                        Runtime.RegisterParticipant(new Player { Profile = new PlayerInfo { PlayerId = participant.PlayerId } });
+                    }
+                }
                 var contacts = _director.ProcessTick(Runtime, participants, isGameplayActive, nowUtc);
                 var spawned = Runtime.Monsters.Entities.Values.Where(monster => !known.Contains(monster.MonsterId)).ToList();
                 return new TickResult(contacts, spawned);
@@ -481,7 +490,7 @@ public class MatchMonsterServiceTests
                 var authored = GameMonsterCampData.GetAnchor(region.AreaType, campIndex);
                 if (authored == null) continue;
 
-                var inset = MatchMonsterService.InsetAnchorFromAreaEdge(authored, region.AreaType);
+                var inset = MapPathfinder.InsetCellFromAreaEdge(Config.SWARM_MATCH_MAP, authored, region.AreaType, margin);
                 int clearance = Math.Min(
                     Math.Min(inset.X - region.Start.X, region.End.X - inset.X),
                     Math.Min(inset.Y - region.Start.Y, region.End.Y - inset.Y));
