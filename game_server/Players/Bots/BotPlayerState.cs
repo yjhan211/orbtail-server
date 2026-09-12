@@ -48,8 +48,18 @@ public class BotPlayerState
     public SwarmBotMode SwarmMode { get; set; } = SwarmBotMode.None;
     public DateTime SwarmModeUntilUtc { get; set; } = DateTime.MinValue;
 
-    /// <summary>마지막 피격 시각 (#222) — 피격 중에는 이동 계획 홀드를 무시하는 판단 입력.</summary>
+    /// <summary>마지막 피격 시각 (#222) — 피격 중에는 이동 계획 홀드를 무시하고 도주·추격을 판단하는 입력.</summary>
     public DateTime LastDamagedAtUtc { get; set; } = DateTime.MinValue;
+    /// <summary>구역 기억 — 방금 떠난 구역으로 되돌아가는 왕복을 억제하는 근거.</summary>
+    public (AreaType Area, AreaType PreviousArea, DateTime LeftAtUtc)? AreaMemory { get; set; }
+    /// <summary>이번 틱 지시가 도주·대피였는가 — 왕복 억제의 유일한 예외.</summary>
+    public bool FleeDirective { get; set; }
+    /// <summary>마지막 절단 시각 — 절단 쿨다운과 절단 직후 전리품 회수 창의 기준.</summary>
+    public DateTime? LastTrailCutAtUtc { get; set; }
+    /// <summary>치명상 — 남은 체력 40% 이하에서 진입, 55% 이상에서 해제.</summary>
+    public bool Wounded { get; set; }
+    /// <summary>추격 로그 스로틀 — 같은 표적은 3초에 한 번만 남긴다. 판단은 50ms마다 돈다.</summary>
+    public Dictionary<long, DateTime> ChaseLogThrottle { get; } = new();
 
     // 유휴 감시 (#222): 6초 이상 제자리면 원인 진단 로그를 남긴다 — "가만히 서 있는 봇" 추적.
     public Vector3f? IdleWatchLastPosition { get; set; }

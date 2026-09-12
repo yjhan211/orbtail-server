@@ -297,7 +297,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.False(bot.Player.CanSleep(DateTime.UtcNow));
         Assert.Equal(101, bot.LastProximityAttackerPlayerId);
         Assert.True(bot.LastDamagedAtUtc > DateTime.MinValue);
-        Assert.True(match.BotTactics.LastDamagedAtUtc.ContainsKey(bot.PlayerId));
+        Assert.NotEqual(DateTime.MinValue, bot.LastDamagedAtUtc);
         Assert.Single(fixture.ConnectionFor(session).AttemptedProtocols, protocol => protocol == Protocol.G_TO_C_COMBAT_HIT);
     }
 

@@ -69,11 +69,21 @@ public class Player
     public PlayerOrbCollection Orbs { get; } = new();
     /// <summary>오브별 자동공격 표적·조준·발사 주기. MatchAutoAttackService가 매치 잠금 안에서 갱신한다.</summary>
     internal PlayerAutoAttackState AutoAttack { get; } = new();
+    /// <summary>회복 오브(UID·스택)별 다음 회복 시각. PlayerOrbService가 매치 잠금 안에서 갱신한다.</summary>
+    internal Dictionary<(long ItemUid, int StackIndex), DateTime> OrbRecoveryReadyAtUtc { get; } = new();
+    /// <summary>내 이동이 남긴 꼬리 경로 점. 오브 열 좌표는 이 경로 위의 거리로 정한다.</summary>
+    internal List<Vector3f> OrbTrail { get; } = new();
+    /// <summary>절단 판정용 직전 틱 위치. 첫 틱은 기록만 한다.</summary>
+    internal Vector3f? TrailLastTickPosition { get; set; }
+    /// <summary>내가 상대 오브(UID)를 마지막으로 밟은 시각 — 같은 오브 재판정 억제와 이탈 재무장의 기준.</summary>
+    internal Dictionary<long, DateTime> OrbCutLatches { get; } = new();
     /// <summary>바람 오브 UID별 다음 칼날 시각과 표적이 반경에 든 시각. 매치 잠금 안에서 접근한다.</summary>
     private readonly Dictionary<long, DateTime> _windOrbNextAttackAtUtc = new();
     private readonly Dictionary<long, DateTime> _windOrbEngagedAtUtc = new();
     /// <summary>파도 오브 UID별 다음 발동 시각. 매치 잠금 안에서 접근한다.</summary>
     private readonly Dictionary<long, DateTime> _waveOrbNextAttackAtUtc = new();
+    private DateTime? _windShockImmuneUntilUtc;
+    private DateTime? _woundUntilUtc;
     /// <summary>소환석 잔액과 성공한 소환 횟수. 비용·후보·지급 규칙은 PlayerOrbGrowthService에 있다.</summary>
     public SummonStoneState SummonStones { get; internal set; }
 
@@ -442,6 +452,23 @@ public class Player
         _windOrbEngagedAtUtc.Clear();
         _waveOrbNextAttackAtUtc.Clear();
     }
+
+    /// <summary>바람 칼날 피격 면역: 면역 창 안이면 거짓, 아니면 새 창을 열고 참.</summary>
+    internal bool TryClaimWindShock(DateTime nowUtc, double immunitySeconds)
+    {
+        if (_windShockImmuneUntilUtc.HasValue && nowUtc < _windShockImmuneUntilUtc.Value)
+        {
+            return false;
+        }
+
+        _windShockImmuneUntilUtc = nowUtc.AddSeconds(immunitySeconds);
+        return true;
+    }
+
+    /// <summary>상처: 바람 칼날에 맞으면 걸리고, 걸린 동안은 PvP 충격 치명타가 열린다.</summary>
+    internal void ApplyWound(DateTime untilUtc) => _woundUntilUtc = untilUtc;
+
+    internal bool IsWounded(DateTime nowUtc) => _woundUntilUtc.HasValue && nowUtc < _woundUntilUtc.Value;
 
     /// <summary>이동 구간에서 획득 반경에 닿은 바닥 아이템. 다음 자동 줍기 틱이 집는다.</summary>
     internal sealed record ReachableItem(long GroundItemUid, AreaType Area, Vector3f Position);

@@ -64,17 +64,22 @@ internal sealed class MatchTrailCutService(
 
         foreach (var cutter in participants)
         {
-            bool hasPreviousPosition = runtime.TrailCombat.TrailLastTickPositions.TryGetValue(cutter.PlayerId, out var previousPosition);
-            runtime.TrailCombat.TrailLastTickPositions[cutter.PlayerId] = new Vector3f(cutter.Position.X, cutter.Position.Y, 0f);
-            if (!hasPreviousPosition || !orbPointsByOwner.ContainsKey(cutter.PlayerId))
+            var cutterPlayer = runtime.GetParticipant(cutter.PlayerId);
+            if (cutterPlayer == null)
             {
                 continue;
             }
-            TryPerformSwarmTrailCut(runtime, cutter.PlayerId, cutter.Area, previousPosition!, cutter.Position, orbPointsByOwner, nowUtc, sessions);
+            var previousPosition = cutterPlayer.TrailLastTickPosition;
+            cutterPlayer.TrailLastTickPosition = new Vector3f(cutter.Position.X, cutter.Position.Y, 0f);
+            if (previousPosition == null || !orbPointsByOwner.ContainsKey(cutter.PlayerId))
+            {
+                continue;
+            }
+            TryPerformSwarmTrailCut(runtime, cutter.PlayerId, cutter.Area, previousPosition, cutter.Position, orbPointsByOwner, nowUtc, sessions);
         }
 
         var expiredPairs = new List<(long CutterId, long VictimId)>();
-        foreach (var (pair, window) in runtime.TrailCombat.CutRetaliationWindows)
+        foreach (var (pair, window) in runtime.CutRetaliationWindows)
         {
             if (nowUtc >= window.ExpiresAtUtc)
             {
@@ -84,8 +89,8 @@ internal sealed class MatchTrailCutService(
 
         foreach (var pair in expiredPairs)
         {
-            var window = runtime.TrailCombat.CutRetaliationWindows[pair];
-            runtime.TrailCombat.CutRetaliationWindows.Remove(pair);
+            var window = runtime.CutRetaliationWindows[pair];
+            runtime.CutRetaliationWindows.Remove(pair);
             AreaType? cutterArea = null;
             AreaType? victimArea = null;
             foreach (var participant in participants)
@@ -150,11 +155,11 @@ internal sealed class MatchTrailCutService(
             var ownerPosition = owner.Position;
             var ownerOrbs = runtime.GetOrbs(ownerId).GetOrderedOrbs();
             int orbCount = Math.Min(orbPoints.Count, ownerOrbs.Count);
-            bool cutBlocked = runtime.TrailCombat.CutRetaliationWindows.TryGetValue((cutterId, ownerId), out var guardOnOwner) && nowUtc < guardOnOwner.ExpiresAtUtc;
+            bool cutBlocked = runtime.CutRetaliationWindows.TryGetValue((cutterId, ownerId), out var guardOnOwner) && nowUtc < guardOnOwner.ExpiresAtUtc;
             for (int ordinal = 0; ordinal < orbCount; ordinal++)
             {
                 var orbHitPoint = new Vector3f(orbPoints[ordinal].X, orbPoints[ordinal].Y + SwarmTrailCutOrbHitYOffset, 0f);
-                bool latched = runtime.TrailCombat.OrbCutLatches.TryGetValue((cutterId, ownerOrbs[ordinal].ItemUid), out var lastLatchedAtUtc);
+                bool latched = cutter.OrbCutLatches.TryGetValue(ownerOrbs[ordinal].ItemUid, out var lastLatchedAtUtc);
                 bool withinDebounce = latched && (nowUtc - lastLatchedAtUtc).TotalSeconds < SwarmTrailCutSameOrbDebounceSeconds;
                 if (withinDebounce)
                 {
@@ -209,13 +214,13 @@ internal sealed class MatchTrailCutService(
             return;
         }
 
-        if (cutterBot != null && !botDecisions.IsSwarmBotCutAllowed(runtime, cutterId, cutterHealthBefore, nowUtc, SwarmSingleCutHealthCost))
+        if (cutterBot != null && !botDecisions.IsSwarmBotCutAllowed(cutterBot, cutterHealthBefore, nowUtc, SwarmSingleCutHealthCost))
         {
-            runtime.TrailCombat.OrbCutLatches[(cutterId, cutOrbUid)] = nowUtc;
+            cutter.OrbCutLatches[cutOrbUid] = nowUtc;
             return;
         }
 
-        runtime.TrailCombat.OrbCutLatches[(cutterId, cutOrbUid)] = nowUtc;
+        cutter.OrbCutLatches[cutOrbUid] = nowUtc;
         cutter.MarkSwarmCombat(nowUtc);
 
         var victim = runtime.GetParticipant(victimId)!;
@@ -236,16 +241,16 @@ internal sealed class MatchTrailCutService(
         }
 
         var firstDestroyedOrb = destroyedOrbs[0];
-        if (runtime.TrailCombat.CutRetaliationWindows.TryGetValue((victimId, cutterId), out var guardOnCutter) && nowUtc < guardOnCutter.ExpiresAtUtc)
+        if (runtime.CutRetaliationWindows.TryGetValue((victimId, cutterId), out var guardOnCutter) && nowUtc < guardOnCutter.ExpiresAtUtc)
         {
             guardOnCutter.Retaliated = true;
         }
 
         var guardKey = (cutterId, victimId);
-        if (!runtime.TrailCombat.CutRetaliationWindows.TryGetValue(guardKey, out var guardOnVictim))
+        if (!runtime.CutRetaliationWindows.TryGetValue(guardKey, out var guardOnVictim))
         {
-            guardOnVictim = new SwarmRetaliationWindow { OpenedAtUtc = nowUtc, OpenedArea = cutArea };
-            runtime.TrailCombat.CutRetaliationWindows[guardKey] = guardOnVictim;
+            guardOnVictim = new CutRetaliationWindow { OpenedAtUtc = nowUtc, OpenedArea = cutArea };
+            runtime.CutRetaliationWindows[guardKey] = guardOnVictim;
         }
         guardOnVictim.ExpiresAtUtc = nowUtc.AddSeconds(SwarmCutRetaliationWindowSeconds);
         combatDamage.SendSwarmRetaliationVfx(runtime, cutterId, victimId, cutArea, SwarmRingVfxKindRetaliationGuard, (float)SwarmCutRetaliationWindowSeconds, allSessions);
@@ -281,7 +286,7 @@ internal sealed class MatchTrailCutService(
         cutter.BlockHealingUntil(healLockUntil);
         if (cutterBot != null)
         {
-            runtime.BotTactics.LastTrailCutAtUtc[cutterBot.PlayerId] = nowUtc;
+            cutterBot.LastTrailCutAtUtc = nowUtc;
         }
 
         combatDamage.RecordCombatContact(runtime, victim, cutterId, nowUtc);

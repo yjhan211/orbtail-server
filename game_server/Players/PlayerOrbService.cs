@@ -42,7 +42,6 @@ internal sealed class PlayerOrbService(
             return;
         }
 
-        var nextRecoveryAtUtcByOrb = runtime.OrbRecoveryReadyAtUtc;
         var activeRecoveryOrbs = new HashSet<(long PlayerId, long ItemUid, int StackIndex)>();
         var recoveryByPlayer = new Dictionary<long, List<(ProximityCombatActor OrbActor, int Amount)>>();
 
@@ -54,11 +53,17 @@ internal sealed class PlayerOrbService(
                 continue;
             }
 
-            var recoveryKey = (orbActor.PlayerId, orbActor.WeaponItemUid, orbActor.WeaponStackIndex);
-            activeRecoveryOrbs.Add(recoveryKey);
-            if (!nextRecoveryAtUtcByOrb.TryGetValue(recoveryKey, out var nextRecoveryAtUtc))
+            var owner = runtime.GetParticipant(orbActor.PlayerId);
+            if (owner == null)
             {
-                nextRecoveryAtUtcByOrb[recoveryKey] = nowUtc.AddSeconds(OrbData.RecoveryTickSeconds);
+                continue;
+            }
+
+            var recoveryKey = (orbActor.WeaponItemUid, orbActor.WeaponStackIndex);
+            activeRecoveryOrbs.Add((orbActor.PlayerId, recoveryKey.WeaponItemUid, recoveryKey.WeaponStackIndex));
+            if (!owner.OrbRecoveryReadyAtUtc.TryGetValue(recoveryKey, out var nextRecoveryAtUtc))
+            {
+                owner.OrbRecoveryReadyAtUtc[recoveryKey] = nowUtc.AddSeconds(OrbData.RecoveryTickSeconds);
                 continue;
             }
 
@@ -67,7 +72,7 @@ internal sealed class PlayerOrbService(
                 continue;
             }
 
-            nextRecoveryAtUtcByOrb[recoveryKey] = nowUtc.AddSeconds(OrbData.RecoveryTickSeconds);
+            owner.OrbRecoveryReadyAtUtc[recoveryKey] = nowUtc.AddSeconds(OrbData.RecoveryTickSeconds);
             if (!recoveryByPlayer.TryGetValue(orbActor.PlayerId, out var dueRecoveries))
             {
                 dueRecoveries = [];
@@ -107,11 +112,14 @@ internal sealed class PlayerOrbService(
             player.Session?.TrySend(packet);
         }
 
-        foreach (var recoveryKey in nextRecoveryAtUtcByOrb.Keys.ToArray())
+        foreach (var player in runtime.GetPlayers())
         {
-            if (!activeRecoveryOrbs.Contains((recoveryKey.PlayerId, recoveryKey.ItemUid, recoveryKey.StackIndex)))
+            foreach (var recoveryKey in player.OrbRecoveryReadyAtUtc.Keys.ToArray())
             {
-                nextRecoveryAtUtcByOrb.Remove(recoveryKey);
+                if (!activeRecoveryOrbs.Contains((player.PlayerId, recoveryKey.ItemUid, recoveryKey.StackIndex)))
+                {
+                    player.OrbRecoveryReadyAtUtc.Remove(recoveryKey);
+                }
             }
         }
     }
@@ -495,7 +503,6 @@ internal sealed class PlayerOrbService(
         var alivePlayers = runtime.GetAlivePlayers();
         var activeSessions = runtime.GetSessions().Where(session => !session.IsGameEnded).ToList();
         IReadOnlyList<SwarmArenaCombatTarget>? monsterTargets = null;
-        var windAttackState = runtime.WindOrbAttacks;
         var orderedOrbs = owner.Orbs.GetOrderedOrbs();
         if (orderedOrbs.Count == 0)
         {
@@ -592,7 +599,7 @@ internal sealed class PlayerOrbService(
             {
                 foreach (var participant in playersInRadius)
                 {
-                    if (!windAttackState.TryClaimVictimShock(participant.PlayerId, nowUtc, SwarmWindBladeVictimImmuneSeconds))
+                    if (!participant.TryClaimWindShock(nowUtc, SwarmWindBladeVictimImmuneSeconds))
                     {
                         continue;
                     }
@@ -604,7 +611,7 @@ internal sealed class PlayerOrbService(
                         return;
                     }
 
-                    windAttackState.ApplyWound(participant.PlayerId, nowUtc.AddSeconds(Config.SWARM_WIND_WOUND_SECONDS));
+                    participant.ApplyWound(nowUtc.AddSeconds(Config.SWARM_WIND_WOUND_SECONDS));
                     var victimSession = participant.Session;
                     if (victimSession is not { PlayerId: not null })
                     {

@@ -117,7 +117,7 @@ public class SwarmDamagePathTests
         int cutMethodEnd = source.LastIndexOf("}", StringComparison.Ordinal);
         string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
         Assert.Contains("cutterBot != null && !botDecisions.IsSwarmBotCutAllowed(", cutBody);
-        Assert.Contains("BotTactics.LastTrailCutAtUtc[cutterBot.PlayerId] = nowUtc", cutBody);
+        Assert.Contains("cutterBot.LastTrailCutAtUtc = nowUtc", cutBody);
         // 사람 절단은 자제 규칙을 타지 않는다 — 봇 분기 안에서만 호출된다.
         Assert.Single(Regex.Matches(cutBody, @"IsSwarmBotCutAllowed\("));
 

@@ -35,8 +35,7 @@ public sealed class PlayerOrbTrailServiceTests
         var anchor = new Vector3f(0, 0, 0);
         using (MatchRuntimeStore.Enter(first))
         {
-            first.TrailCombat.OrbTrails[11] =
-                [new Vector3f(2, 0, 0), new Vector3f(4, 0, 0)];
+            firstPlayer.OrbTrail.AddRange([new Vector3f(2, 0, 0), new Vector3f(4, 0, 0)]);
             var middle = service.GetPositionAtDistance(first, firstPlayer, 3, anchor);
             var beyond = service.GetPositionAtDistance(first, firstPlayer, 6, anchor);
             Assert.Equal(3f, middle.X);

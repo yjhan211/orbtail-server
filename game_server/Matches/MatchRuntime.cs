@@ -23,12 +23,10 @@ internal sealed class MatchRuntime
     public object MatchLock { get; } = new();
     public SemaphoreSlim EntryInitializationLock { get; } = new(1, 1);
 
-    // 한 번 확정하는 시작 구성
     public bool IsSetupComplete => Volatile.Read(ref _isSetupComplete);
     public MatchMode Mode { get; private set; }
     public IReadOnlyDictionary<long, Cell> SpawnCells { get; private set; } = new Dictionary<long, Cell>();
 
-    // 사람·봇 참가자는 연결이 끊겨도 매치 정리까지 보관한다. MatchLock으로 보호한다.
     private readonly Dictionary<long, Player> _participants = new();
     private int _aliveCount;
 
@@ -65,17 +63,14 @@ internal sealed class MatchRuntime
     // 매치 식별과 수명·잠금
     public long MatchingId { get; }
     public BotPlayerManager Bots { get; }
-    public BotTacticalState BotTactics { get; } = new();
     internal SwarmBotTickMetrics BotTickMetrics { get; } = new();
     public SwarmMonsterDirector Monsters { get; }
 
     // 전투와 오브
     public MatchCombatDamageState CombatDamage { get; } = new();
-    public MatchTrailCombatState TrailCombat { get; } = new();
+    public Dictionary<(long CutterId, long VictimId), CutRetaliationWindow> CutRetaliationWindows { get; } = new();
     public MatchSunOrbAttackState SunOrbAttacks { get; }
-    public MatchWindOrbAttackState WindOrbAttacks { get; } = new();
     public List<PendingWaveAttack> PendingWaveAttacks { get; } = new();
-    public Dictionary<(long PlayerId, long ItemUid, int StackIndex), DateTime> OrbRecoveryReadyAtUtc { get; } = new();
 
     // 아이템과 재화
     public MatchGroundItemState GroundItems { get; }

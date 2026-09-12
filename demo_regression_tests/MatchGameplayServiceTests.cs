@@ -138,7 +138,7 @@ public sealed class MatchGameplayServiceTests
             Assert.True(cutter.HealLockUntilUtc >= now.AddSeconds(8));
             if (cutterId < 0)
             {
-                Assert.Equal(now, match.BotTactics.LastTrailCutAtUtc[cutterId]);
+                Assert.Equal(now, bot.LastTrailCutAtUtc);
                 Assert.True(bot.LastDamagedAtUtc >= now);
             }
         }
@@ -429,14 +429,15 @@ public sealed class MatchGameplayServiceTests
         var store = provider.GetRequiredService<MatchRuntimeStore>();
         var match = store.GetOrCreate(947705);
         var now = DateTime.UtcNow;
+        var bot = new BotPlayerState { PlayerId = 11 };
         using (MatchRuntimeStore.Enter(match))
         {
             int half = (int)(network.common.Config.MAX_HEALTH * 0.5f);
-            Assert.True(service.IsSwarmBotCutAllowed(match, 11, half + 5, now, 5));
-            Assert.False(service.IsSwarmBotCutAllowed(match, 11, half + 5, now, 6));
-            match.BotTactics.LastTrailCutAtUtc[11] = now;
-            Assert.False(service.IsSwarmBotCutAllowed(match, 11, network.common.Config.MAX_HEALTH, now.AddSeconds(5), 5));
-            Assert.True(service.IsSwarmBotCutAllowed(match, 11, network.common.Config.MAX_HEALTH, now.AddSeconds(6), 5));
+            Assert.True(service.IsSwarmBotCutAllowed(bot, half + 5, now, 5));
+            Assert.False(service.IsSwarmBotCutAllowed(bot, half + 5, now, 6));
+            bot.LastTrailCutAtUtc = now;
+            Assert.False(service.IsSwarmBotCutAllowed(bot, network.common.Config.MAX_HEALTH, now.AddSeconds(5), 5));
+            Assert.True(service.IsSwarmBotCutAllowed(bot, network.common.Config.MAX_HEALTH, now.AddSeconds(6), 5));
             match.TryMarkEnded();
         }
     }

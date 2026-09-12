@@ -77,3 +77,14 @@ public readonly record struct ProximityCombatAttack(
     Vector3f? Origin = null,
     Vector3f? AnchorPosition = null,
     int AttackerTrailOrdinal = 0);
+
+public sealed class CutRetaliationWindow
+{
+    public DateTime OpenedAtUtc;
+    public DateTime ExpiresAtUtc;
+    public int BlockedDamage;
+    public int BlockedHits;
+    public int BlockedCuts;
+    public bool Retaliated;
+    public AreaType OpenedArea;
+}

@@ -101,9 +101,7 @@ public sealed class MatchOwnedStateTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(941006);
         var second = store.GetOrCreate(941007);
-        first.OrbRecoveryReadyAtUtc[(11, 22, 0)] = DateTime.UtcNow;
         first.Monsters.NextMonsterPositionBroadcastAtUtc = DateTime.UtcNow;
-        Assert.Empty(second.OrbRecoveryReadyAtUtc);
         Assert.Equal(default, second.Monsters.NextMonsterPositionBroadcastAtUtc);
     }
 

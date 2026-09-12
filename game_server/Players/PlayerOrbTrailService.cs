@@ -86,7 +86,8 @@ internal sealed class PlayerOrbTrailService
             throw new InvalidOperationException("Orb trail operations require the match lock.");
         }
 
-        if (!runtime.TrailCombat.OrbTrails.TryGetValue(player.PlayerId, out var points) || points.Count == 0)
+        var points = player.OrbTrail;
+        if (points.Count == 0)
         {
             return new Vector3f(anchor.X, anchor.Y - targetDistance * 0.2f, 0f);
         }
@@ -148,17 +149,16 @@ internal sealed class PlayerOrbTrailService
         return destroyed;
     }
 
-    /// <summary>참가자 이동을 경로 점으로 기록한다. 정지하면 경로가 얼어 열이 남고, 순간이동 거리면 경로를 새로 시작한다. 클라 PlayerTool.UpdateOrbTrail과 같은 규칙.</summary>
     public void UpdateTrails(MatchRuntime runtime, List<PlayerPositionSnapshot> participants)
     {
         foreach (var participant in participants)
         {
-            long key = participant.PlayerId;
-            if (!runtime.TrailCombat.OrbTrails.TryGetValue(key, out var points))
+            var player = runtime.GetParticipant(participant.PlayerId);
+            if (player == null)
             {
-                points = new List<Vector3f>();
-                runtime.TrailCombat.OrbTrails[key] = points;
+                continue;
             }
+            var points = player.OrbTrail;
 
             var center = participant.Position;
             if (points.Count == 0)
@@ -180,7 +180,6 @@ internal sealed class PlayerOrbTrailService
                 points.Insert(0, new Vector3f(center.X, center.Y, 0f));
             }
 
-            var player = runtime.GetParticipant(participant.PlayerId)!;
             int trailOrbCount = Math.Max(CountOrbs(runtime, player) + 2, 4);
             float neededLength = Config.SWARM_ORB_TRAIL_FIRST_OFFSET + trailOrbCount * Config.SWARM_ORB_TRAIL_SPACING + 1f;
             float accumulated = 0f;
