@@ -252,7 +252,6 @@ internal sealed class MatchTrailCutService(
 
         foreach (var destroyedOrb in destroyedOrbs)
         {
-            runtime.TrailCombat.OrbDurabilityBonus.Remove((victimId, destroyedOrb.ItemUid));
             victim.Session?.SendOrbUpdate(destroyedOrb);
         }
 

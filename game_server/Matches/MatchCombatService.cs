@@ -18,7 +18,6 @@ internal class MatchCombatService(
     MatchCombatDamageService combatDamage,
     MatchResultService matchResults,
     PlayerOrbService playerOrbs,
-    OrbVisualStatePublisher orbVisuals,
     PlayerOrbTrailService orbTrails,
     MatchTrailCutService trailCuts,
     MatchCombatActorBuilder actorBuilder,
@@ -117,7 +116,11 @@ internal class MatchCombatService(
 
         var actors = actorBuilder.Build(runtime, players, nowUtc);
         playerOrbs.ProcessOrbRecovery(runtime, actors, nowUtc);
-        orbVisuals.Publish(runtime, actors, sessions);
+        var orbVisuals = OrbVisual.Build(runtime, actors);
+        foreach (var session in sessions)
+        {
+            session.SendOrbVisualStates(orbVisuals);
+        }
         matchResults.BroadcastOrbRankings(runtime, sessions);
         botDecisions.ProcessBotOrbGrowth(runtime, aliveBots);
         if (matchResults.TryEndOnScoreTimeout(runtime, nowUtc))

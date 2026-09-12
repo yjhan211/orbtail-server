@@ -1375,19 +1375,26 @@ public sealed class GameClientSessionPublicationTests
         using var fixture = new SessionFixture();
         var observer = fixture.CreateSession(70001, 101, (AreaType)50);
         var actor = fixture.CreateSession(70001, 102, (AreaType)50);
-        var publisher = new OrbVisualStatePublisher();
         var match = observer.Match;
         var actors = new[]
         {
-            new ProximityCombatActor(102, (AreaType)50, new Vector3f(), 107000010, 0, 0, 0, WeaponItemUid: 1, OrbEffectActive: true)
+            new ProximityCombatActor(102, (AreaType)50, new Vector3f(), 107000010, 0, 0, 0, WeaponItemUid: 1)
         };
+        void Publish(params GameClientSession[] sessions)
+        {
+            var visuals = OrbVisual.Build(match, actors);
+            foreach (var session in sessions)
+            {
+                session.SendOrbVisualStates(visuals);
+            }
+        }
         int Delivered(GameClientSession session) =>
             fixture.ConnectionFor(session).DeliveredProtocols.Count(protocol => protocol == Protocol.G_TO_C_ORB_EFFECT_STATE);
 
         using (match.Enter())
         {
-            publisher.Publish(match, actors, [observer, actor]);
-            publisher.Publish(match, actors, [observer, actor]);
+            Publish(observer, actor);
+            Publish(observer, actor);
         }
         Assert.Equal(1, Delivered(observer));
         var state = fixture.ConnectionFor(observer).DeserializeSingle<G_TO_C_ORB_EFFECT_STATE>(Protocol.G_TO_C_ORB_EFFECT_STATE);
@@ -1398,7 +1405,7 @@ public sealed class GameClientSessionPublicationTests
         var reconnected = fixture.CreateSession(70001, 101, (AreaType)50);
         using (match.Enter())
         {
-            publisher.Publish(match, actors, [reconnected, actor]);
+            Publish(reconnected, actor);
         }
         Assert.Equal(1, Delivered(reconnected));
     }

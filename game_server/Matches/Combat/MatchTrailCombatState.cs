@@ -29,9 +29,4 @@ public sealed class MatchTrailCombatState
     public readonly Dictionary<(long CutterId, long ItemUid), DateTime> OrbCutLatches = new();
     public readonly Dictionary<(long CutterId, long VictimId), SwarmRetaliationWindow>
         CutRetaliationWindows = new();
-
-    // 오브 내구 보너스 (#226 방어 강화 = 내구 모델): 기본 내구 1 + 보너스.
-    // 파괴·매치 정리에서 함께 지운다.
-    public readonly Dictionary<(long PlayerId, long ItemUid), int> OrbDurabilityBonus = new();
-
 }

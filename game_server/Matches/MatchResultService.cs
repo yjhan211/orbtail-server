@@ -173,24 +173,15 @@ internal sealed class MatchResultService(
             return false;
         }
 
-        var candidates = new List<(long PlayerId, int OrbCount, int TierSum, int DurabilityBonus, int Health)>();
+        var candidates = new List<(long PlayerId, int OrbCount, int TierSum, int Health)>();
         foreach (var player in runtime.GetAlivePlayers())
         {
             var (orbCount, tierSum) = runtime.GetOrbs(player.PlayerId).GetOrbScore();
-            int durabilityBonus = 0;
-            foreach (var ((ownerId, _), bonus) in runtime.TrailCombat.OrbDurabilityBonus)
-            {
-                if (ownerId == player.PlayerId)
-                {
-                    durabilityBonus += bonus;
-                }
-            }
-            candidates.Add((player.PlayerId, orbCount, tierSum, durabilityBonus, player.Health));
+            candidates.Add((player.PlayerId, orbCount, tierSum, player.Health));
         }
         candidates = candidates
             .OrderByDescending(candidate => candidate.OrbCount)
             .ThenByDescending(candidate => candidate.TierSum)
-            .ThenByDescending(candidate => candidate.DurabilityBonus)
             .ThenByDescending(candidate => candidate.Health)
             .ThenBy(candidate => candidate.PlayerId)
             .ToList();

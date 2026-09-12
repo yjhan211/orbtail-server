@@ -241,7 +241,26 @@ public partial class GameClientSession
         Logger.LogDebug("Sent orb update to PlayerId={PlayerId}, ItemUid={ItemUid}, ItemId={ItemId}, Count={Count}", PlayerId, item.ItemUid, item.ItemId, item.Count);
     }
 
-    internal void SendOrbVisualStateIfChanged(OrbVisualStatePublisher.OrbVisual visual)
+    internal void SendOrbVisualStates(IReadOnlyList<OrbVisual> visuals)
+    {
+        if (!PlayerId.HasValue)
+        {
+            return;
+        }
+
+        foreach (var visual in visuals)
+        {
+            if (Player.CurrentArea != visual.State.Area)
+            {
+                ForgetOrbVisualState(visual.ActorPlayerId);
+                continue;
+            }
+
+            SendOrbVisualStateIfChanged(visual);
+        }
+    }
+
+    internal void SendOrbVisualStateIfChanged(OrbVisual visual)
     {
         if (_lastSentOrbVisualStates.TryGetValue(visual.ActorPlayerId, out var previousState) && previousState == visual.State)
         {
@@ -254,11 +273,8 @@ public partial class GameClientSession
         {
             PlayerId = visual.ActorPlayerId,
             WeaponItemId = visual.State.WeaponItemId,
-            IsActive = visual.State.IsActive,
             OrbItemIds = visual.OrbItemIds.ToList(),
-            FrontOrbHp = visual.State.FrontOrbHp,
-            BodyHealth = visual.State.BodyHealth,
-            ArmorMask = visual.State.ArmorMask
+            BodyHealth = visual.State.BodyHealth
         }));
         TrySend(packet);
     }

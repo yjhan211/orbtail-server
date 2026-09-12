@@ -146,44 +146,37 @@ public class ProximityAutoCombatDataTests
     [Fact]
     public void OrbVisualPublicationCapture_DeepCopiesItemIds()
     {
-        MethodInfo capture = Assert.IsType<MethodInfo>(typeof(OrbVisualStatePublisher).GetMethod(
-            "CaptureSwarmOrbVisualItemIds",
-            BindingFlags.NonPublic | BindingFlags.Static), exactMatch: false);
-        var source = new List<int> { 107000010, 107000020, 107000030 };
-
-        var snapshot = Assert.IsType<ImmutableArray<int>>(capture.Invoke(null, [source]));
-        source[0] = 999;
-        source.Add(998);
-
-        Assert.Equal([107000010, 107000020, 107000030], snapshot.ToArray());
+        var payload = typeof(OrbVisual).GetProperty("OrbItemIds");
+        Assert.NotNull(payload);
+        Assert.Equal(typeof(ImmutableArray<int>), payload.PropertyType);
     }
 
     [Fact]
     public void OrbVisualPublication_ComputesEachActorOnceAndDelegatesSendToObserverSessions()
     {
         string root = FindRepositoryRoot();
-        string publisher = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "OrbVisualStatePublisher.cs");
+        string builder = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "OrbVisual.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatService.cs");
         string publish = ReadMethodSlice(
-            publisher,
-            "public void Publish(",
-            "private List<OrbVisual> BuildOrbVisuals(");
+            ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Orb.cs"),
+            "internal void SendOrbVisualStates(",
+            "internal void SendOrbVisualStateIfChanged(");
 
-        Assert.Contains("orbVisuals.Publish(runtime, actors, sessions);", combat);
+        AssertInOrder(
+            combat,
+            "var orbVisuals = OrbVisual.Build(runtime, actors);",
+            "session.SendOrbVisualStates(orbVisuals);");
         AssertInOrder(
             publish,
-            "var visuals = BuildOrbVisuals(runtime, actors, matchingSessions);",
-            "var recipientSnapshot = matchingSessions.ToArray();",
-            "foreach (var observer in recipientSnapshot)",
             "foreach (var visual in visuals)",
-            "if (observer.Player.CurrentArea != visual.State.Area)",
-            "observer.ForgetOrbVisualState(visual.ActorPlayerId);",
-            "observer.SendOrbVisualStateIfChanged(visual);");
-        // 퍼블리셔는 계산만 한다. 패킷 생성·전송·캐시는 세션에 있다.
-        Assert.DoesNotContain("Packet.Create", publisher);
-        Assert.DoesNotContain(".TrySend(", publisher);
-        Assert.DoesNotContain("_lastSentOrbVisualStates", publisher);
-        Assert.DoesNotContain("catch", publisher);
+            "if (Player.CurrentArea != visual.State.Area)",
+            "ForgetOrbVisualState(visual.ActorPlayerId);",
+            "SendOrbVisualStateIfChanged(visual);");
+        // 빌더는 계산만 한다. 패킷 생성·전송·캐시는 세션에 있다.
+        Assert.DoesNotContain("Packet.Create", builder);
+        Assert.DoesNotContain(".TrySend(", builder);
+        Assert.DoesNotContain("_lastSentOrbVisualStates", builder);
+        Assert.DoesNotContain("catch", builder);
     }
 
     [Fact]
@@ -218,15 +211,14 @@ public class ProximityAutoCombatDataTests
         Assert.Contains("_core.enabled = itemId > 0;", source);
     }
     [Fact]
-    public void PlayerAffinityEncounterRequiresAVisibleTargetInTheCurrentArea()
+    public void OrbEffectStatesArePrunedWhenTheTargetLeavesTheCurrentArea()
     {
         string source = ReadMapManagerSources(FindRepositoryRoot());
 
-        Assert.Contains("!IsPlayerAffinityEncounterVisible(targetPlayerId, out _)", source);
-        Assert.Contains("targetPlayer.IsEncounterVisualVisible", source);
-        Assert.Contains("return IsRemotePlayerInCurrentArea(targetPlayer);", source);
-        Assert.Contains("PruneOutOfAreaPlayerAffinityEncounterStates();", source);
+        Assert.Contains("PruneOutOfAreaOrbEffectStates();", source);
+        Assert.Contains("PruneOrbEffectStateIfOutOfArea(player);", source);
         Assert.Contains("_orbEffectStates.Remove(playerId);", source);
+        Assert.Contains("_orbEffectStates.Remove(player.Info.PlayerId);", source);
     }
 
     [Fact]

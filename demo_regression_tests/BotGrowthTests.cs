@@ -33,7 +33,6 @@ public sealed class BotGrowthTests
                 Assert.Equal(TestGameSessionServices.SummonStones(match, 1), TestGameSessionServices.SummonStones(match, -1));
             }
             Assert.Equal(3, TestGameSessionServices.Orbs(match, -1).GetOrbScore().OrbCount);
-            Assert.Empty(match.TrailCombat.OrbDurabilityBonus);
         }
     }
 
@@ -61,7 +60,6 @@ public sealed class BotGrowthTests
             Assert.Equal(0, TestGameSessionServices.SummonStones(match, -1).StoneCount);
             Assert.Single(TestGameSessionServices.Orbs(match, -1).GetAllItems(), item => item.ItemId == upgradedItemId);
             Assert.Equal(Config.SWARM_ORB_CAPACITY, TestGameSessionServices.Orbs(match, -1).GetOrbScore().OrbCount);
-            Assert.Empty(match.TrailCombat.OrbDurabilityBonus);
         }
     }
 

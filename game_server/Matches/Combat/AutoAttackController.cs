@@ -21,7 +21,6 @@ public readonly record struct ProximityCombatActor(
     int InitialBurstAttackCount = 0,
     float InitialBurstAttackIntervalMultiplier = 1f,
     float BurstRechargeSeconds = 0f,
-    bool OrbEffectActive = false,
     long WeaponItemUid = 0,
     int WeaponStackIndex = 0,
     int SunResonanceStage = 0,

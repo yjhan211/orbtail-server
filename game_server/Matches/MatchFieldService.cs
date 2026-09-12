@@ -129,7 +129,6 @@ internal class MatchFieldService(
             var destroyedOrbs = orbTrails.DestroyOrbsFromOrdinal(runtime, owner, firstClosedOrdinal);
             foreach (var orb in destroyedOrbs)
             {
-                runtime.TrailCombat.OrbDurabilityBonus.Remove((owner.PlayerId, orb.ItemUid));
                 owner.Session?.SendOrbUpdate(orb);
             }
 

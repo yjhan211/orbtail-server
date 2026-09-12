@@ -124,19 +124,11 @@ namespace network.common.data.models
     {
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("weaponItemId")] public int WeaponItemId { get; set; }
-        [Key("isActive")] public bool IsActive { get; set; }
         [Key("orbItemIds")] public List<int> OrbItemIds { get; set; } = new();
-
-        // 앞줄(최저 티어·선입) 오브의 현재 HP — 오브별 체력바 표시용 (#219). -1 = 만충 취급.
-        [Key("frontOrbHp")] public int FrontOrbHp { get; set; } = -1;
 
         // 본체 체력: 같은 구역 상대의 머리 위 게이지를 상시 구동한다 —
         // "때리면 닳는 게 보인다". -1 = 미동기(표시 유지).
         [Key("gauge")] public int BodyHealth { get; set; } = -1;
-
-        // 방어 강화(내구 2+) 오브 순번 비트마스크 (#226): 은백 링 표시의 단일 출처.
-        // OrbItemIds 순서 기준 — 64번째 이후 순번은 표시 생략(실전 상한 밖 안전 절단).
-        [Key("armorM")] public long ArmorMask { get; set; }
     }
 
 

@@ -39,7 +39,7 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string proximity = ReadNormalizedSource(
-            root, "game_server", "Matches", "Combat", "OrbVisualStatePublisher.cs");
+            root, "game_server", "Matches", "Combat", "OrbVisual.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string settlement = ReadNormalizedSource(
             root, "game_server", "Matches", "MatchFieldService.cs");
@@ -156,7 +156,7 @@ public sealed class SwarmArenaTickOrderTests
             "MonsterSnapshotPublisher.Broadcast(",
             "actorBuilder.Build(",
             "playerOrbs.ProcessOrbRecovery(",
-            "orbVisuals.Publish(",
+            "OrbVisual.Build(",
             "matchResults.BroadcastOrbRankings(",
             "botDecisions.ProcessBotOrbGrowth(",
             "matchResults.TryEndOnScoreTimeout(",
@@ -183,7 +183,7 @@ public sealed class SwarmArenaTickOrderTests
             root, "game_server", "Players", "PlayerEliminationService.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string proximity = ReadNormalizedSource(
-            root, "game_server", "Matches", "Combat", "OrbVisualStatePublisher.cs");
+            root, "game_server", "Matches", "Combat", "OrbVisual.cs");
 
         string healthNotification = ReadBracedBlockAfterMarker(
             ReadNormalizedSource(root, "game_server", "Players", "PlayerHealthService.cs"),
@@ -307,7 +307,6 @@ public sealed class SwarmArenaTickOrderTests
             "runtime.Doors.CloseDoorsForAreas(",
             "PacketMaker.G_TO_C_DOOR_STATE_UPDATE(",
             "DestroyOrbsFromOrdinal(",
-            ".OrbDurabilityBonus.Remove(",
             "SendOrbUpdate(",
             "Protocol.G_TO_C_ORB_RING_EFFECT",
             "eventLogs.LogSystem(");

@@ -40,7 +40,7 @@ public partial class GameClientSession : SessionBase
 
     private MatchRuntime? _match;
     internal Player Player = null!;
-    private readonly Dictionary<long, OrbVisualStatePublisher.OrbVisualState> _lastSentOrbVisualStates = new();
+    private readonly Dictionary<long, OrbVisualState> _lastSentOrbVisualStates = new();
 
     private int _entryCompleted;
     private int _entryFailureReported;
