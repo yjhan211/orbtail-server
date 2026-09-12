@@ -53,8 +53,6 @@ public class ProximityAutoCombatDataTests
             Assert.True(definition.AttackRange > 0f);
             Assert.True(definition.Damage > 0);
             Assert.True(definition.AttackIntervalSeconds > 0f);
-            Assert.Equal(0.25f, definition.ProjectileWidth);
-            Assert.Equal(0f, definition.EffectDurationSeconds);
         });
         foreach (int[] orbLine in orbLines)
             AssertGuardianTierGrowth(definitions.Where(definition => orbLine.Contains(definition.ItemId)).ToArray());

@@ -157,12 +157,6 @@ namespace network.common
         public static int MAX_HEALTH => SwarmConfigData.GetInt("MAX_HEALTH", 420);
 
         /// <summary>
-        /// Swarm match (#202) uses monster rewards as summon currency instead of direct orb exploration loot.
-        /// Legacy area pools stay loadable for data validation and isolated regression tests.
-        /// </summary>
-        public static readonly bool MONSTER_SUMMON_ECONOMY_ENABLED = true;
-
-        /// <summary>
         ///     스웜 아레나 매치 정원. School2 신맵은 1인 시작방 8곳 × 합류 4세트 동심원 구조라 정원 = 시작방 수.
         ///     사람은 항상 1명이고 나머지는 봇으로 채운다.
         /// </summary>

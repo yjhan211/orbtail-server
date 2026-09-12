@@ -29,17 +29,6 @@ namespace network.common.data
     public static class OrbData
     {
         public const float RecoveryTickSeconds = 5f;
-        public const float WindChargeSeconds = 2f;
-        public const float WindProjectileSpeedMultiplier = 1.25f;
-        public const float SunMarkLifetimeSeconds = 3f;
-        public const int SunMarkTriggerCount = 3;
-        public const float SunBurstDamageMultiplier = 0.75f;
-        public const float SunBurstRadius = 2.4f;
-        public const float SunFiveBurstRadiusMultiplier = 1.5f;
-        public const int SunFiveBurstMaxTargets = 2;
-        public const float WaveHitWindowSeconds = 1.5f;
-        public const float WaveCounterCooldownSeconds = 6f;
-        public const float WaveCounterDamageMultiplier = 1.25f;
         // 침수 (#268, 2026-08-25): 소용돌이 피격 시 5초 25% 감속 — 서버(봇·몹)·클라 공용.
         public const float WaveSlowSeconds = 5f;
         public const float WaveSlowMoveSpeedMultiplier = 0.75f;
@@ -51,12 +40,8 @@ namespace network.common.data
         public const float PveNeutralDamageMultiplier = 1f;
         public const float PveDisadvantageDamageMultiplier = 0.5f;
 
-        // PvP attacks are fired at the target's launch-time position. These shared
-        // timings keep the server impact check and Unity projectile presentation aligned.
+        // PvP 유도탄 속도. 서버 착탄 판정과 클라 투사체 연출이 같은 값을 쓴다.
         public const float HopeProjectileSpeed = 6f;
-        public const float ForgetProjectileSpeed = 9f;
-        public const float DespairImpactDelaySeconds = 0.8f;
-        public const float ProjectileTargetBodyRadius = 0.4f;
 
         // #229: 태양과 바람은 같은 유도탄을 사용하고 보드 패시브만 다르다. 패시브는
         // 티어 가중치가 아니라 살아 있는 오브 개수만 본다. 티어는 해당 오브의 공격만 강화한다.
@@ -201,7 +186,6 @@ namespace network.common.data
         // 공명 판정·색 순회는 공급 차단 여부와 무관하게 보유 중인 모든 색을 검사한다.
         private static readonly OrbColor[] EvolutionColors =
             new[] { OrbColor.Red, OrbColor.Green, OrbColor.Blue };
-
 
         /// <summary>
         ///     색·티어 원본은 battle_item_combat.csv color/tier 컬럼 (#292 CSV 이전).
@@ -407,7 +391,6 @@ namespace network.common.data
 
         public static int GetRecoveryAmount(int itemId) =>
             IsRecoveryOrb(itemId) ? BattleItemCombatData.Get(itemId)?.RecoveryAmount ?? 0 : 0;
-
 
         public static bool TryGetItemId(OrbColor color, int tier, out int itemId)
         {

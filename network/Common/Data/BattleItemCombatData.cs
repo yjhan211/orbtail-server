@@ -89,8 +89,6 @@ namespace network.common.data
         public float AttackRange { get; private set; }
         public int Damage { get; private set; }
         public float AttackIntervalSeconds { get; private set; }
-        public float ProjectileWidth { get; private set; }
-        public float EffectDurationSeconds { get; private set; }
         public int OrbMaxHp { get; private set; }
         public float TierScale { get; private set; }
         public float StatTierWeight { get; private set; }
@@ -109,8 +107,6 @@ namespace network.common.data
                 AttackRange = float.Parse(row["attack_range"], CultureInfo.InvariantCulture),
                 Damage = int.Parse(row["damage"], CultureInfo.InvariantCulture),
                 AttackIntervalSeconds = float.Parse(row["attack_interval_seconds"], CultureInfo.InvariantCulture),
-                ProjectileWidth = float.Parse(row["projectile_width"], CultureInfo.InvariantCulture),
-                EffectDurationSeconds = float.Parse(row["effect_duration_seconds"], CultureInfo.InvariantCulture),
                 OrbMaxHp = row.ContainsKey("orb_max_hp")
                     ? int.Parse(row["orb_max_hp"], CultureInfo.InvariantCulture)
                     : 0,
@@ -128,7 +124,6 @@ namespace network.common.data
             bool isCombatRow = definition.Color != OrbColor.Recovery;
             if (definition.ItemId <= 0 || string.IsNullOrWhiteSpace(definition.Family) ||
                 definition.Tier is < 1 or > 3 ||
-                definition.ProjectileWidth < 0f || definition.EffectDurationSeconds < 0f ||
                 definition.RecoveryAmount < 0)
             {
                 throw new ArgumentException($"Invalid battle item combat data: item_id={definition.ItemId}");
