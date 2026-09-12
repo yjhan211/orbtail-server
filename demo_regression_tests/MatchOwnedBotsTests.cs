@@ -87,13 +87,13 @@ public sealed class MatchOwnedBotsTests
         var first = store.GetOrCreate(1);
         var second = store.GetOrCreate(2);
         Assert.NotSame(first.Monsters, second.Monsters);
-        Assert.True(first.Monsters.InitializeMatching(10, DateTime.UtcNow));
-        Assert.False(first.Monsters.InitializeMatching(20, DateTime.UtcNow));
-        Assert.False(second.Monsters.HasMatching());
-        Assert.True(second.Monsters.InitializeMatching(20, DateTime.UtcNow));
+        Assert.True(first.Monsters.Initialize(DateTime.UtcNow));
+        Assert.False(first.Monsters.Initialize(DateTime.UtcNow));
+        Assert.False(second.Monsters.IsInitialized);
+        Assert.True(second.Monsters.Initialize(DateTime.UtcNow));
         using (MatchRuntimeStore.Enter(first)) first.TryMarkEnded();
-        Assert.False(first.Monsters.HasMatching());
-        Assert.True(second.Monsters.HasMatching());
+        Assert.False(first.Monsters.IsInitialized);
+        Assert.True(second.Monsters.IsInitialized);
     }
 
     [Fact]

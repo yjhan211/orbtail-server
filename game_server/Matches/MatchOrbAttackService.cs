@@ -329,7 +329,7 @@ internal sealed class MatchOrbAttackService(
                 runtime.Monsters.ReserveMonsterDamage(target.CombatTargetId, monsterDamage);
                 runtime.Monsters.RecordMonsterAttackEvent(target.CombatTargetId);
                 combatDamage.ScheduleMonsterHit(runtime, new PendingMonsterHit(target.CombatTargetId, vortex.OwnerId, monsterDamage, nowUtc));
-                runtime.Monsters.TrySlowMonster(target.CombatTargetId, OrbData.WaveSlowSeconds, nowUtc);
+                runtime.Monsters.ApplySlow(target.CombatTargetId, OrbData.WaveSlowSeconds, nowUtc);
                 hitCount++;
 
                 int monsterId = runtime.Monsters.GetMonsterIdForCombatTarget(target.CombatTargetId);

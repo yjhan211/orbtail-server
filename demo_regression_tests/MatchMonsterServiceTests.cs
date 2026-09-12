@@ -211,7 +211,6 @@ public class MatchMonsterServiceTests
             Assert.Equal(10, damage.Damage);
             Assert.Equal(1, damage.TargetPlayerId);
         });
-        Assert.Equal(damageEvents.Count, manager.GetSummary().HitsTaken);
         // 무적창(0.6초)보다 촘촘히 맞을 수 없다 — 8.75초 관찰이면 상한 15대다 (#229).
         Assert.InRange(damageEvents.Count, 1, 15);
     }
@@ -257,7 +256,6 @@ public class MatchMonsterServiceTests
         Assert.True(result.Applied);
         Assert.True(result.Killed);
         Assert.Equal(target.MonsterId, result.MonsterId);
-        Assert.Equal(1, manager.GetSummary().Kills);
         Assert.DoesNotContain(
             manager.GetCombatTargets(),
             candidate => candidate.CombatTargetId == target.CombatTargetId);
@@ -404,7 +402,7 @@ public class MatchMonsterServiceTests
         public Arena(long matchingId)
         {
             Runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(matchingId);
-            Assert.True(Runtime.Monsters.InitializeMatching(1, StartUtc));
+            Assert.True(Runtime.Monsters.Initialize(StartUtc));
         }
 
         public MatchRuntime Runtime { get; }
@@ -414,7 +412,7 @@ public class MatchMonsterServiceTests
             _lastNow = nowUtc;
             using (Runtime.Enter())
             {
-                return _director.Tick(Runtime, participants, isGameplayActive, nowUtc);
+                return _director.ProcessTick(Runtime, participants, isGameplayActive, nowUtc);
             }
         }
 
@@ -426,11 +424,9 @@ public class MatchMonsterServiceTests
             }
         }
 
-        public IReadOnlyList<MonsterRuntimeInfo> GetVisualStates() => Runtime.Monsters.GetVisualStates();
+        public IReadOnlyList<MonsterRuntimeInfo> GetVisualStates() => Runtime.Monsters.Entities.Values.Select(monster => monster.ToMonsterRuntimeInfo()).ToList();
 
         public IReadOnlyList<MonsterCombatTarget> GetCombatTargets() => Runtime.Monsters.GetCombatTargets(_lastNow);
-
-        public MonsterSummary GetSummary() => Runtime.Monsters.GetSummary();
     }
 
     private static Vector3f AreaCenter(AreaType area) =>

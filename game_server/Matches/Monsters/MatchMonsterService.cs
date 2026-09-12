@@ -17,7 +17,7 @@ internal sealed class MatchMonsterService(MonsterSupplyService supply, MonsterMo
     public static bool IsCombatTargetId(long actorId) => actorId < CombatTargetIdUpperBound;
     private static int GetEscalationStage(double elapsedSeconds) => elapsedSeconds >= EscalationStage2AtSeconds ? 2 : elapsedSeconds >= EscalationStage1AtSeconds ? 1 : 0;
 
-    public MonsterTickResult Tick(MatchRuntime runtime, IReadOnlyCollection<PlayerPositionSnapshot> participants, bool isGameplayActive, DateTime nowUtc)
+    public MonsterTickResult ProcessTick(MatchRuntime runtime, IReadOnlyCollection<PlayerPositionSnapshot> participants, bool isGameplayActive, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -25,7 +25,7 @@ internal sealed class MatchMonsterService(MonsterSupplyService supply, MonsterMo
         }
         var result = new MonsterTickResult();
         var state = runtime.Monsters;
-        if (!state.HasMatching())
+        if (!state.IsInitialized)
         {
             return result;
         }
@@ -79,12 +79,6 @@ internal sealed class MatchMonsterService(MonsterSupplyService supply, MonsterMo
                 state.ContactImmuneUntilUtc[participant.PlayerId] = now.AddSeconds(ContactImmunitySeconds);
                 monster.Aggro = true;
                 monster.ChaseTargetPlayerId = participant.PlayerId;
-                if (participant.PlayerId == state.HumanPlayerId)
-                {
-                    state.HitsTaken++;
-                    state.InsigniaHits[monster.Insignia] = state.InsigniaHits.GetValueOrDefault(monster.Insignia) + 1;
-                }
-
                 result.PlayerDamage.Add(new MonsterContactDamage(monster.MonsterId, participant.PlayerId, monster.Area, monster.ContactDamageValue));
                 bool waveInsignia = monster.Insignia == MonsterInsignia.Wave;
                 if (waveInsignia || monster.Kind == MonsterKind.Bowler)
@@ -136,12 +130,12 @@ internal sealed class MatchMonsterService(MonsterSupplyService supply, MonsterMo
             throw new InvalidOperationException("Match monster service requires the match lock.");
         }
         var state = runtime.Monsters;
-        if (damage <= 0 || !state.HasMatching())
+        if (damage <= 0 || !state.IsInitialized)
         {
             return MonsterDamageResult.None;
         }
 
-        var monster = state.Entities.Values.FirstOrDefault(candidate => candidate.CombatTargetId == combatTargetId);
+        var monster = state.FindByCombatTarget(combatTargetId);
         if (monster != null)
         {
             monster.PendingDamage = Math.Max(0, monster.PendingDamage - damage);
@@ -177,10 +171,6 @@ internal sealed class MatchMonsterService(MonsterSupplyService supply, MonsterMo
             var diedAtUtc = nowUtc;
             monster.Alive = false;
             monster.DiedAtUtc = diedAtUtc;
-            if (attackerPlayerId == state.HumanPlayerId)
-            {
-                state.Kills++;
-            }
             monsterInfo = monster.ToMonsterRuntimeInfo();
             monsterInfo.SummonStoneReward = supply.ConsumeSupplyStoneBudget(runtime, monster, diedAtUtc);
         }

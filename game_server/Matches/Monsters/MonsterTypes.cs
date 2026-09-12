@@ -47,11 +47,3 @@ public readonly record struct MonsterCombatTarget(
     AreaType Area,
     Vector3f Position,
     int MonsterId);
-
-public readonly record struct MonsterSummary(
-    int HitsTaken,
-    int Kills,
-    IReadOnlyDictionary<string, int> InsigniaHits)
-{
-    public static MonsterSummary Empty => new(0, 0, new Dictionary<string, int>());
-}

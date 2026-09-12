@@ -53,13 +53,9 @@ internal class MatchCombatService(
             return;
         }
 
-        if (!runtime.Monsters.HasMatching())
+        if (!runtime.Monsters.IsInitialized)
         {
-            long initialPlayerId = players[0].PlayerId;
-            if (!runtime.Monsters.InitializeMatching(initialPlayerId, DateTime.UtcNow))
-            {
-                return;
-            }
+            runtime.Monsters.Initialize(DateTime.UtcNow);
         }
 
         var nowUtc = DateTime.UtcNow;
@@ -74,7 +70,7 @@ internal class MatchCombatService(
             participants.Add(new PlayerPositionSnapshot(player.PlayerId, player.CurrentArea, player.Position));
         }
 
-        var tick = monsters.Tick(runtime, participants, runtime.IsGameplayActive(), nowUtc);
+        var tick = monsters.ProcessTick(runtime, participants, runtime.IsGameplayActive(), nowUtc);
 
         if (!runtime.IsGameplayActive())
         {

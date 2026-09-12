@@ -696,8 +696,15 @@ internal sealed class BotDecisionService(
 
         // 마른 방 탈출: 현재 구역에 살아있는 몹이 없으면
         //    몹이 남은 공급 구역으로 이주 — 스폰이 멈춘 종반에는 지시 없이 배회(디렉터 몫).
-        bool currentAreaHasSupply = runtime.Monsters.GetVisualStates()
-            .Any(monster => monster.IsAlive && monster.AreaType == bot.Player.CurrentArea);
+        bool currentAreaHasSupply = false;
+        foreach (var monster in runtime.Monsters.Entities.Values)
+        {
+            if (monster.Alive && monster.Area == bot.Player.CurrentArea)
+            {
+                currentAreaHasSupply = true;
+                break;
+            }
+        }
         if (!currentAreaHasSupply &&
             TryFindNearestSwarmSupplyMonster(runtime, bot, out var migrateArea,
                 out var migratePosition))
@@ -723,18 +730,18 @@ internal sealed class BotDecisionService(
         area = AreaType.None;
         position = null!;
         float bestSquared = float.MaxValue;
-        foreach (var monster in runtime.Monsters.GetVisualStates())
+        foreach (var monster in runtime.Monsters.Entities.Values)
         {
-            if (!monster.IsAlive || IsSwarmAreaOutside(runtime, monster.AreaType))
+            if (!monster.Alive || IsSwarmAreaOutside(runtime, monster.Area))
                 continue;
-            float dx = monster.PositionX - bot.Player.Position!.X;
-            float dy = monster.PositionY - bot.Player.Position!.Y;
+            float dx = monster.Position.X - bot.Player.Position!.X;
+            float dy = monster.Position.Y - bot.Player.Position!.Y;
             float distanceSquared = dx * dx + dy * dy;
             if (distanceSquared >= bestSquared)
                 continue;
             bestSquared = distanceSquared;
-            area = monster.AreaType;
-            position = new Vector3f(monster.PositionX, monster.PositionY, 0f);
+            area = monster.Area;
+            position = new Vector3f(monster.Position.X, monster.Position.Y, 0f);
         }
 
         return position != null;
@@ -884,15 +891,15 @@ internal sealed class BotDecisionService(
 
         if (includeMonstersAsStronger)
         {
-            foreach (var monster in runtime.Monsters.GetVisualStates())
+            foreach (var monster in runtime.Monsters.Entities.Values)
             {
-                if (!monster.IsAlive) continue;
-                float dx = monster.PositionX - bot.Player.Position!.X;
-                float dy = monster.PositionY - bot.Player.Position!.Y;
+                if (!monster.Alive) continue;
+                float dx = monster.Position.X - bot.Player.Position!.X;
+                float dy = monster.Position.Y - bot.Player.Position!.Y;
                 float distanceSquared = dx * dx + dy * dy;
                 if (distanceSquared >= bestStrongerDistanceSquared) continue;
                 bestStrongerDistanceSquared = distanceSquared;
-                nearestStronger = new Vector3f(monster.PositionX, monster.PositionY, 0f);
+                nearestStronger = new Vector3f(monster.Position.X, monster.Position.Y, 0f);
             }
         }
 
