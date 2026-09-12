@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using game_server.matches.monsters;
 using game_server.players;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -107,11 +106,11 @@ public partial class GameClientSession
         TrySend(packet);
     }
 
-    internal void SendMonsterSnapshot(IReadOnlyList<MonsterAreaSnapshot> snapshots, bool preMatch)
+    internal void SendMonsterSnapshot(IReadOnlyDictionary<AreaType, List<MonsterRuntimeInfo>> snapshotsByArea, bool preMatch)
     {
-        foreach (var snapshot in snapshots)
+        foreach (var (area, monsters) in snapshotsByArea)
         {
-            if (!preMatch && Player.CurrentArea != snapshot.Area)
+            if (!preMatch && Player.CurrentArea != area)
             {
                 continue;
             }
@@ -119,7 +118,7 @@ public partial class GameClientSession
             using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_SNAPSHOT);
             packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_SNAPSHOT
             {
-                Monsters = snapshot.Monsters
+                Monsters = monsters
             }));
             TrySend(packet);
         }

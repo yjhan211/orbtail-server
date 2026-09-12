@@ -120,6 +120,30 @@ public sealed class MatchMonsterState
         return states;
     }
 
+    /// <summary>구역별 스냅샷 전송용. 구역이 없는 개체는 빼고, 구역 안은 몬스터 ID순으로 정렬한다.</summary>
+    public IReadOnlyDictionary<AreaType, List<MonsterRuntimeInfo>> GetVisualStatesByArea()
+    {
+        var statesByArea = new Dictionary<AreaType, List<MonsterRuntimeInfo>>();
+        foreach (var monster in Entities.Values)
+        {
+            if (monster.MonsterId <= 0 || monster.Area == AreaType.None)
+            {
+                continue;
+            }
+            if (!statesByArea.TryGetValue(monster.Area, out var areaStates))
+            {
+                areaStates = new List<MonsterRuntimeInfo>();
+                statesByArea[monster.Area] = areaStates;
+            }
+            areaStates.Add(monster.ToMonsterRuntimeInfo());
+        }
+        foreach (var areaStates in statesByArea.Values)
+        {
+            areaStates.Sort(static (left, right) => left.MonsterId.CompareTo(right.MonsterId));
+        }
+        return statesByArea;
+    }
+
     public IReadOnlyList<MonsterCombatTarget> GetCombatTargets(DateTime nowUtc)
     {
         var targets = new List<MonsterCombatTarget>();

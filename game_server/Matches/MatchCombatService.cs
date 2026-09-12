@@ -270,7 +270,7 @@ internal class MatchCombatService(
 
     private void SendMonsterSnapshots(MatchRuntime runtime, List<GameClientSession> sessions, bool preMatch)
     {
-        var snapshots = MonsterSnapshotBatcher.GroupByArea(runtime.Monsters.GetVisualStates());
+        var snapshots = runtime.Monsters.GetVisualStatesByArea();
         foreach (var session in sessions)
         {
             session.SendMonsterSnapshot(snapshots, preMatch);
