@@ -23,7 +23,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(composition,
             "services.AddSingleton<Func<MatchRuntime, TimeProvider, MatchTickLoop>>",
             "return (runtime, clock) =>",
-            "entryFailureHandler, combat, field, botMovement, botDecisions, clock);",
+            "entryFailureHandler, combat, field, botMovement, botBehavior, clock);",
 
             "services.AddSingleton<MatchTickService>");
         AssertInOrder(runner,
@@ -75,7 +75,7 @@ public sealed class SwarmArenaTickOrderTests
             "if (currentEnvironmentInterval > _lastEnvironmentInterval)",
             "field.ProcessDamageTick(runtime);",
             "runtime.IsEnded ||",
-            "botMovement.ProcessTick(runtime, botPlayerId => botDecisions.DecideMovement(runtime, botPlayerId));");
+            "botMovement.ProcessTick(runtime, botPlayerId => botBehavior.DecideMovement(runtime, botPlayerId));");
 
         string matchingSettlement = ReadMethodSlice(
             settlement,
@@ -149,15 +149,15 @@ public sealed class SwarmArenaTickOrderTests
             "playerOrbs.ActivateWindOrbs(",
             "ProcessSunBurns(",
             "ApplySwarmParticipantDamage(",
-            "botDecisions.UpdateSleep(",
+            "botBehavior.UpdateSleep(",
             "ApplySleepRecovery(",
-            "ProcessSwarmBotDoorUnlocks(",
+            "ProcessDoorInteractions(",
             "SendMonsterSnapshots(",
             "actorBuilder.Build(",
             "playerOrbs.ProcessOrbRecovery(",
             "MatchOrbVisual.Build(",
             "matchResults.BroadcastOrbRankings(",
-            "botDecisions.ProcessBotOrbGrowth(",
+            "botBehavior.ProcessOrbGrowth(",
             "matchResults.TryEndOnScoreTimeout(",
             "ProcessPendingMonsterHits(",
             "ProcessSunCrossfires(",
@@ -242,18 +242,18 @@ public sealed class SwarmArenaTickOrderTests
     public void GrowthFlow_OnlyBotsChooseSummonOrUpgrade()
     {
         string root = FindRepositoryRoot();
-        string source = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotDecisionService.cs");
+        string source = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotBehaviorService.cs");
         string tickBody = ReadMethodSlice(
             source,
-            "public void ProcessBotOrbGrowth(",
-            "public void ProcessSwarmBotDoorUnlocks(");
+            "public void ProcessOrbGrowth(",
+            "public void ProcessDoorInteractions(");
         Assert.DoesNotContain("public void HandlePick(", source);
 
         AssertInOrder(
             tickBody,
             "foreach (var bot in aliveBots)",
             "Summon(",
-            "TryUpgradeForBot(");
+            "TryUpgradePreferredOrb(");
         Assert.DoesNotContain("foreach (var session in aliveSessions)", tickBody);
         Assert.DoesNotContain("SendSwarmGrowthOffer", tickBody);
         Assert.DoesNotContain("OfferId", tickBody);
@@ -279,7 +279,7 @@ public sealed class SwarmArenaTickOrderTests
         string root = FindRepositoryRoot();
         string composition = ReadNormalizedSource(root, "game_server", "Program.cs");
         string field = ReadNormalizedSource(root, "game_server", "Matches", "MatchFieldService.cs");
-        Assert.Contains("combat, field, botMovement, botDecisions, clock)", composition);
+        Assert.Contains("combat, field, botMovement, botBehavior, clock)", composition);
         string tick = ReadMethodSlice(
             field,
             "public void ProcessClosureTick(",

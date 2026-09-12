@@ -211,7 +211,7 @@ public sealed class MatchGameplayServiceTests
     public void BotSleepChecksParticipantsWithoutSessionsAndIgnoresEliminatedPlayers(long enemyId)
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var service = provider.GetRequiredService<BotDecisionService>();
+        var service = provider.GetRequiredService<BotBehaviorService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947799);
         var bot = new Bot
         {
@@ -302,11 +302,11 @@ public sealed class MatchGameplayServiceTests
     public void Composition_SharesOneCombatServiceWithoutDependingBackOnHost()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var decisions = provider.GetRequiredService<BotDecisionService>();
+        var decisions = provider.GetRequiredService<BotBehaviorService>();
         var combat = provider.GetRequiredService<MatchCombatService>();
         var store = provider.GetRequiredService<MatchRuntimeStore>();
         Assert.Same(combat, provider.GetRequiredService<MatchCombatService>());
-        Assert.Same(decisions, Read<BotDecisionService>(combat));
+        Assert.Same(decisions, Read<BotBehaviorService>(combat));
         Assert.DoesNotContain(Fields(combat), field => field.FieldType == typeof(GameServer));
         Assert.DoesNotContain(Fields(decisions), field =>
             field.FieldType == typeof(GameServer) || field.FieldType == typeof(MatchCombatService));
@@ -336,7 +336,7 @@ public sealed class MatchGameplayServiceTests
     public void BotSleepUsesSharedWarmupRecoveryAndCombatLock()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var service = provider.GetRequiredService<BotDecisionService>();
+        var service = provider.GetRequiredService<BotBehaviorService>();
         var store = provider.GetRequiredService<MatchRuntimeStore>();
         var match = store.GetOrCreate(947703);
         var bot = new Bot { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA } };
@@ -368,7 +368,7 @@ public sealed class MatchGameplayServiceTests
     public void BotSleepWakesForDangerAndFullHealthAndRespectsHealingLock()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var service = provider.GetRequiredService<BotDecisionService>();
+        var service = provider.GetRequiredService<BotBehaviorService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947704);
         var bot = new Bot { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA } };
         var enemy = new Bot { PlayerId = -12 };
@@ -422,7 +422,7 @@ public sealed class MatchGameplayServiceTests
     public void BotCut_UsesProvidedCostAndMatchCooldown()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var service = provider.GetRequiredService<BotDecisionService>();
+        var service = provider.GetRequiredService<BotBehaviorService>();
         var store = provider.GetRequiredService<MatchRuntimeStore>();
         var match = store.GetOrCreate(947705);
         var now = DateTime.UtcNow;
@@ -430,11 +430,11 @@ public sealed class MatchGameplayServiceTests
         using (MatchRuntimeStore.Enter(match))
         {
             int half = (int)(network.common.Config.MAX_HEALTH * 0.5f);
-            Assert.True(service.IsSwarmBotCutAllowed(bot, half + 5, now, 5));
-            Assert.False(service.IsSwarmBotCutAllowed(bot, half + 5, now, 6));
+            Assert.True(service.CanCutTrail(bot, half + 5, now, 5));
+            Assert.False(service.CanCutTrail(bot, half + 5, now, 6));
             bot.LastTrailCutAtUtc = now;
-            Assert.False(service.IsSwarmBotCutAllowed(bot, network.common.Config.MAX_HEALTH, now.AddSeconds(5), 5));
-            Assert.True(service.IsSwarmBotCutAllowed(bot, network.common.Config.MAX_HEALTH, now.AddSeconds(6), 5));
+            Assert.False(service.CanCutTrail(bot, network.common.Config.MAX_HEALTH, now.AddSeconds(5), 5));
+            Assert.True(service.CanCutTrail(bot, network.common.Config.MAX_HEALTH, now.AddSeconds(6), 5));
             match.TryMarkEnded();
         }
     }

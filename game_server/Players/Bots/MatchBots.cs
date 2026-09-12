@@ -6,8 +6,6 @@ using network.common.data.models;
 
 namespace game_server.players.bots;
 
-public readonly record struct SwarmBotDodgeAdvice(float DirectionX, float DirectionY, float HoldSeconds);
-
 /// <summary>
 ///     매치 하나의 봇 등록·조회와 경로 재계산 순서를 보관한다.
 ///     호출자는 매치 잠금을 보유하며, 행동 결정과 실제 이동은 별도 서비스가 처리한다.

@@ -136,14 +136,14 @@ public sealed class SwarmBotMovementPlanTests
             "combat.ProcessTick(runtime);",
             "!isGameplayActive",
             "!runtime.Bots.HasBots()",
-            "botMovement.ProcessTick(runtime, botPlayerId => botDecisions.DecideMovement(runtime, botPlayerId));");
+            "botMovement.ProcessTick(runtime, botPlayerId => botBehavior.DecideMovement(runtime, botPlayerId));");
         AssertInOrder(
             process,
             "runtime.GetSessions()",
             "CaptureSwarmBotObservers(matchingId, sessionSnapshot)",
             "PrepareMovementTick(runtime,",
             "DispatchSwarmBotMovementPlan(plan)",
-            "BotTickMetrics.Record(",
+            "BotMovementMetrics.Record(",
             "PublishBotMovementMetrics(batch)");
         Assert.DoesNotContain("session.Player.MapId", process);
         Assert.DoesNotContain(".TrySend(", process);

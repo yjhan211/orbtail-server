@@ -44,8 +44,8 @@ public class Bot
     /// <summary>Room goal retained while the bot is travelling for loot, an interaction, or a target.</summary>
     public AreaType MovementDestination { get; set; } = AreaType.None;
 
-    public SwarmBotMode SwarmMode { get; set; } = SwarmBotMode.None;
-    public DateTime SwarmModeUntilUtc { get; set; } = DateTime.MinValue;
+    public BotMovementMode MovementMode { get; set; } = BotMovementMode.None;
+    public DateTime MovementModeUntilUtc { get; set; } = DateTime.MinValue;
 
     /// <summary>마지막 피격 시각 (#222) — 피격 중에는 이동 계획 홀드를 무시하고 도주·추격을 판단하는 입력.</summary>
     public DateTime LastDamagedAtUtc { get; set; } = DateTime.MinValue;

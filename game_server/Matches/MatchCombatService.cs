@@ -24,7 +24,7 @@ internal class MatchCombatService(
     MatchCombatActorBuilder actorBuilder,
     MatchAutoAttackService autoAttacks,
     MatchOrbAttackService orbAttacks,
-    BotDecisionService botDecisions,
+    BotBehaviorService botBehavior,
     MonsterCombatService monsterCombat,
     MatchMonsterSpawnService monsterSpawns,
     MonsterMovementService monsterMovement)
@@ -159,7 +159,7 @@ internal class MatchCombatService(
         }
 
         aliveBots.RemoveAll(bot => bot.Player.IsEliminated);
-        botDecisions.UpdateSleep(runtime, aliveBots, nowUtc);
+        botBehavior.UpdateSleep(runtime, aliveBots, nowUtc);
         healthService.ApplyPeriodicBuffs(runtime, players, nowUtc);
         if (runtime.IsEnded)
         {
@@ -167,7 +167,7 @@ internal class MatchCombatService(
         }
         players.RemoveAll(player => player.IsEliminated);
         healthService.ApplySleepRecovery(runtime, players, nowUtc);
-        botDecisions.ProcessSwarmBotDoorUnlocks(runtime, aliveBots, sessions, nowUtc);
+        botBehavior.ProcessDoorInteractions(runtime, aliveBots, sessions, nowUtc);
         if (TryClaimSnapshotSlot(runtime, nowUtc))
         {
             SendMonsterSnapshots(runtime, sessions, preMatch: false);
@@ -181,7 +181,7 @@ internal class MatchCombatService(
             session.SendOrbVisualStates(orbVisuals);
         }
         matchResults.BroadcastOrbRankings(runtime, sessions);
-        botDecisions.ProcessBotOrbGrowth(runtime, aliveBots);
+        botBehavior.ProcessOrbGrowth(runtime, aliveBots);
         if (matchResults.TryEndOnScoreTimeout(runtime, nowUtc))
         {
             return;

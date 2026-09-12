@@ -17,7 +17,7 @@ internal sealed class MatchTrailCutService(
     PlayerOrbTrailService orbTrails,
     MatchCombatDamageService combatDamage,
     PlayerHealthService healthService,
-    BotDecisionService botDecisions)
+    BotBehaviorService botBehavior)
 {
     private const float SwarmTrailCutMaxSegmentLength = 2f;
     private const float SwarmTrailCutMinSegmentLengthSquared = 0.0004f;
@@ -194,7 +194,7 @@ internal sealed class MatchTrailCutService(
             return;
         }
 
-        if (cutterBot != null && !botDecisions.IsSwarmBotCutAllowed(cutterBot, cutterHealthBefore, nowUtc, SwarmSingleCutHealthCost))
+        if (cutterBot != null && !botBehavior.CanCutTrail(cutterBot, cutterHealthBefore, nowUtc, SwarmSingleCutHealthCost))
         {
             cutter.OrbCutLatches[cutOrbUid] = nowUtc;
             return;

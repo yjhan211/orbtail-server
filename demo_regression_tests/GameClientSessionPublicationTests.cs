@@ -996,7 +996,7 @@ public sealed class GameClientSessionPublicationTests
         string doors = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Interactions.cs");
         string connection = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatService.cs");
-        string bots = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotDecisionService.cs");
+        string bots = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotBehaviorService.cs");
         string botPickup = ReadNormalizedSource(root, "game_server", "Players", "PlayerPickupService.cs");
 
         Assert.DoesNotContain("AsyncLocal", session);

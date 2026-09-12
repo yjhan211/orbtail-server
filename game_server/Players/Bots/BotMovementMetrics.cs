@@ -8,7 +8,7 @@ namespace game_server.players.bots;
 ///     잠금 안에서만 수행한다. 200틱마다
 ///     불변 배치를 내보내고 창을 비운다.
 /// </summary>
-internal sealed class SwarmBotTickMetrics
+internal sealed class BotMovementMetrics
 {
     public const int WindowSize = 200;
 
@@ -22,7 +22,7 @@ internal sealed class SwarmBotTickMetrics
     public int SampleCount => _tickSamples.Count;
 
     /// <summary>완료한 틱을 기록한다 (매치 잠금 안). 창이 차면 배치를 돌려주고 창을 비운다.</summary>
-    public SwarmBotTickMetricsBatch? Record(long matchingId, SwarmBotTickSample sample)
+    public BotMovementMetricsBatch? Record(long matchingId, BotMovementSample sample)
     {
         ArgumentNullException.ThrowIfNull(sample);
         _tickSamples.Add(sample.TotalElapsedMilliseconds);
@@ -35,7 +35,7 @@ internal sealed class SwarmBotTickMetrics
         if (_tickSamples.Count < WindowSize)
             return null;
 
-        var batch = new SwarmBotTickMetricsBatch(
+        var batch = new BotMovementMetricsBatch(
             matchingId,
             _tickSamples.ToImmutableArray(),
             _snapshotSamples.ToImmutableArray(),
@@ -55,14 +55,14 @@ internal sealed class SwarmBotTickMetrics
     }
 }
 
-internal sealed record SwarmBotTickSample(
+internal sealed record BotMovementSample(
     double TotalElapsedMilliseconds,
     double SnapshotElapsedMilliseconds,
     double PlanningElapsedMilliseconds,
     double WalkingElapsedMilliseconds,
     double BroadcastElapsedMilliseconds);
 
-internal sealed record SwarmBotTickMetricsBatch(
+internal sealed record BotMovementMetricsBatch(
     long MatchingId,
     ImmutableArray<double> TickSamples,
     ImmutableArray<double> SnapshotSamples,

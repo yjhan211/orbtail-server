@@ -105,7 +105,7 @@ public class SwarmDamagePathTests
         string source = File.ReadAllText(
             Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "MatchTrailCutService.cs"));
         string botSource = File.ReadAllText(
-            Path.Combine(FindRepositoryRoot(), "game_server", "Players", "Bots", "BotDecisionService.cs"));
+            Path.Combine(FindRepositoryRoot(), "game_server", "Players", "Bots", "BotBehaviorService.cs"));
 
         // ① 절단 자제: 봇 전용, 래치 앞에서 걸린다.
         Assert.Contains("SwarmBotCutMinHealthRatio = 0.5f", botSource);
@@ -113,10 +113,10 @@ public class SwarmDamagePathTests
         int cutMethodStart = source.IndexOf("internal void TryPerformSwarmTrailCut(", StringComparison.Ordinal);
         int cutMethodEnd = source.LastIndexOf("}", StringComparison.Ordinal);
         string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
-        Assert.Contains("cutterBot != null && !botDecisions.IsSwarmBotCutAllowed(", cutBody);
+        Assert.Contains("cutterBot != null && !botBehavior.CanCutTrail(", cutBody);
         Assert.Contains("cutterBot.LastTrailCutAtUtc = nowUtc", cutBody);
         // 사람 절단은 자제 규칙을 타지 않는다 — 봇 분기 안에서만 호출된다.
-        Assert.Single(Regex.Matches(cutBody, @"IsSwarmBotCutAllowed\("));
+        Assert.Single(Regex.Matches(cutBody, @"CanCutTrail\("));
 
         // ② 도주 임계: 강자 판정과 피격 반응 둘 다 ×1.5를 쓴다.
         Assert.Contains("SwarmBotFleePowerRatio = 1.5f", botSource);
@@ -163,7 +163,7 @@ public class SwarmDamagePathTests
         Assert.Contains("ApplySleepRecovery(runtime,", combat);
         // 봇 파셜(#312)도 같은 계약을 진다.
         Assert.DoesNotContain("BreakSwarmSleep", File.ReadAllText(
-            Path.Combine(root, "game_server", "Players", "Bots", "BotDecisionService.cs")));
+            Path.Combine(root, "game_server", "Players", "Bots", "BotBehaviorService.cs")));
     }
 
     /// <summary>

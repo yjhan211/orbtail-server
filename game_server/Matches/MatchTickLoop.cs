@@ -27,7 +27,7 @@ internal sealed class MatchTickLoop(
     MatchCombatService combat,
     MatchFieldService field,
     BotMovementService botMovement,
-    BotDecisionService botDecisions,
+    BotBehaviorService botBehavior,
     TimeProvider? timeProvider = null)
 {
     private readonly PeriodicTimer _timer = new(TimeSpan.FromMilliseconds(50), timeProvider ?? TimeProvider.System);
@@ -134,6 +134,6 @@ internal sealed class MatchTickLoop(
             return;
         }
 
-        botMovement.ProcessTick(runtime, botPlayerId => botDecisions.DecideMovement(runtime, botPlayerId));
+        botMovement.ProcessTick(runtime, botPlayerId => botBehavior.DecideMovement(runtime, botPlayerId));
     }
 }

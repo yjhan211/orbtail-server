@@ -29,7 +29,7 @@ internal class BotMovementService(
     public static readonly TimeSpan SummonStoneBotReactionDelay = TimeSpan.FromSeconds(2.5);
 
     /// <summary>매치 잠금 안에서 봇 걸음을 확정하고 같은 순서로 바로 송신한다.</summary>
-    public virtual void ProcessTick(MatchRuntime runtime, Func<long, SwarmBotDirective> resolveDirective)
+    public virtual void ProcessTick(MatchRuntime runtime, Func<long, BotMovementDecision> decideMovement)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -52,7 +52,7 @@ internal class BotMovementService(
             runtime.Closures, runtime.GroundItems,
             runtime.GetAlivePlayers(),
             observers,
-            resolveDirective);
+            decideMovement);
 
         long dispatchStartedAt = Stopwatch.GetTimestamp();
         DispatchSwarmBotMovementPlan(plan);
@@ -60,9 +60,9 @@ internal class BotMovementService(
             plan.DispatchPreparationElapsedMilliseconds +
             Stopwatch.GetElapsedTime(dispatchStartedAt).TotalMilliseconds;
 
-        SwarmBotTickMetricsBatch? batch = runtime.BotTickMetrics.Record(
+        BotMovementMetricsBatch? batch = runtime.BotMovementMetrics.Record(
             matchingId,
-            new SwarmBotTickSample(
+            new BotMovementSample(
                 Stopwatch.GetElapsedTime(tickStartedAt).TotalMilliseconds,
                 sessionSnapshotElapsedMilliseconds + plan.SnapshotElapsedMilliseconds,
                 plan.PlanningElapsedMilliseconds,
@@ -71,7 +71,7 @@ internal class BotMovementService(
         if (batch != null)
             PublishBotMovementMetrics(batch);
     }
-    private void PublishBotMovementMetrics(SwarmBotTickMetricsBatch batch)
+    private void PublishBotMovementMetrics(BotMovementMetricsBatch batch)
     {
         double snapshotP95Milliseconds = CalculatePercentile(
             batch.SnapshotSamples.OrderBy(value => value).ToArray(),
@@ -198,10 +198,10 @@ internal class BotMovementService(
         MatchGroundItemState groundItems,
         IReadOnlyList<Player> players,
         IReadOnlyList<SwarmBotObserverSnapshot> observers,
-        Func<long, SwarmBotDirective> directiveProvider)
+        Func<long, BotMovementDecision> decideMovement)
     {
         ArgumentNullException.ThrowIfNull(observers);
-        ArgumentNullException.ThrowIfNull(directiveProvider);
+        ArgumentNullException.ThrowIfNull(decideMovement);
 
         if (!Monitor.IsEntered(runtime.MatchLock))
             throw new InvalidOperationException("Bot movement requires the match lock.");
@@ -221,7 +221,7 @@ internal class BotMovementService(
             closures,
             playerAreas,
             groundItems,
-            directiveProvider);
+            decideMovement);
 
         long preparationStartedAt = Stopwatch.GetTimestamp();
         SwarmBotMovementPlan plan = PrepareResult(runtime,
@@ -422,7 +422,7 @@ internal class BotMovementService(
     public BotWalkingTickResult ProcessBotMovementTick(MatchRuntime runtime, MatchAreaClosureState closureManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
         MatchGroundItemState groundItems,
-        Func<long, SwarmBotDirective> spotArenaDirectiveProvider)
+        Func<long, BotMovementDecision> decideMovement)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
             throw new InvalidOperationException("Bot movement requires the match lock.");
@@ -444,7 +444,7 @@ internal class BotMovementService(
             closureManager,
             groundItems,
             playerAreas,
-            spotArenaDirectiveProvider);
+            decideMovement);
     }
 
     private BotWalkingTickResult ProcessSwarmBotMovement(MatchRuntime runtime,
@@ -454,7 +454,7 @@ internal class BotMovementService(
         MatchAreaClosureState closureManager,
         MatchGroundItemState groundItems,
         IReadOnlyDictionary<long, AreaType> playerAreas,
-        Func<long, SwarmBotDirective> directiveProvider)
+        Func<long, BotMovementDecision> decideMovement)
     {
         DateTime nowUtc = DateTime.UtcNow;
         foreach (var bot in activeBots)
@@ -482,10 +482,10 @@ internal class BotMovementService(
                 continue;
             }
 
-            SwarmBotDirective currentDirective = directiveProvider(bot.PlayerId);
-            if (currentDirective.Mode == SwarmBotMode.None)
+            BotMovementDecision movementDecision = decideMovement(bot.PlayerId);
+            if (movementDecision.Mode == BotMovementMode.None)
             {
-                bot.SwarmMode = SwarmBotMode.None;
+                bot.MovementMode = BotMovementMode.None;
                 bot.Path.Clear();
                 bot.PathIndex = 0;
                 bot.LastWalkStepTime = nowUtc;
@@ -498,29 +498,29 @@ internal class BotMovementService(
             // 창은 판단 레이어(SwarmBotDamagedFleeSeconds)와 같은 6초.
             bool underFire = (nowUtc - bot.LastDamagedAtUtc).TotalSeconds <= 6d;
             if (canPlanThisTick &&
-                (bot.SwarmMode == SwarmBotMode.None ||
-                 nowUtc >= bot.SwarmModeUntilUtc ||
+                (bot.MovementMode == BotMovementMode.None ||
+                 nowUtc >= bot.MovementModeUntilUtc ||
                  underFire))
             {
-                bool changed = bot.SwarmMode != currentDirective.Mode;
-                bot.SwarmMode = currentDirective.Mode;
+                bool changed = bot.MovementMode != movementDecision.Mode;
+                bot.MovementMode = movementDecision.Mode;
                 // 스웜 아레나 봇은 회피가 본체라 5초 홀드로는 서 있는 것처럼 보인다.
                 const double holdSeconds = 1.5;
-                if (changed || bot.SwarmModeUntilUtc <= nowUtc)
-                    bot.SwarmModeUntilUtc = nowUtc.AddSeconds(holdSeconds);
+                if (changed || bot.MovementModeUntilUtc <= nowUtc)
+                    bot.MovementModeUntilUtc = nowUtc.AddSeconds(holdSeconds);
 
-                bot.MovementDestination = currentDirective.DestinationArea;
+                bot.MovementDestination = movementDecision.DestinationArea;
                 bot.Path = MapPathfinder.FindPath(
                                runtime.Bots.MapId,
                                bot.Player.CurrentArea,
                                bot.Player.Cell!,
-                               currentDirective.DestinationArea,
-                               currentDirective.DestinationCell)
+                               movementDecision.DestinationArea,
+                               movementDecision.DestinationCell)
                            ?? [];
                 bot.PathIndex = 0;
             }
 
-            TrackSwarmBotIdle(bot, currentDirective, nowUtc);
+            TrackSwarmBotIdle(bot, movementDecision, nowUtc);
 
             if (bot.PathIndex >= bot.Path.Count)
             {
@@ -550,7 +550,7 @@ internal class BotMovementService(
     ///     유휴 감시 (#222): 6초 이상 제자리인 봇의 상태(모드·경로·홀드)를 10초에 한 번 남긴다.
     ///     "가만히 서 있는 봇" 신고가 반복되는데 이동은 로그에 안 남아 원인 특정이 안 됐다.
     /// </summary>
-    private void TrackSwarmBotIdle(Bot bot, SwarmBotDirective directive, DateTime nowUtc)
+    private void TrackSwarmBotIdle(Bot bot, BotMovementDecision directive, DateTime nowUtc)
     {
         const float movedThresholdSquared = 0.01f;
         if (bot.IdleWatchLastPosition == null ||
@@ -698,7 +698,7 @@ internal class BotMovementService(
                 bot.PathIndex = 0;
                 bot.MovementDestination = AreaType.None;
                 bot.EvacuationDestination = AreaType.None;
-                // 문 앞에서 기다린다 — 해제 채널링(ProcessSwarmBotDoorUnlocks)이 돌 시간을 준다.
+                // 문 앞에서 기다린다 — 해제 채널링(ProcessDoorInteractions)이 돌 시간을 준다.
                 bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.4);
                 if (bot.LastLockedDoorBlockArea != nextStep.Area)
                 {
@@ -838,7 +838,7 @@ internal class BotMovementService(
             return false;
 
         bool committed = now < bot.SwarmDodgeHoldUntilUtc;
-        var advice = SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(
+        var advice = BotDodgePolicy.GetDodgeDirection(
             runtime.SunCrossfireShapes, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now);
         if (advice == null)
         {

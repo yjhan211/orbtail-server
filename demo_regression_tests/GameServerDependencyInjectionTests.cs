@@ -52,7 +52,7 @@ public sealed class GameServerDependencyInjectionTests
                 [
                     typeof(MatchCombatService),
                     typeof(game_server.matches.MatchFieldService),
-                    typeof(game_server.players.bots.BotMovementService), typeof(game_server.players.bots.BotDecisionService)
+                    typeof(game_server.players.bots.BotMovementService), typeof(game_server.players.bots.BotBehaviorService)
                 ];
                 foreach (var type in dependencyTypes)
                 {

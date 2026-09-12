@@ -61,8 +61,8 @@ internal static class GameServerTestAccess
         var movement = new BotMovementService(
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotMovementService>.Instance);
         var interactions = new PlayerInteractionService();
-        var decisions = new BotDecisionService(growth, orbTrails, interactions,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<BotDecisionService>.Instance);
+        var decisions = new BotBehaviorService(growth, orbTrails, interactions,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<BotBehaviorService>.Instance);
         var field = new MatchFieldService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchFieldService>.Instance, orbTrails, health,
             cleanup, matchEliminations, results);
         var trailCuts = new MatchTrailCutService(orbTrails, combatDamage, health, decisions);

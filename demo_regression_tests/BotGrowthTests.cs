@@ -18,7 +18,7 @@ public sealed class BotGrowthTests
         var human = new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 1 } };
         match.RegisterParticipant(human);
         var growth = new PlayerOrbGrowthService(NullLogger<PlayerOrbGrowthService>.Instance);
-        var decisions = new BotDecisionService(growth, new PlayerOrbTrailService(), new PlayerInteractionService(), NullLogger<BotDecisionService>.Instance);
+        var decisions = new BotBehaviorService(growth, new PlayerOrbTrailService(), new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
         var bot = new Bot { PlayerId = -1 };
         match.RegisterParticipant(bot.Player);
         using (match.Enter())
@@ -27,7 +27,7 @@ public sealed class BotGrowthTests
             TestGameSessionServices.AddSummonStones(match, 1, 100);
             for (int i = 0; i < 3; i++)
             {
-                decisions.ProcessBotOrbGrowth(match, [bot]);
+                decisions.ProcessOrbGrowth(match, [bot]);
                 Assert.True(growth.Summon(match, human).Success);
                 Assert.Equal(TestGameSessionServices.SummonStones(match, 1), TestGameSessionServices.SummonStones(match, -1));
             }
@@ -45,7 +45,7 @@ public sealed class BotGrowthTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(949102);
         var growth = new PlayerOrbGrowthService(NullLogger<PlayerOrbGrowthService>.Instance);
-        var decisions = new BotDecisionService(growth, new PlayerOrbTrailService(), new PlayerInteractionService(), NullLogger<BotDecisionService>.Instance);
+        var decisions = new BotBehaviorService(growth, new PlayerOrbTrailService(), new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
         var bot = new Bot { PlayerId = -1 };
         match.RegisterParticipant(bot.Player);
         using (match.Enter())
@@ -54,7 +54,7 @@ public sealed class BotGrowthTests
                 Assert.True(TestGameSessionServices.Orbs(match, -1).TryAddItemWithCapacity(itemId, Config.SWARM_ORB_CAPACITY, out _));
             int cost = growth.GetNextOrbGrowthCost(match, bot.Player);
             TestGameSessionServices.AddSummonStones(match, -1, cost);
-            decisions.ProcessBotOrbGrowth(match, [bot]);
+            decisions.ProcessOrbGrowth(match, [bot]);
             Assert.Equal(0, TestGameSessionServices.SummonStones(match, -1).StoneCount);
             Assert.Single(TestGameSessionServices.Orbs(match, -1).GetAllItems(), item => item.ItemId == upgradedItemId);
             Assert.Equal(Config.SWARM_ORB_CAPACITY, TestGameSessionServices.Orbs(match, -1).GetOrbScore().OrbCount);
@@ -68,16 +68,16 @@ public sealed class BotGrowthTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(949103);
         var growth = new PlayerOrbGrowthService(NullLogger<PlayerOrbGrowthService>.Instance);
-        var decisions = new BotDecisionService(growth, new PlayerOrbTrailService(), new PlayerInteractionService(), NullLogger<BotDecisionService>.Instance);
+        var decisions = new BotBehaviorService(growth, new PlayerOrbTrailService(), new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
         var bot = new Bot { PlayerId = -1 };
         match.RegisterParticipant(bot.Player);
         using (match.Enter())
         {
-            decisions.ProcessBotOrbGrowth(match, [bot]);
+            decisions.ProcessOrbGrowth(match, [bot]);
             Assert.Empty(TestGameSessionServices.Orbs(match, -1).GetAllItems());
             TestGameSessionServices.AddSummonStones(match, -1, 100);
             bot.Player.Status = PlayerMatchStatus.ELIMINATED;
-            decisions.ProcessBotOrbGrowth(match, [bot]);
+            decisions.ProcessOrbGrowth(match, [bot]);
             Assert.Empty(TestGameSessionServices.Orbs(match, -1).GetAllItems());
             Assert.Equal(100, TestGameSessionServices.SummonStones(match, -1).StoneCount);
         }

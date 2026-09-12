@@ -219,11 +219,11 @@ public sealed class MatchTickLoopTests
         using (MatchRuntimeStore.Enter(first))
         {
             service.ProcessTick(first, _ => throw new InvalidOperationException("No bots should request a directive."));
-            Assert.Equal(1, first.BotTickMetrics.SampleCount);
-            Assert.Equal(0, second.BotTickMetrics.SampleCount);
-            for (int i = 1; i < SwarmBotTickMetrics.WindowSize; i++)
+            Assert.Equal(1, first.BotMovementMetrics.SampleCount);
+            Assert.Equal(0, second.BotMovementMetrics.SampleCount);
+            for (int i = 1; i < BotMovementMetrics.WindowSize; i++)
                 service.ProcessTick(first, _ => throw new InvalidOperationException("No bots."));
-            Assert.Equal(0, first.BotTickMetrics.SampleCount);
+            Assert.Equal(0, first.BotMovementMetrics.SampleCount);
             first.TryMarkEnded();
         }
         using (MatchRuntimeStore.Enter(second)) second.TryMarkEnded();

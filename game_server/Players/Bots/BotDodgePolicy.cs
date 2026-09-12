@@ -5,16 +5,15 @@ using network.common.data.models;
 
 namespace game_server.players.bots;
 
+/// <summary>회피 방향과 그 방향을 유지할 시간.</summary>
+public readonly record struct BotDodgeAdvice(float DirectionX, float DirectionY, float HoldSeconds);
+
 /// <summary>
-///     봇 투사체 회피 반사 (#232 §9, 2026-08-18 유저 제보 "봇이 투사체를 안 피하고 그대로 맞고 있어").
-///     봇 이동 틱(50ms)이 매 걸음 전에 묻는다: "지금 이 자리를 지나갈 태양 투사체가 있는가?"
-///     있으면 그 직선의 수직으로 한 걸음 비켜선다 — 경로는 버리지 않고 다음 틱에 이어 걷는다.
-///     판정 기하는 교차사격 서버 판정(바닥면 dy×2, 반폭 + 플레이어 반경)과 같다.
-///     대상은 태양 투사체뿐이다: 바람 몸통박치기는 표적의 착지 순간 자리에 떨어져(호밍) 자리로는 못 피하고,
-///     파도 물폭탄은 잔상 전용이다.
-///     상태 없는 순수 정책. 매치가 든 진행 중 모양 목록을 매치 잠금 안에서 그대로 읽는다.
+///     진행 중인 태양 공격 중 가장 먼저 닿을 위협을 찾아 회피 방향과 유지 시간을 계산한다.
+///     이동 서비스의 회피와 행동 서비스의 수면 안전 판단이 공유하는 순수 계산이다.
+///     호출자는 매치 잠금 안에서 공격 모양 목록을 읽는다. 위치·경로·행동 상태는 변경하지 않는다.
 /// </summary>
-public static class SwarmBotDodgePolicy
+public static class BotDodgePolicy
 {
     // 봇이 반응하는 착탄 예상 시간 상한 — 이보다 멀면 아직 안 움직인다(예고 0.55초 + 비행이라 대개 1초 안팎).
     private const float SwarmBotDodgeHorizonSeconds = 1.5f;
@@ -27,7 +26,7 @@ public static class SwarmBotDodgePolicy
     ///     이 봇이 지금 비켜서야 할 방향(월드 단위 벡터). 위협이 없으면 null.
     ///     가장 먼저 닿을 투사체 하나만 본다 — 여러 개가 겹치면 다음 틱에 다시 묻는다.
     /// </summary>
-    public static SwarmBotDodgeAdvice? ResolveSwarmBotDodgeDirection(
+    public static BotDodgeAdvice? GetDodgeDirection(
         IReadOnlyList<SwarmCrossfireShape> shapes,
         long botPlayerId, Vector3f position, AreaType area, DateTime nowUtc)
     {
@@ -35,7 +34,7 @@ public static class SwarmBotDodgePolicy
             return null;
 
         float bestTime = float.MaxValue;
-        SwarmBotDodgeAdvice? bestDirection = null;
+        BotDodgeAdvice? bestDirection = null;
         foreach (var shape in shapes)
         {
             if (shape.Area != area || shape.OwnerId == botPlayerId)
@@ -90,7 +89,7 @@ public static class SwarmBotDodgePolicy
             float holdSeconds = timeToHit +
                                 (2f * GroundGeometry.PlayerRadius) / Math.Max(0.01f, shape.SweepSpeed) +
                                 SwarmBotDodgeHoldSlackSeconds;
-            bestDirection = new SwarmBotDodgeAdvice(wx / wl, wy / wl, holdSeconds);
+            bestDirection = new BotDodgeAdvice(wx / wl, wy / wl, holdSeconds);
         }
 
         return bestDirection;
