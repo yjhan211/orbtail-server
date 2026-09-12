@@ -53,7 +53,6 @@ internal sealed class MatchRuntime
         _logger = logger;
         _matchSessionCleanup = matchSessionCleanup;
         MatchingId = matchingId;
-        SunOrbAttacks = new MatchSunOrbAttackState(matchingId);
         Bots = new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks, eventLogs);
         GroundItems = new MatchGroundItemState();
         Closures = new MatchAreaClosureState();
@@ -69,7 +68,7 @@ internal sealed class MatchRuntime
     // 전투와 오브
     public MatchCombatDamageState CombatDamage { get; } = new();
     public Dictionary<(long CutterId, long VictimId), CutRetaliationWindow> CutRetaliationWindows { get; } = new();
-    public MatchSunOrbAttackState SunOrbAttacks { get; }
+    public MatchSunOrbAttackState SunOrbAttacks { get; } = new();
     public List<PendingWaveAttack> PendingWaveAttacks { get; } = new();
 
     // 아이템과 재화

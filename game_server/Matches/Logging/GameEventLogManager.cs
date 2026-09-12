@@ -1319,6 +1319,47 @@ public class GameEventLogManager
         public List<PendingEliminationDrop> PendingEliminationDrops { get; } = new();
         public Dictionary<long, OrbTelemetry> OrbTelemetry { get; } = new();
         public bool OrbSummariesLogged { get; set; }
+        /// <summary>교차사격 표적별 (창 시작 시각, 창 안 명중 수). 1초 안에 두 발 이상이면 crossfire_converge를 남긴다.</summary>
+        public Dictionary<long, (DateTime WindowStartUtc, int Count)> CrossfireConvergenceWindows { get; } = new();
+    }
+
+    /// <summary>
+    ///     교차사격 명중을 표적별 1초 창에 세고, 같은 창에서 두 발 이상이면 crossfire_converge로 남긴다.
+    ///     창은 첫 명중 시각부터 1초(경계 포함)이고 지나면 새로 연다. 창 사전이 512개를 넘으면 1초 지난 표적을 걷는다.
+    /// </summary>
+    internal SwarmCrossfireConvergenceObservation LogCrossfireHit(long matchingId, long targetId, DateTime nowUtc)
+    {
+        var windows = GetTelemetry(matchingId).CrossfireConvergenceWindows;
+        if (windows.Count > 512)
+        {
+            foreach (long staleTargetId in windows.Keys.ToArray())
+            {
+                if ((nowUtc - windows[staleTargetId].WindowStartUtc).TotalSeconds > 1d)
+                {
+                    windows.Remove(staleTargetId);
+                }
+            }
+        }
+
+        if (!windows.TryGetValue(targetId, out var window) ||
+            (nowUtc - window.WindowStartUtc).TotalSeconds > 1d)
+        {
+            window = (nowUtc, 0);
+        }
+
+        window.Count++;
+        windows[targetId] = window;
+        var observation = new SwarmCrossfireConvergenceObservation(
+            window.Count,
+            (nowUtc - window.WindowStartUtc).TotalMilliseconds);
+        if (observation.HitCount >= 2)
+        {
+            LogSystem(
+                matchingId,
+                $"crossfire_converge target={targetId} hits={observation.HitCount} " +
+                $"windowMs={observation.WindowMilliseconds:F0}");
+        }
+        return observation;
     }
 
     private void TrackEliminationDropPickup(long matchingId, long groundItemUid, long pickerPlayerId)

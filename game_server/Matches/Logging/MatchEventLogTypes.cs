@@ -225,3 +225,8 @@ public sealed record EliminationDroppedItem(
 }
 
 public sealed record EliminationDropPickup(long GroundItemUid, long PickerPlayerId);
+
+/// <summary>같은 표적이 1초 창 안에 교차사격을 몇 발 맞았는지와 창이 열린 지 몇 ms인지.</summary>
+public readonly record struct SwarmCrossfireConvergenceObservation(
+    int HitCount,
+    double WindowMilliseconds);

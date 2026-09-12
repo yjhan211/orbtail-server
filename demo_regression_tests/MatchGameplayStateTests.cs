@@ -113,51 +113,30 @@ public sealed class MatchGameplayStateTests
         Assert.Equal(1, GetOrRegisterPlayer(second, playerId).IncrementOrbUpgradeCount(SunOrbGroupId));
         Assert.Equal(1, GetOrRegisterPlayer(first, playerId).GetOrbUpgradeCount(SunOrbGroupId));
 
-        first.SunOrbAttacks.AddShape(CreateCrossfireShape(
+        first.SunOrbAttacks.Shapes.Add(CreateCrossfireShape(
             eventId: 11,
             ownerId: playerId,
             anchorCombatTargetId: 7001,
             armedAtUtc: nowUtc.AddSeconds(1)));
-        first.SunOrbAttacks.SetSunBurn(
-            playerId,
-            ownerId: playerId,
-            weaponItemId: 101,
-            AreaType.S2Ground,
-            nowUtc,
-            durationSeconds: 3d,
-            tickIntervalSeconds: 1d);
-        SwarmCrossfireConvergenceObservation firstConvergence =
-            first.SunOrbAttacks.TrackConvergence(7001, nowUtc);
+        first.SunOrbAttacks.DodgeSnapshot = SunOrbAttackService.BuildDodgeSnapshot(first.SunOrbAttacks.Shapes);
+        GetOrRegisterPlayer(first, playerId).SunBurn = new Player.SunBurnState(playerId, 101, AreaType.S2Ground, nowUtc.AddSeconds(3), nowUtc.AddSeconds(1));
 
-        Assert.Equal(1, firstConvergence.HitCount);
-        Assert.True(second.SunOrbAttacks.IsEmpty);
-        Assert.Equal(first.MatchingId, Assert.Single(first.SunOrbAttacks.DodgeSnapshot).MatchingId);
+        Assert.Empty(second.SunOrbAttacks.Shapes);
+        Assert.Null(GetOrRegisterPlayer(second, playerId).SunBurn);
+        Assert.Single(first.SunOrbAttacks.DodgeSnapshot);
 
-        second.SunOrbAttacks.AddShape(CreateCrossfireShape(
+        second.SunOrbAttacks.Shapes.Add(CreateCrossfireShape(
             eventId: 12,
             ownerId: playerId,
             anchorCombatTargetId: 7001,
             armedAtUtc: nowUtc.AddSeconds(1)));
-        second.SunOrbAttacks.SetSunBurn(
-            playerId,
-            ownerId: playerId + 1,
-            weaponItemId: 202,
-            AreaType.S2Gym1,
-            nowUtc,
-            durationSeconds: 4d,
-            tickIntervalSeconds: 2d);
-        SwarmCrossfireConvergenceObservation secondConvergence =
-            second.SunOrbAttacks.TrackConvergence(7001, nowUtc);
+        second.SunOrbAttacks.DodgeSnapshot = SunOrbAttackService.BuildDodgeSnapshot(second.SunOrbAttacks.Shapes);
+        GetOrRegisterPlayer(second, playerId).SunBurn = new Player.SunBurnState(playerId + 1, 202, AreaType.S2Gym1, nowUtc.AddSeconds(4), nowUtc.AddSeconds(2));
 
-        Assert.Equal(1, secondConvergence.HitCount);
-        Assert.Equal(first.MatchingId, Assert.Single(first.SunOrbAttacks.DodgeSnapshot).MatchingId);
-        Assert.Equal(second.MatchingId, Assert.Single(second.SunOrbAttacks.DodgeSnapshot).MatchingId);
-        Assert.True(first.SunOrbAttacks.TryGetSunBurn(playerId, out SwarmSunBurnState? firstBurn));
-        Assert.True(second.SunOrbAttacks.TryGetSunBurn(playerId, out SwarmSunBurnState? secondBurn));
-        Assert.Equal(playerId, firstBurn!.OwnerId);
-        Assert.Equal(playerId + 1, secondBurn!.OwnerId);
-        Assert.Equal(1, first.SunOrbAttacks.ConvergenceWindowCount);
-        Assert.Equal(1, second.SunOrbAttacks.ConvergenceWindowCount);
+        Assert.Single(first.SunOrbAttacks.DodgeSnapshot);
+        Assert.Single(second.SunOrbAttacks.DodgeSnapshot);
+        Assert.Equal(playerId, GetOrRegisterPlayer(first, playerId).SunBurn!.Value.OwnerId);
+        Assert.Equal(playerId + 1, GetOrRegisterPlayer(second, playerId).SunBurn!.Value.OwnerId);
     }
 
     [Fact]
@@ -219,38 +198,24 @@ public sealed class MatchGameplayStateTests
         GetOrRegisterPlayer(removed, removedPlayerId).OrbTrail.Add(new Vector3f(0f, 0f, 0f));
         GetOrRegisterPlayer(removed, removedPlayerId).ApplyWound(DateTime.MaxValue);
         GetOrRegisterPlayer(removed, removedPlayerId).IncrementOrbUpgradeCount(WindOrbGroupId);
-        removed.SunOrbAttacks.AddShape(CreateCrossfireShape(
+        removed.SunOrbAttacks.Shapes.Add(CreateCrossfireShape(
             eventId: 11,
             ownerId: removedPlayerId,
             anchorCombatTargetId: 7001,
             armedAtUtc: crossfireNowUtc.AddSeconds(1)));
-        removed.SunOrbAttacks.SetSunBurn(
-            removedPlayerId,
-            ownerId: removedPlayerId,
-            weaponItemId: 101,
-            AreaType.S2Ground,
-            crossfireNowUtc,
-            durationSeconds: 3d,
-            tickIntervalSeconds: 1d);
-        removed.SunOrbAttacks.TrackConvergence(7001, crossfireNowUtc);
+        removed.SunOrbAttacks.DodgeSnapshot = SunOrbAttackService.BuildDodgeSnapshot(removed.SunOrbAttacks.Shapes);
+        GetOrRegisterPlayer(removed, removedPlayerId).SunBurn = new Player.SunBurnState(removedPlayerId, 101, AreaType.S2Ground, crossfireNowUtc.AddSeconds(3d), crossfireNowUtc.AddSeconds(1d));
 
         GetOrRegisterPlayer(sibling, siblingPlayerId).OrbTrail.Add(new Vector3f(0f, 0f, 0f));
         GetOrRegisterPlayer(sibling, siblingPlayerId).ApplyWound(DateTime.MaxValue);
         GetOrRegisterPlayer(sibling, siblingPlayerId).IncrementOrbUpgradeCount(WaveOrbGroupId);
-        sibling.SunOrbAttacks.AddShape(CreateCrossfireShape(
+        sibling.SunOrbAttacks.Shapes.Add(CreateCrossfireShape(
             eventId: 12,
             ownerId: siblingPlayerId,
             anchorCombatTargetId: 8001,
             armedAtUtc: crossfireNowUtc.AddSeconds(1)));
-        sibling.SunOrbAttacks.SetSunBurn(
-            siblingPlayerId,
-            ownerId: siblingPlayerId,
-            weaponItemId: 202,
-            AreaType.S2Gym1,
-            crossfireNowUtc,
-            durationSeconds: 4d,
-            tickIntervalSeconds: 2d);
-        sibling.SunOrbAttacks.TrackConvergence(8001, crossfireNowUtc);
+        sibling.SunOrbAttacks.DodgeSnapshot = SunOrbAttackService.BuildDodgeSnapshot(sibling.SunOrbAttacks.Shapes);
+        GetOrRegisterPlayer(sibling, siblingPlayerId).SunBurn = new Player.SunBurnState(siblingPlayerId, 202, AreaType.S2Gym1, crossfireNowUtc.AddSeconds(4d), crossfireNowUtc.AddSeconds(2d));
 
         Assert.True(store.Remove(removedMatchingId));
 
@@ -261,14 +226,9 @@ public sealed class MatchGameplayStateTests
         Assert.Single(GetOrRegisterPlayer(sibling, siblingPlayerId).OrbTrail);
         Assert.True(GetOrRegisterPlayer(sibling, siblingPlayerId).IsWounded(DateTime.UtcNow));
         Assert.Equal(1, GetOrRegisterPlayer(sibling, siblingPlayerId).GetOrbUpgradeCount(WaveOrbGroupId));
-        Assert.Equal(1, sibling.SunOrbAttacks.ShapeCount);
-        Assert.Equal(1, sibling.SunOrbAttacks.SunBurnCount);
-        Assert.Equal(1, sibling.SunOrbAttacks.ConvergenceWindowCount);
-        Assert.Equal(siblingMatchingId, Assert.Single(sibling.SunOrbAttacks.DodgeSnapshot).MatchingId);
-        Assert.True(sibling.SunOrbAttacks.TryGetSunBurn(
-            siblingPlayerId,
-            out SwarmSunBurnState? siblingBurn));
-        Assert.Equal(siblingPlayerId, siblingBurn!.OwnerId);
+        Assert.Single(sibling.SunOrbAttacks.Shapes);
+        Assert.Single(sibling.SunOrbAttacks.DodgeSnapshot);
+        Assert.Equal(siblingPlayerId, GetOrRegisterPlayer(sibling, siblingPlayerId).SunBurn!.Value.OwnerId);
         Assert.Equal(1, store.Count);
 
         MatchRuntime replacement = store.GetOrCreate(removedMatchingId);
@@ -277,7 +237,7 @@ public sealed class MatchGameplayStateTests
         Assert.False(GetOrRegisterPlayer(replacement, removedPlayerId).IsWounded(DateTime.UtcNow));
         Assert.Equal(0, GetOrRegisterPlayer(replacement, removedPlayerId).GetOrbUpgradeCount(WindOrbGroupId));
         Assert.NotSame(removed.SunOrbAttacks, replacement.SunOrbAttacks);
-        Assert.True(replacement.SunOrbAttacks.IsEmpty);
+        Assert.Empty(replacement.SunOrbAttacks.Shapes);
         Assert.Empty(replacement.SunOrbAttacks.DodgeSnapshot);
     }
 
@@ -291,13 +251,13 @@ public sealed class MatchGameplayStateTests
         MatchRuntime first = store.GetOrCreate(firstMatchingId);
         MatchRuntime second = store.GetOrCreate(secondMatchingId);
 
-        long firstId = first.SunOrbAttacks.AllocateEventId();
-        long secondId = second.SunOrbAttacks.AllocateEventId();
+        long firstId = SunOrbAttackService.AllocateEventId();
+        long secondId = SunOrbAttackService.AllocateEventId();
         Assert.True(secondId > firstId);
 
         Assert.True(store.Remove(firstMatchingId));
         MatchRuntime recreated = store.GetOrCreate(firstMatchingId);
-        long recreatedId = recreated.SunOrbAttacks.AllocateEventId();
+        long recreatedId = SunOrbAttackService.AllocateEventId();
         Assert.True(recreatedId > secondId);
 
         var allocated = new ConcurrentBag<long>();
@@ -306,8 +266,8 @@ public sealed class MatchGameplayStateTests
             1000,
             index => allocated.Add(
                 (index & 1) == 0
-                    ? recreated.SunOrbAttacks.AllocateEventId()
-                    : second.SunOrbAttacks.AllocateEventId()));
+                    ? SunOrbAttackService.AllocateEventId()
+                    : SunOrbAttackService.AllocateEventId()));
 
         Assert.Equal(1000, allocated.Count);
         Assert.Equal(1000, allocated.Distinct().Count());

@@ -77,6 +77,8 @@ public class Player
     internal Vector3f? TrailLastTickPosition { get; set; }
     /// <summary>내가 상대 오브(UID)를 마지막으로 밟은 시각 — 같은 오브 재판정 억제와 이탈 재무장의 기준.</summary>
     internal Dictionary<long, DateTime> OrbCutLatches { get; } = new();
+    /// <summary>태양 교차사격 화상. 맞을 때마다 지속·다음 틱이 새로 잡히고 SunOrbAttackService가 틱을 정산한다.</summary>
+    internal SunBurnState? SunBurn { get; set; }
     /// <summary>바람 오브 UID별 다음 칼날 시각과 표적이 반경에 든 시각. 매치 잠금 안에서 접근한다.</summary>
     private readonly Dictionary<long, DateTime> _windOrbNextAttackAtUtc = new();
     private readonly Dictionary<long, DateTime> _windOrbEngagedAtUtc = new();
@@ -472,6 +474,9 @@ public class Player
 
     /// <summary>이동 구간에서 획득 반경에 닿은 바닥 아이템. 다음 자동 줍기 틱이 집는다.</summary>
     internal sealed record ReachableItem(long GroundItemUid, AreaType Area, Vector3f Position);
+
+    /// <summary>화상 한 건: 누가 어떤 오브로 어느 구역에서 걸었는지, 언제 끝나고 다음 틱이 언제인지.</summary>
+    internal readonly record struct SunBurnState(long OwnerId, int WeaponItemId, AreaType Area, DateTime UntilUtc, DateTime NextTickAtUtc);
 
     public readonly record struct HealthChange(int Before, int After, int RequestedDelta)
     {

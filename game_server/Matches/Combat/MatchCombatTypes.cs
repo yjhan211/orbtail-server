@@ -88,3 +88,27 @@ public sealed class CutRetaliationWindow
     public bool Retaliated;
     public AreaType OpenedArea;
 }
+
+/// <summary>잠긴 교차사격 직선 하나. 앞머리 위치와 맞은 대상 집합은 매치 잠금 안에서 틱마다 전진한다.</summary>
+public sealed class SwarmCrossfireShape
+{
+    public long EventId { get; init; }
+    public long OwnerId { get; init; }
+    public int WeaponItemId { get; init; }
+    public int Damage { get; init; }
+    public AreaType Area { get; init; }
+    public Vector3f Origin { get; init; } = new(0f, 0f, 0f);
+    public Vector3f End { get; init; } = new(0f, 0f, 0f);
+    public float GroundLength { get; init; }
+    public float HalfWidth { get; init; }
+    public float BlastRadius { get; init; }
+    public float SweepSpeed { get; init; }
+    public DateTime ArmedAtUtc { get; init; }
+    public DateTime ExpiresAtUtc { get; init; }
+    public bool DetonateAtWall { get; init; }
+    public int AnchorMonsterId { get; init; }
+    public long AnchorCombatTargetId { get; init; }
+    public float LastFront { get; set; }
+    public HashSet<long> HitVictims { get; } = new();
+    public HashSet<long> HitMonsters { get; } = new();
+}

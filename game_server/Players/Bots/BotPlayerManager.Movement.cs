@@ -30,12 +30,10 @@ public partial class BotPlayerManager
         new((int)MathF.Floor(position.X + 2f * position.Y),
             (int)MathF.Floor(2f * position.Y - position.X));
 
-
     /// <summary>Bot movement speed matches the player fixed movement speed.</summary>
     private const float BotWalkSpeed = 5f;
 
     /// <summary>한 번의 사냥 판단에서 실제로 길을 찾아볼 지역 수. 나머지는 사전 점수로 걸러낸다.</summary>
-    private const int MaxHuntPathCandidates = 4;
 
     /// <summary>아이소메트릭 세로 속도 보정 — 클라 PlayerMovement.isoVerticalSpeedScale과 같은 값을 유지해야 한다.</summary>
     private const float IsoVerticalSpeedScale = 1f;
@@ -80,7 +78,6 @@ public partial class BotPlayerManager
         return new Vector3f(dirX * speed, dirY * speed, 0f);
     }
 
-
     /// <summary>#134 봇 walking 틱 결과.</summary>
     public class BotWalkingTickResult
     {
@@ -90,8 +87,6 @@ public partial class BotPlayerManager
         public double WalkingElapsedMilliseconds { get; set; }
     }
 
-
-
     /// <summary>
     ///     #127: 봇 walking 틱(50ms). legacy mode 비활성 시 BotPathfinder 경로를 따라 셀 단위 이동.
     ///     Uses the same fixed movement speed 6.0 as the player and emits an equivalent G_TO_C_MOVE event each tick.
@@ -99,7 +94,6 @@ public partial class BotPlayerManager
     public BotWalkingTickResult ProcessBotMovementTick(MatchAreaClosureState closureManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
         MatchGroundItemState groundItems,
-        IReadOnlyCollection<MonsterCombatTarget>? pveTargets,
         Func<long, SwarmBotDirective> spotArenaDirectiveProvider)
     {
         long matchingId = GetActiveMatchingId();
@@ -118,7 +112,6 @@ public partial class BotPlayerManager
             closureManager,
             groundItems,
             playerAreas,
-            pveTargets ?? [],
             spotArenaDirectiveProvider);
     }
 
@@ -129,7 +122,6 @@ public partial class BotPlayerManager
         MatchAreaClosureState closureManager,
         MatchGroundItemState groundItems,
         IReadOnlyDictionary<long, AreaType> playerAreas,
-        IReadOnlyCollection<MonsterCombatTarget> pveTargets,
         Func<long, SwarmBotDirective> directiveProvider)
     {
         DateTime nowUtc = DateTime.UtcNow;
@@ -157,7 +149,6 @@ public partial class BotPlayerManager
                 }
                 continue;
             }
-
 
             SwarmBotDirective currentDirective = directiveProvider(bot.PlayerId);
             if (currentDirective.Mode == SwarmBotMode.None)
@@ -216,7 +207,6 @@ public partial class BotPlayerManager
                 matchingId,
                 closureManager,
                 playerAreas,
-                pveTargets,
                 canPlanThisTick);
             if (movement != null)
                 result.Movements.Add(movement);
@@ -320,7 +310,6 @@ public partial class BotPlayerManager
             });
     }
 
-
     private static bool IsClosedArea(MatchAreaClosureState closureManager, long matchingId, AreaType area)
     {
         if (area == AreaType.None)
@@ -335,7 +324,6 @@ public partial class BotPlayerManager
     /// </summary>
     private BotMovementEvent? WalkStep(BotPlayerState bot, long matchingId, MatchAreaClosureState closureManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
-        IReadOnlyCollection<MonsterCombatTarget> pveTargets,
         bool allowPathPlanning)
     {
         var now = DateTime.UtcNow;
@@ -356,8 +344,7 @@ public partial class BotPlayerManager
         if (bot.Path.Count == 0 || bot.PathIndex >= bot.Path.Count)
         {
             if (!allowPathPlanning) return null;
-            ChooseNewWanderTarget(bot, matchingId, closureManager, playerAreas,
-                pveTargets);
+            ChooseNewWanderTarget(bot, matchingId, closureManager, playerAreas);
             if (bot.Path.Count == 0) return null;
 
             // 영역 도착 휴식처럼 대기를 설정한 결정은 다음 틱부터 걷는다. 같은 틱에 출발하면
@@ -372,7 +359,6 @@ public partial class BotPlayerManager
         var fromArea = bot.Player.CurrentArea;
         var fromCell = bot.Player.Cell!;
         bool reachedStep = false;
-
 
         // 잠긴 문 통과 차단 (유저 제보: 봇이 문 열리기 전에 들어온다).
         // 사람과 같은 판정을 쓴다 — 이 전이를 관장하는 문 하나만 보고, 그 문이 닫혀 있으면 버린다.
@@ -527,7 +513,7 @@ public partial class BotPlayerManager
 
         bool committed = now < bot.SwarmDodgeHoldUntilUtc;
         var advice = SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(
-            _sunOrbAttacks.DodgeSnapshot, matchingId, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now);
+            _sunOrbAttacks.DodgeSnapshot, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now);
         if (advice == null)
         {
             if (!committed)
@@ -620,12 +606,10 @@ public partial class BotPlayerManager
 
     /// <summary>
     ///     봇이 도착했거나 경로가 비었을 때 다음 목적지 선택 + 경로 계산.
-    ///     잔상 사냥 경로가 우선이고, 실패 시 배회 폴백(ChooseSwarmWanderDestination):
-    ///     따라가기(타겟 방)·흩어지기(최저 인원 방)·임의 방. 복도는 목적지가 아니라 통과만(transit).
+    ///     배회(ChooseSwarmWanderDestination): 따라가기(타겟 방)·흩어지기(최저 인원 방)·임의 방. 복도는 목적지가 아니라 통과만(transit).
     /// </summary>
     private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, MatchAreaClosureState closureManager,
-        IReadOnlyDictionary<long, AreaType> playerAreas,
-        IReadOnlyCollection<MonsterCombatTarget> pveTargets)
+        IReadOnlyDictionary<long, AreaType> playerAreas)
     {
         var mapId = MapId;
         bot.Path.Clear();
@@ -633,16 +617,7 @@ public partial class BotPlayerManager
 
         bool needsGuardianOrb = !bot.Player.Orbs.GetOrderedOrbs().Any(item => OrbData.IsOrbItem(item.ItemId));
 
-        // 복도는 통로다. 잔상 분포로 목적지를 정할 수 있으면 그것이 우선이고,
-        // 못 정할 때만 가장 가까운 방으로 나간다. 이전에는 복도 탈출이 먼저 걸려
-        // 잔상 사냥 판단에 도달하지 못했고, 봇이 잔상 없는 방과 복도를 왕복했다.
-        if (bot.Player.CurrentArea.IsCorridor() && !needsGuardianOrb &&
-            Config.MONSTER_SUMMON_ECONOMY_ENABLED &&
-            TryStartAfterimageHuntPath(bot, matchingId, mapId, closureManager, pveTargets))
-        {
-            return;
-        }
-
+        // 복도는 통로다. 가장 가까운 방으로 나간다.
         if (bot.Player.CurrentArea.IsCorridor() &&
             TryStartCorridorExitPath(bot, matchingId, mapId, closureManager))
         {
@@ -654,12 +629,6 @@ public partial class BotPlayerManager
         if (needsGuardianOrb)
         {
             bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.6);
-            return;
-        }
-
-        if (Config.MONSTER_SUMMON_ECONOMY_ENABLED &&
-            TryStartAfterimageHuntPath(bot, matchingId, mapId, closureManager, pveTargets))
-        {
             return;
         }
 
@@ -694,160 +663,6 @@ public partial class BotPlayerManager
         _logger.LogInformation(
             "Bot wander move: BotId={Bot}, {From}->{To}, Steps={Steps}",
             bot.PlayerId, bot.Player.CurrentArea, destination, path.Count);
-    }
-
-
-    /// <summary>
-    /// Swarm PVE policy: treat an afterimage pack as the room objective.
-    /// The score deliberately favors a visible core and an under-contested pack, while
-    /// retaining one committed destination until arrival so door thresholds cannot flip
-    /// the bot between two adjacent rooms every movement tick.
-    /// </summary>
-    private bool TryStartAfterimageHuntPath(
-        BotPlayerState bot,
-        long matchingId,
-        MapId mapId,
-        MatchAreaClosureState closureManager,
-        IReadOnlyCollection<MonsterCombatTarget> pveTargets)
-    {
-        // 복도에서도 목적지를 고를 수 있어야 한다. 복도에 서 있는 봇에게는 방만 후보로
-        // 남으므로 "현재 지역 사냥" 분기를 타지 않고 경로만 받는다.
-        if (bot.Player.CurrentArea == AreaType.None || pveTargets.Count == 0)
-            return false;
-
-        var boardItemIds = bot.Player.Orbs
-            .GetAllItems()
-            .Select(item => item.ItemId)
-            .ToArray();
-        // 복도 잔상도 목적지가 된다. 폐쇄 페이즈마다 보상이 2배로 커지는데 봇만 방에
-        // 묶여 있으면, 사람만 아는 복도 파밍이 그대로 격차가 된다.
-        // 다만 이미 복도에 서 있는 봇에게 복도를 다시 목적지로 주면 제자리에서 맴돈다.
-        // 그 경우는 자동전투가 근처 잔상을 알아서 잡으므로 목적지에서만 뺀다.
-        var areaGroups = pveTargets
-            .Where(target => target.MapId == mapId &&
-                             target.Area != AreaType.None &&
-                             !(target.Area.IsCorridor() && bot.Player.CurrentArea.IsCorridor()) &&
-                             !closureManager.IsAreaClosed(target.Area))
-            .GroupBy(target => target.Area)
-            .ToList();
-
-        // 경로 탐색이 이 틱의 비용을 지배한다. 잔상이 있는 모든 지역에 길을 찾으면
-        // 봇 수 x 지역 수만큼 A*가 돌아 틱이 200~370ms까지 튀고, 그동안 이동 틱이
-        // 통째로 스킵되어 봇 위치 브로드캐스트가 끊긴다.
-        //
-        // 현재 지역과 인접 지역만 후보로 둔다. 미니맵이 잔상 분포를 공개하므로 봇이 그
-        // 정보를 쓰는 것 자체는 규칙에 맞지만, 맵 반대편까지 직행할 필요는 없다. 인접
-        // 이동을 반복하면 결국 도달하고, 가까운 곳부터 훑는 편이 사람의 판단에 가깝다.
-        var nearbyGroups = areaGroups
-            .Where(group => group.Key == bot.Player.CurrentArea ||
-                            GameAreaConnectionData.IsAdjacent(mapId, bot.Player.CurrentArea, group.Key))
-            .ToList();
-        // 인접한 곳에 잔상이 하나도 없을 때만 전체 지역으로 넓힌다.
-        if (nearbyGroups.Count > 0)
-            areaGroups = nearbyGroups;
-
-        var candidates = areaGroups
-            .Select(group =>
-            {
-                var preferredTarget = group
-                    .OrderByDescending(target => target.IsCore)
-                    .ThenBy(target => DistanceSquared(bot.Player.Position!, target.Position.X, target.Position.Y))
-                    .First();
-                var targetCell = WorldToCell(preferredTarget.Position);
-                var pathTargetCell = group.Key == bot.Player.CurrentArea
-                    ? targetCell
-                    : GameAreaConnectionData.GetSpawnCell(mapId, bot.Player.CurrentArea, group.Key) ?? targetCell;
-                int coreCount = group.Count(target => target.IsCore);
-                float affinityScore = CalculateBotPveAffinityScore(boardItemIds, preferredTarget.RewardItemId);
-                int estimatedSteps = Math.Abs(bot.Player.Cell!.X - pathTargetCell.X) +
-                                     Math.Abs(bot.Player.Cell!.Y - pathTargetCell.Y);
-                return new
-                {
-                    Area = group.Key,
-                    Target = preferredTarget,
-                    PathTargetCell = pathTargetCell,
-                    AffinityScore = affinityScore,
-                    Score = group.Count() * 3 + coreCount * 8 + affinityScore * 4 -
-                            CountAreaPressure(matchingId, group.Key, bot.PlayerId) * 5,
-                    EstimatedSteps = estimatedSteps
-                };
-            })
-            .OrderByDescending(candidate => candidate.Area == bot.Player.CurrentArea)
-            .ThenByDescending(candidate => candidate.Score - candidate.EstimatedSteps * 0.2)
-            .ThenBy(candidate => candidate.Area == bot.Player.CurrentArea ? 0 : 1)
-            .ThenBy(candidate => Math.Abs((int)(bot.PlayerId % 97) - (int)candidate.Area))
-            .Take(MaxHuntPathCandidates)
-            .ToList();
-
-        int selectedIndex = -1;
-        List<BotPathfinder.Step>? selectedPath = null;
-        for (int index = 0; index < candidates.Count; index++)
-        {
-            var candidate = candidates[index];
-            var path = candidate.Area == bot.Player.CurrentArea
-                ? BotPathfinder.FindPath(mapId, bot.Player.CurrentArea, bot.Player.Cell!, bot.Player.CurrentArea,
-                    candidate.PathTargetCell,
-                    area => area != bot.Player.CurrentArea || closureManager.IsAreaClosed(area))
-                : BotPathfinder.FindPath(mapId, bot.Player.CurrentArea, bot.Player.Cell!, candidate.Area,
-                    candidate.PathTargetCell,
-                    closureManager.IsAreaClosed);
-            if (path is not { Count: > 0 } && candidate.Area != bot.Player.CurrentArea)
-                continue;
-
-            selectedIndex = index;
-            selectedPath = path;
-            break;
-        }
-
-        var selected = selectedIndex >= 0 ? candidates[selectedIndex] : null;
-
-        // 정체 판정이 실제로 봇을 내보냈는지 확인할 수 있어야 한다. 탈출에 실패하면
-        // 후보가 없는 것인지 경로를 못 찾은 것인지 이 한 줄로 갈린다.
-        // 타이머를 여기서 다시 세워 같은 봇이 매 틱 로그를 쏟지 않게 한다.
-        if (selected == null)
-            return false;
-
-        // The bot already owns this room's hunt. Let the automatic combat and lateral
-        // kite logic work instead of immediately replacing the local objective.
-        if (selected.Area == bot.Player.CurrentArea && selectedPath is not { Count: > 0 })
-        {
-            bot.LoopWaitUntil = RandomizedDelayFromNow(0.45, 0.9);
-            return true;
-        }
-
-        bot.Path = selectedPath!;
-        bot.PathIndex = 0;
-        bot.MovementDestination = selected.Area;
-        bot.LoopWaitUntil = DateTime.MinValue;
-        _logger.LogDebug(
-            "Bot afterimage hunt route: MatchingId={MatchingId}, BotId={BotId}, {From}->{To}, PackMembers={PackMembers}, Core={Core}, Affinity={Affinity}, Steps={Steps}",
-            matchingId,
-            bot.PlayerId,
-            bot.Player.CurrentArea,
-            selected.Area,
-            pveTargets.Count(target => target.Area == selected.Area),
-            selected.Target.IsCore,
-            selected.AffinityScore,
-            selectedPath!.Count);
-        return true;
-    }
-
-    private static float CalculateBotPveAffinityScore(IEnumerable<int> boardItemIds, int monsterRewardItemId)
-    {
-        float score = 0f;
-        foreach (int itemId in boardItemIds)
-        {
-            if (OrbData.TryGetColorAndTier(itemId, out OrbColor color, out int tier))
-            {
-                score += tier * OrbData.GetPveDamageMultiplier(color, monsterRewardItemId);
-                continue;
-            }
-
-            if (OrbData.TryGetRecoveryTier(itemId, out int recoveryTier))
-                score += recoveryTier * 0.25f;
-        }
-
-        return score;
     }
 
     private bool TryStartCorridorExitPath(BotPlayerState bot, long matchingId, MapId mapId,

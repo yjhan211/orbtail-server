@@ -46,12 +46,10 @@ public partial class BotPlayerManager
         }
         double snapshotElapsedMilliseconds =
             Stopwatch.GetElapsedTime(snapshotStartedAt).TotalMilliseconds;
-        IReadOnlyCollection<MonsterCombatTarget> pveTargets = [];
         BotPlayerManager.BotWalkingTickResult movementResult = ProcessBotMovementTick(
             closures,
             playerAreas,
             groundItems,
-            pveTargets,
             directiveProvider);
 
         long preparationStartedAt = Stopwatch.GetTimestamp();

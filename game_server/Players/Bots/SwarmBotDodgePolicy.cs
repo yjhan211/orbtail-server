@@ -24,7 +24,6 @@ public static class SwarmBotDodgePolicy
     private const float SwarmBotDodgeHoldSlackSeconds = 0.15f;
 
     public readonly record struct SwarmCrossfireDodgeThreat(
-        long MatchingId,
         AreaType Area,
         long OwnerId,
         float OriginX,
@@ -43,7 +42,7 @@ public static class SwarmBotDodgePolicy
     /// </summary>
     public static SwarmBotDodgeAdvice? ResolveSwarmBotDodgeDirection(
         IReadOnlyList<SwarmCrossfireDodgeThreat> threats,
-        long matchingId, long botPlayerId, Vector3f position, AreaType area, DateTime nowUtc)
+        long botPlayerId, Vector3f position, AreaType area, DateTime nowUtc)
     {
         if (threats.Count == 0)
             return null;
@@ -52,7 +51,7 @@ public static class SwarmBotDodgePolicy
         SwarmBotDodgeAdvice? bestDirection = null;
         foreach (var threat in threats)
         {
-            if (threat.MatchingId != matchingId || threat.Area != area || threat.OwnerId == botPlayerId)
+            if (threat.Area != area || threat.OwnerId == botPlayerId)
                 continue;
             if (nowUtc >= threat.ExpiresAtUtc)
                 continue;

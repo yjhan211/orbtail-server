@@ -33,14 +33,14 @@ public sealed class PlayerOrbServiceTests
             for (int i = 0; i < Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER; i++)
                 Assert.True(attacks.TryStartSunCrossfire(runtime, owner, attack, now));
             Assert.False(attacks.TryStartSunCrossfire(runtime, owner, attack, now));
-            var shape = runtime.SunOrbAttacks.GetShapeAt(0);
+            var shape = runtime.SunOrbAttacks.Shapes[0];
             Assert.Equal(owner.PlayerId, shape.OwnerId);
             owner.Status = PlayerMatchStatus.ELIMINATED;
             Assert.False(attacks.TryStartSunCrossfire(runtime, owner, attack, now));
             projectiles.ProcessSwarmCrossfires(runtime, shape.ArmedAtUtc);
-            Assert.True(runtime.SunOrbAttacks.ShapeCount > 0);
+            Assert.NotEmpty(runtime.SunOrbAttacks.Shapes);
             projectiles.ProcessSwarmCrossfires(runtime, shape.ExpiresAtUtc.AddSeconds(1));
-            Assert.Equal(0, runtime.SunOrbAttacks.ShapeCount);
+            Assert.Empty(runtime.SunOrbAttacks.Shapes);
         }
     }
 

@@ -814,7 +814,7 @@ internal sealed class BotDecisionService(
                 MatchFieldService.GetDamagePerTick(runtime, position, nowUtc) > 0 ||
                 nowUtc < bot.SwarmDodgeHoldUntilUtc ||
                 SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(runtime.SunOrbAttacks.DodgeSnapshot,
-                    runtime.MatchingId, player.PlayerId, position, player.CurrentArea, nowUtc) != null;
+                    player.PlayerId, position, player.CurrentArea, nowUtc) != null;
             foreach (var other in players)
             {
                 if (unsafeToSleep) break;

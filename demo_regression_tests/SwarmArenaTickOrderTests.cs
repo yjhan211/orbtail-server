@@ -347,13 +347,13 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("_swarmSunBurns", crossfire);
         Assert.DoesNotContain("_swarmCrossfireConvergeWindows", crossfire);
         Assert.DoesNotContain("ClearSunOrbAttackState(", crossfire);
-        Assert.Contains("MatchSunOrbAttackState sunOrbAttacks = runtime.SunOrbAttacks;", crossfire);
+        Assert.Contains("var shapes = runtime.SunOrbAttacks.Shapes;", crossfire);
         Assert.DoesNotContain("MatchRuntimeStore matchRuntimes", crossfire);
-        Assert.Contains("public MatchSunOrbAttackState SunOrbAttacks { get; }", botDodge);
+        Assert.Contains("public MatchSunOrbAttackState SunOrbAttacks { get; } = new();", botDodge);
 
         Assert.Contains("new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks, eventLogs)", botDodge);
         string botMovement = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotPlayerManager.Movement.cs");
-        Assert.Contains("_sunOrbAttacks.DodgeSnapshot, matchingId, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now", botMovement);
+        Assert.Contains("_sunOrbAttacks.DodgeSnapshot, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now", botMovement);
         Assert.DoesNotContain("matchRuntimes.GetOrThrow(matchingId).Swarm", botDodge);
         Assert.False(File.Exists(Path.Combine(root, "game_server", "GameServer.SwarmBotDodge.cs")));
     }
