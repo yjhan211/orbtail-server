@@ -6,7 +6,7 @@ namespace game_server.matches.monsters;
 
 public sealed class Monster
 {
-    public const float BaseContactRadius = 0.32f;
+    public static float BaseContactRadius => Config.SWARM_MONSTER_BASE_CONTACT_RADIUS;
 
     public static float GetContactRadius(MonsterKind kind) => BaseContactRadius * (SwarmMonsterData.Get((int)kind)?.ContactRadiusScale ?? 1f);
 

@@ -3,21 +3,6 @@ using network.common.data.models;
 
 namespace game_server.matches.monsters;
 
-public enum MonsterInsignia
-{
-    Sun = 0,
-    Wind = 1,
-    Wave = 2
-}
-
-public enum MonsterKind
-{
-    Skeleton = 0,
-    DartGoblin = 1,
-    RunawayGoblin = 2,
-    Bowler = 3
-}
-
 public sealed class MonsterTickResult
 {
     public List<MonsterContactDamage> PlayerDamage { get; } = new();

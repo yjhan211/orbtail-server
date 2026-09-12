@@ -6,11 +6,11 @@ namespace game_server.matches.monsters;
 
 internal static class MonsterNavigation
 {
-    public static float MonsterMoveSpeed => SwarmConfigData.GetFloat("SWARM_MONSTER_MOVE_SPEED", 4.2f);
+    public static float MonsterMoveSpeed => Config.SWARM_MONSTER_MOVE_SPEED;
     private const float RouteSampleStep = 0.35f;
     private const int DoorwayBlockedSampleTolerance = 10;
-    private const double MarchBudgetSlackMultiplier = 1.8d;
-    private const double MarchBudgetMinimumSeconds = 8d;
+    private static double MarchBudgetSlackMultiplier => Config.SWARM_MONSTER_MARCH_BUDGET_SLACK_MULTIPLIER;
+    private static double MarchBudgetMinimumSeconds => Config.SWARM_MONSTER_MARCH_BUDGET_MINIMUM_SECONDS;
 
     internal static double ComputeMarchBudgetSeconds(Vector3f start, IReadOnlyList<Vector3f> route)
     {

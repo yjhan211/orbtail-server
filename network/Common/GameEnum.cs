@@ -232,4 +232,21 @@ namespace network.common
         INTERROGATION = 6,
         UI = 7,
     }
+
+    // 잔상 몬스터 종. 값은 swarm_monster.csv의 kind이며 MonsterRuntimeInfo.Kind로 클라에 전달된다.
+    public enum MonsterKind
+    {
+        Skeleton = 0,
+        DartGoblin = 1,
+        RunawayGoblin = 2,
+        Bowler = 3
+    }
+
+    // 잔상 몬스터 문양. 처치 보상 오브 계열과 파도 문양의 스플래시 접촉을 정한다.
+    public enum MonsterInsignia
+    {
+        Sun = 0,
+        Wind = 1,
+        Wave = 2
+    }
 }

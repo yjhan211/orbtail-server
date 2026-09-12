@@ -11,12 +11,12 @@ namespace game_server.matches.monsters;
 /// </summary>
 internal sealed class MonsterMovementService
 {
-    private const double SupplyTargetHoldSeconds = 1d;
-    private const float SupplyIdlePatrolRadius = 2.2f;
-    private const double SupplyIdlePatrolAngularSpeed = 0.5d;
-    private const float RangedHoldRangeRatio = 0.8f;
-    private static float CampAggroRadius => SwarmConfigData.GetFloat("SWARM_MONSTER_AGGRO_RADIUS", 2.5f);
-    private const float MarchWaypointArriveDistance = 0.6f;
+    private static double SupplyTargetHoldSeconds => Config.SWARM_MONSTER_TARGET_HOLD_SECONDS;
+    private static float SupplyIdlePatrolRadius => Config.SWARM_MONSTER_IDLE_PATROL_RADIUS;
+    private static double SupplyIdlePatrolAngularSpeed => Config.SWARM_MONSTER_IDLE_PATROL_ANGULAR_SPEED;
+    private static float RangedHoldRangeRatio => Config.SWARM_MONSTER_RANGED_HOLD_RANGE_RATIO;
+    private static float CampAggroRadius => Config.SWARM_MONSTER_AGGRO_RADIUS;
+    private static float MarchWaypointArriveDistance => Config.SWARM_MONSTER_MARCH_WAYPOINT_ARRIVE_DISTANCE;
 
     private static bool HasDirectLineToParticipant(Monster monster, IReadOnlyList<PlayerPositionSnapshot> participants)
     {
@@ -221,7 +221,7 @@ internal sealed class MonsterMovementService
         monster.DiedAtUtc = now;
     }
 
-    private const double ChasePlanIntervalSeconds = 0.4d;
+    private static double ChasePlanIntervalSeconds => Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS;
 
     private static float GetMonsterWaveSlowMultiplier(Monster monster, DateTime now)
     {

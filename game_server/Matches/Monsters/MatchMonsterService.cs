@@ -1,3 +1,4 @@
+using network.common;
 using network.common.data;
 
 namespace game_server.matches.monsters;
@@ -6,13 +7,13 @@ internal sealed class MatchMonsterService(MonsterSupplyService supply, MonsterMo
 {
     private const long CombatTargetIdUpperBound = -1_000_000_000_000L;
     private const double DeadPruneAfterSeconds = 3d;
-    private const double EscalationStage1AtSeconds = 120d;
-    private const double EscalationStage2AtSeconds = 230d;
-    private const float EscalationStage2MoveSpeedMultiplier = 1.1f;
+    private static double EscalationStage1AtSeconds => Config.SWARM_MONSTER_ESCALATION_STAGE1_AT_SECONDS;
+    private static double EscalationStage2AtSeconds => Config.SWARM_MONSTER_ESCALATION_STAGE2_AT_SECONDS;
+    private static float EscalationStage2MoveSpeedMultiplier => Config.SWARM_MONSTER_ESCALATION_STAGE2_MOVE_SPEED_MULTIPLIER;
 
-    public static float ContactImmunitySeconds => SwarmConfigData.GetFloat("SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS", 0.6f);
-    public static float BowlerSplashRadius => SwarmConfigData.GetFloat("SWARM_MONSTER_BOWLER_SPLASH_RADIUS", 1.5f);
-    public static float WaveInsigniaSplashRadius => SwarmConfigData.GetFloat("SWARM_MONSTER_WAVE_SPLASH_RADIUS", 2.2f);
+    public static float ContactImmunitySeconds => Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS;
+    public static float BowlerSplashRadius => Config.SWARM_MONSTER_BOWLER_SPLASH_RADIUS;
+    public static float WaveInsigniaSplashRadius => Config.SWARM_MONSTER_WAVE_SPLASH_RADIUS;
 
     public static bool IsCombatTargetId(long actorId) => actorId < CombatTargetIdUpperBound;
     private static int GetEscalationStage(double elapsedSeconds) => elapsedSeconds >= EscalationStage2AtSeconds ? 2 : elapsedSeconds >= EscalationStage1AtSeconds ? 1 : 0;

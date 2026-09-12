@@ -134,6 +134,141 @@ namespace network.common
         /// </summary>
         public static float SWARM_BOSS_ATTACK_RANGE => SwarmConfigData.GetFloat("SWARM_BOSS_ATTACK_RANGE", 4.1f);
 
+        /// <summary>격화 1단계 시각(초) — 폐쇄 웨이브와 동기</summary>
+        public static double SWARM_MONSTER_ESCALATION_STAGE1_AT_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_ESCALATION_STAGE1_AT_SECONDS", 120d);
+
+        /// <summary>격화 2단계 시각(초) — 이후 이속만 소폭 상승</summary>
+        public static double SWARM_MONSTER_ESCALATION_STAGE2_AT_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_ESCALATION_STAGE2_AT_SECONDS", 230d);
+
+        /// <summary>격화 2단계 이속 배율 — 접촉 피해는 불변</summary>
+        public static float SWARM_MONSTER_ESCALATION_STAGE2_MOVE_SPEED_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_MONSTER_ESCALATION_STAGE2_MOVE_SPEED_MULTIPLIER", 1.1f);
+
+        /// <summary>구역 보충 웨이브 간격(초) — 웨이브 사이가 정리하는 창</summary>
+        public static double SWARM_MONSTER_SUPPLY_TOP_UP_INTERVAL_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_SUPPLY_TOP_UP_INTERVAL_SECONDS", 12d);
+
+        /// <summary>웨이브 한 번의 최대 보충 마릿수 — 구역 목표에 잘린다</summary>
+        public static int SWARM_MONSTER_SUPPLY_TOP_UP_COUNT => SwarmConfigData.GetInt("SWARM_MONSTER_SUPPLY_TOP_UP_COUNT", 30);
+
+        /// <summary>일반 몹 하트 드롭 확률</summary>
+        public static double SWARM_MONSTER_SUPPLY_HEART_DROP_CHANCE => SwarmConfigData.GetDouble("SWARM_MONSTER_SUPPLY_HEART_DROP_CHANCE", 0.03d);
+
+        /// <summary>구역 전멸 뒤 보충 휴지(초)</summary>
+        public static double SWARM_MONSTER_SUPPLY_WIPE_REST_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_SUPPLY_WIPE_REST_SECONDS", 2d);
+
+        /// <summary>최종 페이즈 전멸 휴지(초) — 0이면 휴지 없음</summary>
+        public static double SWARM_MONSTER_SUPPLY_WIPE_REST_SECONDS_FINAL_PHASE => SwarmConfigData.GetDouble("SWARM_MONSTER_SUPPLY_WIPE_REST_SECONDS_FINAL_PHASE", 0d);
+
+        /// <summary>참가자와 이보다 가까운 앵커에는 제자리 스폰하지 않음</summary>
+        public static float SWARM_MONSTER_SUPPLY_SAFE_SPAWN_DISTANCE => SwarmConfigData.GetFloat("SWARM_MONSTER_SUPPLY_SAFE_SPAWN_DISTANCE", 2.5f);
+
+        /// <summary>참가자와 이보다 먼 앵커를 우선 — 화면 밖에서 태어난다</summary>
+        public static float SWARM_MONSTER_SUPPLY_OFFSCREEN_DISTANCE => SwarmConfigData.GetFloat("SWARM_MONSTER_SUPPLY_OFFSCREEN_DISTANCE", 7f);
+
+        /// <summary>절차 앵커의 안쪽(운동장 방향) 편향 거리</summary>
+        public static float SWARM_MONSTER_SUPPLY_INWARD_BIAS => SwarmConfigData.GetFloat("SWARM_MONSTER_SUPPLY_INWARD_BIAS", 2.2f);
+
+        /// <summary>침투 경로가 막혔을 때 재시도 간격(초)</summary>
+        public static double SWARM_MONSTER_SUPPLY_BLOCKED_RETRY_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_SUPPLY_BLOCKED_RETRY_SECONDS", 1d);
+
+        /// <summary>핵(탈주 고블린) 소환석 보상 — 구역·페이즈당 첫 핵만</summary>
+        public static int SWARM_MONSTER_SUPPLY_CORE_STONE_REWARD => SwarmConfigData.GetInt("SWARM_MONSTER_SUPPLY_CORE_STONE_REWARD", 3);
+
+        /// <summary>핵이 등장하는 첫 공급 페이즈 인덱스</summary>
+        public static int SWARM_MONSTER_SUPPLY_CORE_FIRST_PHASE_INDEX => SwarmConfigData.GetInt("SWARM_MONSTER_SUPPLY_CORE_FIRST_PHASE_INDEX", 2);
+
+        /// <summary>매치 전체 생존 몹 상한 — 서버 천장</summary>
+        public static int SWARM_MONSTER_SUPPLY_GLOBAL_ALIVE_HARD_CAP => SwarmConfigData.GetInt("SWARM_MONSTER_SUPPLY_GLOBAL_ALIVE_HARD_CAP", 420);
+
+        /// <summary>구역 목표 계산에 세는 최대 인원</summary>
+        public static int SWARM_MONSTER_SUPPLY_ZONE_CROWD_CAP => SwarmConfigData.GetInt("SWARM_MONSTER_SUPPLY_ZONE_CROWD_CAP", 4);
+
+        /// <summary>선형 인원 초과분의 인당 목표 비율</summary>
+        public static double SWARM_MONSTER_SUPPLY_CROWD_EXTRA_RATIO => SwarmConfigData.GetDouble("SWARM_MONSTER_SUPPLY_CROWD_EXTRA_RATIO", 0.5d);
+
+        /// <summary>인당 목표를 그대로 더하는 인원 수 — 그 뒤는 비율 적용</summary>
+        public static int SWARM_MONSTER_SUPPLY_CROWD_LINEAR_PLAYERS => SwarmConfigData.GetInt("SWARM_MONSTER_SUPPLY_CROWD_LINEAR_PLAYERS", 2);
+
+        /// <summary>스폰 예고(초) — 이 시간 뒤 활성화</summary>
+        public static float SWARM_MONSTER_SUPPLY_TELEGRAPH_SECONDS => SwarmConfigData.GetFloat("SWARM_MONSTER_SUPPLY_TELEGRAPH_SECONDS", 0.4f);
+
+        /// <summary>무리 산개 반경</summary>
+        public static float SWARM_MONSTER_SUPPLY_SCATTER_RADIUS => SwarmConfigData.GetFloat("SWARM_MONSTER_SUPPLY_SCATTER_RADIUS", 1.6f);
+
+        /// <summary>자기장 경계 바깥 스폰 띠 두께(셀)</summary>
+        public static int SWARM_MONSTER_FIELD_SPAWN_BAND_CELLS => SwarmConfigData.GetInt("SWARM_MONSTER_FIELD_SPAWN_BAND_CELLS", 6);
+
+        /// <summary>앵커 CSV가 없을 때 방 중심 절차 앵커 반경</summary>
+        public static float SWARM_MONSTER_CAMP_ANCHOR_RADIUS => SwarmConfigData.GetFloat("SWARM_MONSTER_CAMP_ANCHOR_RADIUS", 6f);
+
+        /// <summary>운동장 발원 원형 산개 반경</summary>
+        public static float SWARM_MONSTER_INFILTRATION_ORIGIN_RADIUS => SwarmConfigData.GetFloat("SWARM_MONSTER_INFILTRATION_ORIGIN_RADIUS", 3.5f);
+
+        /// <summary>발원 각도 지터(라디안, 약 80°)</summary>
+        public static float SWARM_MONSTER_INFILTRATION_ORIGIN_JITTER_RADIANS => SwarmConfigData.GetFloat("SWARM_MONSTER_INFILTRATION_ORIGIN_JITTER_RADIANS", 1.3963f);
+
+        /// <summary>발원 뒤 첫 돌출 거리</summary>
+        public static float SWARM_MONSTER_INFILTRATION_BURST_DISTANCE => SwarmConfigData.GetFloat("SWARM_MONSTER_INFILTRATION_BURST_DISTANCE", 2.0f);
+
+        /// <summary>행군 레인 수직 오프셋 최대 — 같은 경로가 한 줄로 겹치지 않게</summary>
+        public static float SWARM_MONSTER_MARCH_LANE_OFFSET_MAX => SwarmConfigData.GetFloat("SWARM_MONSTER_MARCH_LANE_OFFSET_MAX", 0.4f);
+
+        /// <summary>행군 속도 개체별 지터 비율</summary>
+        public static float SWARM_MONSTER_MARCH_SPEED_JITTER => SwarmConfigData.GetFloat("SWARM_MONSTER_MARCH_SPEED_JITTER", 0.1f);
+
+        /// <summary>출발 시각 지터(초)</summary>
+        public static double SWARM_MONSTER_INFILTRATION_DEPARTURE_JITTER_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_INFILTRATION_DEPARTURE_JITTER_SECONDS", 0.4d);
+
+        /// <summary>파도 문양 일반 몹 접촉 쿨다운(초) — 스플래시라 길다</summary>
+        public static float SWARM_MONSTER_WAVE_INSIGNIA_ATTACK_COOLDOWN_SECONDS => SwarmConfigData.GetFloat("SWARM_MONSTER_WAVE_INSIGNIA_ATTACK_COOLDOWN_SECONDS", 2.2f);
+
+        /// <summary>비점유 구역 잔상 회수 유예(초)</summary>
+        public static double SWARM_MONSTER_STRANDED_GRACE_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_STRANDED_GRACE_SECONDS", 6d);
+
+        /// <summary>구역·페이즈 소환석 토큰 버킷 상한</summary>
+        public static double SWARM_MONSTER_SUPPLY_STONE_BUCKET_BURST => SwarmConfigData.GetDouble("SWARM_MONSTER_SUPPLY_STONE_BUCKET_BURST", 5d);
+
+        /// <summary>표적 재탐색 간격(초)</summary>
+        public static double SWARM_MONSTER_TARGET_HOLD_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_TARGET_HOLD_SECONDS", 1d);
+
+        /// <summary>잠든 몹의 앵커 주변 순찰 반경</summary>
+        public static float SWARM_MONSTER_IDLE_PATROL_RADIUS => SwarmConfigData.GetFloat("SWARM_MONSTER_IDLE_PATROL_RADIUS", 2.2f);
+
+        /// <summary>순찰 각속도(라디안/초)</summary>
+        public static double SWARM_MONSTER_IDLE_PATROL_ANGULAR_SPEED => SwarmConfigData.GetDouble("SWARM_MONSTER_IDLE_PATROL_ANGULAR_SPEED", 0.5d);
+
+        /// <summary>원거리 몹이 멈춰 서는 사거리 비율</summary>
+        public static float SWARM_MONSTER_RANGED_HOLD_RANGE_RATIO => SwarmConfigData.GetFloat("SWARM_MONSTER_RANGED_HOLD_RANGE_RATIO", 0.8f);
+
+        /// <summary>행군 웨이포인트 도착 판정 거리</summary>
+        public static float SWARM_MONSTER_MARCH_WAYPOINT_ARRIVE_DISTANCE => SwarmConfigData.GetFloat("SWARM_MONSTER_MARCH_WAYPOINT_ARRIVE_DISTANCE", 0.6f);
+
+        /// <summary>추격 경로 재계획 간격(초)</summary>
+        public static double SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS", 0.4d);
+
+        /// <summary>행군 예산 = 경로 소요 시간 × 이 여유</summary>
+        public static double SWARM_MONSTER_MARCH_BUDGET_SLACK_MULTIPLIER => SwarmConfigData.GetDouble("SWARM_MONSTER_MARCH_BUDGET_SLACK_MULTIPLIER", 1.8d);
+
+        /// <summary>행군 예산 최소(초)</summary>
+        public static double SWARM_MONSTER_MARCH_BUDGET_MINIMUM_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_MARCH_BUDGET_MINIMUM_SECONDS", 8d);
+
+        /// <summary>기본 접촉 반경(해골 몸통 반폭) — 종별 contact_radius_scale의 기준</summary>
+        public static float SWARM_MONSTER_BASE_CONTACT_RADIUS => SwarmConfigData.GetFloat("SWARM_MONSTER_BASE_CONTACT_RADIUS", 0.32f);
+
+        /// <summary>잔상 접촉 후 참가자 피격 무적창(초) — 플레이어당 전역</summary>
+        public static float SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS => SwarmConfigData.GetFloat("SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS", 0.6f);
+
+        /// <summary>볼러 접촉 스플래시 반경</summary>
+        public static float SWARM_MONSTER_BOWLER_SPLASH_RADIUS => SwarmConfigData.GetFloat("SWARM_MONSTER_BOWLER_SPLASH_RADIUS", 1.5f);
+
+        /// <summary>파도 문양 잔상 접촉 스플래시 반경</summary>
+        public static float SWARM_MONSTER_WAVE_SPLASH_RADIUS => SwarmConfigData.GetFloat("SWARM_MONSTER_WAVE_SPLASH_RADIUS", 2.2f);
+
+        /// <summary>잔상 근접 개전 반경</summary>
+        public static float SWARM_MONSTER_AGGRO_RADIUS => SwarmConfigData.GetFloat("SWARM_MONSTER_AGGRO_RADIUS", 2.5f);
+
+        /// <summary>잔상 이동 속도 (행군·추격 공통)</summary>
+        public static float SWARM_MONSTER_MOVE_SPEED => SwarmConfigData.GetFloat("SWARM_MONSTER_MOVE_SPEED", 4.2f);
+
 
         /// <summary>파도(Blue) 오브 공급 — 단색 검증이 필요하면 false로 차단한다.</summary>
         public static readonly bool SWARM_WAVE_ORB_ENABLED = true;
