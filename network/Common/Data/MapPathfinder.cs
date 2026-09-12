@@ -458,5 +458,105 @@ namespace network.common.data
 
             return true;
         }
+
+        private const float RouteSampleStep = 0.35f;
+        private const int DoorwayBlockedSampleTolerance = 10;
+
+        public static bool TryPlanRoute(MapId mapId, AreaType fromArea, Vector3f from, AreaType toArea, Vector3f to, Func<AreaType, bool>? isAreaBlocked, out List<Vector3f> route)
+        {
+            route = null!;
+            var steps = FindPath(mapId, fromArea, MapCoordinateConverter.WorldToCell(mapId, from), toArea, MapCoordinateConverter.WorldToCell(mapId, to), isAreaBlocked);
+            if (steps == null || steps.Count == 0)
+            {
+                return false;
+            }
+
+            var planned = new List<Vector3f>(steps.Count + 2) { from };
+            foreach (var step in steps)
+            {
+                planned.Add(MapCoordinateConverter.CellToWorld(mapId, step.Cell));
+            }
+            planned.Add(to);
+
+            for (int index = 1; index < planned.Count; index++)
+            {
+                if (!IsSegmentWalkable(mapId, planned[index - 1], planned[index]))
+                {
+                    return false;
+                }
+            }
+            planned.RemoveAt(0);
+            route = planned;
+            return true;
+        }
+
+        public static bool IsSegmentWalkable(MapId mapId, Vector3f from, Vector3f to)
+        {
+            float dx = to.X - from.X;
+            float dy = to.Y - from.Y;
+            float distance = MathF.Sqrt(dx * dx + dy * dy);
+            int samples = Math.Max(1, (int)MathF.Ceiling(distance / RouteSampleStep));
+            int blockedRun = 0;
+            for (int index = 1; index <= samples; index++)
+            {
+                float t = index / (float)samples;
+                var point = new Vector3f(from.X + dx * t, from.Y + dy * t, 0f);
+                if (GameMapData.IsMoveablePosition(mapId, MapCoordinateConverter.WorldToCell(mapId, point)))
+                {
+                    blockedRun = 0;
+                    continue;
+                }
+
+                if (++blockedRun > DoorwayBlockedSampleTolerance)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsWalkableInArea(MapId mapId, Vector3f position, AreaType area)
+        {
+            var cell = MapCoordinateConverter.WorldToCell(mapId, position);
+            return GameMapData.IsMoveablePosition(mapId, cell) && GameMapData.GetCurrentArea(mapId, cell) == area;
+        }
+
+        public static Vector3f ClampToAreaWalkable(MapId mapId, Vector3f position, Vector3f center, AreaType area)
+        {
+            if (IsWalkableInArea(mapId, position, area))
+            {
+                return position;
+            }
+
+            for (float t = 0.1f; t <= 1f; t += 0.1f)
+            {
+                var candidate = new Vector3f(position.X + (center.X - position.X) * t, position.Y + (center.Y - position.Y) * t, 0f);
+                if (IsWalkableInArea(mapId, candidate, area))
+                {
+                    return candidate;
+                }
+            }
+
+            return center;
+        }
+
+        public static Vector3f ClampToWalkable(MapId mapId, Vector3f position, Vector3f center)
+        {
+            if (GameMapData.IsMoveablePosition(mapId, MapCoordinateConverter.WorldToCell(mapId, position)))
+            {
+                return position;
+            }
+
+            for (float t = 0.1f; t <= 1f; t += 0.1f)
+            {
+                var candidate = new Vector3f(position.X + (center.X - position.X) * t, position.Y + (center.Y - position.Y) * t, 0f);
+                if (GameMapData.IsMoveablePosition(mapId, MapCoordinateConverter.WorldToCell(mapId, candidate)))
+                {
+                    return candidate;
+                }
+            }
+            return center;
+        }
     }
 }

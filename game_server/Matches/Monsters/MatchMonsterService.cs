@@ -520,12 +520,12 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
             var customAnchorCell = GameMonsterCampData.GetAnchor(area, anchorIndex);
             if (customAnchorCell != null)
             {
-                anchors.Add(MonsterNavigation.ClampToAreaWalkable(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, InsetAnchorFromAreaEdge(customAnchorCell, area)), center, area));
+                anchors.Add(MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, InsetAnchorFromAreaEdge(customAnchorCell, area)), center, area));
                 continue;
             }
 
             float anchorAngle = anchorIndex * 2.0944f;
-            anchors.Add(MonsterNavigation.ClampToAreaWalkable(new Vector3f(center.X + CampAnchorRadius * 0.6f * MathF.Cos(anchorAngle), center.Y + CampAnchorRadius * 0.6f * MathF.Sin(anchorAngle), 0f), center, area));
+            anchors.Add(MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(center.X + CampAnchorRadius * 0.6f * MathF.Cos(anchorAngle), center.Y + CampAnchorRadius * 0.6f * MathF.Sin(anchorAngle), 0f), center, area));
         }
 
         var inward = GetInwardDirection(area);
@@ -561,7 +561,7 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
         {
             var packAnchor = spawnPlan[index].Anchor;
             float angle = (float)(index * Math.PI * 2d / spawnPlan.Count) + (float)(state.Rng.NextDouble() * 0.5d - 0.25d);
-            var destination = MonsterNavigation.ClampToAreaWalkable(new Vector3f(
+            var destination = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(
                 packAnchor.X + MathF.Cos(angle) * SupplyScatterRadius + inward.X * SupplyInwardBias,
                 packAnchor.Y + MathF.Sin(angle) * SupplyScatterRadius + inward.Y * SupplyInwardBias,
                 0f), packAnchor, area);
@@ -572,9 +572,9 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
             var fieldSpawn = ResolveFieldSpawn(runtime.Closures.GetSafeDistance(now), area);
             if (fieldSpawn != null)
             {
-                position = MonsterNavigation.ClampToAreaWalkable(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Spawn), packAnchor, area);
+                position = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Spawn), packAnchor, area);
                 var fieldAnchorWorld = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Anchor);
-                destination = MonsterNavigation.ClampToAreaWalkable(new Vector3f(fieldAnchorWorld.X + MathF.Cos(angle) * SupplyScatterRadius, fieldAnchorWorld.Y + MathF.Sin(angle) * SupplyScatterRadius, 0f), fieldAnchorWorld, area);
+                destination = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(fieldAnchorWorld.X + MathF.Cos(angle) * SupplyScatterRadius, fieldAnchorWorld.Y + MathF.Sin(angle) * SupplyScatterRadius, 0f), fieldAnchorWorld, area);
             }
             else if (infiltrate && TryPlanInfiltration(runtime, area, destination, out var origin, out var planned))
             {
@@ -624,7 +624,7 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
             {
                 monster.Infiltrating = true;
                 monster.MarchWaypoints.AddRange(route);
-                monster.MarchBudgetSeconds = MonsterNavigation.ComputeMarchBudgetSeconds(position, route);
+                monster.MarchBudgetSeconds = MonsterMovementService.ComputeMarchBudgetSeconds(position, route);
                 monster.MarchLaneOffset = (float)(state.Rng.NextDouble() * 2d - 1d) * MarchLaneOffsetMax;
                 monster.MarchSpeedScale = 1f + (float)(state.Rng.NextDouble() * 2d - 1d) * MarchSpeedJitter;
             }
@@ -643,16 +643,16 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
         float baseAngle = ResolveInfiltrationExitBearing(runtime, destinationArea, destination, originCenter);
         double golden = (state.NextInfiltrationOriginOrdinal++ * InfiltrationGoldenAngle) % 1d;
         float angle = baseAngle + (float)((golden - 0.5d) * 2d) * InfiltrationOriginJitterRadians;
-        origin = MonsterNavigation.ClampToAreaWalkable(new Vector3f(originCenter.X + MathF.Cos(angle) * InfiltrationOriginRadius, originCenter.Y + MathF.Sin(angle) * InfiltrationOriginRadius, 0f), originCenter, SwarmInwardOriginArea);
+        origin = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(originCenter.X + MathF.Cos(angle) * InfiltrationOriginRadius, originCenter.Y + MathF.Sin(angle) * InfiltrationOriginRadius, 0f), originCenter, SwarmInwardOriginArea);
 
-        var burst = MonsterNavigation.ClampToAreaWalkable(new Vector3f(origin.X + MathF.Cos(angle) * InfiltrationBurstDistance, origin.Y + MathF.Sin(angle) * InfiltrationBurstDistance, 0f), originCenter, SwarmInwardOriginArea);
-        if (MonsterNavigation.IsSegmentWalkable(origin, burst) && MonsterNavigation.TryPlanRoute(SwarmInwardOriginArea, burst, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out route))
+        var burst = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(origin.X + MathF.Cos(angle) * InfiltrationBurstDistance, origin.Y + MathF.Sin(angle) * InfiltrationBurstDistance, 0f), originCenter, SwarmInwardOriginArea);
+        if (MapPathfinder.IsSegmentWalkable(Config.SWARM_MATCH_MAP, origin, burst) && MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, SwarmInwardOriginArea, burst, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out route))
         {
             route.Insert(0, burst);
             return true;
         }
 
-        return MonsterNavigation.TryPlanRoute(SwarmInwardOriginArea, origin, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out route);
+        return MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, SwarmInwardOriginArea, origin, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out route);
     }
 
     private static float ResolveInfiltrationExitBearing(MatchRuntime runtime, AreaType destinationArea, Vector3f destination, Vector3f originCenter)
@@ -664,7 +664,7 @@ internal sealed class MatchMonsterService(MonsterMovementService movement)
         }
 
         float fallback = MathF.Atan2(destination.Y - originCenter.Y, destination.X - originCenter.X);
-        if (!MonsterNavigation.TryPlanRoute(SwarmInwardOriginArea, originCenter, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out var probe))
+        if (!MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, SwarmInwardOriginArea, originCenter, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out var probe))
         {
             return fallback;
         }

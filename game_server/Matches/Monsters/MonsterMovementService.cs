@@ -18,6 +18,22 @@ internal sealed class MonsterMovementService
     private static float CampAggroRadius => Config.SWARM_MONSTER_AGGRO_RADIUS;
     private static float MarchWaypointArriveDistance => Config.SWARM_MONSTER_MARCH_WAYPOINT_ARRIVE_DISTANCE;
 
+    /// <summary>행군 예산 = 경로 실거리를 이속으로 나눈 시간 × 여유, 최소치 보장. 예산이 다한 행군은 걷어낸다.</summary>
+    public static double ComputeMarchBudgetSeconds(Vector3f start, IReadOnlyList<Vector3f> route)
+    {
+        double length = 0d;
+        var previous = start;
+        for (int index = 0; index < route.Count; index++)
+        {
+            float dx = route[index].X - previous.X;
+            float dy = route[index].Y - previous.Y;
+            length += MathF.Sqrt(dx * dx + dy * dy);
+            previous = route[index];
+        }
+
+        return Math.Max(Config.SWARM_MONSTER_MARCH_BUDGET_MINIMUM_SECONDS, length / Config.SWARM_MONSTER_MOVE_SPEED * Config.SWARM_MONSTER_MARCH_BUDGET_SLACK_MULTIPLIER);
+    }
+
     private static bool HasDirectLineToParticipant(Monster monster, IReadOnlyList<PlayerPositionSnapshot> participants)
     {
         var nearest = default(PlayerPositionSnapshot);
@@ -44,7 +60,7 @@ internal sealed class MonsterMovementService
             found = true;
         }
 
-        return found && MonsterNavigation.IsSegmentWalkable(monster.Position, nearest.Position);
+        return found && MapPathfinder.IsSegmentWalkable(Config.SWARM_MATCH_MAP, monster.Position, nearest.Position);
     }
 
     private static long ClaimLeastLoadedOwner(MatchRuntime runtime, AreaType area, IReadOnlyList<PlayerPositionSnapshot> participants)
@@ -139,7 +155,7 @@ internal sealed class MonsterMovementService
                 continue;
             }
 
-            if (!MonsterNavigation.TryPlanRoute(monster.Area, monster.Position, participant.Area, participant.Position, null, out var route))
+            if (!MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, monster.Area, monster.Position, participant.Area, participant.Position, null, out var route))
             {
                 return false;
             }
@@ -149,7 +165,7 @@ internal sealed class MonsterMovementService
             monster.MarchWaypoints.Clear();
             monster.MarchWaypoints.AddRange(route);
             monster.MarchIndex = 0;
-            monster.MarchBudgetSeconds = MonsterNavigation.ComputeMarchBudgetSeconds(monster.Position, route);
+            monster.MarchBudgetSeconds = ComputeMarchBudgetSeconds(monster.Position, route);
             return true;
         }
 
@@ -164,7 +180,7 @@ internal sealed class MonsterMovementService
         }
 
         monster.MarchBudgetSeconds -= deltaSeconds;
-        float remaining = (float)(MonsterNavigation.MonsterMoveSpeed * monster.MarchSpeedScale * GetMonsterWaveSlowMultiplier(monster, now) * deltaSeconds);
+        float remaining = (float)(Config.SWARM_MONSTER_MOVE_SPEED * monster.MarchSpeedScale * GetMonsterWaveSlowMultiplier(monster, now) * deltaSeconds);
         while (remaining > 0f && monster.MarchIndex < monster.MarchWaypoints.Count)
         {
             var waypoint = ResolveLaneWaypoint(monster);
@@ -241,10 +257,10 @@ internal sealed class MonsterMovementService
         }
 
         var areaCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, monster.Area));
-        var rescued = MonsterNavigation.ClampToAreaWalkable(monster.Position, areaCenter, monster.Area);
+        var rescued = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, monster.Position, areaCenter, monster.Area);
         if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, rescued)))
         {
-            rescued = MonsterNavigation.ClampToWalkable(monster.Position, areaCenter);
+            rescued = MapPathfinder.ClampToWalkable(Config.SWARM_MATCH_MAP, monster.Position, areaCenter);
         }
 
         monster.Position = rescued;
@@ -276,7 +292,7 @@ internal sealed class MonsterMovementService
         if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, monster.Position)))
         {
             var areaCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, monster.Area));
-            monster.Position = MonsterNavigation.ClampToAreaWalkable(monster.Position, areaCenter, monster.Area);
+            monster.Position = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, monster.Position, areaCenter, monster.Area);
         }
 
         if (!monster.MarchIsPursuit && monster.MarchWaypoints.Count > 0)
@@ -456,15 +472,15 @@ internal sealed class MonsterMovementService
         if (now >= monster.NextChasePlanAtUtc)
         {
             monster.NextChasePlanAtUtc = now.AddSeconds(ChasePlanIntervalSeconds);
-            bool direct = MonsterNavigation.IsSegmentWalkable(monster.Position, target.Position);
-            if (!direct && MonsterNavigation.TryPlanRoute(monster.Area, monster.Position, target.Area, target.Position, null, out var detour))
+            bool direct = MapPathfinder.IsSegmentWalkable(Config.SWARM_MATCH_MAP, monster.Position, target.Position);
+            if (!direct && MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, monster.Area, monster.Position, target.Area, target.Position, null, out var detour))
             {
                 monster.Infiltrating = true;
                 monster.MarchIsPursuit = true;
                 monster.MarchWaypoints.Clear();
                 monster.MarchWaypoints.AddRange(detour);
                 monster.MarchIndex = 0;
-                monster.MarchBudgetSeconds = MonsterNavigation.ComputeMarchBudgetSeconds(monster.Position, detour);
+                monster.MarchBudgetSeconds = ComputeMarchBudgetSeconds(monster.Position, detour);
                 return;
             }
         }
@@ -483,7 +499,7 @@ internal sealed class MonsterMovementService
             return;
         }
 
-        float step = (float)(MonsterNavigation.MonsterMoveSpeed * GetMonsterWaveSlowMultiplier(monster, now) * deltaSeconds);
+        float step = (float)(Config.SWARM_MONSTER_MOVE_SPEED * GetMonsterWaveSlowMultiplier(monster, now) * deltaSeconds);
         if (step > distance)
         {
             step = distance;

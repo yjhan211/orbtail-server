@@ -350,7 +350,7 @@ internal sealed class BotDecisionService(
                 position.X + MathF.Cos(angle) * MonsterRoamDistance,
                 position.Y + MathF.Sin(angle) * MonsterRoamDistance,
                 0f);
-            destination = MonsterNavigation.ClampToAreaWalkable(destination, position, area);
+            destination = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, destination, position, area);
         }
 
         var mode = threatCount > 0 ? SwarmBotMode.Return : SwarmBotMode.Escort;
@@ -371,7 +371,7 @@ internal sealed class BotDecisionService(
             float sin = MathF.Sin(radians);
             float rotatedX = directionX * cos - directionY * sin;
             float rotatedY = directionX * sin + directionY * cos;
-            var candidate = MonsterNavigation.ClampToAreaWalkable(new Vector3f(
+            var candidate = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(
                 position.X + rotatedX * MonsterFleeDistance,
                 position.Y + rotatedY * MonsterFleeDistance,
                 0f), position, area);
@@ -381,7 +381,7 @@ internal sealed class BotDecisionService(
                 return candidate;
         }
 
-        return MonsterNavigation.ClampToAreaWalkable(
+        return MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP,
             BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area)),
             position, area);
     }
