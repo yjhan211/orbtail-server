@@ -1,3 +1,4 @@
+using game_server.matches.monsters;
 using game_server.players;
 using network.common;
 using network.common.data;
@@ -8,7 +9,7 @@ namespace game_server.matches;
 ///     매치의 플레이어 본체·보유 오브·몬스터를 자동공격 계산용 데이터로 구성한다.
 ///     각 개체의 위치와 공격 능력치를 반영하며, 매치 상태는 변경하지 않는다.
 /// </summary>
-internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails)
+internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails, MatchMonsterService monsters)
 {
     private static float SwarmOrbCadenceJitterRatio => SwarmConfigData.GetFloat("SWARM_ORB_CADENCE_JITTER_RATIO", 0.12f);
 
@@ -128,7 +129,7 @@ internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails)
             }
         }
 
-        foreach (var target in runtime.Monsters.GetCombatTargets(nowUtc))
+        foreach (var target in monsters.GetCombatTargets(runtime, nowUtc))
         {
             actors.Add(new ProximityCombatActor(
                 target.CombatTargetId,

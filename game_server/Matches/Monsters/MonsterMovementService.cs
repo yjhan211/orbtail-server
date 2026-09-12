@@ -11,13 +11,6 @@ namespace game_server.matches.monsters;
 /// </summary>
 internal sealed class MonsterMovementService
 {
-    private static double SupplyTargetHoldSeconds => Config.SWARM_MONSTER_TARGET_HOLD_SECONDS;
-    private static float SupplyIdlePatrolRadius => Config.SWARM_MONSTER_IDLE_PATROL_RADIUS;
-    private static double SupplyIdlePatrolAngularSpeed => Config.SWARM_MONSTER_IDLE_PATROL_ANGULAR_SPEED;
-    private static float RangedHoldRangeRatio => Config.SWARM_MONSTER_RANGED_HOLD_RANGE_RATIO;
-    private static float CampAggroRadius => Config.SWARM_MONSTER_AGGRO_RADIUS;
-    private static float MarchWaypointArriveDistance => Config.SWARM_MONSTER_MARCH_WAYPOINT_ARRIVE_DISTANCE;
-
     /// <summary>행군 예산 = 경로 실거리를 이속으로 나눈 시간 × 여유, 최소치 보장. 예산이 다한 행군은 걷어낸다.</summary>
     public static double ComputeMarchBudgetSeconds(Vector3f start, IReadOnlyList<Vector3f> route)
     {
@@ -122,7 +115,7 @@ internal sealed class MonsterMovementService
 
             float aggroDx = participant.Position.X - monster.Position.X;
             float aggroDy = participant.Position.Y - monster.Position.Y;
-            if (aggroDx * aggroDx + aggroDy * aggroDy > CampAggroRadius * CampAggroRadius)
+            if (aggroDx * aggroDx + aggroDy * aggroDy > Config.SWARM_MONSTER_AGGRO_RADIUS * Config.SWARM_MONSTER_AGGRO_RADIUS)
             {
                 continue;
             }
@@ -187,7 +180,7 @@ internal sealed class MonsterMovementService
             float dx = waypoint.X - monster.Position.X;
             float dy = waypoint.Y - monster.Position.Y;
             float distance = MathF.Sqrt(dx * dx + dy * dy);
-            if (distance <= MarchWaypointArriveDistance)
+            if (distance <= Config.SWARM_MONSTER_MARCH_WAYPOINT_ARRIVE_DISTANCE)
             {
                 monster.MarchIndex++;
                 continue;
@@ -236,8 +229,6 @@ internal sealed class MonsterMovementService
         monster.Alive = false;
         monster.DiedAtUtc = now;
     }
-
-    private static double ChasePlanIntervalSeconds => Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS;
 
     private static float GetMonsterWaveSlowMultiplier(Monster monster, DateTime now)
     {
@@ -345,7 +336,7 @@ internal sealed class MonsterMovementService
 
         bool found = false;
         var target = default(PlayerPositionSnapshot);
-        float intruderNearestSquared = CampAggroRadius * CampAggroRadius;
+        float intruderNearestSquared = Config.SWARM_MONSTER_AGGRO_RADIUS * Config.SWARM_MONSTER_AGGRO_RADIUS;
         for (int index = 0; index < participants.Count; index++)
         {
             var participant = participants[index];
@@ -427,7 +418,7 @@ internal sealed class MonsterMovementService
 
             if (found)
             {
-                monster.NextTargetScanAtUtc = now.AddSeconds(SupplyTargetHoldSeconds);
+                monster.NextTargetScanAtUtc = now.AddSeconds(Config.SWARM_MONSTER_TARGET_HOLD_SECONDS);
             }
         }
 
@@ -442,12 +433,12 @@ internal sealed class MonsterMovementService
             var anchor = new Vector3f(monster.AnchorX, monster.AnchorY, 0f);
             float homeDx = anchor.X - monster.Position.X;
             float homeDy = anchor.Y - monster.Position.Y;
-            if (homeDx * homeDx + homeDy * homeDy <= SupplyIdlePatrolRadius * SupplyIdlePatrolRadius * 4f)
+            if (homeDx * homeDx + homeDy * homeDy <= Config.SWARM_MONSTER_IDLE_PATROL_RADIUS * Config.SWARM_MONSTER_IDLE_PATROL_RADIUS * 4f)
             {
                 monster.ChaseTargetPlayerId = 0;
                 double patrolSeconds = (now - monster.SpawnedAtUtc).TotalSeconds;
-                float patrolAngle = monster.ScatterAngle + (float)(patrolSeconds * SupplyIdlePatrolAngularSpeed);
-                var patrolPoint = new Vector3f(anchor.X + MathF.Cos(patrolAngle) * SupplyIdlePatrolRadius, anchor.Y + MathF.Sin(patrolAngle) * SupplyIdlePatrolRadius, 0f);
+                float patrolAngle = monster.ScatterAngle + (float)(patrolSeconds * Config.SWARM_MONSTER_IDLE_PATROL_ANGULAR_SPEED);
+                var patrolPoint = new Vector3f(anchor.X + MathF.Cos(patrolAngle) * Config.SWARM_MONSTER_IDLE_PATROL_RADIUS, anchor.Y + MathF.Sin(patrolAngle) * Config.SWARM_MONSTER_IDLE_PATROL_RADIUS, 0f);
                 if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, patrolPoint)))
                 {
                     patrolPoint = anchor;
@@ -462,7 +453,7 @@ internal sealed class MonsterMovementService
         monster.ChaseTargetPlayerId = target.PlayerId;
         if (monster.AttackRangeValue > Monster.BaseContactRadius)
         {
-            float holdRange = monster.AttackRangeValue * RangedHoldRangeRatio;
+            float holdRange = monster.AttackRangeValue * Config.SWARM_MONSTER_RANGED_HOLD_RANGE_RATIO;
             if (GroundGeometry.IsWithinGroundRadius(monster.Position, target.Position, holdRange))
             {
                 return;
@@ -471,7 +462,7 @@ internal sealed class MonsterMovementService
 
         if (now >= monster.NextChasePlanAtUtc)
         {
-            monster.NextChasePlanAtUtc = now.AddSeconds(ChasePlanIntervalSeconds);
+            monster.NextChasePlanAtUtc = now.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS);
             bool direct = MapPathfinder.IsSegmentWalkable(Config.SWARM_MATCH_MAP, monster.Position, target.Position);
             if (!direct && MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, monster.Area, monster.Position, target.Area, target.Position, null, out var detour))
             {

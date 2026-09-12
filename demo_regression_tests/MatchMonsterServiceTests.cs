@@ -405,7 +405,10 @@ public class MatchMonsterServiceTests
         public Arena(long matchingId)
         {
             Runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(matchingId);
-            Assert.True(Runtime.Monsters.Initialize(StartUtc));
+            using (Runtime.Enter())
+            {
+                Assert.True(_director.Initialize(Runtime, StartUtc));
+            }
         }
 
         public MatchRuntime Runtime { get; }
@@ -432,7 +435,13 @@ public class MatchMonsterServiceTests
 
         public IReadOnlyList<MonsterRuntimeInfo> GetVisualStates() => Runtime.Monsters.Entities.Values.Select(monster => monster.ToMonsterRuntimeInfo()).ToList();
 
-        public IReadOnlyList<Monster> GetCombatTargets() => Runtime.Monsters.GetCombatTargets(_lastNow);
+        public IReadOnlyList<Monster> GetCombatTargets()
+        {
+            using (Runtime.Enter())
+            {
+                return _director.GetCombatTargets(Runtime, _lastNow);
+            }
+        }
     }
 
     private static Vector3f AreaCenter(AreaType area) =>

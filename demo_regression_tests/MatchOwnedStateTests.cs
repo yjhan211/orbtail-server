@@ -1,6 +1,7 @@
 using game_server;
 using game_server.matches;
 using game_server.matches.logging;
+using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
 using game_server.sessions;
@@ -102,9 +103,13 @@ public sealed class MatchOwnedStateTests
         var first = store.GetOrCreate(941006);
         var second = store.GetOrCreate(941007);
         var now = DateTime.UtcNow;
-        Assert.True(first.Monsters.TryClaimSnapshotSlot(now));
-        Assert.False(first.Monsters.TryClaimSnapshotSlot(now));
-        Assert.True(second.Monsters.TryClaimSnapshotSlot(now));
+        var monsters = new MatchMonsterService(new MonsterMovementService());
+        using (MatchRuntimeStore.Enter(first))
+        {
+            Assert.True(monsters.TryClaimSnapshotSlot(first, now));
+            Assert.False(monsters.TryClaimSnapshotSlot(first, now));
+        }
+        using (MatchRuntimeStore.Enter(second)) Assert.True(monsters.TryClaimSnapshotSlot(second, now));
     }
 
     [Fact]

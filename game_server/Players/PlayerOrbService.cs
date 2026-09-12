@@ -17,7 +17,8 @@ internal sealed class PlayerOrbService(
     PlayerHealthService healthService,
     MatchCombatDamageService combatDamage,
     PlayerOrbTrailService orbTrails,
-    GameEventLogManager eventLogs)
+    GameEventLogManager eventLogs,
+    MatchMonsterService monsters)
 {
     private const float SwarmGroundYScale = GroundGeometry.GroundYScale;
     private const float SwarmCrossfireMonsterRadius = GroundGeometry.MonsterRadius;
@@ -174,7 +175,7 @@ internal sealed class PlayerOrbService(
 
             orbTiers ??= orbTrails.GetOrbTiersInOrder(runtime, owner);
             var orbPosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, owner.Position!, orbTiers);
-            monsterTargets ??= runtime.Monsters.GetCombatTargets(nowUtc);
+            monsterTargets ??= monsters.GetCombatTargets(runtime, nowUtc);
             bool hasTargetInRange = false;
             foreach (var monsterTarget in monsterTargets)
             {
@@ -270,10 +271,10 @@ internal sealed class PlayerOrbService(
             return false;
         }
 
-        var monsterTargets = runtime.Monsters.GetCombatTargets(nowUtc);
+        var monsterTargets = monsters.GetCombatTargets(runtime, nowUtc);
         var origin = attack.Origin ?? owner.Position;
         var anchor = attack.AnchorPosition;
-        int anchorMonsterId = runtime.Monsters.GetMonsterIdForCombatTarget(attack.TargetPlayerId);
+        int anchorMonsterId = monsters.GetMonsterIdForCombatTarget(runtime, attack.TargetPlayerId);
         if (anchor == null && runtime.GetParticipant(attack.TargetPlayerId)?.Position is { } targetPosition)
         {
             anchor = targetPosition;
@@ -524,7 +525,7 @@ internal sealed class PlayerOrbService(
             orbTiers ??= orbTrails.GetOrbTiersInOrder(runtime, owner);
             var orbPosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, owner.Position!, orbTiers);
             float radius = Config.SWARM_WIND_BLADE_RADIUS_BY_TIER[Math.Clamp(tier, 1, 3) - 1];
-            monsterTargets ??= runtime.Monsters.GetCombatTargets(nowUtc);
+            monsterTargets ??= monsters.GetCombatTargets(runtime, nowUtc);
             List<Monster>? monstersInRadius = null;
             foreach (var monster in monsterTargets)
             {
@@ -585,7 +586,7 @@ internal sealed class PlayerOrbService(
                 foreach (var monster in monstersInRadius)
                 {
                     monsterHits++;
-                    runtime.Monsters.RecordMonsterAttackEvent(monster.CombatTargetId);
+                    monsters.RecordMonsterAttackEvent(runtime, monster.CombatTargetId);
                     int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, damage, out bool critical);
                     combatDamage.ApplySwarmMonsterHitNow(runtime, monster.CombatTargetId, monster.MonsterId, owner.PlayerId, orb.ItemId, owner.CurrentArea, monsterDamage, critical, nowUtc, activeSessions);
                 }

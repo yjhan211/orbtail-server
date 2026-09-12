@@ -55,7 +55,7 @@ internal class MatchCombatService(
 
         if (!runtime.Monsters.IsInitialized)
         {
-            runtime.Monsters.Initialize(DateTime.UtcNow);
+            monsters.Initialize(runtime, DateTime.UtcNow);
         }
 
         var nowUtc = DateTime.UtcNow;
@@ -109,7 +109,7 @@ internal class MatchCombatService(
         players.RemoveAll(player => player.IsEliminated);
         healthService.ApplySleepRecovery(runtime, players, nowUtc);
         botDecisions.ProcessSwarmBotDoorUnlocks(runtime, aliveBots, sessions, nowUtc);
-        if (runtime.Monsters.TryClaimSnapshotSlot(nowUtc))
+        if (monsters.TryClaimSnapshotSlot(runtime, nowUtc))
         {
             SendMonsterSnapshots(runtime, sessions, preMatch: false);
         }
@@ -209,7 +209,7 @@ internal class MatchCombatService(
             {
                 continue;
             }
-            int monsterId = runtime.Monsters.GetMonsterIdForCombatTarget(attack.TargetPlayerId);
+            int monsterId = monsters.GetMonsterIdForCombatTarget(runtime, attack.TargetPlayerId);
             if (monsterId <= 0 && MatchMonsterService.IsCombatTargetId(attack.TargetPlayerId))
             {
                 continue;
@@ -235,8 +235,8 @@ internal class MatchCombatService(
                 var anchor = attack.AnchorPosition ?? (actorById.TryGetValue(attack.TargetPlayerId, out var targetActor) ? targetActor.Position : null);
                 float distance = origin != null && anchor != null ? Vector3f.Distance(origin, anchor) : Config.SWARM_ORB_ATTACK_RANGE;
                 double delaySeconds = OrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, distance);
-                runtime.Monsters.ReserveMonsterDamage(attack.TargetPlayerId, monsterDamage);
-                runtime.Monsters.RecordMonsterAttackEvent(attack.TargetPlayerId);
+                monsters.ReserveMonsterDamage(runtime, attack.TargetPlayerId, monsterDamage);
+                monsters.RecordMonsterAttackEvent(runtime, attack.TargetPlayerId);
                 combatDamage.ScheduleMonsterHit(runtime, new PendingMonsterHit(attack.TargetPlayerId, attack.AttackerPlayerId, monsterDamage, nowUtc.AddSeconds(delaySeconds)));
                 continue;
             }
@@ -266,7 +266,7 @@ internal class MatchCombatService(
 
     private void SendMonsterSnapshots(MatchRuntime runtime, List<GameClientSession> sessions, bool preMatch)
     {
-        var snapshots = runtime.Monsters.GetVisualStatesByArea();
+        var snapshots = monsters.GetVisualStatesByArea(runtime);
         foreach (var session in sessions)
         {
             session.SendMonsterSnapshot(snapshots, preMatch);
@@ -284,7 +284,7 @@ internal class MatchCombatService(
             return;
         }
         damage = damage with { Damage = Config.ScaleSwarmDamageTaken(damage.Damage) };
-        if (runtime.Monsters.HasWaveInsignia(damage.MonsterId))
+        if (runtime.Monsters.Entities.TryGetValue(damage.MonsterId, out var monster) && monster.Insignia == MonsterInsignia.Wave)
         {
             using var vfxPacket = Packet.Create((int)Protocol.G_TO_C_MONSTER_ATTACK_VFX);
             vfxPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_ATTACK_VFX

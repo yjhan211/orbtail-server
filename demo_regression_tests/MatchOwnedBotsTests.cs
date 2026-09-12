@@ -1,5 +1,6 @@
 using game_server.matches;
 using game_server.matches.logging;
+using game_server.matches.monsters;
 using game_server.players.bots;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -87,10 +88,14 @@ public sealed class MatchOwnedBotsTests
         var first = store.GetOrCreate(1);
         var second = store.GetOrCreate(2);
         Assert.NotSame(first.Monsters, second.Monsters);
-        Assert.True(first.Monsters.Initialize(DateTime.UtcNow));
-        Assert.False(first.Monsters.Initialize(DateTime.UtcNow));
+        var monsters = new MatchMonsterService(new MonsterMovementService());
+        using (MatchRuntimeStore.Enter(first))
+        {
+            Assert.True(monsters.Initialize(first, DateTime.UtcNow));
+            Assert.False(monsters.Initialize(first, DateTime.UtcNow));
+        }
         Assert.False(second.Monsters.IsInitialized);
-        Assert.True(second.Monsters.Initialize(DateTime.UtcNow));
+        using (MatchRuntimeStore.Enter(second)) Assert.True(monsters.Initialize(second, DateTime.UtcNow));
         using (MatchRuntimeStore.Enter(first)) first.TryMarkEnded();
         Assert.False(first.Monsters.IsInitialized);
         Assert.True(second.Monsters.IsInitialized);
