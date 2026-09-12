@@ -13,7 +13,7 @@ internal sealed class MatchAutoAttackService
     public static readonly TimeSpan AimDuration = TimeSpan.FromMilliseconds(100);
     public static readonly TimeSpan TargetReacquireGraceDuration = TimeSpan.FromSeconds(1.5);
 
-    public IReadOnlyList<ProximityCombatAttack> UpdateAttacks(MatchRuntime runtime, IReadOnlyList<ProximityCombatActor> actors, DateTime nowUtc, Func<ProximityCombatActor, ProximityCombatActor, bool>? hasLineOfSight = null)
+    public IReadOnlyList<ProximityCombatAttack> UpdateAttacks(MatchRuntime runtime, IReadOnlyList<ProximityCombatActor> actors, DateTime nowUtc, Func<ProximityCombatActor, ProximityCombatActor, bool>? canAttackTarget = null)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -74,7 +74,7 @@ internal sealed class MatchAutoAttackService
                     continue;
                 }
 
-                if (hasLineOfSight != null && !hasLineOfSight(attacker, candidate))
+                if (canAttackTarget != null && !canAttackTarget(attacker, candidate))
                 {
                     continue;
                 }
@@ -152,11 +152,7 @@ internal sealed class MatchAutoAttackService
                     attacker.Area,
                     attacker.WeaponItemId,
                     damage,
-                    attacker.ProjectileWidth,
-                    attacker.EffectDurationSeconds,
                     eligibleTargets.Count,
-                    attacker.SunResonanceStage,
-                    attacker.WaveResonanceArmed,
                     AttackerItemUid: attacker.WeaponItemUid,
                     Origin: attacker.Position,
                     AnchorPosition: eligibleTargets[i].Actor.Position,

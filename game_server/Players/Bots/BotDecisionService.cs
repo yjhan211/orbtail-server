@@ -259,7 +259,7 @@ internal sealed class BotDecisionService(
             return new SwarmBotDirective(
                 SwarmBotMode.Escort,
                 bot.Player.CurrentArea,
-                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!),
+                MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!),
                 bot.Player.Position!);
         }
 
@@ -322,7 +322,7 @@ internal sealed class BotDecisionService(
                     BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, exitCell));
             }
 
-            var botCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!);
+            var botCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!);
             if (SwarmPressureField.GetDistance(botCell) >
                 fieldSafeDistance - SwarmBotFieldEvacuateMarginCells)
             {
@@ -417,7 +417,7 @@ internal sealed class BotDecisionService(
                 float pressDy = recentAttackerPosition.Y - bot.Player.Position!.Y;
                 if (pressDx * pressDx + pressDy * pressDy > 2.25f)
                 {
-                    Cell pressCell = ProximityCombatLineOfSight.WorldPositionToCell(
+                    Cell pressCell = MapCoordinateConverter.WorldToCell(
                         Config.SWARM_MATCH_MAP, recentAttackerPosition);
                     if (GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, pressCell) &&
                         GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, pressCell) is var pressArea &&
@@ -455,7 +455,7 @@ internal sealed class BotDecisionService(
             // 폴백 (#222): 도주 방향에 열린 스팟이 없어도 무조건 이탈한다 — 스팟 부재로
             // 지시 없이 낙하해 제자리에서 얻어맞던 구멍(매치 2372 봇 -78) 수리.
             Cell? fleeFallbackCell =
-                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, fleeProbe);
+                MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, fleeProbe);
             if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, fleeFallbackCell))
             {
                 fleeFallbackCell = fleeFallbackCell.GetAdjacentCells()
@@ -503,7 +503,7 @@ internal sealed class BotDecisionService(
             return new SwarmBotDirective(
                 SwarmBotMode.Escort,
                 bot.Player.CurrentArea,
-                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, lootPosition),
+                MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, lootPosition),
                 lootPosition);
         }
 
@@ -520,7 +520,7 @@ internal sealed class BotDecisionService(
             // 추격 계측 (#229 8단계): 조우는 나는데 절단이 0건인 원인을 가르려면 "추격이
             // 발동은 했는가"와 "발동하고도 못 잘랐는가"를 구분해야 한다. 매치 요약에 남긴다.
             LogSwarmChaseIssued(runtime, botPlayerId, weakerRival.Value.PlayerId, chaseTarget);
-            var chaseCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, chaseTarget);
+            var chaseCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, chaseTarget);
             var chaseArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, chaseCell);
             bool chaseCellUsable = chaseArea != AreaType.None &&
                                    GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, chaseCell);
@@ -529,7 +529,7 @@ internal sealed class BotDecisionService(
                 chaseCellUsable ? chaseArea : weakerRival.Value.Area,
                 chaseCellUsable
                     ? chaseCell
-                    : ProximityCombatLineOfSight.WorldPositionToCell(
+                    : MapCoordinateConverter.WorldToCell(
                         Config.SWARM_MATCH_MAP, weakerRival.Value.Position),
                 chaseCellUsable ? chaseTarget : weakerRival.Value.Position);
         }
@@ -540,7 +540,7 @@ internal sealed class BotDecisionService(
             return new SwarmBotDirective(
                 SwarmBotMode.Escort,
                 bot.Player.CurrentArea,
-                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, stonePosition),
+                MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, stonePosition),
                 stonePosition);
         }
 
@@ -552,7 +552,7 @@ internal sealed class BotDecisionService(
             return new SwarmBotDirective(
                 SwarmBotMode.Escort,
                 bot.Player.CurrentArea,
-                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!),
+                MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!),
                 bot.Player.Position!);
         }
 
@@ -570,7 +570,7 @@ internal sealed class BotDecisionService(
                 return new SwarmBotDirective(
                     SwarmBotMode.Escort,
                     supplyArea,
-                    ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, supplyPosition),
+                    MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, supplyPosition),
                     supplyPosition);
             }
         }
@@ -586,7 +586,7 @@ internal sealed class BotDecisionService(
             return new SwarmBotDirective(
                 SwarmBotMode.Escort,
                 migrateArea,
-                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, migratePosition),
+                MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, migratePosition),
                 migratePosition);
         }
 

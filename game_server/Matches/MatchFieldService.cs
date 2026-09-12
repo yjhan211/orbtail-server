@@ -1,4 +1,3 @@
-using game_server.matches.combat;
 using game_server.matches.logging;
 using game_server.players;
 using MessagePack;
@@ -97,7 +96,7 @@ internal class MatchFieldService(
             {
                 continue;
             }
-            var ownerCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, ownerPosition);
+            var ownerCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, ownerPosition);
             if (closedAreaSet.Contains(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, ownerCell)))
             {
                 continue;
@@ -110,7 +109,7 @@ internal class MatchFieldService(
             for (int ordinal = orbTiers.Count - 1; ordinal >= 0; ordinal--)
             {
                 var orbPosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, ownerPosition, orbTiers);
-                var orbCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, orbPosition);
+                var orbCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, orbPosition);
                 var orbArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, orbCell);
                 if (!closedAreaSet.Contains(orbArea))
                 {
@@ -237,7 +236,7 @@ internal class MatchFieldService(
             return 0;
         }
 
-        var cell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, worldPosition);
+        var cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, worldPosition);
         double over = SwarmPressureField.GetDistance(cell) - safeDistance;
         if (over <= 0)
         {

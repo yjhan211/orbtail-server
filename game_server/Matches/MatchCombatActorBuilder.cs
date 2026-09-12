@@ -51,7 +51,7 @@ internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails)
                 continue;
             }
 
-            var cell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, player.Position);
+            var cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, player.Position);
             var cellArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
             if (cellArea != player.CurrentArea || !GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell))
             {
@@ -81,7 +81,7 @@ internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails)
                 actor = actor with
                 {
                     Position = trailPosition,
-                    Cell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, trailPosition),
+                    Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, trailPosition),
                     TrailOrdinal = ordinal,
                     Untargetable = true
                 };
@@ -107,9 +107,7 @@ internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails)
                 {
                     Damage = damage,
                     AttackIntervalSeconds = attackIntervalSeconds,
-                    AttackRange = attackRange,
-                    ProjectileWidth = combatData?.ProjectileWidth ?? 0f,
-                    EffectDurationSeconds = combatData?.EffectDurationSeconds ?? 0f
+                    AttackRange = attackRange
                 };
             }
 
@@ -142,7 +140,7 @@ internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails)
                 0,
                 0f,
                 MapId: Config.SWARM_MATCH_MAP,
-                Cell: ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, target.Position),
+                Cell: MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target.Position),
                 IsMonsterTarget: true,
                 TargetPriority: 2));
         }

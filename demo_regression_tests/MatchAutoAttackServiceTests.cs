@@ -67,8 +67,6 @@ public class MatchAutoAttackServiceTests
         Assert.Equal(1, attack.AttackerPlayerId);
         Assert.Equal(3, attack.TargetPlayerId);
         Assert.Equal(107000003, attack.WeaponItemId);
-        Assert.Equal(0.25f, attack.ProjectileWidth);
-        Assert.Equal(1.5f, attack.EffectDurationSeconds);
     }
 
     [Fact]
@@ -379,7 +377,7 @@ public class MatchAutoAttackServiceTests
         Assert.Empty(arena.Update(actors, now.AddMilliseconds(3900)));
     }
     [Fact]
-    public void Resolve_WindProfileChecksLineOfSightForEveryAdditionalTarget()
+    public void Resolve_WindProfileChecksAttackEligibilityForEveryAdditionalTarget()
     {
         using var arena = new Arena(923, 1, 2, 3);
         var now = new DateTime(2026, 7, 22, 0, 0, 0, DateTimeKind.Utc);
@@ -393,14 +391,14 @@ public class MatchAutoAttackServiceTests
             Actor(2, 1f, 0f),
             Actor(3, 2f, 0f)
         };
-        static bool HasLineOfSight(ProximityCombatActor _, ProximityCombatActor target) =>
+        static bool CanAttackTarget(ProximityCombatActor _, ProximityCombatActor target) =>
             target.PlayerId != 2;
 
-        Assert.Empty(arena.Update(actors, now, HasLineOfSight));
+        Assert.Empty(arena.Update(actors, now, CanAttackTarget));
         var attacks = arena.Update(
             actors,
             now.Add(MatchAutoAttackService.AimDuration),
-            HasLineOfSight);
+            CanAttackTarget);
 
         var attack = Assert.Single(attacks);
         Assert.Equal(3, attack.TargetPlayerId);
@@ -453,29 +451,6 @@ public class MatchAutoAttackServiceTests
         Assert.Single(arena.Update(actors, reacquiredAt.AddMilliseconds(AimMs)));
     }
 
-    [Fact]
-    public void Resolve_PreservesSunAndWaveResonanceMetadataForServerProcResolution()
-    {
-        using var arena = new Arena(926, 1, 2);
-        var now = new DateTime(2026, 7, 25, 0, 0, 0, DateTimeKind.Utc);
-        var actors = new[]
-        {
-            Actor(1, 0f, 0f, weaponItemId: 107000010) with
-            {
-                WeaponItemUid = 101,
-                SunResonanceStage = 5,
-                WaveResonanceArmed = true
-            },
-            Actor(2, 1f, 0f)
-        };
-
-        Assert.Empty(arena.Update(actors, now));
-        var attack = Assert.Single(arena.Update(actors, now.Add(MatchAutoAttackService.AimDuration)));
-
-        Assert.Equal(5, attack.SunResonanceStage);
-        Assert.True(attack.WaveResonanceArmed);
-        Assert.False(attack.IsResonanceProc);
-    }
     [Fact]
     public void Resolve_MultipleOrbInstancesUseIndependentCooldownsAndOneTargetActor()
     {
@@ -560,8 +535,8 @@ public class MatchAutoAttackServiceTests
 
         public MatchRuntime Match { get; }
 
-        public IReadOnlyList<ProximityCombatAttack> Update(IReadOnlyList<ProximityCombatActor> actors, DateTime nowUtc, Func<ProximityCombatActor, ProximityCombatActor, bool>? hasLineOfSight = null) =>
-            _service.UpdateAttacks(Match, actors, nowUtc, hasLineOfSight);
+        public IReadOnlyList<ProximityCombatAttack> Update(IReadOnlyList<ProximityCombatActor> actors, DateTime nowUtc, Func<ProximityCombatActor, ProximityCombatActor, bool>? canAttackTarget = null) =>
+            _service.UpdateAttacks(Match, actors, nowUtc, canAttackTarget);
 
         public void Dispose() => _lock.Dispose();
     }
@@ -581,8 +556,6 @@ public class MatchAutoAttackServiceTests
             weaponItemId,
             armed ? 3f : 0f,
             armed ? 6 : 0,
-            armed ? 1.5f : 0f,
-            armed ? 0.25f : 0f,
             armed ? 1.5f : 0f);
     }
 }

@@ -24,7 +24,7 @@ public sealed class PlayerOrbServiceTests
         var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
         var owner = new Player { Profile = new PlayerInfo { PlayerId = 11 }, Position = position, CurrentArea = area };
         var anchor = new Vector3f(position.X + 2, position.Y + 1, 0);
-        var attack = new ProximityCombatAttack(11, -100, area, 107000010, 10, 1, 1,
+        var attack = new ProximityCombatAttack(11, -100, area, 107000010, 10,
             Origin: position, AnchorPosition: anchor);
         var now = DateTime.UtcNow;
         using (runtime.Enter())
@@ -52,7 +52,7 @@ public sealed class PlayerOrbServiceTests
         var attacks = provider.GetRequiredService<PlayerOrbService>();
         var owner = new Player { Profile = new PlayerInfo { PlayerId = 11 }, Position = new Vector3f() };
         var stale = new Player { Profile = new PlayerInfo { PlayerId = 11 }, Position = new Vector3f() };
-        var attack = new ProximityCombatAttack(12, -100, AreaType.None, 107000010, 10, 1, 1);
+        var attack = new ProximityCombatAttack(12, -100, AreaType.None, 107000010, 10);
         var now = DateTime.UtcNow;
         using (runtime.Enter())
         {

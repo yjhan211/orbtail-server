@@ -16,7 +16,7 @@ public sealed class MatchCombatDamageServiceTests
         var first = store.GetOrCreate(982003);
         var second = store.GetOrCreate(982004);
         var dueAt = DateTime.UtcNow.AddSeconds(1);
-        var attack = new ProximityCombatAttack(1001, 1002, default, 0, 1, 0, 0);
+        var attack = new ProximityCombatAttack(1001, 1002, default, 0, 1);
 
         using (first.Enter())
         {

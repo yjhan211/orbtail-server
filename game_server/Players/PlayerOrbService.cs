@@ -340,7 +340,7 @@ internal sealed class PlayerOrbService(
                     origin.X + directionX[direction] * along,
                     origin.Y + directionY[direction] * along / SwarmGroundYScale,
                     0f);
-                var cell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, probe);
+                var cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, probe);
                 if (GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == attack.Area)
                 {
                     continue;

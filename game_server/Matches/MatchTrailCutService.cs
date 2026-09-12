@@ -249,7 +249,7 @@ internal sealed class MatchTrailCutService(
         var guardKey = (cutterId, victimId);
         if (!runtime.CutRetaliationWindows.TryGetValue(guardKey, out var guardOnVictim))
         {
-            guardOnVictim = new CutRetaliationWindow { OpenedAtUtc = nowUtc, OpenedArea = cutArea };
+            guardOnVictim = new CutRetaliationWindow { OpenedArea = cutArea };
             runtime.CutRetaliationWindows[guardKey] = guardOnVictim;
         }
         guardOnVictim.ExpiresAtUtc = nowUtc.AddSeconds(SwarmCutRetaliationWindowSeconds);

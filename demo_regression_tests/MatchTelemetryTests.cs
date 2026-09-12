@@ -141,7 +141,7 @@ public sealed class MatchTelemetryTests
         Thread.Sleep(10);
         log.LogOrbBoardTransition(matchingId, playerId,
             [new InGameItemInfo { ItemId = 107000031, Count = 1 }], 107000031, "Gym", "inventory_changed", false);
-        var volley = new ProximityCombatAttack(playerId, 402, AreaType.S2Gym1, 107000020, 6, 0.2f, 1f, 3);
+        var volley = new ProximityCombatAttack(playerId, 402, AreaType.S2Gym1, 107000020, 6, 3);
         log.LogOrbAttackTargets(matchingId, [volley], [volley],
             new Dictionary<long, OrbColor> { [playerId] = OrbColor.Green });
         log.LogPelletPickupOutcome(matchingId, playerId, 201000008, 15, 15, "effective", false);
