@@ -125,7 +125,7 @@ internal sealed class GameMatchEntryService(
                 }
                 if (botPlayerIds.Count > 0)
                 {
-                    runtime.Bots.RegisterBots(Config.SWARM_MATCH_MAP, botPlayerIds, spawnCells);
+                    runtime.Bots.RegisterBots(runtime.MatchingId, botPlayerIds, spawnCells);
                 }
                 foreach (long botPlayerId in botPlayerIds)
                 {

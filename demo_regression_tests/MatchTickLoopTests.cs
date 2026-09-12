@@ -255,7 +255,7 @@ public sealed class MatchTickLoopTests
         public Fixture(long id, bool startImmediately = true)
         {
             Match = Store.GetOrCreate(id);
-            Match.Bots.RegisterBots(Config.SWARM_MATCH_MAP, [-42],
+            Match.Bots.RegisterBots(Match.MatchingId, [-42],
                 new Dictionary<long, Cell> { [-42] = new(0, 0) });
             if (startImmediately) Match.StartGameplay();
         }

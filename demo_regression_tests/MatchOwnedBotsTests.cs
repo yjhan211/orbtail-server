@@ -38,7 +38,7 @@ public sealed class MatchOwnedBotsTests
         using (match.Enter())
         {
             var cells = network.common.data.MatchSpawnData.CreatePhaseRoomAssignments(match.MatchingId, [1L, -1L]);
-            match.Bots.RegisterBots(Config.SWARM_MATCH_MAP, [-1L], cells);
+            match.Bots.RegisterBots(match.MatchingId, [-1L], cells);
             var bot = match.Bots.GetBot(-1)!;
             var profile = bot.Player.Profile;
             Assert.Equal("Player1", profile.Name);
@@ -52,7 +52,7 @@ public sealed class MatchOwnedBotsTests
             Assert.Equal("Updated", profile.Name);
             Assert.Equal(17, profile.Hp);
             Assert.Equal(PlayerState.IDLE, profile.State);
-            var spatial = match.Bots.SynthesizeGameObjectInfo(-1)!;
+            var spatial = match.Bots.SynthesizeGameObjectInfo(match.MatchingId, -1)!;
 
             Assert.Equal(PlayerState.SLEEP, spatial.State);
         }
@@ -100,8 +100,8 @@ public sealed class MatchOwnedBotsTests
         {
             using (match.Enter())
             {
-                return service.ProcessBotMovementTick(match, match.Closures,
-                    new Dictionary<long, AreaType>(), match.GroundItems, _ => default).PlanningBotId;
+                return service.ProcessBotMovementTick(match,
+                    new Dictionary<long, AreaType>(), _ => default).PlanningBotId;
             }
         }
 
@@ -139,7 +139,7 @@ public sealed class MatchOwnedBotsTests
         using (match.Enter())
         {
             var cells = network.common.data.MatchSpawnData.CreatePhaseRoomAssignments(match.MatchingId, [1L, -1L]);
-            match.Bots.RegisterBots(Config.SWARM_MATCH_MAP, [-1L], cells);
+            match.Bots.RegisterBots(match.MatchingId, [-1L], cells);
             var bot = Assert.IsType<Bot>(match.Bots.GetBot(-1));
             var profile = match.Bots.GetPlayerProfile(-1)!;
             bot.Player.ApplyDamage(20);
@@ -163,7 +163,7 @@ public sealed class MatchOwnedBotsTests
         using (match.Enter())
         {
             var cells = network.common.data.MatchSpawnData.CreatePhaseRoomAssignments(match.MatchingId, [1L, -1L]);
-            match.Bots.RegisterBots(Config.SWARM_MATCH_MAP, [-1L], cells);
+            match.Bots.RegisterBots(match.MatchingId, [-1L], cells);
             var bot = match.Bots.GetBot(-1)!;
             var profile = match.Bots.GetPlayerProfile(-1)!;
             match.InitializeMatch(MatchMode.Normal, cells, [new PlayerInfo { PlayerId = 1 }, profile]);
@@ -179,7 +179,7 @@ public sealed class MatchOwnedBotsTests
             player.Velocity = new Vector3f(6, 0, 0);
             player.Rotation = 180;
             player.CurrentArea = Config.SWARM_MATCH_GROUND_AREA;
-            var snapshot = match.Bots.SynthesizeGameObjectInfo(-1)!;
+            var snapshot = match.Bots.SynthesizeGameObjectInfo(match.MatchingId, -1)!;
             Assert.Equal(12, snapshot.Position.X);
             Assert.Equal(34, snapshot.Position.Y);
             Assert.Equal(180, snapshot.Rotation);
@@ -198,8 +198,10 @@ public sealed class MatchOwnedBotsTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(1);
         var second = store.GetOrCreate(2);
-        first.Bots.RegisterBots(Config.SWARM_MATCH_MAP, [], new Dictionary<long, Cell>());
+        first.Bots.RegisterBots(first.MatchingId, [], new Dictionary<long, Cell>());
+        Assert.False(first.Bots.HasBots());
         first.Bots.GetBots().Add(new Bot { PlayerId = -1 });
+        Assert.True(first.Bots.HasBots());
         Assert.NotSame(first.Bots, second.Bots);
         var movementService = new BotMovementService(NullLogger<BotMovementService>.Instance);
         Assert.Single(first.Bots.GetBots());
@@ -207,6 +209,7 @@ public sealed class MatchOwnedBotsTests
         using (MatchRuntimeStore.Enter(first)) first.TryMarkEnded();
         Assert.Null(store.GetOrNull(1));
         Assert.Empty(first.Bots.GetBots());
+        Assert.False(first.Bots.HasBots());
         Assert.Same(second, store.GetOrNull(2));
     }
 }

@@ -407,14 +407,14 @@ public sealed class MatchGameplayServiceTests
         using (match.Enter())
         {
             Assert.True(bot.Player.TryStartSleep(DateTime.UtcNow));
-            var result = provider.GetRequiredService<BotMovementService>().ProcessBotMovementTick(match, match.Closures,
-                new Dictionary<long, network.common.AreaType>(), match.GroundItems,
+            var result = provider.GetRequiredService<BotMovementService>().ProcessBotMovementTick(match,
+                new Dictionary<long, network.common.AreaType>(),
                 _ => throw new InvalidOperationException("A sleeping bot must not request a movement plan."));
             Assert.Single(result.Movements);
             Assert.Equal(0, bot.Player.Velocity.X);
             Assert.Equal(0, bot.Player.Position!.X);
             Assert.True(bot.Player.IsSleeping);
-            Assert.Equal(network.common.PlayerState.SLEEP, match.Bots.SynthesizeGameObjectInfo(bot.PlayerId)!.State);
+            Assert.Equal(network.common.PlayerState.SLEEP, match.Bots.SynthesizeGameObjectInfo(match.MatchingId, bot.PlayerId)!.State);
             Assert.Equal(network.common.PlayerState.NONE, match.Bots.GetPlayerProfile(bot.PlayerId)!.State);
         }
     }

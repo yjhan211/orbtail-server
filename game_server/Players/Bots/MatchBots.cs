@@ -1,4 +1,3 @@
-using game_server.matches;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -14,72 +13,6 @@ public class MatchBots
 {
     private const double BotInitialDecisionDelayMinSeconds = 0.15;
     private const double BotInitialDecisionDelayMaxSeconds = 1.2;
-
-    private readonly long _matchingId;
-    private List<Bot> _bots = [];
-    private bool _registered;
-
-    private int _movementPlanningCursor;
-    private MapId _mapId = Config.SWARM_MATCH_MAP;
-
-    private readonly ILogger _logger;
-
-    private readonly Random _rng = Random.Shared;
-
-    internal MatchBots(long matchingId, ILogger logger)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
-        _matchingId = matchingId;
-        _logger = logger;
-    }
-
-    public void RegisterBots(MapId mapId, IReadOnlyList<long> botPlayerIds, IReadOnlyDictionary<long, Cell> spawnCells)
-    {
-        _mapId = mapId;
-
-        var bots = botPlayerIds.Select(botPlayerId =>
-        {
-            if (!spawnCells.TryGetValue(botPlayerId, out Cell? assignedSpawn))
-            {
-                throw new InvalidOperationException($"Bot {botPlayerId} has no spawn assignment in match {_matchingId}.");
-            }
-            var startCell = Cell.Clone(assignedSpawn);
-            var startArea = GameMapData.GetCurrentArea(mapId, startCell);
-            if (startArea == AreaType.None)
-            {
-                startArea = AreaType.S2Corridor9;
-            }
-
-            var startPosition = CellToWorldPosition(mapId, startCell);
-            var now = DateTime.UtcNow;
-
-            return new Bot
-            {
-                PlayerId = botPlayerId,
-                Player =
-                {
-                    Profile = { Name = $"Player{Math.Abs(botPlayerId)}", Hp = 5000, State = PlayerState.IDLE, WearItemIdList = BuildBotWearItems(botPlayerId) },
-                    CurrentArea = startArea,
-                    Cell = startCell,
-                    Position = startPosition,
-                    Rotation = 0f
-                },
-                LoopWaitUntil = now.AddSeconds(BotInitialDecisionDelayMinSeconds + _rng.NextDouble() *
-                    (BotInitialDecisionDelayMaxSeconds - BotInitialDecisionDelayMinSeconds))
-            };
-        }).ToList();
-
-        _bots = bots;
-        _registered = true;
-        _movementPlanningCursor = 0;
-
-        _logger.LogInformation(
-            "Bots registered: Count={Count}, MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]",
-            bots.Count, _matchingId, mapId,
-            string.Join(",", bots.Select(b => $"{b.PlayerId}@{b.Player.CurrentArea}")));
-    }
-
-    public MapId MapId => _mapId;
 
     private static readonly int[] BotDefaultWearItemIds =
     {
@@ -98,6 +31,60 @@ public class MatchBots
         103000006
     };
 
+    private readonly ILogger _logger;
+
+    private List<Bot> _bots = [];
+    private int _movementPlanningCursor;
+
+    public List<Bot> GetBots() => _bots;
+    public Bot? GetBot(long playerId) => _bots.FirstOrDefault(b => b.PlayerId == playerId);
+    internal MatchBots(ILogger logger)
+    {
+        _logger = logger;
+    }
+
+    public void RegisterBots(long matchingId, IReadOnlyList<long> botPlayerIds, IReadOnlyDictionary<long, Cell> spawnCells)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
+
+        var bots = botPlayerIds.Select(botPlayerId =>
+        {
+            if (!spawnCells.TryGetValue(botPlayerId, out Cell? assignedSpawn))
+            {
+                throw new InvalidOperationException($"Bot {botPlayerId} has no spawn assignment in match {matchingId}.");
+            }
+            var startCell = Cell.Clone(assignedSpawn);
+            var startArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, startCell);
+            if (startArea == AreaType.None)
+            {
+                startArea = AreaType.S2Corridor9;
+            }
+
+            var startPosition = CellToWorldPosition(Config.SWARM_MATCH_MAP, startCell);
+            var now = DateTime.UtcNow;
+
+            return new Bot
+            {
+                PlayerId = botPlayerId,
+                Player =
+                {
+                    Profile = { Name = $"Player{Math.Abs(botPlayerId)}", Hp = 5000, State = PlayerState.IDLE, WearItemIdList = BuildBotWearItems(botPlayerId) },
+                    CurrentArea = startArea,
+                    Cell = startCell,
+                    Position = startPosition,
+                    Rotation = 0f
+                },
+                LoopWaitUntil = now.AddSeconds(BotInitialDecisionDelayMinSeconds + Random.Shared.NextDouble() *
+                    (BotInitialDecisionDelayMaxSeconds - BotInitialDecisionDelayMinSeconds))
+            };
+        }).ToList();
+
+        _bots = bots;
+        _movementPlanningCursor = 0;
+
+        _logger.LogInformation("Bots registered: Count={Count}, MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]", bots.Count, matchingId, Config.SWARM_MATCH_MAP, string.Join(",", bots.Select(b => $"{b.PlayerId}@{b.Player.CurrentArea}")));
+    }
+
     internal static List<int> BuildBotWearItems(long playerId)
     {
         var list = new List<int>(BotDefaultWearItemIds);
@@ -107,16 +94,13 @@ public class MatchBots
         return list;
     }
 
-    /// <summary>생성 시 초기화한 봇 프로필을 변경 없이 조회한다.</summary>
-    public PlayerInfo? GetPlayerProfile(long botPlayerId) =>
-        GetBot(botPlayerId)?.Player.Profile;
-
-    public GameObjectInfo? SynthesizeGameObjectInfo(long botPlayerId)
+    public PlayerInfo? GetPlayerProfile(long botPlayerId) => GetBot(botPlayerId)?.Player.Profile;
+    public GameObjectInfo? SynthesizeGameObjectInfo(long matchingId, long botPlayerId)
     {
         var bot = GetBot(botPlayerId);
         if (bot == null) return null;
         var state = bot.Player.State;
-        return new GameObjectInfo(ObjectType.PLAYER, bot.PlayerId, _mapId, _matchingId, bot.Player.Cell!)
+        return new GameObjectInfo(ObjectType.PLAYER, bot.PlayerId, Config.SWARM_MATCH_MAP, matchingId, bot.Player.Cell!)
         {
             Position = new Vector3f(bot.Player.Position!.X, bot.Player.Position!.Y, bot.Player.Position!.Z),
             Rotation = bot.Player.Rotation,
@@ -124,29 +108,19 @@ public class MatchBots
         };
     }
 
-    internal static Vector3f CellToWorldPosition(MapId mapId, Cell cell) =>
-        MapCoordinateConverter.CellToWorld(mapId, cell);
+    internal static Vector3f CellToWorldPosition(MapId mapId, Cell cell) => MapCoordinateConverter.CellToWorld(mapId, cell);
 
-    public List<Bot> GetBots() => _bots;
-
-    public Bot? GetBot(long playerId) => _bots.FirstOrDefault(b => b.PlayerId == playerId);
-
-    public bool HasBots() => _registered;
+    public bool HasBots() => _bots.Count > 0;
 
     internal void Release()
     {
         _bots.Clear();
-        _registered = false;
         _movementPlanningCursor = 0;
     }
 
-    public static bool IsBotPlayerId(long playerId) => playerId < 0;
-
-    /// <summary>경로 탐색 비용을 분산하기 위해 매 틱 다음 봇을 순환 선택한다.</summary>
     internal long SelectMovementPlanningBot(IReadOnlyList<Bot> activeBots)
     {
         int cursor = _movementPlanningCursor = (_movementPlanningCursor + 1) % activeBots.Count;
         return activeBots[cursor % activeBots.Count].PlayerId;
     }
-
 }

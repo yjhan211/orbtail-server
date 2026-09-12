@@ -198,7 +198,7 @@ public partial class GameClientSession
                 var newAreaBots = Match.Bots.GetBots().Where(b => !b.Player.IsEliminated && b.Player.CurrentArea == newArea).ToList();
                 foreach (var bot in newAreaBots)
                 {
-                    var objectInfo = Match.Bots.SynthesizeGameObjectInfo(bot.PlayerId);
+                    var objectInfo = Match.Bots.SynthesizeGameObjectInfo(Match.MatchingId, bot.PlayerId);
                     if (objectInfo == null)
                     {
                         continue;

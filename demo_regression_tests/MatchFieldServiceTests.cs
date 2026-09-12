@@ -117,7 +117,7 @@ public sealed class MatchFieldServiceTests
         var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947007);
         var center = SwarmPressureField.CenterCell;
         var cell = new network.common.data.models.Cell((int)center.X, (int)center.Y);
-        match.Bots.RegisterBots(network.common.Config.SWARM_MATCH_MAP,
+        match.Bots.RegisterBots(match.MatchingId,
             [-1, -2], new Dictionary<long, network.common.data.models.Cell> { [-1] = cell, [-2] = cell });
         match.Closures.InitializeMatching(MatchFieldService.SwarmFieldClosureSchedule.Value);
         match.Closures.GameStartTime = DateTime.UtcNow.AddSeconds(-network.common.Config.SWARM_MATCH_DURATION_SECONDS - 100);

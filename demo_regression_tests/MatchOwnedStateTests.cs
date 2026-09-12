@@ -138,7 +138,7 @@ public sealed class MatchOwnedStateTests
         const long botId = -42;
         foreach (var runtime in new[] { match, sibling })
         {
-            runtime.Bots.RegisterBots(Config.SWARM_MATCH_MAP,
+            runtime.Bots.RegisterBots(runtime.MatchingId,
                 [botId], new Dictionary<long, Cell> { [botId] = new(0, 0) });
             runtime.RegisterParticipant(runtime.Bots.GetBot(botId)!.Player);
             runtime.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 11 } });
@@ -180,7 +180,7 @@ public sealed class MatchOwnedStateTests
         var player = new Player { Profile = new PlayerInfo { PlayerId = playerId } };
         if (playerId < 0)
         {
-            match.Bots.RegisterBots(Config.SWARM_MATCH_MAP,
+            match.Bots.RegisterBots(match.MatchingId,
                 [playerId], new Dictionary<long, Cell> { [playerId] = new(0, 0) });
             player = match.Bots.GetBot(playerId)!.Player;
         }
