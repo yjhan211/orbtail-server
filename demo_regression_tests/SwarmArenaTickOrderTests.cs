@@ -165,7 +165,7 @@ public sealed class SwarmArenaTickOrderTests
             "ProcessPendingPvpHits(",
             "CollectSwarmCrossfireCappedOwners(",
             "CollectSwarmCrossfireAnchoredTargets(",
-            "AutoAttack.ResolveAttacks(",
+            "AutoAttack.UpdateAttacks(",
             "TryStartSunCrossfire(",
             "combatDamage.SendMonsterHitNotification(runtime, attacker,",
             "BroadcastSwarmAttackVfxToTargetAndObservers(");

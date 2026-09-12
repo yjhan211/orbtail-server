@@ -196,7 +196,7 @@ internal sealed class MatchResultService(
         gameEventLogManager.LogSystem(runtime.MatchingId, "match_score_result " + string.Join(",", scoreLog));
 
         FinalizeMatch(runtime.MatchingId, winnerId, MatchEndReason.OrbScoreTimeout);
-        runtime.AutoAttack.Clear();
+        runtime.AutoAttack.Reset();
         return true;
     }
 
