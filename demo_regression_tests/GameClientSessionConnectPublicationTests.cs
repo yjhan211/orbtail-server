@@ -1,7 +1,6 @@
 using System.Reflection;
 using game_server;
 using game_server.matches;
-using game_server.matches.combat;
 using game_server.players;
 using game_server.sessions;
 using MessagePack;

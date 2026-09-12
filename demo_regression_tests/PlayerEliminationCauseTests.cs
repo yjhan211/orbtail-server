@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.combat;
 using game_server.players.bots;
 using MessagePack;
 using Microsoft.Extensions.Logging.Abstractions;

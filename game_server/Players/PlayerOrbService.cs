@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.combat;
 using game_server.matches.logging;
 using game_server.matches.monsters;
 using MessagePack;

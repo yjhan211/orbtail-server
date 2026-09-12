@@ -1,4 +1,3 @@
-using game_server.matches.combat;
 using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
@@ -13,12 +12,10 @@ using network.packets;
 namespace game_server.matches;
 
 /// <summary>
-///     오브 공격의 치명타·몬스터 피해·처치 보상과 플레이어 충격을 적용한다.
-///     DI 싱글턴이며 예약 피해와 치명타 난수는 MatchRuntime.CombatDamage가, 소수점 잔여 피해는 Player가 소유한다.
-///     호출자는 매치 잠금을 보유한다. 상태 변경 뒤 피격·드롭 패킷을 보내며 전송 실패로 적용한 피해를 되돌리지 않는다.
+///     플레이어·몬스터 피해와 지연 타격을 처리하고, 피격 로그와 알림을 남긴다.
+///     플레이어의 체력 변경·탈락 처리는 PlayerHealthService에 위임한다.
 /// </summary>
-internal sealed class MatchCombatDamageService(
-    GameEventLogManager eventLogs)
+internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
 {
     private const int SwarmRingVfxKindRetaliationBlocked = 6;
 

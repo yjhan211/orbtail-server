@@ -1,4 +1,4 @@
-using game_server.matches.combat;
+using game_server.matches;
 using game_server.players;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -241,7 +241,7 @@ public partial class GameClientSession
         Logger.LogDebug("Sent orb update to PlayerId={PlayerId}, ItemUid={ItemUid}, ItemId={ItemId}, Count={Count}", PlayerId, item.ItemUid, item.ItemId, item.Count);
     }
 
-    internal void SendOrbVisualStates(IReadOnlyList<OrbVisual> visuals)
+    internal void SendOrbVisualStates(IReadOnlyList<MatchOrbVisual> visuals)
     {
         if (!PlayerId.HasValue)
         {
@@ -250,7 +250,7 @@ public partial class GameClientSession
 
         foreach (var visual in visuals)
         {
-            if (Player.CurrentArea != visual.State.Area)
+            if (Player.CurrentArea != visual.Area)
             {
                 ForgetOrbVisualState(visual.ActorPlayerId);
                 continue;
@@ -260,21 +260,21 @@ public partial class GameClientSession
         }
     }
 
-    internal void SendOrbVisualStateIfChanged(OrbVisual visual)
+    internal void SendOrbVisualStateIfChanged(MatchOrbVisual visual)
     {
-        if (_lastSentOrbVisualStates.TryGetValue(visual.ActorPlayerId, out var previousState) && previousState == visual.State)
+        if (_lastSentOrbVisualStates.TryGetValue(visual.ActorPlayerId, out var previousState) && previousState.HasSameState(visual))
         {
             return;
         }
 
-        _lastSentOrbVisualStates[visual.ActorPlayerId] = visual.State;
+        _lastSentOrbVisualStates[visual.ActorPlayerId] = visual;
         using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_EFFECT_STATE
         {
             PlayerId = visual.ActorPlayerId,
-            WeaponItemId = visual.State.WeaponItemId,
+            WeaponItemId = visual.WeaponItemId,
             OrbItemIds = visual.OrbItemIds.ToList(),
-            BodyHealth = visual.State.BodyHealth
+            BodyHealth = visual.BodyHealth
         }));
         TrySend(packet);
     }

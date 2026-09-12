@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.combat;
 using network.common;
 using network.common.data;
 using network.common.data.models;

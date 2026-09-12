@@ -3,7 +3,6 @@ using System.Reflection;
 using System.Text.Json;
 using game_server;
 using game_server.matches;
-using game_server.matches.combat;
 using game_server.players;
 using game_server.sessions;
 using network.common.data;
@@ -146,7 +145,7 @@ public class ProximityAutoCombatDataTests
     [Fact]
     public void OrbVisualPublicationCapture_DeepCopiesItemIds()
     {
-        var payload = typeof(OrbVisual).GetProperty("OrbItemIds");
+        var payload = typeof(MatchOrbVisual).GetProperty("OrbItemIds");
         Assert.NotNull(payload);
         Assert.Equal(typeof(ImmutableArray<int>), payload.PropertyType);
     }
@@ -155,7 +154,7 @@ public class ProximityAutoCombatDataTests
     public void OrbVisualPublication_ComputesEachActorOnceAndDelegatesSendToObserverSessions()
     {
         string root = FindRepositoryRoot();
-        string builder = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "OrbVisual.cs");
+        string builder = ReadNormalizedSource(root, "game_server", "Matches", "MatchOrbVisual.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatService.cs");
         string publish = ReadMethodSlice(
             ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Orb.cs"),
@@ -164,12 +163,12 @@ public class ProximityAutoCombatDataTests
 
         AssertInOrder(
             combat,
-            "var orbVisuals = OrbVisual.Build(runtime, actors);",
+            "var orbVisuals = MatchOrbVisual.Build(runtime, actors);",
             "session.SendOrbVisualStates(orbVisuals);");
         AssertInOrder(
             publish,
             "foreach (var visual in visuals)",
-            "if (Player.CurrentArea != visual.State.Area)",
+            "if (Player.CurrentArea != visual.Area)",
             "ForgetOrbVisualState(visual.ActorPlayerId);",
             "SendOrbVisualStateIfChanged(visual);");
         // 빌더는 계산만 한다. 패킷 생성·전송·캐시는 세션에 있다.
@@ -192,7 +191,7 @@ public class ProximityAutoCombatDataTests
         AssertInOrder(
             send,
             "_lastSentOrbVisualStates.TryGetValue(visual.ActorPlayerId, out var previousState)",
-            "_lastSentOrbVisualStates[visual.ActorPlayerId] = visual.State;",
+            "_lastSentOrbVisualStates[visual.ActorPlayerId] = visual;",
             "Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE)",
             "OrbItemIds = visual.OrbItemIds.ToList()",
             "TrySend(packet);");

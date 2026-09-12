@@ -1,4 +1,3 @@
-using game_server.matches.combat;
 using game_server.matches.logging;
 using game_server.players;
 using game_server.players.bots;
@@ -12,8 +11,8 @@ using network.packets;
 namespace game_server.matches;
 
 /// <summary>
-///     플레이어의 이동 경로와 상대 오브 꼬리의 교차를 판정해, 절단 지점부터 꼬리 끝까지 오브를 제거한다.
-///     절단자의 체력 비용·회복 제한과 같은 상대에 대한 연속 절단 보호 시간을 적용한다.
+///     플레이어의 이동 경로와 상대 오브 꼬리의 교차를 판정하고, 절단 비용·오브 드롭·반격 보호를 처리한다.
+///     절단 결과를 로그와 패킷으로 알린다.
 /// </summary>
 internal sealed class MatchTrailCutService(
     GameEventLogManager eventLogs,

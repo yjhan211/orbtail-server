@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.combat;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
@@ -39,7 +38,7 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string proximity = ReadNormalizedSource(
-            root, "game_server", "Matches", "Combat", "OrbVisual.cs");
+            root, "game_server", "Matches", "MatchOrbVisual.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string settlement = ReadNormalizedSource(
             root, "game_server", "Matches", "MatchFieldService.cs");
@@ -156,7 +155,7 @@ public sealed class SwarmArenaTickOrderTests
             "MonsterSnapshotPublisher.Broadcast(",
             "actorBuilder.Build(",
             "playerOrbs.ProcessOrbRecovery(",
-            "OrbVisual.Build(",
+            "MatchOrbVisual.Build(",
             "matchResults.BroadcastOrbRankings(",
             "botDecisions.ProcessBotOrbGrowth(",
             "matchResults.TryEndOnScoreTimeout(",
@@ -183,7 +182,7 @@ public sealed class SwarmArenaTickOrderTests
             root, "game_server", "Players", "PlayerEliminationService.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string proximity = ReadNormalizedSource(
-            root, "game_server", "Matches", "Combat", "OrbVisual.cs");
+            root, "game_server", "Matches", "MatchOrbVisual.cs");
 
         string healthNotification = ReadBracedBlockAfterMarker(
             ReadNormalizedSource(root, "game_server", "Players", "PlayerHealthService.cs"),
@@ -212,7 +211,7 @@ public sealed class SwarmArenaTickOrderTests
             "internal void ForgetOrbVisualState(");
         AssertInOrder(
             orbPublicationSteps,
-            "_lastSentOrbVisualStates[visual.ActorPlayerId] = visual.State;",
+            "_lastSentOrbVisualStates[visual.ActorPlayerId] = visual;",
             "Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE)",
             "TrySend(packet);");
         Assert.False(ContainsCodeToken(orbPublicationSteps, "catch"));

@@ -1,4 +1,3 @@
-using game_server.matches.combat;
 using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
@@ -12,6 +11,10 @@ using network.packets;
 
 namespace game_server.matches;
 
+/// <summary>
+///     매치의 전투 틱을 조율한다.
+///     오브·몬스터 공격, 상태 효과, 지연 타격을 순서대로 처리하고 자동공격 목록을 결정한 뒤 피해 적용을 각 서비스에 위임한다.
+/// </summary>
 internal class MatchCombatService(
     GameEventLogManager eventLogs,
     PlayerHealthService healthService,
@@ -116,7 +119,7 @@ internal class MatchCombatService(
 
         var actors = actorBuilder.Build(runtime, players, nowUtc);
         playerOrbs.ProcessOrbRecovery(runtime, actors, nowUtc);
-        var orbVisuals = OrbVisual.Build(runtime, actors);
+        var orbVisuals = MatchOrbVisual.Build(runtime, actors);
         foreach (var session in sessions)
         {
             session.SendOrbVisualStates(orbVisuals);

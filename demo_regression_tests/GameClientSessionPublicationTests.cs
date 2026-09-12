@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using game_server;
 using game_server.matches;
-using game_server.matches.combat;
 using game_server.matches.logging;
 using game_server.players;
 using game_server.players.bots;
@@ -1382,7 +1381,7 @@ public sealed class GameClientSessionPublicationTests
         };
         void Publish(params GameClientSession[] sessions)
         {
-            var visuals = OrbVisual.Build(match, actors);
+            var visuals = MatchOrbVisual.Build(match, actors);
             foreach (var session in sessions)
             {
                 session.SendOrbVisualStates(visuals);

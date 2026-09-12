@@ -1,8 +1,6 @@
-using game_server.matches.combat;
 using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
-using game_server.players.bots;
 using MessagePack;
 using network.common;
 using network.common.data;
@@ -12,9 +10,8 @@ using network.packets;
 namespace game_server.matches;
 
 /// <summary>
-///     플레이어가 발동한 오브 공격 가운데 매치 시간 위에서 진행되는 부분. 태양은 예고 뒤 직선 쓸기·벽 폭발·화상 틱,
-///     파도는 예고 뒤 소용돌이 기폭·침수다(바람은 발동 즉시 끝나 PlayerOrbService에만 있다).
-///     모양·대기 소용돌이는 MatchRuntime이, 화상·침수는 피해자 Player가 들며 호출자는 매치 잠금을 보유한다. 피해는 공통 전투 서비스에 위임한다.
+///     발동된 오브 공격을 매치 틱에서 진행한다. 태양 공격의 이동·벽 폭발·화상과 파도 공격의 기폭·감속을 처리한다.
+///     공격 상태는 MatchRuntime과 Player가 보관하며, 피해 적용은 MatchCombatDamageService에 위임한다.
 /// </summary>
 internal sealed class MatchOrbAttackService(
     PlayerHealthService healthService,

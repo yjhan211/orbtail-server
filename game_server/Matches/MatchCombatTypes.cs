@@ -1,7 +1,7 @@
 using network.common;
 using network.common.data.models;
 
-namespace game_server.matches.combat;
+namespace game_server.matches;
 
 public readonly record struct PlayerPositionSnapshot(
     long PlayerId,

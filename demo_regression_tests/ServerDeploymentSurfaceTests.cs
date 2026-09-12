@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.matches.combat;
 namespace demo_regression_tests;
 
 public sealed class ServerDeploymentSurfaceTests

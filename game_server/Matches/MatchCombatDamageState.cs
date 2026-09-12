@@ -1,4 +1,4 @@
-namespace game_server.matches.combat;
+namespace game_server.matches;
 
 /// <summary>
 ///     매치 하나의 착탄 대기 피해와 치명타 난수. MatchRuntime이 소유하며 매치 잠금 안에서만 접근한다.

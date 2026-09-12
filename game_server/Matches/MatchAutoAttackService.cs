@@ -1,12 +1,11 @@
-using game_server.matches.combat;
 using game_server.players;
 using network.common;
 
 namespace game_server.matches;
 
 /// <summary>
-///     자동공격 판단. 틱마다 액터 목록에서 무기별 표적을 고르고 조준·발사 주기를 플레이어의 자동공격 상태에 갱신한 뒤,
-///     이번 틱에 실제로 쏠 공격 목록을 돌려준다. 피해 적용은 MatchCombatService가 맡는다. 매치 잠금 안에서 부른다.
+///     매치의 공격 후보에서 오브별 표적을 선택하고, Player의 조준·공격 주기·표적 재획득 상태를 갱신한다.
+///     이번 틱에 발생할 공격 목록만 반환하며, 피해 적용은 MatchCombatService가 담당한다.
 /// </summary>
 internal sealed class MatchAutoAttackService
 {
