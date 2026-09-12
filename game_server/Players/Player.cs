@@ -67,6 +67,8 @@ public class Player
     public int Health { get; set; } = Config.MAX_HEALTH;
     /// <summary>보유 오브 컬렉션. 각 오브의 UID와 꼬리 순서를 유지한다.</summary>
     public PlayerOrbCollection Orbs { get; } = new();
+    /// <summary>오브별 자동공격 표적·조준·발사 주기. MatchAutoAttackService가 매치 잠금 안에서 갱신한다.</summary>
+    internal PlayerAutoAttackState AutoAttack { get; } = new();
     /// <summary>바람 오브 UID별 다음 칼날 시각과 표적이 반경에 든 시각. 매치 잠금 안에서 접근한다.</summary>
     private readonly Dictionary<long, DateTime> _windOrbNextAttackAtUtc = new();
     private readonly Dictionary<long, DateTime> _windOrbEngagedAtUtc = new();

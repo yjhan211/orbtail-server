@@ -171,7 +171,6 @@ internal class MatchFieldService(
         if (aliveCount <= 1)
         {
             long lastPlayerId = aliveCount == 1 ? alivePlayers[0].PlayerId : 0;
-            runtime.AutoAttack.Reset();
             if (lastPlayerId > 0)
             {
                 matchResults.FinalizeMatch(matchingId, lastPlayerId);
@@ -223,7 +222,6 @@ internal class MatchFieldService(
         if (isGameOver && winnerId.HasValue)
         {
             matchResults.FinalizeMatch(matchingId, winnerId.Value, MatchEndReason.PressureFieldSettlement, resolution.DecisiveCriterion);
-            runtime.AutoAttack.Reset();
         }
     }
 

@@ -80,7 +80,7 @@ internal static class GameServerTestAccess
             var combat = new MatchCombatService(logs,
                 health, combatDamage, results,
                 new PlayerOrbService(health, combatDamage, orbTrails, logs),
-                orbTrails, trailCuts, new MatchCombatActorBuilder(orbTrails),
+                orbTrails, trailCuts, new MatchCombatActorBuilder(orbTrails), new MatchAutoAttackService(),
                 new SunOrbAttackService(TestGameSessionServices.CreateHealthService(runtimes, logs, new game_server.matches.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), combatDamage, logs),
                 new WaveOrbAttackService(health, combatDamage, logs), decisions);
 

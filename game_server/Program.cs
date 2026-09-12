@@ -141,6 +141,7 @@ internal static class Program
         services.AddSingleton<BotMovementService>();
         services.AddSingleton<BotDecisionService>();
         services.AddSingleton<MatchTrailCutService>();
+        services.AddSingleton<MatchAutoAttackService>();
         services.AddSingleton<MatchCombatActorBuilder>();
         services.AddSingleton<MatchCombatService>();
         services.AddSingleton<Func<MatchRuntime, TimeProvider, MatchTickLoop>>(sp =>

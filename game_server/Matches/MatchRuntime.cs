@@ -57,7 +57,6 @@ internal sealed class MatchRuntime
         MatchingId = matchingId;
         SunOrbAttacks = new MatchSunOrbAttackState(matchingId);
         Bots = new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks, eventLogs);
-        AutoAttack = new MatchAutoAttackState();
         GroundItems = new MatchGroundItemState();
         Closures = new MatchAreaClosureState();
         Monsters = new SwarmMonsterDirector(matchingId, Closures, playerId => GetParticipant(playerId)?.Orbs.HasAnyOrb() ?? false);
@@ -71,7 +70,6 @@ internal sealed class MatchRuntime
     public SwarmMonsterDirector Monsters { get; }
 
     // 전투와 오브
-    public MatchAutoAttackState AutoAttack { get; }
     public MatchCombatDamageState CombatDamage { get; } = new();
     public MatchTrailCombatState TrailCombat { get; } = new();
     public MatchSunOrbAttackState SunOrbAttacks { get; }
@@ -394,7 +392,6 @@ internal sealed class MatchRuntime
                 Closures.Release();
                 Bots.Release();
                 Monsters.Release();
-                AutoAttack.Release();
                 _runtimeStore.RemoveCompleted(this);
                 startRedisCleanup = true;
             }
