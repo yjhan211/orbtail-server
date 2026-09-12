@@ -44,9 +44,9 @@ public class SwarmMeetupTopologyTests
         Assert.True(path is { Count: > 0 }, $"{from} → {to} 경로 없음");
     }
 
-    private static List<BotPathfinder.Step>? FindPath(AreaType from, AreaType to)
+    private static List<MapPathfinder.Step>? FindPath(AreaType from, AreaType to)
     {
-        return BotPathfinder.FindPath(
+        return MapPathfinder.FindPath(
             Config.SWARM_MATCH_MAP, from,
             GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, from),
             to, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, to));

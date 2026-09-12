@@ -1,4 +1,3 @@
-using game_server.players.bots;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -31,7 +30,7 @@ internal static class MonsterNavigation
     internal static bool TryPlanRoute(AreaType fromArea, Vector3f from, AreaType toArea, Vector3f to, Func<AreaType, bool>? isAreaBlocked, out List<Vector3f> route)
     {
         route = null!;
-        var steps = BotPathfinder.FindPath(Config.SWARM_MATCH_MAP, fromArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, from), toArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, to), isAreaBlocked);
+        var steps = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, fromArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, from), toArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, to), isAreaBlocked);
         if (steps == null || steps.Count == 0)
         {
             return false;

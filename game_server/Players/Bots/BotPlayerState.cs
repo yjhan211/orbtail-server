@@ -1,6 +1,7 @@
 using game_server.matches;
 using game_server.players;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 
 namespace game_server.players.bots;
@@ -22,7 +23,7 @@ public class BotPlayerState
 
 
     // === #127 walking pathfinding ===
-    public List<BotPathfinder.Step> Path { get; set; } = new();
+    public List<MapPathfinder.Step> Path { get; set; } = new();
 
     public int PathIndex { get; set; }
 

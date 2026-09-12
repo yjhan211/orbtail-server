@@ -83,7 +83,7 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     #127: 봇 walking 틱(50ms). legacy mode 비활성 시 BotPathfinder 경로를 따라 셀 단위 이동.
+    ///     #127: 봇 walking 틱(50ms). legacy mode 비활성 시 MapPathfinder 경로를 따라 셀 단위 이동.
     ///     Uses the same fixed movement speed 6.0 as the player and emits an equivalent G_TO_C_MOVE event each tick.
     /// </summary>
     public BotWalkingTickResult ProcessBotMovementTick(MatchAreaClosureState closureManager,
@@ -173,7 +173,7 @@ public partial class BotPlayerManager
                     bot.SwarmModeUntilUtc = nowUtc.AddSeconds(holdSeconds);
 
                 bot.MovementDestination = currentDirective.DestinationArea;
-                bot.Path = BotPathfinder.FindPath(
+                bot.Path = MapPathfinder.FindPath(
                                MapId,
                                bot.Player.CurrentArea,
                                bot.Player.Cell!,
@@ -260,7 +260,7 @@ public partial class BotPlayerManager
                 GameMapData.GetCurrentArea(mapId, candidate) != bot.Player.CurrentArea)
                 continue;
 
-            var path = BotPathfinder.FindPath(mapId, bot.Player.CurrentArea, bot.Player.Cell!, bot.Player.CurrentArea, candidate);
+            var path = MapPathfinder.FindPath(mapId, bot.Player.CurrentArea, bot.Player.Cell!, bot.Player.CurrentArea, candidate);
             if (path == null || path.Count == 0)
                 continue;
 
@@ -640,7 +640,7 @@ public partial class BotPlayerManager
         var targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.Player.CurrentArea, destination)
             ?? GameMapData.GetAreaSpawnCell(mapId, destination);
 
-        var path = BotPathfinder.FindPath(mapId, bot.Player.CurrentArea, bot.Player.Cell!,
+        var path = MapPathfinder.FindPath(mapId, bot.Player.CurrentArea, bot.Player.Cell!,
             destination, targetCell,
             a => IsClosedArea(closureManager, matchingId, a));
         if (path == null || path.Count == 0)
@@ -680,7 +680,7 @@ public partial class BotPlayerManager
             .Select(area => new
             {
                 Area = area,
-                Path = BotPathfinder.FindPath(
+                Path = MapPathfinder.FindPath(
                     mapId,
                     bot.Player.CurrentArea,
                     bot.Player.Cell!,
