@@ -62,6 +62,10 @@ internal sealed class BotDecisionService(
 
     public void ProcessBotOrbGrowth(MatchRuntime runtime, IReadOnlyList<BotPlayerState> aliveBots)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Bot decisions require the match lock.");
+        }
         foreach (var bot in aliveBots)
         {
             if (bot.Player.IsEliminated)
@@ -101,6 +105,10 @@ internal sealed class BotDecisionService(
         List<GameClientSession> sessions,
         DateTime nowUtc)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Bot decisions require the match lock.");
+        }
         long now = nowUtc.Ticks / TimeSpan.TicksPerMillisecond;
         foreach (var bot in bots)
         {
@@ -225,6 +233,10 @@ internal sealed class BotDecisionService(
 
     public SwarmBotDirective DecideMovement(MatchRuntime runtime, long botPlayerId)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Bot decisions require the match lock.");
+        }
         var directive = DecideMovementCore(runtime, botPlayerId);
         var bot = runtime.Bots.GetBots()
             .FirstOrDefault(candidate => candidate.PlayerId == botPlayerId);
@@ -799,6 +811,10 @@ internal sealed class BotDecisionService(
     /// <summary>안전하고 체력이 부족하면 수면을 선택한다. 회복은 공통 Player 규칙으로 처리한다.</summary>
     public void UpdateSleep(MatchRuntime runtime, IReadOnlyList<BotPlayerState> bots, DateTime nowUtc)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Bot decisions require the match lock.");
+        }
         var sessions = runtime.GetSessions();
         var players = runtime.GetAlivePlayers();
         var monsters = runtime.Monsters.GetCombatTargets();

@@ -23,6 +23,10 @@ internal class BotMovementService(
     /// <summary>매치 잠금 안에서 봇 걸음을 확정하고 같은 순서로 바로 송신한다.</summary>
     public virtual void ProcessTick(MatchRuntime runtime, Func<long, SwarmBotDirective> resolveDirective)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Bot movement requires the match lock.");
+        }
         if (runtime.IsEnded)
             throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
         long matchingId = runtime.MatchingId;
@@ -162,6 +166,10 @@ internal class BotMovementService(
 
     public void DispatchExternalMovement(MatchRuntime runtime, BotMovementEvent movement)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Bot movement requires the match lock.");
+        }
         if (runtime.IsEnded)
             throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
         long matchingId = runtime.MatchingId;

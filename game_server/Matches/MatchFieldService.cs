@@ -226,6 +226,10 @@ internal class MatchFieldService(
 
     internal static int GetDamagePerTick(MatchRuntime runtime, Vector3f? worldPosition, DateTime nowUtc)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Field damage lookup requires the match lock.");
+        }
         if (worldPosition == null)
         {
             return 0;

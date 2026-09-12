@@ -19,20 +19,32 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
 {
     private const int SwarmRingVfxKindRetaliationBlocked = 6;
 
-    private static bool RollCritical(MatchRuntime runtime, double chance) =>
-        runtime.CombatDamage.CriticalRng.NextDouble() < chance;
+    private static bool RollCritical(MatchRuntime runtime, double chance) => runtime.CombatDamage.CriticalRng.NextDouble() < chance;
 
-    private static float SwarmPvpDamagePerDamage => SwarmConfigData.GetFloat("SWARM_PVP_DAMAGE_PER_DAMAGE", 0.12f);
-
-    public void ScheduleMonsterHit(MatchRuntime runtime, PendingMonsterHit hit) =>
-        runtime.CombatDamage.PendingMonsterHits.Add(hit);
-
-    public void SchedulePvpHit(MatchRuntime runtime, ProximityCombatAttack attack, DateTime dueAtUtc) =>
-        runtime.CombatDamage.PendingPvpHits.Add((attack, dueAtUtc));
-
-    public void ProcessPendingPvpHits(MatchRuntime runtime, PlayerHealthService healthService, DateTime nowUtc,
-        IReadOnlyList<Player> players, List<GameClientSession> sessions)
+    public void ScheduleMonsterHit(MatchRuntime runtime, PendingMonsterHit hit)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat damage requires the match lock.");
+        }
+        runtime.CombatDamage.PendingMonsterHits.Add(hit);
+    }
+
+    public void SchedulePvpHit(MatchRuntime runtime, ProximityCombatAttack attack, DateTime dueAtUtc)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat damage requires the match lock.");
+        }
+        runtime.CombatDamage.PendingPvpHits.Add((attack, dueAtUtc));
+    }
+
+    public void ProcessPendingPvpHits(MatchRuntime runtime, PlayerHealthService healthService, DateTime nowUtc, IReadOnlyList<Player> players, List<GameClientSession> sessions)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat damage requires the match lock.");
+        }
         for (int index = runtime.CombatDamage.PendingPvpHits.Count - 1; index >= 0; index--)
         {
             var pending = runtime.CombatDamage.PendingPvpHits[index];
@@ -52,7 +64,7 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
 
     internal static int ConsumeSwarmPvpDamage(Player victim, int rawDamage)
     {
-        float total = victim.PvpDamageCarry + rawDamage * SwarmPvpDamagePerDamage;
+        float total = victim.PvpDamageCarry + rawDamage * Config.SWARM_PVP_DAMAGE_PER_DAMAGE;
         int whole = (int)total;
         victim.PvpDamageCarry = total - whole;
         return whole;
@@ -61,6 +73,10 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
     public void SendPlayerHitNotification(MatchRuntime runtime, Player? attacker, long targetPlayerId, AreaType area,
         int weaponItemId, int damage, int targetHealth, bool isPeriodicDamage = false)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat damage requires the match lock.");
+        }
         if (attacker == null || attacker.PlayerId == 0 || targetPlayerId == 0)
         {
             return;
@@ -83,8 +99,15 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
     public void SendMonsterHitNotification(MatchRuntime runtime, Player? attacker, int monsterId, AreaType area,
         int weaponItemId, int damage, bool critical = false, bool showDamageOnly = false)
     {
-        if (attacker == null || attacker.PlayerId == 0 || attacker.IsEliminated || monsterId < 0 || weaponItemId <= 0 ||
-            damage <= 0) return;
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat damage requires the match lock.");
+        }
+
+        if (attacker == null || attacker.PlayerId == 0 || attacker.IsEliminated || monsterId < 0 || weaponItemId <= 0 || damage <= 0)
+        {
+            return;
+        }
         using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
         {
             AttackerId = attacker.PlayerId,
@@ -100,19 +123,19 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
         attacker.Session?.TrySend(packet);
     }
 
-    public void ApplyProximityAutoCombatHit(MatchRuntime runtime, PlayerHealthService healthService,
-        Player victim, long sourcePlayerId, AreaType area, int weaponItemId,
-        int damage, bool isPeriodicDamage = false, int sourceHealth = -1)
+    public void ApplyProximityAutoCombatHit(MatchRuntime runtime, PlayerHealthService healthService, Player victim, long sourcePlayerId, AreaType area, int weaponItemId, int damage, bool isPeriodicDamage = false, int sourceHealth = -1)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat damage requires the match lock.");
+        }
         if (runtime.IsEnded || victim.IsEliminated || damage <= 0)
         {
             return;
         }
 
         RecordCombatContact(runtime, victim, sourcePlayerId, DateTime.UtcNow);
-        eventLogs.LogHit(runtime.MatchingId, sourcePlayerId, victim.PlayerId, weaponItemId, damage,
-            victim.Health > 0 && victim.Health - damage <= 0, BotPlayerManager.IsBotPlayerId(sourcePlayerId),
-            DateTimeOffset.UtcNow);
+        eventLogs.LogHit(runtime.MatchingId, sourcePlayerId, victim.PlayerId, weaponItemId, damage, victim.Health > 0 && victim.Health - damage <= 0, BotPlayerManager.IsBotPlayerId(sourcePlayerId), DateTimeOffset.UtcNow);
 
         var session = victim.Session;
         healthService.ApplyDamage(runtime, victim, damage, sourcePlayerId);
@@ -138,6 +161,10 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
 
     public void RecordCombatContact(MatchRuntime runtime, Player victim, long attackerId, DateTime nowUtc)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat damage requires the match lock.");
+        }
         victim.MarkSwarmCombat(nowUtc);
         if (victim.InterruptDoor() is { } interactId)
         {
@@ -156,9 +183,12 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
         bot.LastDamagedAtUtc = nowUtc;
     }
 
-    public void ApplySwarmAfterimageMonsterHit(MatchRuntime runtime, PlayerHealthService healthService, Player victim,
-        int monsterId, int damage)
+    public void ApplySwarmAfterimageMonsterHit(MatchRuntime runtime, PlayerHealthService healthService, Player victim, int monsterId, int damage)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat damage requires the match lock.");
+        }
         if (runtime.IsEnded || victim.IsEliminated || monsterId <= 0 || damage <= 0) return;
 
         var nowUtc = DateTime.UtcNow;
@@ -207,15 +237,15 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
 
     public int RollSwarmCriticalDamage(MatchRuntime runtime, int damage, out bool critical)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat damage requires the match lock.");
+        }
         critical = RollCritical(runtime, SwarmCriticalChance);
         return critical ? Math.Max(damage + 1, (int)MathF.Round(damage * SwarmCriticalMultiplier)) : damage;
     }
 
-    private void SpawnSwarmSummonStone(
-        MatchRuntime runtime,
-        MonsterRuntimeInfo defeatedWave,
-        IReadOnlyCollection<GameClientSession> sessions,
-        int heartReward = 0)
+    private void SpawnSwarmSummonStone(MatchRuntime runtime, MonsterRuntimeInfo defeatedWave, IReadOnlyCollection<GameClientSession> sessions, int heartReward = 0)
     {
         int groundStoneReward = defeatedWave.SummonStoneReward;
         if (groundStoneReward <= 0 && heartReward <= 0)
@@ -223,20 +253,11 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
             return;
         }
 
-        int[] itemIds = Enumerable.Repeat(Config.SUMMON_STONE_GROUND_ITEM_ID, Math.Max(0, groundStoneReward))
-            .Concat(Enumerable.Repeat(Config.HEART_GROUND_ITEM_ID, Math.Max(0, heartReward))).ToArray();
-        var spawned = runtime.GroundItems.SpawnItems(defeatedWave.AreaType, defeatedWave.PositionX,
-            defeatedWave.PositionY, itemIds);
+        int[] itemIds = Enumerable.Repeat(Config.SUMMON_STONE_GROUND_ITEM_ID, Math.Max(0, groundStoneReward)).Concat(Enumerable.Repeat(Config.HEART_GROUND_ITEM_ID, Math.Max(0, heartReward))).ToArray();
+        var spawned = runtime.GroundItems.SpawnItems(defeatedWave.AreaType, defeatedWave.PositionX, defeatedWave.PositionY, itemIds);
         foreach (var item in spawned)
         {
-            eventLogs.LogGroundItemSpawned(
-                runtime.MatchingId,
-                0,
-                item.GroundItemUid,
-                item.ItemId,
-                defeatedWave.AreaType.ToString(),
-                0,
-                isBot: false);
+            eventLogs.LogGroundItemSpawned(runtime.MatchingId, 0, item.GroundItemUid, item.ItemId, defeatedWave.AreaType.ToString(), 0, isBot: false);
         }
 
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)defeatedWave.AreaType, spawned.ToList());
@@ -257,6 +278,10 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
         bool critical,
         List<GameClientSession> allSessions)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat damage requires the match lock.");
+        }
         var damageResult = runtime.Monsters.ApplyMonsterDamage(combatTargetId, attackerId, damage);
         if (!damageResult.Applied)
         {
@@ -265,9 +290,7 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
 
         eventLogs.RecordMonsterHit(runtime.MatchingId, attackerId, damage, damageResult.Killed);
         var attacker = runtime.GetParticipant(attackerId);
-        SendMonsterHitNotification(runtime, attacker, monsterId, area, weaponItemId, damage, critical,
-            showDamageOnly: true);
-
+        SendMonsterHitNotification(runtime, attacker, monsterId, area, weaponItemId, damage, critical, showDamageOnly: true);
         if (damageResult.Killed && damageResult.MonsterState != null)
         {
             SettleSwarmMonsterKill(runtime, damageResult, attackerId, damage, allSessions);
@@ -310,6 +333,10 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
         float damageScale = 1f,
         bool isPeriodicDamage = false)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat damage requires the match lock.");
+        }
         if (runtime.IsEnded)
         {
             return;
@@ -326,70 +353,76 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
         var owner = runtime.GetParticipant(ownerId);
         int ownerHealth = owner?.Health ?? -1;
         int healthBefore = victim.Health;
-        ApplyProximityAutoCombatHit(runtime, healthService, victim, ownerId, area, weaponItemId, shock,
-            isPeriodicDamage, ownerHealth);
+        ApplyProximityAutoCombatHit(runtime, healthService, victim, ownerId, area, weaponItemId, shock, isPeriodicDamage, ownerHealth);
         int healthAfter = victim.Health;
-
         SendPlayerHitNotification(runtime, owner, victimId, area, weaponItemId, shock, healthAfter, isPeriodicDamage);
-        eventLogs.LogSystem(runtime.MatchingId,
-            $"{label} owner={ownerId} victim={victimId} weapon={weaponItemId} " +
-            $"healthBefore={healthBefore} healthAfter={healthAfter}");
+        eventLogs.LogSystem(runtime.MatchingId, $"{label} owner={ownerId} victim={victimId} weapon={weaponItemId} " + $"healthBefore={healthBefore} healthAfter={healthAfter}");
     }
 
-    public void ProcessPendingMonsterHits(
-        MatchRuntime runtime,
-        DateTime nowUtc, List<GameClientSession> sessions)
+    public void ProcessPendingMonsterHits(MatchRuntime runtime, DateTime nowUtc, List<GameClientSession> sessions)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat damage requires the match lock.");
+        }
         long matchingId = runtime.MatchingId;
         for (int index = runtime.CombatDamage.PendingMonsterHits.Count - 1; index >= 0; index--)
         {
             var hit = runtime.CombatDamage.PendingMonsterHits[index];
             if (nowUtc < hit.ApplyAtUtc)
+            {
                 continue;
+            }
 
             runtime.CombatDamage.PendingMonsterHits.RemoveAt(index);
             var damageResult = runtime.Monsters.ApplyMonsterDamage(hit.CombatTargetId, hit.AttackerId, hit.Damage);
             if (damageResult.Applied)
             {
-                eventLogs.RecordMonsterHit(
-                    matchingId, hit.AttackerId, hit.Damage, damageResult.Killed);
+                eventLogs.RecordMonsterHit(matchingId, hit.AttackerId, hit.Damage, damageResult.Killed);
             }
 
             if (damageResult.Applied && damageResult.Killed && damageResult.MonsterState != null)
+            {
                 SettleSwarmMonsterKill(runtime, damageResult, hit.AttackerId, hit.Damage, sessions);
+            }
         }
     }
 
-    public int ApplySwarmPvpAttack(MatchRuntime runtime, PlayerHealthService healthService,
+    public void ApplySwarmPvpAttack(MatchRuntime runtime, PlayerHealthService healthService,
         ProximityCombatAttack attack,
         IReadOnlyList<Player> players,
         List<GameClientSession> allSessions,
         bool broadcastVfx = true,
         bool sendAttackerFeedback = true)
     {
-        long matchingId = runtime.MatchingId;
-        if (runtime.IsEnded) return 0;
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat damage requires the match lock.");
+        }
+        if (runtime.IsEnded)
+        {
+            return;
+        }
         var nowUtc = DateTime.UtcNow;
-        if (runtime.CutRetaliationWindows.TryGetValue((attack.AttackerPlayerId, attack.TargetPlayerId),
-                out var guardWindow) && nowUtc < guardWindow.ExpiresAtUtc)
+        if (runtime.CutRetaliationWindows.TryGetValue((attack.AttackerPlayerId, attack.TargetPlayerId), out var guardWindow) && nowUtc < guardWindow.ExpiresAtUtc)
         {
             guardWindow.BlockedHits++;
             guardWindow.BlockedDamage += attack.Damage;
-            SendSwarmRetaliationVfx(runtime, attack.AttackerPlayerId, attack.TargetPlayerId, attack.Area,
-                SwarmRingVfxKindRetaliationBlocked, 0f, allSessions);
-            return 0;
+            SendSwarmRetaliationVfx(runtime, attack.AttackerPlayerId, attack.TargetPlayerId, attack.Area, SwarmRingVfxKindRetaliationBlocked, 0f, allSessions);
+            return;
         }
 
         var target = players.FirstOrDefault(player => player.PlayerId == attack.TargetPlayerId);
-        if (target == null || target.IsEliminated) return 0;
+        if (target == null || target.IsEliminated)
+        {
+            return;
+        }
         int healthDamage = ConsumeSwarmPvpDamage(target, attack.Damage);
         var attacker = runtime.GetParticipant(attack.AttackerPlayerId);
         int attackerHealth = attacker?.Health ?? -1;
-
         if (healthDamage > 0)
         {
-            ApplyProximityAutoCombatHit(runtime, healthService, target, attack.AttackerPlayerId, attack.Area,
-                attack.WeaponItemId, healthDamage, sourceHealth: attackerHealth);
+            ApplyProximityAutoCombatHit(runtime, healthService, target, attack.AttackerPlayerId, attack.Area, attack.WeaponItemId, healthDamage, sourceHealth: attackerHealth);
         }
         else
         {
@@ -399,23 +432,21 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
         int targetHealth = target.Health;
         if (healthDamage > 0 && sendAttackerFeedback)
         {
-            SendPlayerHitNotification(runtime, attacker,
-                attack.TargetPlayerId, attack.Area, attack.WeaponItemId, healthDamage, targetHealth);
+            SendPlayerHitNotification(runtime, attacker, attack.TargetPlayerId, attack.Area, attack.WeaponItemId, healthDamage, targetHealth);
         }
 
         if (broadcastVfx)
         {
             BroadcastSwarmAttackVfxToTargetAndObservers(attack, allSessions);
         }
-
-        return healthDamage;
     }
 
-    public void SendSwarmRetaliationVfx(
-        MatchRuntime runtime,
-        long cutterId, long victimId, AreaType area, int kind, float seconds,
-        List<GameClientSession> allSessions)
+    public void SendSwarmRetaliationVfx(MatchRuntime runtime, long cutterId, long victimId, AreaType area, int kind, float seconds, List<GameClientSession> allSessions)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat damage requires the match lock.");
+        }
         using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_RING_EFFECT);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_RING_EFFECT
         {
@@ -427,6 +458,7 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
             VictimPlayerId = victimId,
             FromOrdinal = 0
         }));
+
         foreach (var session in allSessions)
         {
             if (!session.PlayerId.HasValue || session.Player.CurrentArea != area)
@@ -441,9 +473,7 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
         }
     }
 
-    public static void BroadcastSwarmAttackVfxToTargetAndObservers(
-        ProximityCombatAttack attack,
-        IReadOnlyCollection<GameClientSession> sessions)
+    public static void BroadcastSwarmAttackVfxToTargetAndObservers(ProximityCombatAttack attack, IReadOnlyCollection<GameClientSession> sessions)
     {
         foreach (var observer in sessions)
         {

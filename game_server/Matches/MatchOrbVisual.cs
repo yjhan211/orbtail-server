@@ -15,6 +15,10 @@ internal sealed record MatchOrbVisual(long ActorPlayerId, AreaType Area, int Wea
 
     public static List<MatchOrbVisual> Build(MatchRuntime runtime, IReadOnlyCollection<ProximityCombatActor> actors)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Orb visual build requires the match lock.");
+        }
         var playerOrder = new List<long>();
         var bodyActors = new Dictionary<long, ProximityCombatActor>();
         var orbActorsByPlayer = new Dictionary<long, List<ProximityCombatActor>>();

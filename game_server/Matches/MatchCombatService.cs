@@ -30,6 +30,10 @@ internal class MatchCombatService(
 {
     public virtual void ProcessTick(MatchRuntime runtime)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat tick requires the match lock.");
+        }
         if (runtime.IsEnded)
         {
             return;
@@ -269,6 +273,10 @@ internal class MatchCombatService(
 
     internal void ApplySwarmParticipantDamage(MatchRuntime runtime, MonsterContactDamage damage, List<GameClientSession> allSessions)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat tick requires the match lock.");
+        }
         var victim = runtime.GetParticipant(damage.TargetPlayerId);
         if (runtime.IsEnded || victim == null || victim.IsEliminated)
         {

@@ -18,6 +18,10 @@ internal static class MonsterSnapshotPublisher
 
     internal static bool TryConsumeBroadcastSlot(MatchRuntime match, DateTime nowUtc)
     {
+        if (!Monitor.IsEntered(match.MatchLock))
+        {
+            throw new InvalidOperationException("Monster snapshot broadcast requires the match lock.");
+        }
         var monsters = match.Monsters;
         if (nowUtc < monsters.NextMonsterPositionBroadcastAtUtc)
             return false;
@@ -37,6 +41,10 @@ internal static class MonsterSnapshotPublisher
         MatchRuntime match,
         IReadOnlyCollection<GameClientSession> sessions, IEnumerable<MonsterRuntimeInfo> states)
     {
+        if (!Monitor.IsEntered(match.MatchLock))
+        {
+            throw new InvalidOperationException("Monster snapshot broadcast requires the match lock.");
+        }
         // 인트로 구간은 구역 필터를 걷는다 (2026-08-16 유저 결정): 카메라가 운동장에서 열리고
         // 플레이어의 방까지 훑는데, 내 구역 것만 보내면 클라는 그릴 데이터를 아예 못 받는다 —
         // 발원지에서 나가는 몹이 안 보이던 원인이 여기였다. 카운트다운 5초 동안만이다.

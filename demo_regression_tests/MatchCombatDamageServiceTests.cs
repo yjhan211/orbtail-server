@@ -1,6 +1,6 @@
 using game_server.matches;
 using Microsoft.Extensions.Logging.Abstractions;
-using network.common.data;
+using network.common;
 
 namespace demo_regression_tests;
 
@@ -52,7 +52,7 @@ public sealed class MatchCombatDamageServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(982001);
         var second = store.GetOrCreate(982002);
-        float rate = SwarmConfigData.GetFloat("SWARM_PVP_DAMAGE_PER_DAMAGE", 0.12f);
+        float rate = Config.SWARM_PVP_DAMAGE_PER_DAMAGE;
         float carry = 0f;
 
         var victim = TestGameSessionServices.GetOrRegisterPlayer(first, 1001);

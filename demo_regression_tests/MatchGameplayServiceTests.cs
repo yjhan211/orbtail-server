@@ -330,7 +330,10 @@ public sealed class MatchGameplayServiceTests
             combat.ProcessTick(match);
         }
         Assert.Null(store.GetOrNull(match.MatchingId));
-        combat.ProcessTick(match);
+        using (match.Enter())
+        {
+            combat.ProcessTick(match);
+        }
         Assert.Null(store.GetOrNull(match.MatchingId));
     }
 

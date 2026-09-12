@@ -326,6 +326,9 @@ namespace network.common
         /// </summary>
         public static int SWARM_PVP_ORB_COUNT => SwarmConfigData.GetInt("SWARM_PVP_ORB_COUNT", 3);
 
+        /// <summary>PvP 피해 1당 본체 체력 피해 환산. 소수부는 피해자별로 이월 누산해 버리지 않는다.</summary>
+        public static float SWARM_PVP_DAMAGE_PER_DAMAGE => SwarmConfigData.GetFloat("SWARM_PVP_DAMAGE_PER_DAMAGE", 0.12f);
+
         // ===== 교차사격 (#232 2단계) =====
         // 오브는 몬스터만 쏜다. 그 공격이 만드는 모양(태양 = 직선)에 다른 플레이어가 들어오면
         // 고정 충격을 받는다. 티어는 모양의 크기만 키우고 충격값은 안 키운다.

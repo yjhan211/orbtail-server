@@ -150,6 +150,10 @@ internal sealed class PlayerOrbTrailService
 
     public void UpdateTrails(MatchRuntime runtime, List<PlayerPositionSnapshot> participants)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Orb trail operations require the match lock.");
+        }
         foreach (var participant in participants)
         {
             var player = runtime.GetParticipant(participant.PlayerId);

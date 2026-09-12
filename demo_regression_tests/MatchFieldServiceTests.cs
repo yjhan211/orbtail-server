@@ -86,7 +86,8 @@ public sealed class MatchFieldServiceTests
     {
         var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947004);
         Assert.Equal(double.MaxValue, match.Closures.GetSafeDistance(DateTime.UtcNow));
-        Assert.Equal(0, MatchFieldService.GetDamagePerTick(match, null, DateTime.UtcNow));
+        lock (match.MatchLock)
+            Assert.Equal(0, MatchFieldService.GetDamagePerTick(match, null, DateTime.UtcNow));
     }
 
     [Fact]
@@ -124,8 +125,11 @@ public sealed class MatchFieldServiceTests
         var bots = match.Bots.GetBots().ToList();
         foreach (var bot in bots) match.RegisterParticipant(bot.Player);
         var healthBefore = bots.Select(bot => bot.Player.Health).ToArray();
-        foreach (var bot in bots)
-            Assert.Equal(0, MatchFieldService.GetDamagePerTick(match, bot.Player.Position!, DateTime.UtcNow));
+        lock (match.MatchLock)
+        {
+            foreach (var bot in bots)
+                Assert.Equal(0, MatchFieldService.GetDamagePerTick(match, bot.Player.Position!, DateTime.UtcNow));
+        }
 
         lock (match.MatchLock)
             CreateService().ProcessDamageTick(match);

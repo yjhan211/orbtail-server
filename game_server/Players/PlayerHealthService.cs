@@ -82,6 +82,10 @@ internal sealed class PlayerHealthService(
 
     public void ApplyPeriodicBuffs(MatchRuntime runtime, IReadOnlyList<Player> players, DateTime nowUtc)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Health changes require the match lock.");
+        }
         foreach (var player in players)
         {
             if (runtime.IsEnded)
@@ -124,6 +128,10 @@ internal sealed class PlayerHealthService(
 
     public void ApplySleepRecovery(MatchRuntime runtime, IEnumerable<Player> players, DateTime nowUtc)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Health changes require the match lock.");
+        }
         foreach (var player in players)
         {
             int recovered = player.GetSleepRecovery(nowUtc, player.IsEliminated, Config.MAX_HEALTH);
