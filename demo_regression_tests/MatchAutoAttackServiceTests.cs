@@ -202,7 +202,7 @@ public class MatchAutoAttackServiceTests
         {
             Actor(1, 0f, 0f, weaponItemId: 107000010),
             Actor(2, 2f, 0f),
-            Actor(-202001, 0.5f, 0f) with { IsMonsterTarget = true }
+            Actor(-202001, 0.5f, 0f) with { IsMonsterTarget = true, TargetPriority = 2 }
         };
 
         Assert.Empty(arena.Update(actors, now));
@@ -212,56 +212,31 @@ public class MatchAutoAttackServiceTests
     }
 
     [Fact]
-    public void Resolve_KeepsCurrentCoreAheadOfOtherMonsters()
-    {
-        using var arena = new Arena(917, 1);
-        var now = new DateTime(2026, 7, 31, 0, 0, 0, DateTimeKind.Utc);
-        var attacker = Actor(1, 0f, 0f, weaponItemId: 107000010);
-        var core = Actor(-202001, 1f, 0f) with
-        {
-            IsMonsterTarget = true,
-            IsCoreMonsterTarget = true
-        };
-
-        Assert.Empty(arena.Update([attacker, core], now));
-        var normal = Actor(-202002, 0.25f, 0f) with { IsMonsterTarget = true };
-        var attack = Assert.Single(arena.Update(
-            [attacker, core, normal],
-            now.Add(MatchAutoAttackService.AimDuration)));
-
-        Assert.Equal(core.PlayerId, attack.TargetPlayerId);
-    }
-
-    [Fact]
-    public void Resolve_KeepsCurrentNormalAheadOfOtherMonsters_ButPlayerPreemptsIt()
+    public void Resolve_KeepsCurrentMonsterAheadOfCloserMonster_ButPlayerPreemptsIt()
     {
         using var arena = new Arena(918, 1, 2);
         var now = new DateTime(2026, 7, 31, 1, 0, 0, DateTimeKind.Utc);
         var attacker = Actor(1, 0f, 0f, weaponItemId: 107000010);
-        var normal = Actor(-202002, 1f, 0f) with { IsMonsterTarget = true };
-        var core = Actor(-202001, 0.25f, 0f) with
-        {
-            IsMonsterTarget = true,
-            IsCoreMonsterTarget = true
-        };
+        var normal = Actor(-202002, 1f, 0f) with { IsMonsterTarget = true, TargetPriority = 2 };
+        var closer = Actor(-202001, 0.25f, 0f) with { IsMonsterTarget = true, TargetPriority = 2 };
 
         Assert.Empty(arena.Update([attacker, normal], now));
         var monsterAttack = Assert.Single(arena.Update(
-            [attacker, normal, core],
+            [attacker, normal, closer],
             now.Add(MatchAutoAttackService.AimDuration)));
         Assert.Equal(normal.PlayerId, monsterAttack.TargetPlayerId);
 
         var enemyPlayer = Actor(2, 2f, 0f);
         Assert.Empty(arena.Update(
-            [attacker, normal, core, enemyPlayer],
+            [attacker, normal, closer, enemyPlayer],
             now.AddMilliseconds(750)));
         // 쿨다운 승계 (2026-08-24 연사 수리): 표적이 플레이어로 바뀌어도 첫 발(0.1초)의
         // 주기 1.5초가 이어진다 — 발사는 1.6초부터. 우선순위 검증(플레이어 선점)은 그대로다.
         Assert.Empty(arena.Update(
-            [attacker, normal, core, enemyPlayer],
+            [attacker, normal, closer, enemyPlayer],
             now.AddMilliseconds(1250)));
         var playerAttack = Assert.Single(arena.Update(
-            [attacker, normal, core, enemyPlayer],
+            [attacker, normal, closer, enemyPlayer],
             now.Add(MatchAutoAttackService.AimDuration).AddMilliseconds(1500)));
 
         Assert.Equal(enemyPlayer.PlayerId, playerAttack.TargetPlayerId);
@@ -293,101 +268,13 @@ public class MatchAutoAttackServiceTests
     }
 
     [Fact]
-    public void Resolve_WindProfileHitsPrimaryAndTwoAdditionalTargetsWithReducedDamage()
-    {
-        using var arena = new Arena(920, 1, 2, 3, 4);
-        var now = new DateTime(2026, 7, 22, 0, 0, 0, DateTimeKind.Utc);
-        var actors = new[]
-        {
-            Actor(1, 0f, 0f, weaponItemId: 107000020) with
-            {
-                MaxTargets = 3,
-                AdditionalTargetDamageMultiplier = 0.5f
-            },
-            Actor(2, 2f, 0f),
-            Actor(3, 1f, 0f),
-            Actor(4, 2.5f, 0f)
-        };
-
-        Assert.Empty(arena.Update(actors, now));
-        var attacks = arena.Update(actors, now.Add(MatchAutoAttackService.AimDuration));
-
-        Assert.Equal(new long[] { 3, 2, 4 }, attacks.Select(attack => attack.TargetPlayerId));
-        Assert.Equal(new[] { 6, 3, 3 }, attacks.Select(attack => attack.Damage));
-    }
-
-    [Fact]
-    public void Resolve_WaveProfileUsesThreeFastOpeningAttacksThenReturnsToBaseInterval()
-    {
-        using var arena = new Arena(921, 1, 2);
-        var now = new DateTime(2026, 7, 22, 0, 0, 0, DateTimeKind.Utc);
-        var actors = new[]
-        {
-            Actor(1, 0f, 0f, weaponItemId: 107000030) with
-            {
-                InitialBurstAttackCount = 3,
-                InitialBurstAttackIntervalMultiplier = 0.4f,
-                BurstRechargeSeconds = 3f
-            },
-            Actor(2, 1f, 0f)
-        };
-
-        Assert.Empty(arena.Update(actors, now));
-        Assert.Single(arena.Update(actors, now.AddMilliseconds(500)));
-        Assert.Empty(arena.Update(actors, now.AddMilliseconds(1099)));
-        Assert.Single(arena.Update(actors, now.AddMilliseconds(1100)));
-        Assert.Single(arena.Update(actors, now.AddMilliseconds(1700)));
-        Assert.Empty(arena.Update(actors, now.AddMilliseconds(3199)));
-        Assert.Single(arena.Update(actors, now.AddMilliseconds(3200)));
-    }
-
-    [Fact]
-    public void Resolve_WaveBurstRechargesOnlyAfterZeroTargetsAndDoesNotReturnOnTargetChangeOrGraceReacquire()
-    {
-        using var arena = new Arena(922, 1, 2, 3);
-        var now = new DateTime(2026, 7, 24, 0, 0, 0, DateTimeKind.Utc);
-        var actors = new[]
-        {
-            Actor(1, 0f, 0f, weaponItemId: 107000030) with
-            {
-                InitialBurstAttackCount = 3,
-                InitialBurstAttackIntervalMultiplier = 0.4f,
-                BurstRechargeSeconds = 3f
-            },
-            Actor(2, 1f, 0f),
-            Actor(3, 2f, 0f)
-        };
-
-        Assert.Empty(arena.Update(actors, now));
-        Assert.Single(arena.Update(actors, now.AddMilliseconds(500)));
-
-        // Target 2 disappears but target 3 remains: this is a target change, not a recharge condition.
-        actors[1] = Actor(2, 1f, 0f, area: AreaType.S2Corridor3);
-        Assert.Empty(arena.Update(actors, now.AddMilliseconds(600)));
-        Assert.Single(arena.Update(actors, now.AddMilliseconds(1100)));
-        Assert.Empty(arena.Update(actors, now.AddMilliseconds(1700)));
-
-        // Only now, with no valid target, does the three-second recharge start.
-        actors[2] = Actor(3, 2f, 0f, area: AreaType.S2Corridor3);
-        Assert.Empty(arena.Update(actors, now.AddMilliseconds(1800)));
-        actors[2] = Actor(3, 2f, 0f);
-        Assert.Empty(arena.Update(actors, now.AddMilliseconds(2500)));
-        Assert.Empty(arena.Update(actors, now.AddMilliseconds(3299)));
-        Assert.Single(arena.Update(actors, now.AddMilliseconds(3300)));
-        Assert.Empty(arena.Update(actors, now.AddMilliseconds(3900)));
-    }
-    [Fact]
-    public void Resolve_WindProfileChecksAttackEligibilityForEveryAdditionalTarget()
+    public void Resolve_SkipsCandidatesRejectedByCanAttackTarget()
     {
         using var arena = new Arena(923, 1, 2, 3);
         var now = new DateTime(2026, 7, 22, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
-            Actor(1, 0f, 0f, weaponItemId: 107000020) with
-            {
-                MaxTargets = 3,
-                AdditionalTargetDamageMultiplier = 0.5f
-            },
+            Actor(1, 0f, 0f, weaponItemId: 107000020),
             Actor(2, 1f, 0f),
             Actor(3, 2f, 0f)
         };
@@ -487,33 +374,6 @@ public class MatchAutoAttackServiceTests
 
         var nextAttack = Assert.Single(arena.Update(actors, now.AddMilliseconds(1100)));
         Assert.Equal(107000020, nextAttack.WeaponItemId);
-    }
-
-    [Fact]
-    public void Resolve_MultipleOrbInstancesCanStaggerTheirOpeningVolley()
-    {
-        using var arena = new Arena(928, 1, 2);
-        var now = new DateTime(2026, 7, 27, 0, 0, 0, DateTimeKind.Utc);
-        var actors = new[]
-        {
-            Actor(1, 0f, 0f, weaponItemId: 107000010) with
-            {
-                WeaponItemUid = 101,
-                InitialAttackDelaySeconds = 0f
-            },
-            Actor(1, 0f, 0f, weaponItemId: 107000020) with
-            {
-                WeaponItemUid = 102,
-                InitialAttackDelaySeconds = 0.15f
-            },
-            Actor(2, 1f, 0f)
-        };
-
-        // 슬롯 시차는 이 테스트가 직접 지정하므로 조준 시간에만 상대적으로 잡는다.
-        Assert.Empty(arena.Update(actors, now));
-        Assert.Single(arena.Update(actors, now.AddMilliseconds(AimMs)));
-        Assert.Empty(arena.Update(actors, now.AddMilliseconds(AimMs + 149)));
-        Assert.Single(arena.Update(actors, now.AddMilliseconds(AimMs + 150)));
     }
 
     /// <summary>매치 하나와 참가자를 등록하고 잠금을 잡은 채 서비스를 돌리는 테스트 무대.</summary>

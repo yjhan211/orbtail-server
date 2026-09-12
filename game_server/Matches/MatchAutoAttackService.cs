@@ -38,13 +38,7 @@ internal sealed class MatchAutoAttackService
             if (attacker.WeaponItemId <= 0 || attacker.Area == AreaType.None || attacker.AttackRange <= 0f || attacker.Damage <= 0 || attacker.AttackIntervalSeconds <= 0f)
             {
                 state.Engagements.Remove(weaponKey);
-                state.BurstRechargeReadyAtUtc.Remove(weaponKey);
                 continue;
-            }
-
-            if (attacker.InitialBurstAttackCount <= 0)
-            {
-                state.BurstRechargeReadyAtUtc.Remove(weaponKey);
             }
 
             activeWeapons.Add((attacker.PlayerId, weaponKey.WeaponItemUid, weaponKey.WeaponStackIndex));
@@ -91,10 +85,6 @@ internal sealed class MatchAutoAttackService
                 if (isEngaged)
                 {
                     state.Engagements[weaponKey] = engagement with { Phase = AutoAttackPhase.Suspended, LostAtUtc = nowUtc };
-                    if (attacker.InitialBurstAttackCount > 0 && attacker.BurstRechargeSeconds > 0f)
-                    {
-                        state.BurstRechargeReadyAtUtc[weaponKey] = nowUtc.AddSeconds(attacker.BurstRechargeSeconds);
-                    }
                 }
                 continue;
             }
@@ -118,19 +108,9 @@ internal sealed class MatchAutoAttackService
                 }
                 else
                 {
-                    var aimReadyAtUtc = nowUtc.Add(AimDuration).AddSeconds(Math.Max(0f, attacker.InitialAttackDelaySeconds));
-                    int initialBurstAttackCount = 0;
-                    if (attacker.InitialBurstAttackCount > 0)
-                    {
-                        bool burstCharged = !state.BurstRechargeReadyAtUtc.TryGetValue(weaponKey, out var burstReadyAtUtc) || nowUtc >= burstReadyAtUtc;
-                        if (burstCharged)
-                        {
-                            initialBurstAttackCount = attacker.InitialBurstAttackCount;
-                        }
-                        state.BurstRechargeReadyAtUtc[weaponKey] = DateTime.MaxValue;
-                    }
+                    var aimReadyAtUtc = nowUtc.Add(AimDuration);
                     var nextAttackAtUtc = hasEngagement && engagement.NextAttackAtUtc > aimReadyAtUtc ? engagement.NextAttackAtUtc : aimReadyAtUtc;
-                    nextEngagement = new AutoAttackEngagement(AutoAttackPhase.Engaged, selectedTarget.PlayerId, attacker.WeaponItemId, aimReadyAtUtc, nextAttackAtUtc, initialBurstAttackCount);
+                    nextEngagement = new AutoAttackEngagement(AutoAttackPhase.Engaged, selectedTarget.PlayerId, attacker.WeaponItemId, aimReadyAtUtc, nextAttackAtUtc);
                 }
 
                 state.Engagements[weaponKey] = nextEngagement;
@@ -142,30 +122,18 @@ internal sealed class MatchAutoAttackService
                 continue;
             }
 
-            int targetCount = Math.Min(Math.Max(1, attacker.MaxTargets), eligibleTargets.Count);
-            for (int i = 0; i < targetCount; i++)
-            {
-                int damage = i == 0 ? attacker.Damage : (int)Math.Ceiling(attacker.Damage * attacker.AdditionalTargetDamageMultiplier);
-                attacks.Add(new ProximityCombatAttack(
-                    attacker.PlayerId,
-                    eligibleTargets[i].Actor.PlayerId,
-                    attacker.Area,
-                    attacker.WeaponItemId,
-                    damage,
-                    eligibleTargets.Count,
-                    AttackerItemUid: attacker.WeaponItemUid,
-                    Origin: attacker.Position,
-                    AnchorPosition: eligibleTargets[i].Actor.Position,
-                    AttackerTrailOrdinal: attacker.TrailOrdinal));
-            }
-
-            bool useInitialBurst = attacker.InitialBurstAttackCount > 0 && engagement.RemainingInitialBurstAttacks > 1;
-            float nextAttackIntervalSeconds = useInitialBurst ? attacker.AttackIntervalSeconds * attacker.InitialBurstAttackIntervalMultiplier : attacker.AttackIntervalSeconds;
-            state.Engagements[weaponKey] = engagement with
-            {
-                NextAttackAtUtc = nowUtc.AddSeconds(nextAttackIntervalSeconds),
-                RemainingInitialBurstAttacks = useInitialBurst ? engagement.RemainingInitialBurstAttacks - 1 : 0
-            };
+            attacks.Add(new ProximityCombatAttack(
+                attacker.PlayerId,
+                selectedTarget.PlayerId,
+                attacker.Area,
+                attacker.WeaponItemId,
+                attacker.Damage,
+                eligibleTargets.Count,
+                AttackerItemUid: attacker.WeaponItemUid,
+                Origin: attacker.Position,
+                AnchorPosition: selectedTarget.Position,
+                AttackerTrailOrdinal: attacker.TrailOrdinal));
+            state.Engagements[weaponKey] = engagement with { NextAttackAtUtc = nowUtc.AddSeconds(attacker.AttackIntervalSeconds) };
         }
 
         foreach (var player in runtime.GetPlayers())
@@ -178,12 +146,7 @@ internal sealed class MatchAutoAttackService
                 if (!active && engagement.Phase == AutoAttackPhase.Engaged)
                 {
                     state.Engagements[weaponKey] = engagement with { Phase = AutoAttackPhase.Suspended, LostAtUtc = nowUtc };
-                    state.BurstRechargeReadyAtUtc.Remove(weaponKey);
                     continue;
-                }
-                if (!active)
-                {
-                    state.BurstRechargeReadyAtUtc.Remove(weaponKey);
                 }
                 if (engagement.Phase == AutoAttackPhase.Suspended && nowUtc - engagement.LostAtUtc > TargetReacquireGraceDuration)
                 {
@@ -197,7 +160,7 @@ internal sealed class MatchAutoAttackService
 
     private static int CompareTargets((ProximityCombatActor Actor, float DistanceSquared) left, (ProximityCombatActor Actor, float DistanceSquared) right, long currentTargetPlayerId)
     {
-        int priorityComparison = GetTargetPriority(left.Actor, currentTargetPlayerId).CompareTo(GetTargetPriority(right.Actor, currentTargetPlayerId));
+        int priorityComparison = left.Actor.TargetPriority.CompareTo(right.Actor.TargetPriority);
         if (priorityComparison != 0)
         {
             return priorityComparison;
@@ -215,25 +178,6 @@ internal sealed class MatchAutoAttackService
 
         int distanceComparison = left.DistanceSquared.CompareTo(right.DistanceSquared);
         return distanceComparison != 0 ? distanceComparison : left.Actor.PlayerId.CompareTo(right.Actor.PlayerId);
-    }
-
-    private static int GetTargetPriority(ProximityCombatActor target, long currentTargetPlayerId)
-    {
-        if (target.TargetPriority >= 0)
-        {
-            return target.TargetPriority;
-        }
-
-        if (!target.IsMonsterTarget)
-        {
-            return 0;
-        }
-
-        if (target.PlayerId == currentTargetPlayerId)
-        {
-            return target.IsCoreMonsterTarget ? 1 : 2;
-        }
-        return 3;
     }
 
     private static int CompareWeaponInstance(ProximityCombatActor left, ProximityCombatActor right)

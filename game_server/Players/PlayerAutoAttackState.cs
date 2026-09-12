@@ -12,14 +12,11 @@ internal readonly record struct AutoAttackEngagement(
     int WeaponItemId,
     DateTime AimReadyAtUtc,
     DateTime NextAttackAtUtc,
-    int RemainingInitialBurstAttacks,
     DateTime LostAtUtc = default);
 
 internal sealed class PlayerAutoAttackState
 {
     public Dictionary<(long ItemUid, int StackIndex), AutoAttackEngagement> Engagements { get; } = new();
-
-    public Dictionary<(long ItemUid, int StackIndex), DateTime> BurstRechargeReadyAtUtc { get; } = new();
 
     public void ResetAttackCooldown(long itemUid, DateTime nowUtc)
     {

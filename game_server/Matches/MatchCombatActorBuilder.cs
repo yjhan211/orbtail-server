@@ -59,7 +59,7 @@ internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails)
             }
 
             var spatial = new ProximityCombatActor(player.PlayerId, cellArea, player.Position, 0, 0f, 0, 0f, MapId: Config.SWARM_MATCH_MAP, Cell: cell);
-            var body = spatial with { WeaponItemUid = spatial.PlayerId, TargetPriority = 0 };
+            var body = spatial with { WeaponItemUid = spatial.PlayerId };
             actors.Add(body);
 
             var orbCollection = runtime.GetOrbs(player.PlayerId);

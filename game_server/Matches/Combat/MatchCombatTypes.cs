@@ -39,17 +39,10 @@ public readonly record struct ProximityCombatActor(
     float AttackIntervalSeconds,
     MapId MapId = MapId.None,
     Cell? Cell = null,
-    int MaxTargets = 1,
-    float AdditionalTargetDamageMultiplier = 1f,
-    int InitialBurstAttackCount = 0,
-    float InitialBurstAttackIntervalMultiplier = 1f,
-    float BurstRechargeSeconds = 0f,
     long WeaponItemUid = 0,
     int WeaponStackIndex = 0,
-    float InitialAttackDelaySeconds = 0f,
     bool IsMonsterTarget = false,
-    bool IsCoreMonsterTarget = false,
-    int TargetPriority = -1,
+    int TargetPriority = 0,
     bool Untargetable = false,
     int TrailOrdinal = 0);
 
