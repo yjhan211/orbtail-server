@@ -103,7 +103,7 @@ internal sealed class MatchOrbAttackService(
         }
 
         var shapes = runtime.SunCrossfireShapes;
-        IReadOnlyList<SwarmArenaCombatTarget>? monsters = null;
+        IReadOnlyList<MonsterCombatTarget>? monsters = null;
         for (int index = shapes.Count - 1; index >= 0; index--)
         {
             var shape = shapes[index];
@@ -117,7 +117,7 @@ internal sealed class MatchOrbAttackService(
             front = MathF.Min(front, sweepEnd);
             float lastFront = shape.LastFront;
             shape.LastFront = front;
-            monsters ??= runtime.Monsters.GetCombatTargets();
+            monsters ??= runtime.Monsters.GetCombatTargets(nowUtc);
 
             foreach (var monster in monsters)
             {
@@ -135,7 +135,7 @@ internal sealed class MatchOrbAttackService(
                 eventLogs.LogCrossfireHit(matchingId, monster.CombatTargetId, nowUtc);
                 runtime.Monsters.RecordMonsterAttackEvent(monster.CombatTargetId);
                 int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, shape.Damage, out bool critical);
-                combatDamage.ApplySwarmMonsterHitNow(runtime, monster.CombatTargetId, monster.MonsterId, shape.OwnerId, shape.WeaponItemId, shape.Area, monsterDamage, critical, allSessions);
+                combatDamage.ApplySwarmMonsterHitNow(runtime, monster.CombatTargetId, monster.MonsterId, shape.OwnerId, shape.WeaponItemId, shape.Area, monsterDamage, critical, nowUtc, allSessions);
             }
 
             foreach (var participant in players)
@@ -315,7 +315,7 @@ internal sealed class MatchOrbAttackService(
             var owner = runtime.GetParticipant(vortex.OwnerId);
             int hitCount = 0;
             int notifiedCount = 0;
-            foreach (var target in runtime.Monsters.GetCombatTargets())
+            foreach (var target in runtime.Monsters.GetCombatTargets(nowUtc))
             {
                 if (target.Area != vortex.Area)
                 {

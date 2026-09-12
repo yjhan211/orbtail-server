@@ -45,8 +45,7 @@ internal sealed class MatchRuntime
 
     internal readonly List<Action> AfterRelease = new();
 
-    internal MatchRuntime(MatchRuntimeStore runtimeStore, long matchingId, ILogger<MatchRuntime> logger, MatchSessionCleanupService matchSessionCleanup,
-        GameEventLogManager eventLogs)
+    internal MatchRuntime(MatchRuntimeStore runtimeStore, long matchingId, ILogger<MatchRuntime> logger, MatchSessionCleanupService matchSessionCleanup, GameEventLogManager eventLogs)
     {
         _runtimeStore = runtimeStore;
         _logger = logger;
@@ -55,14 +54,14 @@ internal sealed class MatchRuntime
         Bots = new BotPlayerManager(matchingId, logger, Doors, SunCrossfireShapes, eventLogs);
         GroundItems = new MatchGroundItemState();
         Closures = new MatchAreaClosureState();
-        Monsters = new SwarmMonsterDirector(matchingId, Closures, playerId => GetParticipant(playerId)?.Orbs.HasAnyOrb() ?? false);
+        Monsters = new MatchMonsterState();
     }
 
     // 매치 식별과 수명·잠금
     public long MatchingId { get; }
     public BotPlayerManager Bots { get; }
     internal SwarmBotTickMetrics BotTickMetrics { get; } = new();
-    public SwarmMonsterDirector Monsters { get; }
+    public MatchMonsterState Monsters { get; }
 
     // 전투와 오브
     public MatchCombatDamageState CombatDamage { get; } = new();

@@ -141,7 +141,7 @@ internal sealed class PlayerOrbService(
         }
 
         var alivePlayers = runtime.GetAlivePlayers();
-        IReadOnlyList<SwarmArenaCombatTarget>? monsterTargets = null;
+        IReadOnlyList<MonsterCombatTarget>? monsterTargets = null;
         var orderedOrbs = owner.Orbs.GetOrderedOrbs();
         if (orderedOrbs.Count == 0)
         {
@@ -174,7 +174,7 @@ internal sealed class PlayerOrbService(
 
             orbTiers ??= orbTrails.GetOrbTiersInOrder(runtime, owner);
             var orbPosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, owner.Position!, orbTiers);
-            monsterTargets ??= runtime.Monsters.GetCombatTargets();
+            monsterTargets ??= runtime.Monsters.GetCombatTargets(nowUtc);
             bool hasTargetInRange = false;
             foreach (var monsterTarget in monsterTargets)
             {
@@ -270,7 +270,7 @@ internal sealed class PlayerOrbService(
             return false;
         }
 
-        var monsterTargets = runtime.Monsters.GetCombatTargets();
+        var monsterTargets = runtime.Monsters.GetCombatTargets(nowUtc);
         var origin = attack.Origin ?? owner.Position;
         var anchor = attack.AnchorPosition;
         int anchorMonsterId = runtime.Monsters.GetMonsterIdForCombatTarget(attack.TargetPlayerId);
@@ -499,7 +499,7 @@ internal sealed class PlayerOrbService(
         long matchingId = runtime.MatchingId;
         var alivePlayers = runtime.GetAlivePlayers();
         var activeSessions = runtime.GetSessions().Where(session => !session.IsGameEnded).ToList();
-        IReadOnlyList<SwarmArenaCombatTarget>? monsterTargets = null;
+        IReadOnlyList<MonsterCombatTarget>? monsterTargets = null;
         var orderedOrbs = owner.Orbs.GetOrderedOrbs();
         if (orderedOrbs.Count == 0)
         {
@@ -524,8 +524,8 @@ internal sealed class PlayerOrbService(
             orbTiers ??= orbTrails.GetOrbTiersInOrder(runtime, owner);
             var orbPosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, owner.Position!, orbTiers);
             float radius = Config.SWARM_WIND_BLADE_RADIUS_BY_TIER[Math.Clamp(tier, 1, 3) - 1];
-            monsterTargets ??= runtime.Monsters.GetCombatTargets();
-            List<SwarmArenaCombatTarget>? monstersInRadius = null;
+            monsterTargets ??= runtime.Monsters.GetCombatTargets(nowUtc);
+            List<MonsterCombatTarget>? monstersInRadius = null;
             foreach (var monster in monsterTargets)
             {
                 if (monster.Area != owner.CurrentArea)
@@ -587,7 +587,7 @@ internal sealed class PlayerOrbService(
                     monsterHits++;
                     runtime.Monsters.RecordMonsterAttackEvent(monster.CombatTargetId);
                     int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, damage, out bool critical);
-                    combatDamage.ApplySwarmMonsterHitNow(runtime, monster.CombatTargetId, monster.MonsterId, owner.PlayerId, orb.ItemId, owner.CurrentArea, monsterDamage, critical, activeSessions);
+                    combatDamage.ApplySwarmMonsterHitNow(runtime, monster.CombatTargetId, monster.MonsterId, owner.PlayerId, orb.ItemId, owner.CurrentArea, monsterDamage, critical, nowUtc, activeSessions);
                 }
             }
 

@@ -1,5 +1,6 @@
 using game_server.matches;
 using game_server.matches.logging;
+using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
 using game_server.sessions;
@@ -127,6 +128,9 @@ internal static class Program
             sp.GetRequiredService<MatchResultService>(),
             sp.GetRequiredService<ILogger<PlayerEliminationService>>()));
         services.AddSingleton<PlayerHealthService>();
+        services.AddSingleton<MonsterSupplyService>();
+        services.AddSingleton<MonsterMovementService>();
+        services.AddSingleton<MatchMonsterService>();
         services.AddSingleton<MatchCombatDamageService>();
         services.AddSingleton<MatchFieldService>();
         services.AddSingleton<PlayerOrbGrowthService>();

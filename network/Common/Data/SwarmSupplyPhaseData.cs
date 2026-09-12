@@ -11,7 +11,7 @@ namespace network.common.data
 {
     /// <summary>
     ///     잔상 공급 페이즈 곡선 (swarm_supply_phase.csv, #335). 폐쇄 단계별 인당 목표·HP·접촉 피해·석 예산을
-    ///     phase_index 오름차순으로 든다. 미로드 시 GetAll이 빈 목록을 돌려주고 소비부(SwarmMonsterDirector)가
+    ///     phase_index 오름차순으로 든다. 미로드 시 GetAll이 빈 목록을 돌려주고 소비부(MatchMonsterService)가
     ///     코드 기본 곡선으로 폴백한다 — swarm_config.csv와 같은 계약.
     ///     until_seconds가 0 이하면 매치 끝까지(최종 페이즈)로 읽는다.
     /// </summary>

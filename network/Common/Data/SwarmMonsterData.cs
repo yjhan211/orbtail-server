@@ -10,7 +10,7 @@ using network.common.data.helpers;
 namespace network.common.data
 {
     /// <summary>
-    ///     잔상 몬스터 종별 스탯 (swarm_monster.csv). kind 값은 서버 SwarmMonsterKind enum과 동기.
+    ///     잔상 몬스터 종별 스탯 (swarm_monster.csv). kind 값은 서버 MonsterKind enum과 동기.
     ///     attack_range 0 = 접촉 몹 — 소비부가 접촉 반경으로 폴백한다.
     /// </summary>
     public static class SwarmMonsterData

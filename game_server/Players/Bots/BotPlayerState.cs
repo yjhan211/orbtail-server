@@ -54,6 +54,8 @@ public class BotPlayerState
     public (AreaType Area, AreaType PreviousArea, DateTime LeftAtUtc)? AreaMemory { get; set; }
     /// <summary>이번 틱 지시가 도주·대피였는가 — 왕복 억제의 유일한 예외.</summary>
     public bool FleeDirective { get; set; }
+    /// <summary>도주 목적지 약속 — 유효 시간 안에는 같은 목적지를 유지해 재계획 폭주에도 방향이 뒤집히지 않는다.</summary>
+    public (Vector3f Destination, DateTime CommittedAtUtc)? FleeCommitment { get; set; }
     /// <summary>마지막 절단 시각 — 절단 쿨다운과 절단 직후 전리품 회수 창의 기준.</summary>
     public DateTime? LastTrailCutAtUtc { get; set; }
     /// <summary>치명상 — 남은 체력 40% 이하에서 진입, 55% 이상에서 해제.</summary>

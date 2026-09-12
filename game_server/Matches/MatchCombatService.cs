@@ -26,7 +26,8 @@ internal class MatchCombatService(
     MatchCombatActorBuilder actorBuilder,
     MatchAutoAttackService autoAttacks,
     MatchOrbAttackService orbAttacks,
-    BotDecisionService botDecisions)
+    BotDecisionService botDecisions,
+    MatchMonsterService monsters)
 {
     public virtual void ProcessTick(MatchRuntime runtime)
     {
@@ -73,11 +74,7 @@ internal class MatchCombatService(
             participants.Add(new PlayerPositionSnapshot(player.PlayerId, player.CurrentArea, player.Position));
         }
 
-        var tick = runtime.Monsters.Tick(participants, runtime.IsGameplayActive(), nowUtc);
-        foreach (string report in tick.StuckReports)
-        {
-            eventLogs.LogSystem(runtime.MatchingId, report);
-        }
+        var tick = monsters.Tick(runtime, participants, runtime.IsGameplayActive(), nowUtc);
 
         if (!runtime.IsGameplayActive())
         {
@@ -217,7 +214,7 @@ internal class MatchCombatService(
                 continue;
             }
             int monsterId = runtime.Monsters.GetMonsterIdForCombatTarget(attack.TargetPlayerId);
-            if (monsterId <= 0 && SwarmMonsterDirector.IsCombatTargetId(attack.TargetPlayerId))
+            if (monsterId <= 0 && MatchMonsterService.IsCombatTargetId(attack.TargetPlayerId))
             {
                 continue;
             }
@@ -248,7 +245,7 @@ internal class MatchCombatService(
                 continue;
             }
 
-            if (SwarmMonsterDirector.IsCombatTargetId(attack.TargetPlayerId))
+            if (MatchMonsterService.IsCombatTargetId(attack.TargetPlayerId))
             {
                 continue;
             }
@@ -283,7 +280,7 @@ internal class MatchCombatService(
             return;
         }
         damage = damage with { Damage = Config.ScaleSwarmDamageTaken(damage.Damage) };
-        if (runtime.Monsters.IsWavePatternMonster(damage.MonsterId))
+        if (runtime.Monsters.HasWaveInsignia(damage.MonsterId))
         {
             using var vfxPacket = Packet.Create((int)Protocol.G_TO_C_MONSTER_ATTACK_VFX);
             vfxPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_ATTACK_VFX

@@ -1,5 +1,6 @@
 using game_server.matches;
 using game_server.matches.logging;
+using game_server.matches.monsters;
 using game_server.players;
 using game_server.sessions;
 using MessagePack;
@@ -277,17 +278,124 @@ internal sealed class BotDecisionService(
         return directive;
     }
 
+    // 위험 반경 5 / 사격 대역 5~7 — 깨어난 몹이 5에 오면 물러난다. 아이소 월드 스케일에서 방의 세로 폭은
+    // ~2.5유닛뿐이라 이동 목표가 방을 벗어나면 구역 클램프로 제자리 회귀해 서 있는 것처럼 보인다 — 짧게 잡는다.
+    private const float MonsterDangerRadius = 5f;
+    private const float MonsterFleeDistance = 5f;
+    private const float MonsterRoamDistance = 3f;
+    // 위협 회피 목적지 최소 거리 — 클램프 후 이보다 가까우면 그 각도는 벽이다.
+    private const float MinThreatFleeDistance = 2f;
+    // 도주 목적지 약속 유효 시간 (#226): 이 시간 안에는 같은 도주 목적지를 반환한다.
+    private const double FleeCommitSeconds = 2d;
+
+    /// <summary>
+    ///     잔상 위협 지시: 내 구역에 깨어난 몹 무리가 가까우면 반대쪽으로 이탈하고, 아니면 현재 구역 안을 배회한다.
+    ///     잠든 몹은 위험이 아니다. 배회는 Return이 아닌 Escort로 돌려준다 — Return은 개봉 채널 완료 로직을 단락시킨다.
+    /// </summary>
+    private static SwarmBotDirective ResolveMonsterThreatDirective(MatchRuntime runtime, BotPlayerState bot, DateTime nowUtc)
+    {
+        var position = bot.Player.Position!;
+        var area = bot.Player.CurrentArea;
+        float threatX = 0f, threatY = 0f;
+        int threatCount = 0;
+        foreach (var monster in runtime.Monsters.Entities.Values)
+        {
+            if (!monster.Alive || nowUtc < monster.ActivatesAtUtc || monster.Area != area || !monster.Aggro)
+                continue;
+            float dx = monster.Position.X - position.X;
+            float dy = monster.Position.Y - position.Y;
+            if (dx * dx + dy * dy > MonsterDangerRadius * MonsterDangerRadius)
+                continue;
+            threatX += monster.Position.X;
+            threatY += monster.Position.Y;
+            threatCount++;
+        }
+
+        Vector3f destination;
+        if (threatCount > 0)
+        {
+            // 도주 목적지 약속 (#226): 피격 재계획이 계속 돌면 목적지가 매번 새로 뽑혀 방향이 뒤집힌다.
+            // 유효 시간 안이고 아직 도착 전이면 같은 목적지를 유지한다.
+            if (bot.FleeCommitment is { } commitment && (nowUtc - commitment.CommittedAtUtc).TotalSeconds < FleeCommitSeconds)
+            {
+                float commitDx = commitment.Destination.X - position.X;
+                float commitDy = commitment.Destination.Y - position.Y;
+                if (commitDx * commitDx + commitDy * commitDy > 1f)
+                {
+                    return new SwarmBotDirective(SwarmBotMode.Return, area,
+                        MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, commitment.Destination), commitment.Destination);
+                }
+            }
+
+            float centroidX = threatX / threatCount;
+            float centroidY = threatY / threatCount;
+            float awayX = position.X - centroidX;
+            float awayY = position.Y - centroidY;
+            float length = MathF.Sqrt(awayX * awayX + awayY * awayY);
+            if (length < 0.01f)
+            {
+                awayX = 1f;
+                awayY = 0f;
+                length = 1f;
+            }
+
+            destination = ResolveThreatFleeDestination(position, area, awayX / length, awayY / length);
+            bot.FleeCommitment = (destination, nowUtc);
+        }
+        else
+        {
+            bot.FleeCommitment = null;
+            float angle = (float)(Random.Shared.NextDouble() * Math.PI * 2d);
+            destination = new Vector3f(
+                position.X + MathF.Cos(angle) * MonsterRoamDistance,
+                position.Y + MathF.Sin(angle) * MonsterRoamDistance,
+                0f);
+            destination = MonsterNavigation.ClampToAreaWalkable(destination, position, area);
+        }
+
+        var mode = threatCount > 0 ? SwarmBotMode.Return : SwarmBotMode.Escort;
+        return new SwarmBotDirective(mode, area, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, destination), destination);
+    }
+
+    /// <summary>
+    ///     위협 반대 방향부터 각도를 넓혀가며(±45°… 180°) 실제로 멀어지는 walkable 목적지를 찾는다 (#223 구석 수렴 방지).
+    ///     전부 벽이면 구역 스폰 지점 — 몬스터 옆 정지는 없다.
+    /// </summary>
+    private static Vector3f ResolveThreatFleeDestination(Vector3f position, AreaType area, float directionX, float directionY)
+    {
+        ReadOnlySpan<float> angleOffsets = [0f, 45f, -45f, 90f, -90f, 135f, -135f, 180f];
+        foreach (float angleDegrees in angleOffsets)
+        {
+            float radians = angleDegrees * MathF.PI / 180f;
+            float cos = MathF.Cos(radians);
+            float sin = MathF.Sin(radians);
+            float rotatedX = directionX * cos - directionY * sin;
+            float rotatedY = directionX * sin + directionY * cos;
+            var candidate = MonsterNavigation.ClampToAreaWalkable(new Vector3f(
+                position.X + rotatedX * MonsterFleeDistance,
+                position.Y + rotatedY * MonsterFleeDistance,
+                0f), position, area);
+            float dx = candidate.X - position.X;
+            float dy = candidate.Y - position.Y;
+            if (dx * dx + dy * dy >= MinThreatFleeDistance * MinThreatFleeDistance)
+                return candidate;
+        }
+
+        return MonsterNavigation.ClampToAreaWalkable(
+            BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area)),
+            position, area);
+    }
+
     private SwarmBotDirective DecideMovementCore(MatchRuntime runtime, long botPlayerId)
     {
-        var directive = runtime.Monsters.GetBotDirective(botPlayerId);
-
         var bot = runtime.Bots.GetBots()
             .FirstOrDefault(candidate => candidate.PlayerId == botPlayerId);
-        if (bot == null || bot.Player.IsEliminated)
-            return directive;
+        if (bot == null || bot.Player.IsEliminated || bot.Player.Position == null)
+            return SwarmBotDirective.None;
+        var directive = ResolveMonsterThreatDirective(runtime, bot, DateTime.UtcNow);
         bot.FleeDirective = false;
 
-        // 폐쇄·경계 탈출은 위협 판정보다 위다 (#229 8단계). GetBotDirective는 내 구역에 깨어난
+        // 폐쇄·경계 탈출은 위협 판정보다 위다 (#229 8단계). ResolveMonsterThreatDirective는 내 구역에 깨어난
         // 몹이 하나라도 있으면 Return을 준다. 밀도 램프 이후 구역당 7~15마리라 이 조건이 상시
         // 참이 됐고, 아래의 대피·전력 비교·추격이 통째로 죽어 있었다. 봇 매치 9772501에서
         // 10명 중 9명이 스폰 방을 한 번도 안 나가고 그 방이 닫힐 때 죽었다 —
@@ -795,7 +903,7 @@ internal sealed class BotDecisionService(
     private bool HasSwarmMonsterInBasicRange(MatchRuntime runtime, BotPlayerState bot)
     {
         float rangeSquared = Config.SWARM_ORB_ATTACK_RANGE * Config.SWARM_ORB_ATTACK_RANGE;
-        foreach (var target in runtime.Monsters.GetCombatTargets())
+        foreach (var target in runtime.Monsters.GetCombatTargets(DateTime.UtcNow))
         {
             if (target.Area != bot.Player.CurrentArea)
                 continue;
@@ -817,7 +925,7 @@ internal sealed class BotDecisionService(
         }
         var sessions = runtime.GetSessions();
         var players = runtime.GetAlivePlayers();
-        var monsters = runtime.Monsters.GetCombatTargets();
+        var monsters = runtime.Monsters.GetCombatTargets(nowUtc);
         float safeRadiusSquared = Config.SWARM_ORB_ATTACK_RANGE * Config.SWARM_ORB_ATTACK_RANGE;
         foreach (var bot in bots)
         {

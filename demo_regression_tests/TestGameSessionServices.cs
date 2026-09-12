@@ -1,6 +1,7 @@
 using game_server;
 using game_server.matches;
 using game_server.matches.logging;
+using game_server.matches.monsters;
 using game_server.players;
 using game_server.sessions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -79,7 +80,7 @@ internal static class TestGameSessionServices
         return new MatchRuntimeStore(logger.For<MatchRuntime>(), lifecycle);
     }
     public static MatchCombatDamageService CreateCombatDamageService(GameEventLogManager logs) =>
-        new(logs);
+        new(logs, new MatchMonsterService(new MonsterSupplyService(), new MonsterMovementService()));
 
     public static PlayerMovementService CreateMovementService(GameEventLogManager logs) =>
         new(logs, NullLogger<PlayerMovementService>.Instance);

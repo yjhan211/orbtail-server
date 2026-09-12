@@ -15,7 +15,7 @@ namespace game_server.matches;
 ///     플레이어·몬스터 피해와 지연 타격을 처리하고, 피격 로그와 알림을 남긴다.
 ///     플레이어의 체력 변경·탈락 처리는 PlayerHealthService에 위임한다.
 /// </summary>
-internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
+internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, MatchMonsterService monsters)
 {
     private const int SwarmRingVfxKindRetaliationBlocked = 6;
     private static double SwarmCriticalChance => SwarmConfigData.GetDouble("SWARM_CRITICAL_CHANCE", 0.15d);
@@ -271,13 +271,14 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
         AreaType area,
         int damage,
         bool critical,
+        DateTime nowUtc,
         List<GameClientSession> allSessions)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Combat damage requires the match lock.");
         }
-        var damageResult = runtime.Monsters.ApplyMonsterDamage(combatTargetId, attackerId, damage);
+        var damageResult = monsters.ApplyMonsterDamage(runtime, combatTargetId, attackerId, damage, nowUtc);
         if (!damageResult.Applied)
         {
             return;
@@ -294,7 +295,7 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
 
     private void SettleSwarmMonsterKill(
         MatchRuntime runtime,
-        SwarmArenaDamageResult damageResult,
+        MonsterDamageResult damageResult,
         long attackerId,
         int damage,
         List<GameClientSession> allSessions)
@@ -311,7 +312,7 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
         eventLogs.LogSwarmAfterimageKilled(
             runtime.MatchingId, damageResult.MonsterId,
             damageResult.MonsterState.AreaType.ToString(),
-            isCore: damageResult.Kind == SwarmMonsterKind.RunawayGoblin,
+            isCore: damageResult.Kind == MonsterKind.RunawayGoblin,
             firstAttackerPlayerId: attackerId,
             lastAttackerPlayerId: attackerId,
             new Dictionary<long, int> { [attackerId] = damage });
@@ -377,7 +378,7 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs)
             }
 
             runtime.CombatDamage.PendingMonsterHits.RemoveAt(index);
-            var damageResult = runtime.Monsters.ApplyMonsterDamage(hit.CombatTargetId, hit.AttackerId, hit.Damage);
+            var damageResult = monsters.ApplyMonsterDamage(runtime, hit.CombatTargetId, hit.AttackerId, hit.Damage, nowUtc);
             if (damageResult.Applied)
             {
                 eventLogs.RecordMonsterHit(matchingId, hit.AttackerId, hit.Damage, damageResult.Killed);

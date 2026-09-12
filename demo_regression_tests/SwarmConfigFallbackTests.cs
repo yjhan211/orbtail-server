@@ -61,7 +61,7 @@ public class SwarmConfigFallbackTests
             .OrderBy(phase => phase.PhaseIndex)
             .ToList();
 
-        var field = typeof(SwarmMonsterDirector).GetField(
+        var field = typeof(MonsterSupplyService).GetField(
             "DefaultSupplyPhases", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(field);
         var fallback = (SwarmSupplyPhaseDefinition[])field!.GetValue(null)!;

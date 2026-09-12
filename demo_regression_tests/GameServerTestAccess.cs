@@ -2,6 +2,7 @@ using System.Reflection;
 using game_server;
 using game_server.matches;
 using game_server.matches.logging;
+using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
 using game_server.sessions;
@@ -80,7 +81,7 @@ internal static class GameServerTestAccess
                 health, combatDamage, results,
                 new PlayerOrbService(health, combatDamage, orbTrails, logs),
                 orbTrails, trailCuts, new MatchCombatActorBuilder(orbTrails), new MatchAutoAttackService(),
-                new MatchOrbAttackService(health, combatDamage, logs), decisions);
+                new MatchOrbAttackService(health, combatDamage, logs), decisions, new MatchMonsterService(new MonsterSupplyService(), new MonsterMovementService()));
 
             return new MatchTickLoop(runtime, runtimes, logger, groundPickup,
             entryFailure, combat, field, movement, decisions, clock);
