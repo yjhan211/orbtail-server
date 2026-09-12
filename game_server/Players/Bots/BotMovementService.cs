@@ -18,7 +18,7 @@ namespace game_server.players.bots;
 internal class BotMovementService(
     ILogger<BotMovementService> logger)
 {
-    private const double SwarmWanderScatterProbability = 0.3;
+    private const double WanderScatterProbability = 0.3;
     private const double BotRoomDwellMinSeconds = 1.25;
     private const double BotRoomDwellMaxSeconds = 2.25;
     private const float BotWalkSpeed = 5f;
@@ -213,14 +213,10 @@ internal class BotMovementService(
         float bare = bot.IsSwarmBareHanded && DateTime.UtcNow < bot.SwarmBareSpeedUntilUtc
             ? Config.SWARM_BARE_MOVE_SPEED_MULTIPLIER
             : 1f;
-        return wind * boots * bare * GetBotWaveSlowMultiplier(bot);
-    }
-
-    private static float GetBotWaveSlowMultiplier(Bot bot)
-    {
-        return DateTime.UtcNow < bot.Player.WaveSlowUntilUtc
+        float waveSlow = DateTime.UtcNow < bot.Player.WaveSlowUntilUtc
             ? OrbData.WaveSlowMoveSpeedMultiplier
             : 1f;
+        return wind * boots * bare * waveSlow;
     }
     private static Vector3f ScaledWalkVelocity(float dirX, float dirY, float movementMultiplier = 1f)
     {
@@ -253,30 +249,21 @@ internal class BotMovementService(
         var result = new BotWalkingTickResult();
         var bots = runtime.Bots.GetBots();
 
-        var activeBots = bots.Where(bot => !bot.Player.IsEliminated).ToList();
-        if (activeBots.Count == 0) return result;
+        var activeBots = new List<Bot>();
+        foreach (var bot in bots)
+        {
+            if (!bot.Player.IsEliminated)
+            {
+                activeBots.Add(bot);
+            }
+        }
+        if (activeBots.Count == 0)
+        {
+            return result;
+        }
 
         result.PlanningBotId = runtime.Bots.SelectMovementPlanningBot(activeBots);
 
-        return ProcessSwarmBotMovement(runtime,
-            matchingId,
-            activeBots,
-            result,
-            closureManager,
-            groundItems,
-            playerAreas,
-            decideMovement);
-    }
-
-    private BotWalkingTickResult ProcessSwarmBotMovement(MatchRuntime runtime,
-        long matchingId,
-        IReadOnlyList<Bot> activeBots,
-        BotWalkingTickResult result,
-        MatchAreaClosureState closureManager,
-        MatchGroundItemState groundItems,
-        IReadOnlyDictionary<long, AreaType> playerAreas,
-        Func<long, BotMovementDecision> decideMovement)
-    {
         DateTime nowUtc = DateTime.UtcNow;
         foreach (var bot in activeBots)
         {
@@ -292,7 +279,6 @@ internal class BotMovementService(
                         BotPlayerId = bot.PlayerId,
                         FromArea = bot.Player.CurrentArea,
                         ToArea = bot.Player.CurrentArea,
-                        FromCell = bot.Player.Cell!,
                         ToCell = bot.Player.Cell!,
                         Position = bot.Player.Position!,
                         Velocity = bot.Player.Velocity,
@@ -341,13 +327,13 @@ internal class BotMovementService(
                 bot.PathIndex = 0;
             }
 
-            TrackSwarmBotIdle(bot, movementDecision, nowUtc);
+            TrackIdleTime(bot, movementDecision, nowUtc);
 
             if (bot.PathIndex >= bot.Path.Count)
             {
                 // 유휴 배회 (#222): 도착 대기(Return/Escort·경로 0) 상태로 수십 초 서 있던
                 // 현상(유휴 감시 실측) — 4초 이상 제자리면 주변 셀로 서성인다.
-                TryStartSwarmIdleWander(runtime, bot, matchingId, nowUtc);
+                TryStartIdleWander(runtime, bot, matchingId, nowUtc);
                 if (bot.PathIndex >= bot.Path.Count)
                 {
                     bot.LastWalkStepTime = nowUtc;
@@ -371,7 +357,7 @@ internal class BotMovementService(
     ///     유휴 감시 (#222): 6초 이상 제자리인 봇의 상태(모드·경로·홀드)를 10초에 한 번 남긴다.
     ///     "가만히 서 있는 봇" 신고가 반복되는데 이동은 로그에 안 남아 원인 특정이 안 됐다.
     /// </summary>
-    private void TrackSwarmBotIdle(Bot bot, BotMovementDecision directive, DateTime nowUtc)
+    private void TrackIdleTime(Bot bot, BotMovementDecision directive, DateTime nowUtc)
     {
         const float movedThresholdSquared = 0.01f;
         if (bot.IdleWatchLastPosition == null ||
@@ -400,7 +386,7 @@ internal class BotMovementService(
     }
 
     /// <summary>유휴 배회 (#222): 제자리 4초 이상이면 같은 구역 인근 셀로 짧은 산책 경로를 만든다.</summary>
-    private void TryStartSwarmIdleWander(MatchRuntime runtime, Bot bot, long matchingId, DateTime nowUtc)
+    private void TryStartIdleWander(MatchRuntime runtime, Bot bot, long matchingId, DateTime nowUtc)
     {
         if ((nowUtc - bot.IdleWatchLastMovedAtUtc).TotalSeconds < 4d || nowUtc < bot.NextIdleWanderAtUtc)
             return;
@@ -504,7 +490,6 @@ internal class BotMovementService(
         var nextStep = bot.Path[bot.PathIndex];
         var mapId = runtime.Bots.MapId;
         var fromArea = bot.Player.CurrentArea;
-        var fromCell = bot.Player.Cell!;
         bool reachedStep = false;
 
         // 잠긴 문 통과 차단 (유저 제보: 봇이 문 열리기 전에 들어온다).
@@ -520,7 +505,7 @@ internal class BotMovementService(
                 bot.MovementDestination = AreaType.None;
                 bot.EvacuationDestination = AreaType.None;
                 // 문 앞에서 기다린다 — 해제 채널링(ProcessDoorInteractions)이 돌 시간을 준다.
-                bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.4);
+                bot.LoopWaitUntil = GetRandomWaitDeadline(0.8, 1.4);
                 if (bot.LastLockedDoorBlockArea != nextStep.Area)
                 {
                     bot.LastLockedDoorBlockArea = nextStep.Area;
@@ -556,7 +541,7 @@ internal class BotMovementService(
             bot.Path.Clear();
             bot.PathIndex = 0;
             bot.MovementDestination = AreaType.None;
-            bot.LoopWaitUntil = RandomizedDelayFromNow(0.4, 0.9);
+            bot.LoopWaitUntil = GetRandomWaitDeadline(0.4, 0.9);
             return null;
         }
 
@@ -634,7 +619,6 @@ internal class BotMovementService(
             BotPlayerId = bot.PlayerId,
             FromArea = fromArea,
             ToArea = bot.Player.CurrentArea,
-            FromCell = fromCell,
             ToCell = nextStep.Cell,
             Position = newPosition,
             Velocity = velocity,
@@ -674,7 +658,6 @@ internal class BotMovementService(
                     BotPlayerId = bot.PlayerId,
                     FromArea = bot.Player.CurrentArea,
                     ToArea = bot.Player.CurrentArea,
-                    FromCell = bot.Player.Cell!,
                     ToCell = bot.Player.Cell!,
                     Position = bot.Player.Position!,
                     Velocity = bot.Player.Velocity,
@@ -724,7 +707,7 @@ internal class BotMovementService(
                 GameMapData.GetCurrentArea(mapId, candidateCell) != bot.Player.CurrentArea)
                 continue;
 
-            var fromCell = bot.Player.Cell!;
+
             bot.Player.Position = candidate;
             bot.Player.Cell = candidateCell;
             var velocity = ScaledWalkVelocity(dirX, dirY, multiplier);
@@ -736,7 +719,6 @@ internal class BotMovementService(
                 BotPlayerId = bot.PlayerId,
                 FromArea = bot.Player.CurrentArea,
                 ToArea = bot.Player.CurrentArea,
-                FromCell = fromCell,
                 ToCell = candidateCell,
                 Position = candidate,
                 Velocity = velocity,
@@ -753,7 +735,7 @@ internal class BotMovementService(
 
     /// <summary>
     ///     봇이 도착했거나 경로가 비었을 때 다음 목적지 선택 + 경로 계산.
-    ///     배회(ChooseSwarmWanderDestination): 따라가기(타겟 방)·흩어지기(최저 인원 방)·임의 방. 복도는 목적지가 아니라 통과만(transit).
+    ///     배회(ChooseWanderDestination): 따라가기(타겟 방)·흩어지기(최저 인원 방)·임의 방. 복도는 목적지가 아니라 통과만(transit).
     /// </summary>
     private void ChooseNewWanderTarget(MatchRuntime runtime, Bot bot, long matchingId, MatchAreaClosureState closureManager,
         IReadOnlyDictionary<long, AreaType> playerAreas)
@@ -775,17 +757,17 @@ internal class BotMovementService(
         // unexpected initialization failure, but never route to RNG pickup locations.
         if (needsGuardianOrb)
         {
-            bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.6);
+            bot.LoopWaitUntil = GetRandomWaitDeadline(0.8, 1.6);
             return;
         }
 
-        var destination = ChooseSwarmWanderDestination(runtime, bot, matchingId, mapId, playerAreas, closureManager);
+        var destination = ChooseWanderDestination(runtime, bot, matchingId, mapId, playerAreas, closureManager);
         if (destination == AreaType.None) return;
         if (destination == bot.Player.CurrentArea)
         {
             // 이미 원하는 방에 있음 → 잠시 머물며 회복/기척.
             // (즉시 재결정 시 흩어지기 확률이 매 틱 굴러 곧바로 나가버리는 문제 방지)
-            bot.LoopWaitUntil = RandomizedDelayFromNow(BotRoomDwellMinSeconds, BotRoomDwellMaxSeconds);
+            bot.LoopWaitUntil = GetRandomWaitDeadline(BotRoomDwellMinSeconds, BotRoomDwellMaxSeconds);
             return;
         }
 
@@ -797,7 +779,7 @@ internal class BotMovementService(
             a => IsClosedArea(closureManager, matchingId, a));
         if (path == null || path.Count == 0)
         {
-            bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.6);
+            bot.LoopWaitUntil = GetRandomWaitDeadline(0.8, 1.6);
             logger.LogDebug("봇 배회 경로 실패: BotId={Bot}, {From} → {To}",
                 bot.PlayerId, bot.Player.CurrentArea, destination);
             return;
@@ -806,7 +788,7 @@ internal class BotMovementService(
         bot.Path = path;
         bot.PathIndex = 0;
         bot.MovementDestination = destination;
-        bot.LoopWaitUntil = RandomizedDelayFromNow(0.25, 0.6);
+        bot.LoopWaitUntil = GetRandomWaitDeadline(0.25, 0.6);
         logger.LogInformation(
             "Bot wander move: BotId={Bot}, {From}->{To}, Steps={Steps}",
             bot.PlayerId, bot.Player.CurrentArea, destination, path.Count);
@@ -875,14 +857,14 @@ internal class BotMovementService(
     ///     배회 폴백 목적지: 잔상 사냥·캠프 순례가 목적지를 못 정할 때만 온다.
     ///     확률적으로 최저 인원 방으로 흩어지고(뭉침 방지), 아니면 현재와 다른 임의 방.
     /// </summary>
-    private AreaType ChooseSwarmWanderDestination(MatchRuntime runtime, Bot bot, long matchingId, MapId mapId,
+    private AreaType ChooseWanderDestination(MatchRuntime runtime, Bot bot, long matchingId, MapId mapId,
         IReadOnlyDictionary<long, AreaType> playerAreas, MatchAreaClosureState closureManager)
     {
         var rooms = GetOpenBotDestinationAreas(matchingId, mapId, closureManager);
         if (rooms.Count == 0) return AreaType.None;
 
         // 흩어지기: 최저 인원 방으로 — 봇이 한 방에 뭉쳐 잔상을 경합하지 않게.
-        if (Random.Shared.NextDouble() < SwarmWanderScatterProbability)
+        if (Random.Shared.NextDouble() < WanderScatterProbability)
         {
             var pop = CountRoomPopulations(rooms, playerAreas);
             return rooms.OrderBy(a => pop[a]).ThenBy(_ => Random.Shared.Next()).First();
@@ -898,7 +880,7 @@ internal class BotMovementService(
         return min + Random.Shared.NextDouble() * (max - min);
     }
 
-    private DateTime RandomizedDelayFromNow(double minSeconds, double maxSeconds)
+    private DateTime GetRandomWaitDeadline(double minSeconds, double maxSeconds)
     {
         return DateTime.UtcNow.AddSeconds(RandomRange(minSeconds, maxSeconds));
     }
