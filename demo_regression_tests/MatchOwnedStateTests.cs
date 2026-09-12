@@ -103,13 +103,12 @@ public sealed class MatchOwnedStateTests
         var first = store.GetOrCreate(941006);
         var second = store.GetOrCreate(941007);
         var now = DateTime.UtcNow;
-        var monsters = new MatchMonsterService(new MonsterMovementService());
         using (MatchRuntimeStore.Enter(first))
         {
-            Assert.True(monsters.TryClaimSnapshotSlot(first, now));
-            Assert.False(monsters.TryClaimSnapshotSlot(first, now));
+            Assert.True(game_server.matches.MatchCombatService.TryClaimSnapshotSlot(first, now));
+            Assert.False(game_server.matches.MatchCombatService.TryClaimSnapshotSlot(first, now));
         }
-        using (MatchRuntimeStore.Enter(second)) Assert.True(monsters.TryClaimSnapshotSlot(second, now));
+        using (MatchRuntimeStore.Enter(second)) Assert.True(game_server.matches.MatchCombatService.TryClaimSnapshotSlot(second, now));
     }
 
     [Fact]

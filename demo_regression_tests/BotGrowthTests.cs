@@ -19,7 +19,7 @@ public sealed class BotGrowthTests
         match.RegisterParticipant(human);
         var logs = TestGameEventLogs.Create();
         var growth = new PlayerOrbGrowthService(logs, NullLogger<PlayerOrbGrowthService>.Instance);
-        var decisions = new BotDecisionService(logs, growth, new PlayerOrbTrailService(), new PlayerInteractionService(), new MatchMonsterService(new MonsterMovementService()), NullLogger<BotDecisionService>.Instance);
+        var decisions = new BotDecisionService(logs, growth, new PlayerOrbTrailService(), new PlayerInteractionService(), NullLogger<BotDecisionService>.Instance);
         var bot = new BotPlayerState { PlayerId = -1 };
         match.RegisterParticipant(bot.Player);
         using (match.Enter())
@@ -47,7 +47,7 @@ public sealed class BotGrowthTests
         var match = store.GetOrCreate(949102);
         var logs = TestGameEventLogs.Create();
         var growth = new PlayerOrbGrowthService(logs, NullLogger<PlayerOrbGrowthService>.Instance);
-        var decisions = new BotDecisionService(logs, growth, new PlayerOrbTrailService(), new PlayerInteractionService(), new MatchMonsterService(new MonsterMovementService()), NullLogger<BotDecisionService>.Instance);
+        var decisions = new BotDecisionService(logs, growth, new PlayerOrbTrailService(), new PlayerInteractionService(), NullLogger<BotDecisionService>.Instance);
         var bot = new BotPlayerState { PlayerId = -1 };
         match.RegisterParticipant(bot.Player);
         using (match.Enter())
@@ -71,7 +71,7 @@ public sealed class BotGrowthTests
         var match = store.GetOrCreate(949103);
         var logs = TestGameEventLogs.Create();
         var growth = new PlayerOrbGrowthService(logs, NullLogger<PlayerOrbGrowthService>.Instance);
-        var decisions = new BotDecisionService(logs, growth, new PlayerOrbTrailService(), new PlayerInteractionService(), new MatchMonsterService(new MonsterMovementService()), NullLogger<BotDecisionService>.Instance);
+        var decisions = new BotDecisionService(logs, growth, new PlayerOrbTrailService(), new PlayerInteractionService(), NullLogger<BotDecisionService>.Instance);
         var bot = new BotPlayerState { PlayerId = -1 };
         match.RegisterParticipant(bot.Player);
         using (match.Enter())

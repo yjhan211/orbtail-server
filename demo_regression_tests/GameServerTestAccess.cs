@@ -68,7 +68,7 @@ internal static class GameServerTestAccess
         var movement = new BotMovementService(logs,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotMovementService>.Instance);
         var interactions = new PlayerInteractionService();
-        var decisions = new BotDecisionService(logs, growth, orbTrails, interactions, new MatchMonsterService(new MonsterMovementService()),
+        var decisions = new BotDecisionService(logs, growth, orbTrails, interactions,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotDecisionService>.Instance);
         var field = new MatchFieldService(logs, orbTrails, health,
             cleanup, matchEliminations, results);
@@ -79,9 +79,10 @@ internal static class GameServerTestAccess
         {
             var combat = new MatchCombatService(logs,
                 health, combatDamage, results,
-                new PlayerOrbService(health, combatDamage, orbTrails, logs, new MatchMonsterService(new MonsterMovementService())),
-                orbTrails, trailCuts, new MatchCombatActorBuilder(orbTrails, new MatchMonsterService(new MonsterMovementService())), new MatchAutoAttackService(),
-                new MatchOrbAttackService(health, combatDamage, logs, new MatchMonsterService(new MonsterMovementService())), decisions, new MatchMonsterService(new MonsterMovementService()));
+                new PlayerOrbService(health, combatDamage, orbTrails, logs),
+                orbTrails, trailCuts, new MatchCombatActorBuilder(orbTrails), new MatchAutoAttackService(),
+                new MatchOrbAttackService(health, combatDamage, logs), decisions, new MonsterCombatService(new MatchMonsterSpawnService(new MonsterMovementService())),
+                new MatchMonsterSpawnService(new MonsterMovementService()), new MonsterMovementService());
 
             return new MatchTickLoop(runtime, runtimes, logger, groundPickup,
             entryFailure, combat, field, movement, decisions, clock);

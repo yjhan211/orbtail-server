@@ -27,8 +27,69 @@ internal class MatchCombatService(
     MatchAutoAttackService autoAttacks,
     MatchOrbAttackService orbAttacks,
     BotDecisionService botDecisions,
-    MatchMonsterService monsters)
+    MonsterCombatService monsterCombat,
+    MatchMonsterSpawnService monsterSpawns,
+    MonsterMovementService monsterMovement)
 {
+    internal List<MonsterContactDamage> ProcessMonsterTick(MatchRuntime runtime, IReadOnlyCollection<PlayerPositionSnapshot> participants, bool isGameplayActive, DateTime nowUtc)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Match monster service requires the match lock.");
+        }
+        var contacts = new List<MonsterContactDamage>();
+        var state = runtime.Monsters;
+        if (!state.IsInitialized)
+        {
+            return contacts;
+        }
+
+        var now = nowUtc;
+        double deltaSeconds = Math.Clamp((now - state.LastTickAtUtc).TotalSeconds, 0d, 0.25d);
+        state.LastTickAtUtc = now;
+        var snapshot = new PlayerPositionSnapshot[participants.Count];
+        int snapshotIndex = 0;
+        foreach (var participant in participants)
+        {
+            snapshot[snapshotIndex++] = participant;
+        }
+
+        bool preMatch = !isGameplayActive;
+        double moveDeltaSeconds = (now - state.StartsAtUtc).TotalSeconds >= Config.SWARM_MONSTER_ESCALATION_STAGE2_AT_SECONDS
+            ? deltaSeconds * Config.SWARM_MONSTER_ESCALATION_STAGE2_MOVE_SPEED_MULTIPLIER
+            : deltaSeconds;
+
+        monsterSpawns.ProcessSupply(runtime, snapshot, now, preMatch);
+        foreach (var monster in state.Entities.Values)
+        {
+            if (!monster.Alive || now < monster.ActivatesAtUtc)
+            {
+                continue;
+            }
+
+            monsterMovement.Move(runtime, monster, snapshot, now, moveDeltaSeconds, preMatch);
+            monsterMovement.RescueMonsterFromBlockedCell(runtime, monster);
+            monsterCombat.CollectContactDamage(runtime, monster, snapshot, now, contacts);
+        }
+        state.RemoveExpiredDead(now);
+        return contacts;
+    }
+
+    internal static bool TryClaimSnapshotSlot(MatchRuntime runtime, DateTime nowUtc)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Match monster service requires the match lock.");
+        }
+        var state = runtime.Monsters;
+        if (nowUtc < state.NextSnapshotAtUtc)
+        {
+            return false;
+        }
+        state.NextSnapshotAtUtc = nowUtc + TimeSpan.FromMilliseconds(100);
+        return true;
+    }
+
     public virtual void ProcessTick(MatchRuntime runtime)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -55,7 +116,7 @@ internal class MatchCombatService(
 
         if (!runtime.Monsters.IsInitialized)
         {
-            monsters.Initialize(runtime, DateTime.UtcNow);
+            runtime.Monsters.Initialize(DateTime.UtcNow);
         }
 
         var nowUtc = DateTime.UtcNow;
@@ -70,7 +131,7 @@ internal class MatchCombatService(
             participants.Add(new PlayerPositionSnapshot(player.PlayerId, player.CurrentArea, player.Position));
         }
 
-        var contacts = monsters.ProcessTick(runtime, participants, runtime.IsGameplayActive(), nowUtc);
+        var contacts = ProcessMonsterTick(runtime, participants, runtime.IsGameplayActive(), nowUtc);
 
         if (!runtime.IsGameplayActive())
         {
@@ -109,7 +170,7 @@ internal class MatchCombatService(
         players.RemoveAll(player => player.IsEliminated);
         healthService.ApplySleepRecovery(runtime, players, nowUtc);
         botDecisions.ProcessSwarmBotDoorUnlocks(runtime, aliveBots, sessions, nowUtc);
-        if (monsters.TryClaimSnapshotSlot(runtime, nowUtc))
+        if (TryClaimSnapshotSlot(runtime, nowUtc))
         {
             SendMonsterSnapshots(runtime, sessions, preMatch: false);
         }
@@ -209,8 +270,9 @@ internal class MatchCombatService(
             {
                 continue;
             }
-            int monsterId = monsters.GetMonsterIdForCombatTarget(runtime, attack.TargetPlayerId);
-            if (monsterId <= 0 && MatchMonsterService.IsCombatTargetId(attack.TargetPlayerId))
+            var targetMonster = runtime.Monsters.FindAliveByCombatTarget(attack.TargetPlayerId);
+            int monsterId = targetMonster?.MonsterId ?? 0;
+            if (monsterId <= 0 && Monster.IsCombatTargetId(attack.TargetPlayerId))
             {
                 continue;
             }
@@ -235,13 +297,13 @@ internal class MatchCombatService(
                 var anchor = attack.AnchorPosition ?? (actorById.TryGetValue(attack.TargetPlayerId, out var targetActor) ? targetActor.Position : null);
                 float distance = origin != null && anchor != null ? Vector3f.Distance(origin, anchor) : Config.SWARM_ORB_ATTACK_RANGE;
                 double delaySeconds = OrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, distance);
-                monsters.ReserveMonsterDamage(runtime, attack.TargetPlayerId, monsterDamage);
-                monsters.RecordMonsterAttackEvent(runtime, attack.TargetPlayerId);
+                targetMonster!.ReserveDamage(monsterDamage);
+                targetMonster.RecordAttackEvent();
                 combatDamage.ScheduleMonsterHit(runtime, new PendingMonsterHit(attack.TargetPlayerId, attack.AttackerPlayerId, monsterDamage, nowUtc.AddSeconds(delaySeconds)));
                 continue;
             }
 
-            if (MatchMonsterService.IsCombatTargetId(attack.TargetPlayerId))
+            if (Monster.IsCombatTargetId(attack.TargetPlayerId))
             {
                 continue;
             }
@@ -266,7 +328,7 @@ internal class MatchCombatService(
 
     private void SendMonsterSnapshots(MatchRuntime runtime, List<GameClientSession> sessions, bool preMatch)
     {
-        var snapshots = monsters.GetVisualStatesByArea(runtime);
+        var snapshots = runtime.Monsters.GetVisualStatesByArea();
         foreach (var session in sessions)
         {
             session.SendMonsterSnapshot(snapshots, preMatch);

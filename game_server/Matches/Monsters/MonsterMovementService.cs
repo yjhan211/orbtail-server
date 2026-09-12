@@ -5,11 +5,115 @@ using network.common.data.models;
 namespace game_server.matches.monsters;
 
 /// <summary>
-///     몬스터의 행군·추격·배회 이동과 벽에 갇힌 위치의 보정을 처리한다.
-///     상태는 매치별 Monster에 보관한다.
+///     몬스터의 침투 경로 계획·행군·추격·배회 이동과 벽에 갇힌 위치의 보정을 처리한다.
+///     개체 상태는 Monster, 매치별 침투 경로 상태는 MatchMonsters에 보관한다.
 /// </summary>
 internal sealed class MonsterMovementService
 {
+    private const double InfiltrationGoldenAngle = 0.6180339887498949d;
+
+    public bool TryPlanInfiltration(MatchRuntime runtime, AreaType destinationArea, Vector3f destination, out Vector3f origin, out List<Vector3f> route)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Monster movement requires the match lock.");
+        }
+        route = null!;
+        var originCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, Config.SWARM_MATCH_GROUND_AREA));
+        var state = runtime.Monsters;
+        float baseAngle = ResolveInfiltrationExitBearing(runtime, destinationArea, destination, originCenter);
+        double golden = (state.NextInfiltrationOriginOrdinal++ * InfiltrationGoldenAngle) % 1d;
+        float angle = baseAngle + (float)((golden - 0.5d) * 2d) * Config.SWARM_MONSTER_INFILTRATION_ORIGIN_JITTER_RADIANS;
+        origin = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(originCenter.X + MathF.Cos(angle) * Config.SWARM_MONSTER_INFILTRATION_ORIGIN_RADIUS, originCenter.Y + MathF.Sin(angle) * Config.SWARM_MONSTER_INFILTRATION_ORIGIN_RADIUS, 0f), originCenter, Config.SWARM_MATCH_GROUND_AREA);
+
+        float burstDistance = Config.SWARM_MONSTER_INFILTRATION_BURST_DISTANCE;
+        var burstPosition = new Vector3f(
+            origin.X + MathF.Cos(angle) * burstDistance,
+            origin.Y + MathF.Sin(angle) * burstDistance,
+            0f);
+        var burst = MapPathfinder.ClampToAreaWalkable(
+            Config.SWARM_MATCH_MAP,
+            burstPosition,
+            originCenter,
+            Config.SWARM_MATCH_GROUND_AREA);
+
+        bool canReachBurst = MapPathfinder.IsSegmentWalkable(Config.SWARM_MATCH_MAP, origin, burst);
+        if (canReachBurst)
+        {
+            bool routeFound = MapPathfinder.TryPlanRoute(
+                Config.SWARM_MATCH_MAP,
+                Config.SWARM_MATCH_GROUND_AREA,
+                burst,
+                destinationArea,
+                destination,
+                candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea),
+                out route);
+            if (routeFound)
+            {
+                route.Insert(0, burst);
+                return true;
+            }
+        }
+
+        return MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, Config.SWARM_MATCH_GROUND_AREA, origin, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out route);
+    }
+
+    private float ResolveInfiltrationExitBearing(MatchRuntime runtime, AreaType destinationArea, Vector3f destination, Vector3f originCenter)
+    {
+        var bearings = runtime.Monsters.InfiltrationExitBearings;
+        if (bearings.TryGetValue(destinationArea, out float cached))
+        {
+            return cached;
+        }
+
+        float fallback = MathF.Atan2(destination.Y - originCenter.Y, destination.X - originCenter.X);
+        if (!MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, Config.SWARM_MATCH_GROUND_AREA, originCenter, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out var probe))
+        {
+            return fallback;
+        }
+
+        float exitRadius = Config.SWARM_MONSTER_INFILTRATION_ORIGIN_RADIUS + Config.SWARM_MONSTER_INFILTRATION_BURST_DISTANCE;
+        foreach (var point in probe)
+        {
+            float dx = point.X - originCenter.X;
+            float dy = point.Y - originCenter.Y;
+            if (dx * dx + dy * dy < exitRadius * exitRadius)
+            {
+                continue;
+            }
+            float bearing = MathF.Atan2(dy, dx);
+            bearings[destinationArea] = bearing;
+            return bearing;
+        }
+
+        bearings[destinationArea] = fallback;
+        return fallback;
+    }
+
+    private bool IsInfiltrationRouteBlocked(MatchRuntime runtime, AreaType candidate, AreaType destinationArea)
+    {
+        if (runtime.Closures.IsAreaClosed(candidate))
+        {
+            return true;
+        }
+
+        if (candidate == destinationArea)
+        {
+            return false;
+        }
+
+        var rooms = MatchSpawnData.GetPhaseRoomCandidates();
+        foreach (var t in rooms)
+        {
+            if (t == candidate)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static double ComputeMarchBudgetSeconds(Vector3f start, IReadOnlyList<Vector3f> route)
     {
         double length = 0d;
@@ -25,83 +129,7 @@ internal sealed class MonsterMovementService
         return Math.Max(Config.SWARM_MONSTER_MARCH_BUDGET_MINIMUM_SECONDS, length / Config.SWARM_MONSTER_MOVE_SPEED * Config.SWARM_MONSTER_MARCH_BUDGET_SLACK_MULTIPLIER);
     }
 
-    private static bool HasDirectLineToParticipant(Monster monster, IReadOnlyList<PlayerPositionSnapshot> participants)
-    {
-        var nearest = default(PlayerPositionSnapshot);
-        float nearestSquared = float.MaxValue;
-        bool found = false;
-        for (int index = 0; index < participants.Count; index++)
-        {
-            var participant = participants[index];
-            if (participant.Area != monster.Area)
-            {
-                continue;
-            }
-
-            float dx = participant.Position.X - monster.Position.X;
-            float dy = participant.Position.Y - monster.Position.Y;
-            float distanceSquared = dx * dx + dy * dy;
-            if (distanceSquared >= nearestSquared)
-            {
-                continue;
-            }
-
-            nearestSquared = distanceSquared;
-            nearest = participant;
-            found = true;
-        }
-
-        return found && MapPathfinder.IsSegmentWalkable(Config.SWARM_MATCH_MAP, monster.Position, nearest.Position);
-    }
-
-    private static long ClaimLeastLoadedOwner(MatchRuntime runtime, AreaType area, IReadOnlyList<PlayerPositionSnapshot> participants)
-    {
-        var state = runtime.Monsters;
-        long chosen = 0;
-        int least = int.MaxValue;
-        bool chosenOrbless = false;
-        for (int index = 0; index < participants.Count; index++)
-        {
-            var participant = participants[index];
-            if (participant.Area != area)
-            {
-                continue;
-            }
-
-            int load = 0;
-            foreach (var candidate in state.Entities.Values)
-            {
-                if (candidate.Alive && candidate.OwnerPlayerId == participant.PlayerId)
-                {
-                    load++;
-                }
-            }
-
-            bool orbless = !runtime.GetOrbs(participant.PlayerId).HasAnyOrb();
-            if (chosenOrbless && !orbless)
-            {
-                continue;
-            }
-            if (orbless && !chosenOrbless)
-            {
-                chosenOrbless = true;
-                least = load;
-                chosen = participant.PlayerId;
-                continue;
-            }
-
-            if (load >= least)
-            {
-                continue;
-            }
-            least = load;
-            chosen = participant.PlayerId;
-        }
-
-        return chosen;
-    }
-
-    private static bool HasParticipantWithinAggro(Monster monster, IReadOnlyList<PlayerPositionSnapshot> participants)
+    private bool TryAcquireNearbyTarget(Monster monster, IReadOnlyList<PlayerPositionSnapshot> participants)
     {
         for (int index = 0; index < participants.Count; index++)
         {
@@ -131,39 +159,7 @@ internal sealed class MonsterMovementService
         return false;
     }
 
-    private static bool TryStartCrossAreaPursuit(Monster monster, IReadOnlyList<PlayerPositionSnapshot> participants)
-    {
-        if (monster.ChaseTargetPlayerId == 0 || monster.Infiltrating)
-        {
-            return false;
-        }
-
-        for (int index = 0; index < participants.Count; index++)
-        {
-            var participant = participants[index];
-            if (participant.PlayerId != monster.ChaseTargetPlayerId || participant.Area == AreaType.None || participant.Area == monster.Area)
-            {
-                continue;
-            }
-
-            if (!MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, monster.Area, monster.Position, participant.Area, participant.Position, null, out var route))
-            {
-                return false;
-            }
-
-            monster.Infiltrating = true;
-            monster.MarchIsPursuit = true;
-            monster.MarchWaypoints.Clear();
-            monster.MarchWaypoints.AddRange(route);
-            monster.MarchIndex = 0;
-            monster.MarchBudgetSeconds = ComputeMarchBudgetSeconds(monster.Position, route);
-            return true;
-        }
-
-        return false;
-    }
-
-    private static void AdvanceInfiltration(Monster monster, double deltaSeconds, DateTime now, bool holdAtThreshold = false)
+    private void AdvanceInfiltration(Monster monster, double deltaSeconds, DateTime now, bool holdAtThreshold = false)
     {
         if (holdAtThreshold && monster.Area == monster.HomeArea)
         {
@@ -174,7 +170,22 @@ internal sealed class MonsterMovementService
         float remaining = (float)(Config.SWARM_MONSTER_MOVE_SPEED * monster.MarchSpeedScale * GetMonsterWaveSlowMultiplier(monster, now) * deltaSeconds);
         while (remaining > 0f && monster.MarchIndex < monster.MarchWaypoints.Count)
         {
-            var waypoint = ResolveLaneWaypoint(monster);
+            var waypoint = monster.MarchWaypoints[monster.MarchIndex];
+            if (MathF.Abs(monster.MarchLaneOffset) >= 0.01f && monster.MarchIndex < monster.MarchWaypoints.Count - 1)
+            {
+                var from = monster.MarchIndex == 0 ? monster.Position : monster.MarchWaypoints[monster.MarchIndex - 1];
+                float laneDx = waypoint.X - from.X;
+                float laneDy = waypoint.Y - from.Y;
+                float laneLength = MathF.Sqrt(laneDx * laneDx + laneDy * laneDy);
+                if (laneLength >= 0.05f)
+                {
+                    var offset = new Vector3f(waypoint.X - laneDy / laneLength * monster.MarchLaneOffset, waypoint.Y + laneDx / laneLength * monster.MarchLaneOffset, 0f);
+                    if (GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, offset)))
+                    {
+                        waypoint = offset;
+                    }
+                }
+            }
             float dx = waypoint.X - monster.Position.X;
             float dy = waypoint.Y - monster.Position.Y;
             float distance = MathF.Sqrt(dx * dx + dy * dy);
@@ -233,8 +244,12 @@ internal sealed class MonsterMovementService
         return now < monster.WaveSlowUntilUtc ? OrbData.WaveSlowMoveSpeedMultiplier : 1f;
     }
 
-    public void RescueMonsterFromBlockedCell(Monster monster)
+    public void RescueMonsterFromBlockedCell(MatchRuntime runtime, Monster monster)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Monster movement requires the match lock.");
+        }
         if (monster.Infiltrating)
         {
             return;
@@ -255,28 +270,7 @@ internal sealed class MonsterMovementService
         monster.Position = rescued;
     }
 
-    private static Vector3f ResolveLaneWaypoint(Monster monster)
-    {
-        var waypoint = monster.MarchWaypoints[monster.MarchIndex];
-        if (MathF.Abs(monster.MarchLaneOffset) < 0.01f || monster.MarchIndex >= monster.MarchWaypoints.Count - 1)
-        {
-            return waypoint;
-        }
-
-        var from = monster.MarchIndex == 0 ? monster.Position : monster.MarchWaypoints[monster.MarchIndex - 1];
-        float dx = waypoint.X - from.X;
-        float dy = waypoint.Y - from.Y;
-        float length = MathF.Sqrt(dx * dx + dy * dy);
-        if (length < 0.05f)
-        {
-            return waypoint;
-        }
-
-        var offset = new Vector3f(waypoint.X - dy / length * monster.MarchLaneOffset, waypoint.Y + dx / length * monster.MarchLaneOffset, 0f);
-        return GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, offset)) ? offset : waypoint;
-    }
-
-    private static void ArriveFromInfiltration(Monster monster)
+    private void ArriveFromInfiltration(Monster monster)
     {
         if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, monster.Position)))
         {
@@ -316,7 +310,11 @@ internal sealed class MonsterMovementService
         }
         if (monster.Infiltrating)
         {
-            bool leaveMarch = !holdAtThreshold && (HasParticipantWithinAggro(monster, participants) || (monster.MarchIsPursuit && HasDirectLineToParticipant(monster, participants)));
+            bool leaveMarch = !holdAtThreshold && TryAcquireNearbyTarget(monster, participants);
+            if (!leaveMarch && !holdAtThreshold && monster.MarchIsPursuit)
+            {
+                leaveMarch = CanReachNearestParticipant(monster, participants);
+            }
             if (!leaveMarch)
             {
                 AdvanceInfiltration(monster, deltaSeconds, now, holdAtThreshold);
@@ -325,13 +323,58 @@ internal sealed class MonsterMovementService
             ArriveFromInfiltration(monster);
         }
 
-        if (!monster.Aggro && !HasParticipantWithinAggro(monster, participants))
+        if (!monster.Aggro && !TryAcquireNearbyTarget(monster, participants))
         {
             return;
         }
 
+        bool found = TrySelectMovementTarget(runtime, monster, participants, now, out var target);
+
+        if (!found && TryStartCrossAreaPursuit(monster, participants))
+        {
+            AdvanceInfiltration(monster, deltaSeconds, now);
+            return;
+        }
+
+        if (!found)
+        {
+            ReturnToAnchorOrPatrol(monster, deltaSeconds, now);
+            return;
+        }
+
+        monster.ChaseTargetPlayerId = target.PlayerId;
+        if (monster.AttackRangeValue > Monster.BaseContactRadius)
+        {
+            float holdRange = monster.AttackRangeValue * Config.SWARM_MONSTER_RANGED_HOLD_RANGE_RATIO;
+            if (GroundGeometry.IsWithinGroundRadius(monster.Position, target.Position, holdRange))
+            {
+                return;
+            }
+        }
+
+        if (now >= monster.NextChasePlanAtUtc)
+        {
+            monster.NextChasePlanAtUtc = now.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS);
+            bool direct = MapPathfinder.IsSegmentWalkable(Config.SWARM_MATCH_MAP, monster.Position, target.Position);
+            if (!direct && MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, monster.Area, monster.Position, target.Area, target.Position, null, out var detour))
+            {
+                monster.Infiltrating = true;
+                monster.MarchIsPursuit = true;
+                monster.MarchWaypoints.Clear();
+                monster.MarchWaypoints.AddRange(detour);
+                monster.MarchIndex = 0;
+                monster.MarchBudgetSeconds = ComputeMarchBudgetSeconds(monster.Position, detour);
+                return;
+            }
+        }
+
+        MoveTowardPlayer(monster, target.Position, deltaSeconds, now);
+    }
+
+    private bool TrySelectMovementTarget(MatchRuntime runtime, Monster monster, IReadOnlyList<PlayerPositionSnapshot> participants, DateTime now, out PlayerPositionSnapshot target)
+    {
         bool found = false;
-        var target = default(PlayerPositionSnapshot);
+        target = default;
         float intruderNearestSquared = Config.SWARM_MONSTER_AGGRO_RADIUS * Config.SWARM_MONSTER_AGGRO_RADIUS;
         for (int index = 0; index < participants.Count; index++)
         {
@@ -367,27 +410,7 @@ internal sealed class MonsterMovementService
 
         if (!found && monster.OwnerPlayerId != 0)
         {
-            long departedOwnerId = monster.OwnerPlayerId;
-            monster.OwnerPlayerId = 0;
-            long reassigned = ClaimLeastLoadedOwner(runtime, monster.Area, participants);
-            if (reassigned != 0)
-            {
-                monster.OwnerPlayerId = reassigned;
-                for (int index = 0; index < participants.Count; index++)
-                {
-                    if (participants[index].PlayerId != reassigned)
-                    {
-                        continue;
-                    }
-                    target = participants[index];
-                    found = true;
-                    break;
-                }
-            }
-            else if (monster.Aggro)
-            {
-                monster.ChaseTargetPlayerId = departedOwnerId;
-            }
+            found = TryReassignOwner(runtime, monster, participants, out target);
         }
 
         if (!found && monster.OwnerPlayerId == 0)
@@ -418,64 +441,153 @@ internal sealed class MonsterMovementService
             }
         }
 
-        if (!found && TryStartCrossAreaPursuit(monster, participants))
-        {
-            AdvanceInfiltration(monster, deltaSeconds, now);
-            return;
-        }
+        return found;
+    }
 
-        if (!found)
+    private bool TryStartCrossAreaPursuit(Monster monster, IReadOnlyList<PlayerPositionSnapshot> participants)
+    {
+        if (monster.ChaseTargetPlayerId != 0 && !monster.Infiltrating)
         {
-            var anchor = new Vector3f(monster.AnchorX, monster.AnchorY, 0f);
-            float homeDx = anchor.X - monster.Position.X;
-            float homeDy = anchor.Y - monster.Position.Y;
-            if (homeDx * homeDx + homeDy * homeDy <= Config.SWARM_MONSTER_IDLE_PATROL_RADIUS * Config.SWARM_MONSTER_IDLE_PATROL_RADIUS * 4f)
+            for (int index = 0; index < participants.Count; index++)
             {
-                monster.ChaseTargetPlayerId = 0;
-                double patrolSeconds = (now - monster.SpawnedAtUtc).TotalSeconds;
-                float patrolAngle = monster.ScatterAngle + (float)(patrolSeconds * Config.SWARM_MONSTER_IDLE_PATROL_ANGULAR_SPEED);
-                var patrolPoint = new Vector3f(anchor.X + MathF.Cos(patrolAngle) * Config.SWARM_MONSTER_IDLE_PATROL_RADIUS, anchor.Y + MathF.Sin(patrolAngle) * Config.SWARM_MONSTER_IDLE_PATROL_RADIUS, 0f);
-                if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, patrolPoint)))
+                var participant = participants[index];
+                if (participant.PlayerId != monster.ChaseTargetPlayerId || participant.Area == AreaType.None || participant.Area == monster.Area)
                 {
-                    patrolPoint = anchor;
+                    continue;
                 }
-                MoveTowardPlayer(monster, patrolPoint, deltaSeconds, now);
-                return;
-            }
-            MoveTowardPlayer(monster, anchor, deltaSeconds, now);
-            return;
-        }
 
-        monster.ChaseTargetPlayerId = target.PlayerId;
-        if (monster.AttackRangeValue > Monster.BaseContactRadius)
-        {
-            float holdRange = monster.AttackRangeValue * Config.SWARM_MONSTER_RANGED_HOLD_RANGE_RATIO;
-            if (GroundGeometry.IsWithinGroundRadius(monster.Position, target.Position, holdRange))
-            {
-                return;
-            }
-        }
+                if (!MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, monster.Area, monster.Position, participant.Area, participant.Position, null, out var route))
+                {
+                    break;
+                }
 
-        if (now >= monster.NextChasePlanAtUtc)
-        {
-            monster.NextChasePlanAtUtc = now.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS);
-            bool direct = MapPathfinder.IsSegmentWalkable(Config.SWARM_MATCH_MAP, monster.Position, target.Position);
-            if (!direct && MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, monster.Area, monster.Position, target.Area, target.Position, null, out var detour))
-            {
                 monster.Infiltrating = true;
                 monster.MarchIsPursuit = true;
                 monster.MarchWaypoints.Clear();
-                monster.MarchWaypoints.AddRange(detour);
+                monster.MarchWaypoints.AddRange(route);
                 monster.MarchIndex = 0;
-                monster.MarchBudgetSeconds = ComputeMarchBudgetSeconds(monster.Position, detour);
-                return;
+                monster.MarchBudgetSeconds = ComputeMarchBudgetSeconds(monster.Position, route);
+                return true;
             }
         }
 
-        MoveTowardPlayer(monster, target.Position, deltaSeconds, now);
+        return false;
     }
 
-    private static void MoveTowardPlayer(Monster monster, Vector3f playerPosition, double deltaSeconds, DateTime now)
+    private void ReturnToAnchorOrPatrol(Monster monster, double deltaSeconds, DateTime now)
+    {
+        var anchor = new Vector3f(monster.AnchorX, monster.AnchorY, 0f);
+        float homeDx = anchor.X - monster.Position.X;
+        float homeDy = anchor.Y - monster.Position.Y;
+        float returnRadius = Config.SWARM_MONSTER_IDLE_PATROL_RADIUS * 2f;
+        if (homeDx * homeDx + homeDy * homeDy <= returnRadius * returnRadius)
+        {
+            monster.ChaseTargetPlayerId = 0;
+            double patrolSeconds = (now - monster.SpawnedAtUtc).TotalSeconds;
+            float patrolAngle = monster.ScatterAngle + (float)(patrolSeconds * Config.SWARM_MONSTER_IDLE_PATROL_ANGULAR_SPEED);
+            var patrolPoint = new Vector3f(anchor.X + MathF.Cos(patrolAngle) * Config.SWARM_MONSTER_IDLE_PATROL_RADIUS, anchor.Y + MathF.Sin(patrolAngle) * Config.SWARM_MONSTER_IDLE_PATROL_RADIUS, 0f);
+            if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, patrolPoint)))
+            {
+                patrolPoint = anchor;
+            }
+            MoveTowardPlayer(monster, patrolPoint, deltaSeconds, now);
+            return;
+        }
+        MoveTowardPlayer(monster, anchor, deltaSeconds, now);
+        return;
+    }
+
+    private bool TryReassignOwner(MatchRuntime runtime, Monster monster, IReadOnlyList<PlayerPositionSnapshot> participants, out PlayerPositionSnapshot target)
+    {
+        target = default;
+        bool found = false;
+        long departedOwnerId = monster.OwnerPlayerId;
+        monster.OwnerPlayerId = 0;
+        long reassigned = 0;
+        int leastLoad = int.MaxValue;
+        bool reassignedOrbless = false;
+        for (int index = 0; index < participants.Count; index++)
+        {
+            var participant = participants[index];
+            if (participant.Area != monster.Area)
+            {
+                continue;
+            }
+            int load = 0;
+            foreach (var candidate in runtime.Monsters.Entities.Values)
+            {
+                if (candidate.Alive && candidate.OwnerPlayerId == participant.PlayerId)
+                {
+                    load++;
+                }
+            }
+            bool orbless = !runtime.GetOrbs(participant.PlayerId).HasAnyOrb();
+            if (reassignedOrbless && !orbless)
+            {
+                continue;
+            }
+            if (orbless && !reassignedOrbless)
+            {
+                reassignedOrbless = true;
+                leastLoad = load;
+                reassigned = participant.PlayerId;
+                continue;
+            }
+            if (load >= leastLoad)
+            {
+                continue;
+            }
+            leastLoad = load;
+            reassigned = participant.PlayerId;
+        }
+        if (reassigned != 0)
+        {
+            monster.OwnerPlayerId = reassigned;
+            for (int index = 0; index < participants.Count; index++)
+            {
+                if (participants[index].PlayerId != reassigned)
+                {
+                    continue;
+                }
+                target = participants[index];
+                found = true;
+                break;
+            }
+        }
+        else if (monster.Aggro)
+        {
+            monster.ChaseTargetPlayerId = departedOwnerId;
+        }
+        return found;
+    }
+
+    private bool CanReachNearestParticipant(Monster monster, IReadOnlyList<PlayerPositionSnapshot> participants)
+    {
+        var nearestParticipant = default(PlayerPositionSnapshot);
+        float nearestLineSquared = float.MaxValue;
+        bool nearestFound = false;
+        for (int index = 0; index < participants.Count; index++)
+        {
+            var participant = participants[index];
+            if (participant.Area != monster.Area)
+            {
+                continue;
+            }
+            float lineDx = participant.Position.X - monster.Position.X;
+            float lineDy = participant.Position.Y - monster.Position.Y;
+            float lineSquared = lineDx * lineDx + lineDy * lineDy;
+            if (lineSquared >= nearestLineSquared)
+            {
+                continue;
+            }
+            nearestLineSquared = lineSquared;
+            nearestParticipant = participant;
+            nearestFound = true;
+        }
+        return nearestFound && MapPathfinder.IsSegmentWalkable(Config.SWARM_MATCH_MAP, monster.Position, nearestParticipant.Position);
+    }
+
+    private void MoveTowardPlayer(Monster monster, Vector3f playerPosition, double deltaSeconds, DateTime now)
     {
         var target = playerPosition;
         float dx = target.X - monster.Position.X;

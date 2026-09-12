@@ -130,7 +130,8 @@ internal static class Program
         services.AddSingleton<PlayerHealthService>();
 
         services.AddSingleton<MonsterMovementService>();
-        services.AddSingleton<MatchMonsterService>();
+        services.AddSingleton<MonsterCombatService>();
+        services.AddSingleton<MatchMonsterSpawnService>();
         services.AddSingleton<MatchCombatDamageService>();
         services.AddSingleton<MatchFieldService>();
         services.AddSingleton<PlayerOrbGrowthService>();

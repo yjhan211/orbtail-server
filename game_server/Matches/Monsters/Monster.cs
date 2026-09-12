@@ -4,6 +4,7 @@ using network.common.data.models;
 
 namespace game_server.matches.monsters;
 
+/// <summary>몬스터 한 개체의 상태와 피해·감속·공격 예약 변경을 담당한다. 매치 잠금 안에서 사용한다.</summary>
 public sealed class Monster
 {
     public static float BaseContactRadius => Config.SWARM_MONSTER_BASE_CONTACT_RADIUS;
@@ -48,6 +49,57 @@ public sealed class Monster
     public float MarchLaneOffset { get; set; }
     public float MarchSpeedScale { get; set; } = 1f;
     public DateTime NextChasePlanAtUtc { get; set; }
+
+    public static bool IsCombatTargetId(long actorId) => actorId < -1_000_000_000_000L;
+
+    public void ReserveDamage(int damage)
+    {
+        if (Alive && damage > 0)
+        {
+            PendingDamage += damage;
+        }
+    }
+
+    // 이미 죽었더라도 도착한 지연 타격의 예약량은 해제한다.
+    public void ReleaseReservedDamage(int damage)
+    {
+        if (damage > 0)
+        {
+            PendingDamage = Math.Max(0, PendingDamage - damage);
+        }
+    }
+
+    public bool ApplyDamage(int damage, DateTime nowUtc)
+    {
+        if (!Alive || damage <= 0)
+        {
+            return false;
+        }
+        Health = Math.Max(0, Health - damage);
+        if (Health != 0)
+        {
+            return false;
+        }
+        Alive = false;
+        DiedAtUtc = nowUtc;
+        return true;
+    }
+
+    public void RecordAttackEvent()
+    {
+        if (Alive)
+        {
+            AttackEventCount++;
+        }
+    }
+
+    public void ApplySlow(float slowSeconds, DateTime nowUtc)
+    {
+        if (Alive)
+        {
+            WaveSlowUntilUtc = nowUtc.AddSeconds(Math.Max(0f, slowSeconds));
+        }
+    }
 
     public MonsterRuntimeInfo ToMonsterRuntimeInfo() => new()
     {

@@ -54,14 +54,14 @@ internal sealed class MatchRuntime
         Bots = new BotPlayerManager(matchingId, logger, Doors, SunCrossfireShapes, eventLogs);
         GroundItems = new MatchGroundItemState();
         Closures = new MatchAreaClosureState();
-        Monsters = new MatchMonsterState();
+        Monsters = new MatchMonsters();
     }
 
     // 매치 식별과 수명·잠금
     public long MatchingId { get; }
     public BotPlayerManager Bots { get; }
     internal SwarmBotTickMetrics BotTickMetrics { get; } = new();
-    public MatchMonsterState Monsters { get; }
+    public MatchMonsters Monsters { get; }
 
     // 전투와 오브
     public MatchCombatDamageState CombatDamage { get; } = new();

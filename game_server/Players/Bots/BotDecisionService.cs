@@ -23,7 +23,6 @@ internal sealed class BotDecisionService(
     PlayerOrbGrowthService growth,
     PlayerOrbTrailService orbTrails,
     PlayerInteractionService interactions,
-    MatchMonsterService monsters,
     ILogger<BotDecisionService> logger)
 {
     private bool TryUpgradeForBot(MatchRuntime runtime, long playerId)
@@ -911,7 +910,7 @@ internal sealed class BotDecisionService(
     private bool HasSwarmMonsterInBasicRange(MatchRuntime runtime, BotPlayerState bot)
     {
         float rangeSquared = Config.SWARM_ORB_ATTACK_RANGE * Config.SWARM_ORB_ATTACK_RANGE;
-        foreach (var target in monsters.GetCombatTargets(runtime, DateTime.UtcNow))
+        foreach (var target in runtime.Monsters.GetCombatTargets(DateTime.UtcNow))
         {
             if (target.Area != bot.Player.CurrentArea)
                 continue;
@@ -933,7 +932,7 @@ internal sealed class BotDecisionService(
         }
         var sessions = runtime.GetSessions();
         var players = runtime.GetAlivePlayers();
-        var monsterTargets = monsters.GetCombatTargets(runtime, nowUtc);
+        var monsterTargets = runtime.Monsters.GetCombatTargets(nowUtc);
         float safeRadiusSquared = Config.SWARM_ORB_ATTACK_RANGE * Config.SWARM_ORB_ATTACK_RANGE;
         foreach (var bot in bots)
         {

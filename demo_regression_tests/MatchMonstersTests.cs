@@ -5,7 +5,7 @@ using network.common.data.models;
 
 namespace demo_regression_tests;
 
-public sealed class MatchMonsterStateTests
+public sealed class MatchMonstersTests
 {
     [Fact]
     public void SnapshotSlot_IsIndependentPerMatchAndAllowsBoundary()
@@ -13,14 +13,13 @@ public sealed class MatchMonsterStateTests
         var first = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947101);
         var second = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947102);
         var now = new DateTime(2026, 9, 7, 0, 0, 0, DateTimeKind.Utc);
-        var monsters = new MatchMonsterService(new MonsterMovementService());
         using (first.Enter())
         {
-            Assert.True(monsters.TryClaimSnapshotSlot(first, now));
-            Assert.False(monsters.TryClaimSnapshotSlot(first, now.AddMilliseconds(99)));
-            Assert.True(monsters.TryClaimSnapshotSlot(first, now.AddMilliseconds(100)));
+            Assert.True(game_server.matches.MatchCombatService.TryClaimSnapshotSlot(first, now));
+            Assert.False(game_server.matches.MatchCombatService.TryClaimSnapshotSlot(first, now.AddMilliseconds(99)));
+            Assert.True(game_server.matches.MatchCombatService.TryClaimSnapshotSlot(first, now.AddMilliseconds(100)));
         }
-        using (second.Enter()) Assert.True(monsters.TryClaimSnapshotSlot(second, now));
+        using (second.Enter()) Assert.True(game_server.matches.MatchCombatService.TryClaimSnapshotSlot(second, now));
     }
 
     [Fact]
@@ -37,7 +36,7 @@ public sealed class MatchMonsterStateTests
         IReadOnlyDictionary<AreaType, List<MonsterRuntimeInfo>> groups;
         using (runtime.Enter())
         {
-            groups = new MatchMonsterService(new MonsterMovementService()).GetVisualStatesByArea(runtime);
+            groups = runtime.Monsters.GetVisualStatesByArea();
         }
 
         Assert.Equal(2, groups.Count);

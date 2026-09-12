@@ -9,12 +9,12 @@ using network.common.data.models;
 
 namespace demo_regression_tests;
 
-public class MatchMonsterServiceTests
+public class MatchMonsterTickTests
 {
     private static readonly DateTime StartUtc =
         new(2026, 8, 6, 0, 0, 0, DateTimeKind.Utc);
 
-    public MatchMonsterServiceTests()
+    public MatchMonsterTickTests()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
         GameDataHelper.Initialize();
@@ -397,10 +397,11 @@ public class MatchMonsterServiceTests
     /// <summary>틱이 만든 접촉 피해와 그 틱에 새로 태어난 개체.</summary>
     private sealed record TickResult(IReadOnlyList<MonsterContactDamage> PlayerDamage, IReadOnlyList<Monster> SpawnedMonsters);
 
-    /// <summary>매치 런타임 하나와 디렉터를 묶어 매치 잠금 안에서 부른다. 마지막 틱 시각을 피해 정산·표적 조회에 쓴다.</summary>
+    /// <summary>운영 전투 조율자의 몬스터 단계를 매치 잠금 안에서 실행한다. 마지막 틱 시각을 피해 정산·표적 조회에 쓴다.</summary>
     private sealed class Arena
     {
-        private readonly MatchMonsterService _director = new(new MonsterMovementService());
+        private readonly MatchCombatService _combat = TestGameSessionServices.CreateMonsterTickService();
+        private readonly MonsterCombatService _monsterCombat = new(new MatchMonsterSpawnService(new MonsterMovementService()));
         private DateTime _lastNow = StartUtc;
 
         public Arena(long matchingId)
@@ -408,7 +409,7 @@ public class MatchMonsterServiceTests
             Runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(matchingId);
             using (Runtime.Enter())
             {
-                Assert.True(_director.Initialize(Runtime, StartUtc));
+                Assert.True(Runtime.Monsters.Initialize(StartUtc));
             }
         }
 
@@ -428,7 +429,7 @@ public class MatchMonsterServiceTests
                         Runtime.RegisterParticipant(new Player { Profile = new PlayerInfo { PlayerId = participant.PlayerId } });
                     }
                 }
-                var contacts = _director.ProcessTick(Runtime, participants, isGameplayActive, nowUtc);
+                var contacts = _combat.ProcessMonsterTick(Runtime, participants, isGameplayActive, nowUtc);
                 var spawned = Runtime.Monsters.Entities.Values.Where(monster => !known.Contains(monster.MonsterId)).ToList();
                 return new TickResult(contacts, spawned);
             }
@@ -438,7 +439,7 @@ public class MatchMonsterServiceTests
         {
             using (Runtime.Enter())
             {
-                return _director.ApplyMonsterDamage(Runtime, combatTargetId, attackerPlayerId, damage, _lastNow);
+                return _monsterCombat.ApplyMonsterDamage(Runtime, combatTargetId, attackerPlayerId, damage, _lastNow);
             }
         }
 
@@ -448,7 +449,7 @@ public class MatchMonsterServiceTests
         {
             using (Runtime.Enter())
             {
-                return _director.GetCombatTargets(Runtime, _lastNow);
+                return Runtime.Monsters.GetCombatTargets(_lastNow);
             }
         }
     }

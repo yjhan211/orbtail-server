@@ -21,7 +21,7 @@ public sealed class WindOrbAttackServiceTests
         var match = store.GetOrCreate(947503);
         var owner = new BotPlayerState { PlayerId = 11 };
         var service = new PlayerOrbService(
-            TestGameSessionServices.CreateHealthService(store, store.EventLogs), TestGameSessionServices.CreateCombatDamageService(store.EventLogs), new PlayerOrbTrailService(), store.EventLogs, new MatchMonsterService(new MonsterMovementService()));
+            TestGameSessionServices.CreateHealthService(store, store.EventLogs), TestGameSessionServices.CreateCombatDamageService(store.EventLogs), new PlayerOrbTrailService(), store.EventLogs);
         Assert.Throws<InvalidOperationException>(() => service.ActivateWindOrbs(match, owner.Player, DateTime.UtcNow));
         using (match.Enter())
         {
@@ -37,7 +37,7 @@ public sealed class WindOrbAttackServiceTests
         var match = store.GetOrCreate(947501);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var trails = new PlayerOrbTrailService();
-        var service = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store, logs, new game_server.matches.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), TestGameSessionServices.CreateCombatDamageService(logs), trails, logs, new MatchMonsterService(new MonsterMovementService()));
+        var service = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store, logs, new game_server.matches.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), TestGameSessionServices.CreateCombatDamageService(logs), trails, logs);
         var now = DateTime.UtcNow;
         var owner = new BotPlayerState { PlayerId = 11 };
         var victim = new BotPlayerState { PlayerId = 12 };
@@ -77,7 +77,7 @@ public sealed class WindOrbAttackServiceTests
         var match = store.GetOrCreate(947502);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var trails = new PlayerOrbTrailService();
-        var service = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store, logs, new game_server.matches.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), TestGameSessionServices.CreateCombatDamageService(logs), trails, logs, new MatchMonsterService(new MonsterMovementService()));
+        var service = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store, logs, new game_server.matches.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), TestGameSessionServices.CreateCombatDamageService(logs), trails, logs);
         var owner = new BotPlayerState { PlayerId = 11 };
         var victim = new BotPlayerState { PlayerId = 12 };
         match.RegisterParticipant(owner.Player);

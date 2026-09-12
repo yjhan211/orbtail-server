@@ -404,7 +404,7 @@ public sealed class GameClientSessionPublicationTests
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
         fixture.SetHealth(session, Config.MAX_HEALTH - 3);
         var recoveryService = new PlayerOrbService(
-            TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), TestGameSessionServices.CreateCombatDamageService(fixture.EventLog), new PlayerOrbTrailService(), fixture.EventLog, new MatchMonsterService(new MonsterMovementService()));
+            TestGameSessionServices.CreateHealthService(fixture.Store, fixture.EventLog), TestGameSessionServices.CreateCombatDamageService(fixture.EventLog), new PlayerOrbTrailService(), fixture.EventLog);
         var actor = new ProximityCombatActor(101, (AreaType)50, new Vector3f(0, 0, 0),
             107000040, 0, 0, 0, WeaponItemUid: 1);
         var now = DateTime.UtcNow;

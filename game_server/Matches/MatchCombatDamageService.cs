@@ -15,7 +15,7 @@ namespace game_server.matches;
 ///     플레이어·몬스터 피해와 지연 타격을 처리하고, 피격 로그와 알림을 남긴다.
 ///     플레이어의 체력 변경·탈락 처리는 PlayerHealthService에 위임한다.
 /// </summary>
-internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, MatchMonsterService monsters)
+internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, MonsterCombatService monsters)
 {
     private const int SwarmRingVfxKindRetaliationBlocked = 6;
     private static double SwarmCriticalChance => SwarmConfigData.GetDouble("SWARM_CRITICAL_CHANCE", 0.15d);

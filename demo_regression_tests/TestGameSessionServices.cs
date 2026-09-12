@@ -13,6 +13,15 @@ namespace demo_regression_tests;
 
 internal static class TestGameSessionServices
 {
+    // 몬스터 단계는 운영 조율자를 그대로 실행하고 다른 전투 단계 의존성은 사용하지 않는다.
+    internal static MatchCombatService CreateMonsterTickService()
+    {
+        var movement = new MonsterMovementService();
+        var spawns = new MatchMonsterSpawnService(movement);
+        return new MatchCombatService(null!, null!, null!, null!, null!, null!,
+            null!, null!, null!, null!, null!, new MonsterCombatService(spawns), spawns, movement);
+    }
+
     public static PlayerHealthService CreateHealthService(MatchRuntimeStore store, GameEventLogManager logs,
         MatchSummaryFileStore? summaries = null, Microsoft.Extensions.Logging.ILogger? logger = null) =>
         new(logs, CreateEliminationService(store, logs, summaries ?? new MatchSummaryFileStore(), logger ?? NullLogger.Instance),
@@ -80,7 +89,7 @@ internal static class TestGameSessionServices
         return new MatchRuntimeStore(logger.For<MatchRuntime>(), lifecycle);
     }
     public static MatchCombatDamageService CreateCombatDamageService(GameEventLogManager logs) =>
-        new(logs, new MatchMonsterService(new MonsterMovementService()));
+        new(logs, new MonsterCombatService(new MatchMonsterSpawnService(new MonsterMovementService())));
 
     public static PlayerMovementService CreateMovementService(GameEventLogManager logs) =>
         new(logs, NullLogger<PlayerMovementService>.Instance);
