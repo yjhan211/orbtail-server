@@ -22,8 +22,7 @@ internal class MatchCombatService(
     MatchTrailCutService trailCuts,
     MatchCombatActorBuilder actorBuilder,
     MatchAutoAttackService autoAttacks,
-    SunOrbAttackService sunOrbAttacks,
-    WaveOrbAttackService waveOrbAttacks,
+    MatchOrbAttackService orbAttacks,
     BotDecisionService botDecisions)
 {
     public virtual void ProcessTick(MatchRuntime runtime)
@@ -81,7 +80,7 @@ internal class MatchCombatService(
 
         orbTrails.UpdateTrails(runtime, participants);
         trailCuts.ProcessTick(runtime, nowUtc, participants, sessions);
-        waveOrbAttacks.ProcessTick(runtime, nowUtc);
+        orbAttacks.ProcessWaveDetonations(runtime, nowUtc);
         foreach (var player in runtime.GetAlivePlayers())
         {
             playerOrbs.ActivateWaveOrbs(runtime, player, nowUtc);
@@ -90,7 +89,7 @@ internal class MatchCombatService(
         {
             playerOrbs.ActivateWindOrbs(runtime, player, nowUtc);
         }
-        sunOrbAttacks.ProcessSwarmSunBurns(runtime, nowUtc);
+        orbAttacks.ProcessSunBurns(runtime, nowUtc);
         foreach (var damage in tick.PlayerDamage)
         {
             ApplySwarmParticipantDamage(runtime, damage, sessions);
@@ -129,7 +128,7 @@ internal class MatchCombatService(
             return;
         }
         combatDamage.ProcessPendingMonsterHits(runtime, nowUtc, sessions);
-        sunOrbAttacks.ProcessSwarmCrossfires(runtime, nowUtc);
+        orbAttacks.ProcessSunCrossfires(runtime, nowUtc);
         combatDamage.ProcessPendingPvpHits(runtime, healthService, nowUtc, runtime.GetAlivePlayers(), sessions);
         if (runtime.IsEnded)
         {
@@ -145,8 +144,8 @@ internal class MatchCombatService(
             }
         }
 
-        var crossfireCappedOwners = sunOrbAttacks.CollectSwarmCrossfireCappedOwners(runtime, nowUtc);
-        var crossfireAnchoredTargets = sunOrbAttacks.CollectSwarmCrossfireAnchoredTargets(runtime);
+        var crossfireCappedOwners = orbAttacks.CollectSunCrossfireCappedOwners(runtime, nowUtc);
+        var crossfireAnchoredTargets = orbAttacks.CollectSunCrossfireAnchoredTargets(runtime);
         var attacks = autoAttacks.UpdateAttacks(
             runtime,
             actors,
@@ -157,7 +156,7 @@ internal class MatchCombatService(
                 {
                     return false;
                 }
-                if (SunOrbAttackService.IsSwarmCrossfireWeapon(attacker.WeaponItemId))
+                if (MatchOrbAttackService.IsSunCrossfireWeapon(attacker.WeaponItemId))
                 {
                     if (crossfireCappedOwners.Contains(attacker.PlayerId))
                     {
@@ -180,7 +179,7 @@ internal class MatchCombatService(
                     return true;
                 }
 
-                if (SunOrbAttackService.IsSwarmCrossfireWeapon(attacker.WeaponItemId))
+                if (MatchOrbAttackService.IsSunCrossfireWeapon(attacker.WeaponItemId))
                 {
                     return true;
                 }
@@ -214,7 +213,7 @@ internal class MatchCombatService(
             {
                 continue;
             }
-            if (SunOrbAttackService.IsSwarmCrossfireWeapon(attack.WeaponItemId))
+            if (MatchOrbAttackService.IsSunCrossfireWeapon(attack.WeaponItemId))
             {
                 bool anchoredThisTick = !crossfireAnchoredTargets.Add((attack.AttackerPlayerId, attack.TargetPlayerId));
                 if (anchoredThisTick || runtime.GetParticipant(attack.AttackerPlayerId) is not { } sunOwner || !playerOrbs.TryStartSunCrossfire(runtime, sunOwner, attack, nowUtc))

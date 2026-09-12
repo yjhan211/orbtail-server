@@ -1,3 +1,4 @@
+using game_server.matches.combat;
 using game_server.matches.logging;
 using game_server.matches.monsters;
 using game_server.players;
@@ -8,9 +9,14 @@ using network.common.data;
 using network.common.data.models;
 using network.packets;
 
-namespace game_server.matches.combat;
+namespace game_server.matches;
 
-internal sealed class SunOrbAttackService(
+/// <summary>
+///     플레이어가 발동한 오브 공격 가운데 매치 시간 위에서 진행되는 부분. 태양은 예고 뒤 직선 쓸기·벽 폭발·화상 틱,
+///     파도는 예고 뒤 소용돌이 기폭·침수다(바람은 발동 즉시 끝나 PlayerOrbService에만 있다).
+///     모양·대기 소용돌이는 MatchRuntime이, 화상·침수는 피해자 Player가 들며 호출자는 매치 잠금을 보유한다. 피해는 공통 전투 서비스에 위임한다.
+/// </summary>
+internal sealed class MatchOrbAttackService(
     PlayerHealthService healthService,
     MatchCombatDamageService combatDamage,
     GameEventLogManager eventLogs)
@@ -23,8 +29,7 @@ internal sealed class SunOrbAttackService(
     private static readonly bool SwarmCrossfireEnabled = true;
     private static long _lastEventId;
 
-    public static bool IsSwarmCrossfireWeapon(int weaponItemId) => IsSwarmCrossfireSun(weaponItemId);
-    public static bool IsSwarmCrossfireSun(int weaponItemId) => SwarmCrossfireEnabled && OrbData.TryGetColorAndTier(weaponItemId, out var color, out _) && color == OrbColor.Red;
+    public static bool IsSunCrossfireWeapon(int weaponItemId) => SwarmCrossfireEnabled && OrbData.TryGetColorAndTier(weaponItemId, out var color, out _) && color == OrbColor.Red;
     public static long AllocateEventId() => Interlocked.Increment(ref _lastEventId);
 
     public static int CountTelegraphing(IReadOnlyList<SwarmCrossfireShape> shapes, long ownerId, DateTime nowUtc)
@@ -68,7 +73,7 @@ internal sealed class SunOrbAttackService(
         return threats.ToArray();
     }
 
-    public HashSet<(long OwnerId, long CombatTargetId)> CollectSwarmCrossfireAnchoredTargets(MatchRuntime runtime)
+    public HashSet<(long OwnerId, long CombatTargetId)> CollectSunCrossfireAnchoredTargets(MatchRuntime runtime)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -82,7 +87,7 @@ internal sealed class SunOrbAttackService(
         return anchored;
     }
 
-    public HashSet<long> CollectSwarmCrossfireCappedOwners(MatchRuntime runtime, DateTime nowUtc)
+    public HashSet<long> CollectSunCrossfireCappedOwners(MatchRuntime runtime, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -109,7 +114,7 @@ internal sealed class SunOrbAttackService(
         return capped;
     }
 
-    public void ProcessSwarmCrossfires(MatchRuntime runtime, DateTime nowUtc)
+    public void ProcessSunCrossfires(MatchRuntime runtime, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -153,7 +158,7 @@ internal sealed class SunOrbAttackService(
                     continue;
                 }
 
-                if (!IsSwarmCrossfireSweptBody(shape, monster.Position, lastFront, front, SwarmCrossfireMonsterRadius, SwarmCrossfireMonsterBodyHeight))
+                if (!IsSunCrossfireSweptBody(shape, monster.Position, lastFront, front, SwarmCrossfireMonsterRadius, SwarmCrossfireMonsterBodyHeight))
                 {
                     continue;
                 }
@@ -177,7 +182,7 @@ internal sealed class SunOrbAttackService(
                     continue;
                 }
 
-                if (!IsSwarmCrossfireSweptBody(shape, participant.Position!, lastFront, front, SwarmCrossfirePlayerRadius, SwarmCrossfirePlayerBodyHeight))
+                if (!IsSunCrossfireSweptBody(shape, participant.Position!, lastFront, front, SwarmCrossfirePlayerRadius, SwarmCrossfirePlayerBodyHeight))
                 {
                     continue;
                 }
@@ -188,7 +193,6 @@ internal sealed class SunOrbAttackService(
                 {
                     return;
                 }
-                // 화상 부여·갱신 — 첫 틱은 1초 뒤(직격과 같은 프레임에 겹치지 않게). 재피격은 지속·주기를 새로 잡는다.
                 participant.SunBurn = new Player.SunBurnState(shape.OwnerId, shape.WeaponItemId, shape.Area, nowUtc.AddSeconds(Config.SWARM_SUN_BURN_SECONDS), nowUtc.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS));
                 if (participant.Session is { PlayerId: not null } victimSession && shape.OwnerId != 0)
                 {
@@ -210,7 +214,6 @@ internal sealed class SunOrbAttackService(
             shapes.RemoveAt(index);
             if (shape.DetonateAtWall)
             {
-                // 벽 폭발은 시각 연출만이다. 잘린 직선의 끝(첫 이동 불가 셀 앞)에서 터지고, 같은 구역 전원에게 폭발 지점·표시 반경만 보낸다.
                 float axisOriginX = shape.Origin.X;
                 float axisOriginY = shape.Origin.Y * SwarmGroundYScale;
                 float axisLength = MathF.Max(shape.GroundLength, 1e-4f);
@@ -255,7 +258,7 @@ internal sealed class SunOrbAttackService(
         }
     }
 
-    private static bool IsSwarmCrossfireSweptBody(SwarmCrossfireShape shape, Vector3f position, float fromFront, float toFront, float radiusPadding, float bodyHeight)
+    private static bool IsSunCrossfireSweptBody(SwarmCrossfireShape shape, Vector3f position, float fromFront, float toFront, float radiusPadding, float bodyHeight)
     {
         float length = shape.GroundLength;
         if (length <= 0f)
@@ -297,7 +300,7 @@ internal sealed class SunOrbAttackService(
         return false;
     }
 
-    public void ProcessSwarmSunBurns(MatchRuntime runtime, DateTime nowUtc)
+    public void ProcessSunBurns(MatchRuntime runtime, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -326,6 +329,103 @@ internal sealed class SunOrbAttackService(
             if (nowUtc >= burn.UntilUtc)
             {
                 victim.SunBurn = null;
+            }
+        }
+    }
+
+    public void ProcessWaveDetonations(MatchRuntime runtime, DateTime nowUtc)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Wave orb attacks require the match lock.");
+        }
+        if (runtime.IsEnded) return;
+        long matchingId = runtime.MatchingId;
+        for (int index = runtime.PendingWaveAttacks.Count - 1; index >= 0; index--)
+        {
+            var vortex = runtime.PendingWaveAttacks[index];
+            if (nowUtc < vortex.ExplodeAtUtc)
+                continue;
+            runtime.PendingWaveAttacks.RemoveAt(index);
+
+            var players = runtime.GetAlivePlayers();
+            var owner = runtime.GetParticipant(vortex.OwnerId);
+            float radiusSquared = vortex.Radius * vortex.Radius;
+            int hitCount = 0;
+            int notifiedCount = 0;
+            foreach (var target in runtime.Monsters.GetCombatTargets())
+            {
+                if (target.Area != vortex.Area)
+                {
+                    continue;
+                }
+                float dx = target.Position.X - vortex.Position.X;
+                float dy = (target.Position.Y - vortex.Position.Y) * 2f;
+                if (dx * dx + dy * dy > radiusSquared)
+                {
+                    continue;
+                }
+                int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, vortex.Damage, out bool critical);
+                runtime.Monsters.ReserveMonsterDamage(target.CombatTargetId, monsterDamage);
+                runtime.Monsters.RecordMonsterAttackEvent(target.CombatTargetId);
+                combatDamage.ScheduleMonsterHit(runtime, new PendingMonsterHit(target.CombatTargetId, vortex.OwnerId, monsterDamage, nowUtc));
+                runtime.Monsters.TrySlowMonster(target.CombatTargetId, OrbData.WaveSlowSeconds, nowUtc);
+                hitCount++;
+
+                int monsterId = runtime.Monsters.GetMonsterIdForCombatTarget(target.CombatTargetId);
+                if (monsterId <= 0)
+                {
+                    continue;
+                }
+
+                notifiedCount++;
+                combatDamage.SendMonsterHitNotification(runtime, owner, monsterId, vortex.Area, vortex.SourceItemId, monsterDamage, critical, showDamageOnly: true);
+            }
+
+            int soaked = 0;
+            foreach (var participant in players)
+            {
+                if (participant.IsEliminated || participant.PlayerId == vortex.OwnerId || participant.CurrentArea != vortex.Area || participant.Position == null)
+                {
+                    continue;
+                }
+
+                if (!SwarmCombatGeometry.IsWithinGroundRadius(vortex.Position, participant.Position,
+                        vortex.Radius + SwarmCombatGeometry.PlayerRadius))
+                {
+                    continue;
+                }
+
+                soaked++;
+                combatDamage.ApplySwarmShock(runtime, healthService, vortex.OwnerId, vortex.SourceItemId, vortex.Area, participant.PlayerId, "WAVE_VORTEX_HIT", players, Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER);
+                if (runtime.IsEnded)
+                {
+                    return;
+                }
+
+                if (participant.IsEliminated)
+                {
+                    continue;
+                }
+                participant.WaveSlowUntilUtc = nowUtc.AddSeconds(OrbData.WaveSlowSeconds);
+                var victimSession = participant.Session;
+                if (victimSession != null && vortex.OwnerId != 0)
+                {
+                    using var packet = PacketMaker.G_TO_C_STATUS_EFFECT(new G_TO_C_STATUS_EFFECT
+                    {
+                        SourcePlayerId = vortex.OwnerId,
+                        TargetPlayerId = participant.PlayerId,
+                        AreaType = vortex.Area,
+                        Effect = CombatStatusEffectKind.WaveOrbSlow,
+                        DurationMs = (int)(OrbData.WaveSlowSeconds * 1000f)
+                    });
+                    victimSession.TrySend(packet);
+                }
+            }
+
+            if (hitCount > 0 || soaked > 0)
+            {
+                eventLogs.LogSystem(matchingId, $"wave_vortex_hit owner={vortex.OwnerId} area={vortex.Area} monsters={hitCount} " + $"notified={notifiedCount} playersSoaked={soaked} radius={vortex.Radius:F2} " + $"damage={vortex.Damage} item={vortex.SourceItemId}");
             }
         }
     }

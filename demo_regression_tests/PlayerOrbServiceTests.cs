@@ -18,7 +18,7 @@ public sealed class PlayerOrbServiceTests
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var runtime = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(948601);
         var attacks = provider.GetRequiredService<PlayerOrbService>();
-        var projectiles = provider.GetRequiredService<SunOrbAttackService>();
+        var projectiles = provider.GetRequiredService<MatchOrbAttackService>();
         var cell = MatchSpawnData.GetCorridorAnchor(1);
         var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
         var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
@@ -37,9 +37,9 @@ public sealed class PlayerOrbServiceTests
             Assert.Equal(owner.PlayerId, shape.OwnerId);
             owner.Status = PlayerMatchStatus.ELIMINATED;
             Assert.False(attacks.TryStartSunCrossfire(runtime, owner, attack, now));
-            projectiles.ProcessSwarmCrossfires(runtime, shape.ArmedAtUtc);
+            projectiles.ProcessSunCrossfires(runtime, shape.ArmedAtUtc);
             Assert.NotEmpty(runtime.SunOrbAttacks.Shapes);
-            projectiles.ProcessSwarmCrossfires(runtime, shape.ExpiresAtUtc.AddSeconds(1));
+            projectiles.ProcessSunCrossfires(runtime, shape.ExpiresAtUtc.AddSeconds(1));
             Assert.Empty(runtime.SunOrbAttacks.Shapes);
         }
     }

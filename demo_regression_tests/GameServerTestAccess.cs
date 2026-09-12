@@ -81,8 +81,7 @@ internal static class GameServerTestAccess
                 health, combatDamage, results,
                 new PlayerOrbService(health, combatDamage, orbTrails, logs),
                 orbTrails, trailCuts, new MatchCombatActorBuilder(orbTrails), new MatchAutoAttackService(),
-                new SunOrbAttackService(TestGameSessionServices.CreateHealthService(runtimes, logs, new game_server.matches.MatchSummaryFileStore(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), combatDamage, logs),
-                new WaveOrbAttackService(health, combatDamage, logs), decisions);
+                new MatchOrbAttackService(health, combatDamage, logs), decisions);
 
             return new MatchTickLoop(runtime, runtimes, logger, groundPickup,
             entryFailure, combat, field, movement, decisions, clock);

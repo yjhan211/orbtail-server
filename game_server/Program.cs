@@ -136,8 +136,7 @@ internal static class Program
         services.AddSingleton<PlayerOrbService>();
         services.AddSingleton<PlayerPickupService>();
         services.AddSingleton<PlayerOrbTrailService>();
-        services.AddSingleton<SunOrbAttackService>();
-        services.AddSingleton<WaveOrbAttackService>();
+        services.AddSingleton<MatchOrbAttackService>();
         services.AddSingleton<BotMovementService>();
         services.AddSingleton<BotDecisionService>();
         services.AddSingleton<MatchTrailCutService>();

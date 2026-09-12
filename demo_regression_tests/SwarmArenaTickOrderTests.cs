@@ -145,10 +145,10 @@ public sealed class SwarmArenaTickOrderTests
             "if (!runtime.IsGameplayActive())",
             "orbTrails.UpdateTrails(",
             "trailCuts.ProcessTick(",
-            "waveOrbAttacks.ProcessTick(",
+            "orbAttacks.ProcessWaveDetonations(",
             "playerOrbs.ActivateWaveOrbs(",
             "playerOrbs.ActivateWindOrbs(",
-            "ProcessSwarmSunBurns(",
+            "ProcessSunBurns(",
             "ApplySwarmParticipantDamage(",
             "botDecisions.UpdateSleep(",
             "ApplySleepRecovery(",
@@ -161,10 +161,10 @@ public sealed class SwarmArenaTickOrderTests
             "botDecisions.ProcessBotOrbGrowth(",
             "matchResults.TryEndOnScoreTimeout(",
             "ProcessPendingMonsterHits(",
-            "ProcessSwarmCrossfires(",
+            "ProcessSunCrossfires(",
             "ProcessPendingPvpHits(",
-            "CollectSwarmCrossfireCappedOwners(",
-            "CollectSwarmCrossfireAnchoredTargets(",
+            "CollectSunCrossfireCappedOwners(",
+            "CollectSunCrossfireAnchoredTargets(",
             "autoAttacks.UpdateAttacks(",
             "TryStartSunCrossfire(",
             "combatDamage.SendMonsterHitNotification(runtime, attacker,",
@@ -318,7 +318,7 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string windBlade = ReadNormalizedSource(root, "game_server", "Players", "PlayerOrbService.cs");
-        string crossfire = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "SunOrbAttackService.cs");
+        string crossfire = ReadNormalizedSource(root, "game_server", "Matches", "MatchOrbAttackService.cs");
         string orbBoard = ReadNormalizedSource(root, "game_server", "Players", "PlayerOrbGrowthService.cs");
 
         Assert.DoesNotContain("_swarmWindBladeNextTickAtUtc", windBlade);
@@ -337,7 +337,7 @@ public sealed class SwarmArenaTickOrderTests
     public void SunOrbAttackState_IsMatchOwnedAndDodgeLookupDoesNotCreateRuntime()
     {
         string root = FindRepositoryRoot();
-        string crossfire = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "SunOrbAttackService.cs");
+        string crossfire = ReadNormalizedSource(root, "game_server", "Matches", "MatchOrbAttackService.cs");
         string botDodge = ReadNormalizedSource(root, "game_server", "Matches", "MatchRuntime.cs");
         string runtimeStates = ReadNormalizedSource(root, "game_server", "Matches", "MatchRuntime.cs");
 
@@ -367,14 +367,14 @@ public sealed class SwarmArenaTickOrderTests
         string runtimeStates = ReadNormalizedSource(
             root, "game_server", "Matches", "MatchRuntime.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatService.cs");
-        string crossfire = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "SunOrbAttackService.cs");
+        string crossfire = ReadNormalizedSource(root, "game_server", "Matches", "MatchOrbAttackService.cs");
 
         // 매치 하나에 모니터 하나 — 블로킹 진입과 펄스용 TryEnter가 같은 잠금 객체를 쓴다.
         Assert.DoesNotContain("_globalExecutionLock", store);
         Assert.Contains("Monitor.Enter(MatchLock);", store);
         Assert.Contains("Monitor.TryEnter(MatchLock, ref lockTaken);", store);
         Assert.Contains("Monitor.Exit(MatchLock);", store);
-        string wave = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "WaveOrbAttackService.cs");
+        string wave = ReadNormalizedSource(root, "game_server", "Matches", "MatchOrbAttackService.cs");
         Assert.Contains("if (runtime.IsEnded) return;", wave);
 
         Assert.DoesNotContain("_swarmCriticalRng", combat);

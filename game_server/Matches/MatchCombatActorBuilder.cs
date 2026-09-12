@@ -96,7 +96,7 @@ internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails)
                 int baseDamage = attackOrb ? combatData?.Damage ?? 0 : 0;
                 float baseIntervalSeconds = attackOrb ? combatData?.AttackIntervalSeconds ?? 0f : 0f;
 
-                bool crossfireSun = SunOrbAttackService.IsSwarmCrossfireSun(actor.WeaponItemId);
+                bool crossfireSun = MatchOrbAttackService.IsSunCrossfireWeapon(actor.WeaponItemId);
                 float crossfireDamageMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER : 1f;
                 float crossfireCadenceMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER : 1f;
                 float attackRange = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_RANGE_BY_TIER[Math.Clamp(orbTier, 1, 3) - 1] : SwarmCombatGeometry.SwarmPveSameAreaAttackRange;

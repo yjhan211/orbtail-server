@@ -276,7 +276,7 @@ public sealed class MatchGameplayServiceTests
     public void WaveVortexDamagesAndSlowsPlayersWithoutSessionOrBotState()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var waveAttacks = provider.GetRequiredService<game_server.matches.combat.WaveOrbAttackService>();
+        var waveAttacks = provider.GetRequiredService<game_server.matches.MatchOrbAttackService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947799);
         var now = DateTime.UtcNow;
         var human = new game_server.players.Player
@@ -293,8 +293,8 @@ public sealed class MatchGameplayServiceTests
         {
             match.RegisterParticipant(human);
             match.RegisterParticipant(bot);
-            waveAttacks.Detonate(match, 99, human.CurrentArea,
-                new Vector3f(), 5, 2f, 107000030, now);
+            match.PendingWaveAttacks.Add(new PendingWaveAttack(99, human.CurrentArea, new Vector3f(), 5, 2f, 107000030, now));
+            waveAttacks.ProcessWaveDetonations(match, now);
             Assert.True(human.Health < network.common.Config.MAX_HEALTH);
             Assert.Equal(human.Health, bot.Health);
             Assert.Equal(now.AddSeconds(network.common.data.OrbData.WaveSlowSeconds), human.WaveSlowUntilUtc);
