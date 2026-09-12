@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using game_server.matches.monsters;
 using game_server.players;
+using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
@@ -103,6 +105,24 @@ public partial class GameClientSession
         var items = match.GroundItems.GetItemsInArea(area);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, items);
         TrySend(packet);
+    }
+
+    internal void SendMonsterSnapshot(IReadOnlyList<MonsterAreaSnapshot> snapshots, bool preMatch)
+    {
+        foreach (var snapshot in snapshots)
+        {
+            if (!preMatch && Player.CurrentArea != snapshot.Area)
+            {
+                continue;
+            }
+
+            using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_SNAPSHOT);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_SNAPSHOT
+            {
+                Monsters = snapshot.Monsters
+            }));
+            TrySend(packet);
+        }
     }
 
     private void SendAreaChange(AreaType oldArea, AreaType newArea)

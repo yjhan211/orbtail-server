@@ -101,8 +101,10 @@ public sealed class MatchOwnedStateTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(941006);
         var second = store.GetOrCreate(941007);
-        first.Monsters.NextMonsterPositionBroadcastAtUtc = DateTime.UtcNow;
-        Assert.Equal(default, second.Monsters.NextMonsterPositionBroadcastAtUtc);
+        var now = DateTime.UtcNow;
+        Assert.True(first.Monsters.TryClaimSnapshotSlot(now));
+        Assert.False(first.Monsters.TryClaimSnapshotSlot(now));
+        Assert.True(second.Monsters.TryClaimSnapshotSlot(now));
     }
 
     [Fact]

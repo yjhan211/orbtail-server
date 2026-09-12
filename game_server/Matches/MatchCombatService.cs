@@ -78,7 +78,7 @@ internal class MatchCombatService(
 
         if (!runtime.IsGameplayActive())
         {
-            MonsterSnapshotPublisher.Broadcast(runtime, sessions, runtime.Monsters.GetVisualStates());
+            SendMonsterSnapshots(runtime, sessions, preMatch: true);
             return;
         }
 
@@ -113,9 +113,9 @@ internal class MatchCombatService(
         players.RemoveAll(player => player.IsEliminated);
         healthService.ApplySleepRecovery(runtime, players, nowUtc);
         botDecisions.ProcessSwarmBotDoorUnlocks(runtime, aliveBots, sessions, nowUtc);
-        if (MonsterSnapshotPublisher.TryConsumeBroadcastSlot(runtime, nowUtc))
+        if (runtime.Monsters.TryClaimSnapshotSlot(nowUtc))
         {
-            MonsterSnapshotPublisher.Broadcast(runtime, sessions, runtime.Monsters.GetVisualStates());
+            SendMonsterSnapshots(runtime, sessions, preMatch: false);
         }
 
         var actors = actorBuilder.Build(runtime, players, nowUtc);
@@ -268,6 +268,14 @@ internal class MatchCombatService(
         }
     }
 
+    private void SendMonsterSnapshots(MatchRuntime runtime, List<GameClientSession> sessions, bool preMatch)
+    {
+        var snapshots = MonsterSnapshotBatcher.GroupByArea(runtime.Monsters.GetVisualStates());
+        foreach (var session in sessions)
+        {
+            session.SendMonsterSnapshot(snapshots, preMatch);
+        }
+    }
     internal void ApplySwarmParticipantDamage(MatchRuntime runtime, MonsterContactDamage damage, List<GameClientSession> allSessions)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))

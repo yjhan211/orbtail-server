@@ -9,7 +9,9 @@ namespace game_server.matches.monsters;
 /// </summary>
 public sealed class MatchMonsterState
 {
+    private static readonly TimeSpan SnapshotInterval = TimeSpan.FromMilliseconds(100);
     private bool _initialized;
+    private DateTime _nextSnapshotAtUtc;
     public long HumanPlayerId { get; private set; }
     public DateTime StartsAtUtc { get; private set; }
     public DateTime LastTickAtUtc { get; set; }
@@ -30,9 +32,18 @@ public sealed class MatchMonsterState
     public int NextSupplyPackOrdinal { get; set; }
     public int NextInfiltrationOriginOrdinal { get; set; }
     public int MaxParticipantCount { get; set; }
-    public DateTime NextMonsterPositionBroadcastAtUtc { get; set; }
 
     public bool HasMatching() => _initialized;
+
+    public bool TryClaimSnapshotSlot(DateTime nowUtc)
+    {
+        if (nowUtc < _nextSnapshotAtUtc)
+        {
+            return false;
+        }
+        _nextSnapshotAtUtc = nowUtc + SnapshotInterval;
+        return true;
+    }
     public bool InitializeMatching(long humanPlayerId, DateTime startsAtUtc)
     {
         if (humanPlayerId == 0 || _initialized)
@@ -51,6 +62,7 @@ public sealed class MatchMonsterState
     internal void Release()
     {
         _initialized = false;
+        _nextSnapshotAtUtc = default;
         Entities.Clear();
         ContactImmuneUntilUtc.Clear();
         LastParticipants = [];

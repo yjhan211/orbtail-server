@@ -113,7 +113,7 @@ public sealed class SwarmArenaTickOrderTests
                 "if (!runtime.IsGameplayActive())"));
         AssertInOrder(
             inactiveGameplayBranch,
-            "MonsterSnapshotPublisher.Broadcast(",
+            "SendMonsterSnapshots(",
             "return;");
     }
 
@@ -135,7 +135,7 @@ public sealed class SwarmArenaTickOrderTests
                 "if (!runtime.IsGameplayActive())"));
         AssertInOrder(
             inactiveGameplayBranch,
-            "MonsterSnapshotPublisher.Broadcast(",
+            "SendMonsterSnapshots(",
             "return;");
 
         AssertInOrder(
@@ -152,7 +152,7 @@ public sealed class SwarmArenaTickOrderTests
             "botDecisions.UpdateSleep(",
             "ApplySleepRecovery(",
             "ProcessSwarmBotDoorUnlocks(",
-            "MonsterSnapshotPublisher.Broadcast(",
+            "SendMonsterSnapshots(",
             "actorBuilder.Build(",
             "playerOrbs.ProcessOrbRecovery(",
             "MatchOrbVisual.Build(",
