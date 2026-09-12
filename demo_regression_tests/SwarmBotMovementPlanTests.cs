@@ -40,7 +40,8 @@ public sealed class SwarmBotMovementPlanTests
         };
 
         var match = CreateMatch();
-        SwarmBotMovementPlan plan = match.Bots.PrepareExternalMovement(
+        using var scope = match.Enter();
+        SwarmBotMovementPlan plan = new BotMovementService(NullLogger<BotMovementService>.Instance).PrepareExternalMovement(match,
             movement,
             [],
             observers);
@@ -98,7 +99,7 @@ public sealed class SwarmBotMovementPlanTests
     {
         string root = FindRepositoryRoot();
         string coordinator = ReadNormalizedSource(
-            root, "game_server", "Players", "Bots", "BotPlayerManager.MovementPlan.cs");
+            root, "game_server", "Players", "Bots", "BotMovementService.cs");
         string server = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotMovementService.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs");
         string tick = ReadMethodSlice(
@@ -114,7 +115,7 @@ public sealed class SwarmBotMovementPlanTests
             "private void DispatchSwarmBotMovementPlan(",
             "public void DispatchExternalMovement(");
 
-        Assert.DoesNotContain("MatchRuntime", coordinator);
+        coordinator = coordinator[coordinator.IndexOf("internal SwarmBotMovementPlan PrepareMovementTick(", StringComparison.Ordinal)..];
         Assert.DoesNotContain("PacketMaker", coordinator);
         Assert.DoesNotContain("MessagePackSerializer", coordinator);
         Assert.DoesNotContain(".TrySend(", coordinator);
@@ -140,7 +141,7 @@ public sealed class SwarmBotMovementPlanTests
             process,
             "runtime.GetSessions()",
             "CaptureSwarmBotObservers(matchingId, sessionSnapshot)",
-            "Bots.PrepareMovementTick(",
+            "PrepareMovementTick(runtime,",
             "DispatchSwarmBotMovementPlan(plan)",
             "BotTickMetrics.Record(",
             "PublishBotMovementMetrics(batch)");

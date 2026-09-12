@@ -168,7 +168,7 @@ internal sealed class PlayerPickupService(PlayerHealthService healthService, ILo
         }
         if (player.PlayerId < 0 &&
             item.ItemId is Config.SUMMON_STONE_GROUND_ITEM_ID or Config.BOOTS_GROUND_ITEM_ID &&
-            items.WasSpawnedWithin(item.GroundItemUid, BotPlayerManager.SummonStoneBotReactionDelay))
+            items.WasSpawnedWithin(item.GroundItemUid, BotMovementService.SummonStoneBotReactionDelay))
         {
             return false;
         }

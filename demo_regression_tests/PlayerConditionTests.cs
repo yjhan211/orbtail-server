@@ -138,7 +138,7 @@ public sealed class PlayerConditionTests
     public void PlayersAndBotsStartAtFullHealth()
     {
         Assert.Equal(Config.MAX_HEALTH, new Player { Profile = new PlayerInfo { PlayerId = 1 } }.Health);
-        Assert.Equal(Config.MAX_HEALTH, new BotPlayerState().Player.Health);
+        Assert.Equal(Config.MAX_HEALTH, new Bot().Player.Health);
     }
 
     [Fact]

@@ -105,7 +105,7 @@ public sealed class MatchGameplayServiceTests
         var service = provider.GetRequiredService<MatchTrailCutService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947802);
         int initialHealth = health == 35 ? health : network.common.Config.MAX_HEALTH;
-        var bot = new BotPlayerState { PlayerId = cutterId, Player = { Health = initialHealth } };
+        var bot = new Bot { PlayerId = cutterId, Player = { Health = initialHealth } };
         var cutter = bot.Player;
         var owner = new game_server.players.Player { Profile = new PlayerInfo { PlayerId = 202 } };
         var now = DateTime.UtcNow;
@@ -213,7 +213,7 @@ public sealed class MatchGameplayServiceTests
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var service = provider.GetRequiredService<BotDecisionService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947799);
-        var bot = new BotPlayerState
+        var bot = new Bot
         {
             PlayerId = -11,
             Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA }
@@ -339,7 +339,7 @@ public sealed class MatchGameplayServiceTests
         var service = provider.GetRequiredService<BotDecisionService>();
         var store = provider.GetRequiredService<MatchRuntimeStore>();
         var match = store.GetOrCreate(947703);
-        var bot = new BotPlayerState { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA } };
+        var bot = new Bot { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA } };
         match.RegisterParticipant(bot.Player);
         var now = DateTime.UtcNow;
         using (match.Enter())
@@ -370,8 +370,8 @@ public sealed class MatchGameplayServiceTests
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var service = provider.GetRequiredService<BotDecisionService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947704);
-        var bot = new BotPlayerState { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA } };
-        var enemy = new BotPlayerState { PlayerId = -12 };
+        var bot = new Bot { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA } };
+        var enemy = new Bot { PlayerId = -12 };
         match.RegisterParticipant(bot.Player);
         var now = DateTime.UtcNow;
         using (match.Enter())
@@ -402,12 +402,12 @@ public sealed class MatchGameplayServiceTests
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947706);
-        var bot = new BotPlayerState { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA, Velocity = new Vector3f(3, 0, 0) } };
+        var bot = new Bot { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA, Velocity = new Vector3f(3, 0, 0) } };
         match.Bots.GetBots().Add(bot);
         using (match.Enter())
         {
             Assert.True(bot.Player.TryStartSleep(DateTime.UtcNow));
-            var result = match.Bots.ProcessBotMovementTick(match.Closures,
+            var result = provider.GetRequiredService<BotMovementService>().ProcessBotMovementTick(match, match.Closures,
                 new Dictionary<long, network.common.AreaType>(), match.GroundItems,
                 _ => throw new InvalidOperationException("A sleeping bot must not request a movement plan."));
             Assert.Single(result.Movements);
@@ -426,7 +426,7 @@ public sealed class MatchGameplayServiceTests
         var store = provider.GetRequiredService<MatchRuntimeStore>();
         var match = store.GetOrCreate(947705);
         var now = DateTime.UtcNow;
-        var bot = new BotPlayerState { PlayerId = 11 };
+        var bot = new Bot { PlayerId = 11 };
         using (MatchRuntimeStore.Enter(match))
         {
             int half = (int)(network.common.Config.MAX_HEALTH * 0.5f);

@@ -122,7 +122,7 @@ public sealed class GameClientSessionPublicationTests
         var session = fixture.CreateSession(70001, -101, Config.SWARM_MATCH_GROUND_AREA);
         var item = fixture.SpawnAtSession(session, itemId);
         var match = session.Match;
-        var bot = new game_server.players.bots.BotPlayerState { PlayerId = -102 };
+        var bot = new game_server.players.bots.Bot { PlayerId = -102 };
         var player = bot.Player;
         player.Position = session.Player.Position;
         player.CurrentArea = session.Player.CurrentArea;
@@ -284,7 +284,7 @@ public sealed class GameClientSessionPublicationTests
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 102, (AreaType)50);
         var match = session.Match;
-        var bot = new game_server.players.bots.BotPlayerState { PlayerId = -11 };
+        var bot = new game_server.players.bots.Bot { PlayerId = -11 };
         bot.Player.Health = session.Player.Health;
         match.Bots.GetBots().Add(bot);
         int before = bot.Player.Health;
@@ -309,7 +309,7 @@ public sealed class GameClientSessionPublicationTests
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 102, (AreaType)50);
         var match = session.Match;
-        var bot = new game_server.players.bots.BotPlayerState { PlayerId = -11 };
+        var bot = new game_server.players.bots.Bot { PlayerId = -11 };
         bot.Player.Health = session.Player.Health;
         bot.Player.CurrentArea = session.Player.CurrentArea;
         match.Bots.GetBots().Add(bot);

@@ -52,7 +52,7 @@ public sealed class PlayerEliminationCauseTests
         var match = store.GetOrCreate(1);
         var healthService = TestGameSessionServices.CreateHealthService(store, NullLogger.Instance);
         var combat = TestGameSessionServices.CreateCombatDamageService();
-        var bot = new BotPlayerState { PlayerId = -1, Player = { Health = 10 } };
+        var bot = new Bot { PlayerId = -1, Player = { Health = 10 } };
         using (match.Enter())
         {
             match.Bots.GetBots().Add(bot);

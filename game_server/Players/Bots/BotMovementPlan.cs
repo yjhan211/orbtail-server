@@ -95,3 +95,16 @@ internal sealed record SwarmBotMovementDispatch(
     ImmutableArray<GameClientSession> LeaveRecipients,
     ImmutableArray<GameClientSession> DestinationRecipients,
     SwarmBotPlayerInfoSnapshot? EnteringBot);
+
+public class BotMovementEvent
+{
+    public long BotPlayerId { get; set; }
+    public AreaType FromArea { get; set; }
+    public AreaType ToArea { get; set; }
+    public Cell FromCell { get; set; } = new(0, 0);
+    public Cell ToCell { get; set; } = new(0, 0);
+    public Vector3f Position { get; set; } = new(0f, 0f, 0f);
+    public Vector3f Velocity { get; set; } = new(0f, 0f, 0f);
+    public float Rotation { get; set; }
+    public bool IsAreaTransition { get; set; }
+}

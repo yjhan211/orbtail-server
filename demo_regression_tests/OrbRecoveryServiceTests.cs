@@ -25,7 +25,7 @@ public sealed class PlayerOrbRecoveryTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947301);
         var service = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService(), new PlayerOrbTrailService());
-        var bot = new BotPlayerState { PlayerId = 11, Player = { Health = Config.MAX_HEALTH - 12 } };
+        var bot = new Bot { PlayerId = 11, Player = { Health = Config.MAX_HEALTH - 12 } };
         var first = new ProximityCombatActor(11, AreaType.None, new Vector3f(0, 0, 0),
             107000040, 0, 0, 0, WeaponItemUid: 1);
         var second = first with { WeaponItemId = 107000041, WeaponItemUid = 2 };
@@ -102,7 +102,7 @@ public sealed class PlayerOrbRecoveryTests
             service.ProcessOrbRecovery(firstMatch, [actor], now);
         using (MatchRuntimeStore.Enter(secondMatch))
         {
-            var bot = new BotPlayerState { PlayerId = 11, Player = { Health = 10 } };
+            var bot = new Bot { PlayerId = 11, Player = { Health = 10 } };
             secondMatch.RegisterParticipant(bot.Player);
             service.ProcessOrbRecovery(secondMatch, [actor], now.AddSeconds(5));
             Assert.Equal(10, bot.Player.Health);

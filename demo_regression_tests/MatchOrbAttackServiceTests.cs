@@ -47,8 +47,8 @@ public sealed class MatchOrbAttackServiceTests
         var match = store.GetOrCreate(947601);
         var service = new MatchOrbAttackService(TestGameSessionServices.CreateHealthService(store, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), TestGameSessionServices.CreateCombatDamageService());
         var now = DateTime.UtcNow;
-        var owner = new BotPlayerState { PlayerId = 11 };
-        var victim = new BotPlayerState { PlayerId = 12 };
+        var owner = new Bot { PlayerId = 11 };
+        var victim = new Bot { PlayerId = 12 };
         match.RegisterParticipant(owner.Player);
         match.RegisterParticipant(victim.Player);
         using (MatchRuntimeStore.Enter(match))
@@ -93,7 +93,7 @@ public sealed class MatchOrbAttackServiceTests
         var second = store.GetOrCreate(947603);
         var service = new MatchOrbAttackService(TestGameSessionServices.CreateHealthService(store, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), TestGameSessionServices.CreateCombatDamageService());
         var now = DateTime.UtcNow;
-        var burned = new BotPlayerState { PlayerId = 12 };
+        var burned = new Bot { PlayerId = 12 };
         using (MatchRuntimeStore.Enter(first))
         {
             first.RegisterParticipant(burned.Player);
@@ -103,7 +103,7 @@ public sealed class MatchOrbAttackServiceTests
         var due = now.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS);
         using (MatchRuntimeStore.Enter(second))
         {
-            var victim = new BotPlayerState { PlayerId = 12 };
+            var victim = new Bot { PlayerId = 12 };
             second.RegisterParticipant(victim.Player);
             service.ProcessSunBurns(second, due);
             Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
@@ -166,7 +166,7 @@ public sealed class MatchOrbAttackServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(43002);
         var service = CreateService(store);
-        var victim = new BotPlayerState { PlayerId = 20 };
+        var victim = new Bot { PlayerId = 20 };
         using var scope = MatchRuntimeStore.Enter(match);
         match.RegisterParticipant(victim.Player);
         int tickDamage = Math.Max(1, (int)MathF.Round(

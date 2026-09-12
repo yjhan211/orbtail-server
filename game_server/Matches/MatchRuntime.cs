@@ -50,7 +50,7 @@ internal sealed class MatchRuntime
         _logger = logger;
         _matchSessionCleanup = matchSessionCleanup;
         MatchingId = matchingId;
-        Bots = new BotPlayerManager(matchingId, logger, Doors, SunCrossfireShapes);
+        Bots = new BotPlayerManager(matchingId, logger);
         GroundItems = new MatchGroundItemState();
         Closures = new MatchAreaClosureState();
         Monsters = new MatchMonsters();

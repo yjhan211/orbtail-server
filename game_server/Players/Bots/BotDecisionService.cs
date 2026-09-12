@@ -59,7 +59,7 @@ internal sealed class BotDecisionService(
         return growth.UpgradeOrb(runtime, player, Config.ORB_UPGRADE_GROUP, targetItemId).Success;
     }
 
-    public void ProcessBotOrbGrowth(MatchRuntime runtime, IReadOnlyList<BotPlayerState> aliveBots)
+    public void ProcessBotOrbGrowth(MatchRuntime runtime, IReadOnlyList<Bot> aliveBots)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -100,7 +100,7 @@ internal sealed class BotDecisionService(
 
     public void ProcessSwarmBotDoorUnlocks(
         MatchRuntime runtime,
-        List<BotPlayerState> bots,
+        List<Bot> bots,
         List<GameClientSession> sessions,
         DateTime nowUtc)
     {
@@ -129,7 +129,7 @@ internal sealed class BotDecisionService(
         }
     }
 
-    private bool TryFindNearestLockedGaugeDoor(MatchRuntime runtime, BotPlayerState bot, out int doorId)
+    private bool TryFindNearestLockedGaugeDoor(MatchRuntime runtime, Bot bot, out int doorId)
     {
         doorId = 0;
         float best = float.MaxValue;
@@ -290,7 +290,7 @@ internal sealed class BotDecisionService(
     ///     잔상 위협 지시: 내 구역에 깨어난 몹 무리가 가까우면 반대쪽으로 이탈하고, 아니면 현재 구역 안을 배회한다.
     ///     잠든 몹은 위험이 아니다. 배회는 Return이 아닌 Escort로 돌려준다 — Return은 개봉 채널 완료 로직을 단락시킨다.
     /// </summary>
-    private static SwarmBotDirective ResolveMonsterThreatDirective(MatchRuntime runtime, BotPlayerState bot, DateTime nowUtc)
+    private static SwarmBotDirective ResolveMonsterThreatDirective(MatchRuntime runtime, Bot bot, DateTime nowUtc)
     {
         var position = bot.Player.Position!;
         var area = bot.Player.CurrentArea;
@@ -722,7 +722,7 @@ internal sealed class BotDecisionService(
     ///     완료 로직이 산다 (Return 단락 사고).
     /// </summary>
     private bool TryFindNearestSwarmSupplyMonster(
-        MatchRuntime runtime, BotPlayerState bot, out AreaType area, out Vector3f position)
+        MatchRuntime runtime, Bot bot, out AreaType area, out Vector3f position)
     {
         area = AreaType.None;
         position = null!;
@@ -756,7 +756,7 @@ internal sealed class BotDecisionService(
     // 수렴한다 — 이보다 가까우면 도주가 아니므로 다음 폴백(구역 이탈)으로 넘긴다.
     private const float SwarmBotMinFleeTargetDistance = 3f;
 
-    private static bool IsFarEnoughSwarmFleeTarget(BotPlayerState bot, Vector3f target)
+    private static bool IsFarEnoughSwarmFleeTarget(Bot bot, Vector3f target)
     {
         float dx = target.X - bot.Player.Position!.X;
         float dy = target.Y - bot.Player.Position!.Y;
@@ -780,7 +780,7 @@ internal sealed class BotDecisionService(
     private const float SwarmBotWoundedExitRatio = 0.55f;
 
     /// <summary>봇의 치명상 상태를 갱신하고 돌려준다 — 남은 체력 40% 이하에서 진입, 55% 이상에서 해제.</summary>
-    private bool UpdateSwarmBotWoundedState(MatchRuntime runtime, BotPlayerState bot)
+    private bool UpdateSwarmBotWoundedState(MatchRuntime runtime, Bot bot)
     {
         bool wounded = bot.Wounded;
         float ratio = bot.Player.Health / (float)Config.MAX_HEALTH;
@@ -816,7 +816,7 @@ internal sealed class BotDecisionService(
     ///     봇이 지금 절단을 질러도 되는가 — 비용을 내고도 체력이 절반 이상이고, 직전 절단에서 쿨다운이 지났는가.
     ///     사람 판정이 아니다: 사람의 절단은 체력이 0이 되지만 않으면 언제나 성립한다.
     /// </summary>
-    public bool IsSwarmBotCutAllowed(BotPlayerState bot, int healthBefore, DateTime nowUtc, int cutCost)
+    public bool IsSwarmBotCutAllowed(Bot bot, int healthBefore, DateTime nowUtc, int cutCost)
     {
         if (healthBefore - cutCost <
             Config.MAX_HEALTH * SwarmBotCutMinHealthRatio)
@@ -844,7 +844,7 @@ internal sealed class BotDecisionService(
 
     private void FindNearbySwarmRivals(
         MatchRuntime runtime,
-        BotPlayerState bot,
+        Bot bot,
         float myPower,
         bool includeMonstersAsStronger,
         out Vector3f? strongerPosition,
@@ -904,7 +904,7 @@ internal sealed class BotDecisionService(
         weakerRival = nearestWeaker;
     }
 
-    private bool HasSwarmMonsterInBasicRange(MatchRuntime runtime, BotPlayerState bot)
+    private bool HasSwarmMonsterInBasicRange(MatchRuntime runtime, Bot bot)
     {
         float rangeSquared = Config.SWARM_ORB_ATTACK_RANGE * Config.SWARM_ORB_ATTACK_RANGE;
         foreach (var target in runtime.Monsters.GetCombatTargets(DateTime.UtcNow))
@@ -921,7 +921,7 @@ internal sealed class BotDecisionService(
     }
 
     /// <summary>안전하고 체력이 부족하면 수면을 선택한다. 회복은 공통 Player 규칙으로 처리한다.</summary>
-    public void UpdateSleep(MatchRuntime runtime, IReadOnlyList<BotPlayerState> bots, DateTime nowUtc)
+    public void UpdateSleep(MatchRuntime runtime, IReadOnlyList<Bot> bots, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -974,7 +974,7 @@ internal sealed class BotDecisionService(
     ///     반응 지연 (#222): 갓 떨어진 돌은 무시 — 사람이 먼저 주울 시간을 준다.
     /// </summary>
     private bool TryFindNearestSwarmGroundStone(
-        MatchRuntime runtime, BotPlayerState bot, out Vector3f position)
+        MatchRuntime runtime, Bot bot, out Vector3f position)
     {
         position = null!;
         float bestDistanceSquared = float.MaxValue;
@@ -982,7 +982,7 @@ internal sealed class BotDecisionService(
         {
             if (item.ItemId != Config.SUMMON_STONE_GROUND_ITEM_ID ||
                 runtime.GroundItems.WasSpawnedWithin(
-                    item.GroundItemUid, BotPlayerManager.SummonStoneBotReactionDelay))
+                    item.GroundItemUid, BotMovementService.SummonStoneBotReactionDelay))
                 continue;
 
             float dx = item.PositionX - bot.Player.Position!.X;

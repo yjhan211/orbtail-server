@@ -18,7 +18,7 @@ public sealed class WindOrbAttackServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947503);
-        var owner = new BotPlayerState { PlayerId = 11 };
+        var owner = new Bot { PlayerId = 11 };
         var service = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService(), new PlayerOrbTrailService());
         Assert.Throws<InvalidOperationException>(() => service.ActivateWindOrbs(match, owner.Player, DateTime.UtcNow));
         using (match.Enter())
@@ -36,8 +36,8 @@ public sealed class WindOrbAttackServiceTests
         var trails = new PlayerOrbTrailService();
         var service = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), TestGameSessionServices.CreateCombatDamageService(), trails);
         var now = DateTime.UtcNow;
-        var owner = new BotPlayerState { PlayerId = 11 };
-        var victim = new BotPlayerState { PlayerId = 12 };
+        var owner = new Bot { PlayerId = 11 };
+        var victim = new Bot { PlayerId = 12 };
         match.RegisterParticipant(owner.Player);
         match.RegisterParticipant(victim.Player);
         using (MatchRuntimeStore.Enter(match))
@@ -74,8 +74,8 @@ public sealed class WindOrbAttackServiceTests
         var match = store.GetOrCreate(947502);
         var trails = new PlayerOrbTrailService();
         var service = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), TestGameSessionServices.CreateCombatDamageService(), trails);
-        var owner = new BotPlayerState { PlayerId = 11 };
-        var victim = new BotPlayerState { PlayerId = 12 };
+        var owner = new Bot { PlayerId = 11 };
+        var victim = new Bot { PlayerId = 12 };
         match.RegisterParticipant(owner.Player);
         match.RegisterParticipant(victim.Player);
         using (MatchRuntimeStore.Enter(match))

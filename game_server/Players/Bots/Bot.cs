@@ -1,5 +1,3 @@
-using game_server.matches;
-using game_server.players;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -7,7 +5,7 @@ using network.common.data.models;
 namespace game_server.players.bots;
 
 /// <summary>공통 Player를 참조하며 봇의 판단·경로·행동 대기 상태를 보관한다.</summary>
-public class BotPlayerState
+public class Bot
 {
     /// <summary>매치 참가자와 공유하는 체력·위치·탈락 상태. 봇의 판단·경로 상태는 별도로 보관한다.</summary>
     // 사람은 입장 준비 전 위치가 없을 수 있지만, 봇은 생성 시 셀과 위치를 항상 초기화한다.

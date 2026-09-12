@@ -347,9 +347,9 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("MatchRuntimeStore matchRuntimes", crossfire);
         Assert.Contains("public List<SwarmCrossfireShape> SunCrossfireShapes { get; } = new();", botDodge);
 
-        Assert.Contains("new BotPlayerManager(matchingId, logger, Doors, SunCrossfireShapes)", botDodge);
-        string botMovement = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotPlayerManager.Movement.cs");
-        Assert.Contains("_sunCrossfireShapes, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now", botMovement);
+        Assert.Contains("new BotPlayerManager(matchingId, logger)", botDodge);
+        string botMovement = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotMovementService.cs");
+        Assert.Contains("runtime.SunCrossfireShapes, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now", botMovement);
         Assert.DoesNotContain("matchRuntimes.GetOrThrow(matchingId).Swarm", botDodge);
         Assert.False(File.Exists(Path.Combine(root, "game_server", "GameServer.SwarmBotDodge.cs")));
     }

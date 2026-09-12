@@ -13,20 +13,20 @@ public sealed class MatchOwnedBotsTests
     public void BotMovementUsesCurrentWindOrbs()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
-        var bot = new BotPlayerState { PlayerId = -1 };
+        var bot = new Bot { PlayerId = -1 };
 
-        Assert.Equal(1f, BotPlayerManager.GetBotMovementSpeedMultiplier(bot));
+        Assert.Equal(1f, BotMovementService.GetBotMovementSpeedMultiplier(bot));
         Assert.True(bot.Player.Orbs.TryAddItemWithCapacity(107000020, 8, out _));
-        Assert.Equal(1.06f, BotPlayerManager.GetBotMovementSpeedMultiplier(bot));
+        Assert.Equal(1.06f, BotMovementService.GetBotMovementSpeedMultiplier(bot));
         Assert.True(bot.Player.Orbs.TryAddItemWithCapacity(107000022, 8, out _));
-        Assert.Equal(1.08f, BotPlayerManager.GetBotMovementSpeedMultiplier(bot));
+        Assert.Equal(1.08f, BotMovementService.GetBotMovementSpeedMultiplier(bot));
 
         bot.BootsSpeedUntilUtc = DateTime.UtcNow.AddMinutes(1);
         Assert.Equal(1.08f * Config.BOOTS_MOVE_SPEED_MULTIPLIER,
-            BotPlayerManager.GetBotMovementSpeedMultiplier(bot));
+            BotMovementService.GetBotMovementSpeedMultiplier(bot));
         bot.Player.Orbs.TakeAllItems();
         Assert.Equal(Config.BOOTS_MOVE_SPEED_MULTIPLIER,
-            BotPlayerManager.GetBotMovementSpeedMultiplier(bot));
+            BotMovementService.GetBotMovementSpeedMultiplier(bot));
     }
 
     [Fact]
@@ -64,21 +64,53 @@ public sealed class MatchOwnedBotsTests
         var first = store.GetOrCreate(1);
         var second = store.GetOrCreate(2);
         Assert.NotSame(first.Bots, second.Bots);
+        var movementService = new BotMovementService(NullLogger<BotMovementService>.Instance);
         using (MatchRuntimeStore.Enter(first))
-            Assert.Equal(1L, first.Bots.PrepareMovementTick(first.Closures, first.GroundItems, [], [], _ => default).MatchingId);
+            Assert.Equal(1L, movementService.PrepareMovementTick(first, first.Closures, first.GroundItems, [], [], _ => default).MatchingId);
         using (MatchRuntimeStore.Enter(second))
-            Assert.Equal(2L, second.Bots.PrepareMovementTick(second.Closures, second.GroundItems, [], [], _ => default).MatchingId);
+            Assert.Equal(2L, movementService.PrepareMovementTick(second, second.Closures, second.GroundItems, [], [], _ => default).MatchingId);
         using (MatchRuntimeStore.Enter(first))
         {
             first.TryMarkEnded();
-            var movementService = new BotMovementService(NullLogger<BotMovementService>.Instance);
+
             Assert.Throws<InvalidOperationException>(() => movementService.ProcessTick(first, _ => default));
         }
-        Assert.Throws<InvalidOperationException>(() => first.Bots.PrepareMovementTick(first.Closures, first.GroundItems, [], [], _ => default));
+        Assert.Throws<InvalidOperationException>(() => movementService.PrepareMovementTick(first, first.Closures, first.GroundItems, [], [], _ => default));
         using (MatchRuntimeStore.Enter(second))
-            Assert.Equal(2L, second.Bots.PrepareMovementTick(second.Closures, second.GroundItems, [], [], _ => default).MatchingId);
+            Assert.Equal(2L, movementService.PrepareMovementTick(second, second.Closures, second.GroundItems, [], [], _ => default).MatchingId);
     }
 
+    [Fact]
+    public void SharedMovementServiceKeepsPlanningOrderPerMatch()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var first = store.GetOrCreate(101);
+        var second = store.GetOrCreate(102);
+        var service = new BotMovementService(NullLogger<BotMovementService>.Instance);
+        foreach (var match in new[] { first, second })
+        {
+            using (match.Enter())
+            {
+                match.Bots.GetBots().Add(new Bot { PlayerId = -1 });
+                match.Bots.GetBots().Add(new Bot { PlayerId = -2 });
+            }
+        }
+
+        long SelectNext(MatchRuntime match)
+        {
+            using (match.Enter())
+            {
+                return service.ProcessBotMovementTick(match, match.Closures,
+                    new Dictionary<long, AreaType>(), match.GroundItems, _ => default).PlanningBotId;
+            }
+        }
+
+        Assert.Throws<InvalidOperationException>(() => service.ProcessTick(first, _ => default));
+        Assert.Equal(-2L, SelectNext(first));
+        Assert.Equal(-2L, SelectNext(second));
+        Assert.Equal(-1L, SelectNext(first));
+        Assert.Equal(-1L, SelectNext(second));
+    }
     [Fact]
     public void MonstersAreIsolatedAndReleasedWithTheirMatch()
     {
@@ -108,13 +140,13 @@ public sealed class MatchOwnedBotsTests
         {
             var cells = network.common.data.MatchSpawnData.CreatePhaseRoomAssignments(match.MatchingId, [1L, -1L]);
             match.Bots.RegisterBots(Config.SWARM_MATCH_MAP, [-1L], cells);
-            var bot = Assert.IsType<BotPlayerState>(match.Bots.GetBot(-1));
+            var bot = Assert.IsType<Bot>(match.Bots.GetBot(-1));
             var profile = match.Bots.GetPlayerProfile(-1)!;
             bot.Player.ApplyDamage(20);
             match.InitializeMatch(MatchMode.Normal, cells, [new PlayerInfo { PlayerId = 1 }, profile]);
             Assert.Same(bot.Player, match.GetParticipant(-1));
             Assert.Same(profile, bot.Player.Profile);
-            Assert.Null(typeof(BotPlayerState).GetProperty("Health"));
+            Assert.Null(typeof(Bot).GetProperty("Health"));
             Assert.Equal(Config.MAX_HEALTH - 20, match.GetParticipant(-1)!.Health);
             match.GetParticipant(-1)!.Recover(5);
             Assert.Equal(Config.MAX_HEALTH - 15, bot.Player.Health);
@@ -157,7 +189,7 @@ public sealed class MatchOwnedBotsTests
             Assert.NotSame(player.Position, snapshot.Position);
             Assert.Null(match.GetParticipant(1)!.Position);
             foreach (string field in new[] { "Position", "Cell", "WalkVelocity", "Rotation", "CurrentArea" })
-                Assert.Null(typeof(BotPlayerState).GetProperty(field));
+                Assert.Null(typeof(Bot).GetProperty(field));
         }
     }
     [Fact]
@@ -167,8 +199,9 @@ public sealed class MatchOwnedBotsTests
         var first = store.GetOrCreate(1);
         var second = store.GetOrCreate(2);
         first.Bots.RegisterBots(Config.SWARM_MATCH_MAP, [], new Dictionary<long, Cell>());
-        first.Bots.GetBots().Add(new BotPlayerState { PlayerId = -1 });
+        first.Bots.GetBots().Add(new Bot { PlayerId = -1 });
         Assert.NotSame(first.Bots, second.Bots);
+        var movementService = new BotMovementService(NullLogger<BotMovementService>.Instance);
         Assert.Single(first.Bots.GetBots());
         Assert.Empty(second.Bots.GetBots());
         using (MatchRuntimeStore.Enter(first)) first.TryMarkEnded();

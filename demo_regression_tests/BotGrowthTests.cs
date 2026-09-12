@@ -19,7 +19,7 @@ public sealed class BotGrowthTests
         match.RegisterParticipant(human);
         var growth = new PlayerOrbGrowthService(NullLogger<PlayerOrbGrowthService>.Instance);
         var decisions = new BotDecisionService(growth, new PlayerOrbTrailService(), new PlayerInteractionService(), NullLogger<BotDecisionService>.Instance);
-        var bot = new BotPlayerState { PlayerId = -1 };
+        var bot = new Bot { PlayerId = -1 };
         match.RegisterParticipant(bot.Player);
         using (match.Enter())
         {
@@ -46,7 +46,7 @@ public sealed class BotGrowthTests
         var match = store.GetOrCreate(949102);
         var growth = new PlayerOrbGrowthService(NullLogger<PlayerOrbGrowthService>.Instance);
         var decisions = new BotDecisionService(growth, new PlayerOrbTrailService(), new PlayerInteractionService(), NullLogger<BotDecisionService>.Instance);
-        var bot = new BotPlayerState { PlayerId = -1 };
+        var bot = new Bot { PlayerId = -1 };
         match.RegisterParticipant(bot.Player);
         using (match.Enter())
         {
@@ -69,7 +69,7 @@ public sealed class BotGrowthTests
         var match = store.GetOrCreate(949103);
         var growth = new PlayerOrbGrowthService(NullLogger<PlayerOrbGrowthService>.Instance);
         var decisions = new BotDecisionService(growth, new PlayerOrbTrailService(), new PlayerInteractionService(), NullLogger<BotDecisionService>.Instance);
-        var bot = new BotPlayerState { PlayerId = -1 };
+        var bot = new Bot { PlayerId = -1 };
         match.RegisterParticipant(bot.Player);
         using (match.Enter())
         {
