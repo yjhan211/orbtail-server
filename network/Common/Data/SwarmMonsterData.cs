@@ -45,8 +45,6 @@ namespace network.common.data
         public float AttackCooldownSeconds { get; private set; }
         public int StoneReward { get; private set; }
         public int HeartReward { get; private set; }
-        public int BootsReward { get; private set; }
-        public int KeyReward { get; private set; }
         public float ContactRadiusScale { get; private set; }
 
         public static SwarmMonsterDefinition CreateFromData(CsvRow row)
@@ -61,15 +59,13 @@ namespace network.common.data
                     float.Parse(row["attack_cooldown_seconds"], CultureInfo.InvariantCulture),
                 StoneReward = int.Parse(row["stone_reward"], CultureInfo.InvariantCulture),
                 HeartReward = int.Parse(row["heart_reward"], CultureInfo.InvariantCulture),
-                BootsReward = int.Parse(row["boots_reward"], CultureInfo.InvariantCulture),
-                KeyReward = int.Parse(row["key_reward"], CultureInfo.InvariantCulture),
                 ContactRadiusScale = float.Parse(row["contact_radius_scale"], CultureInfo.InvariantCulture)
             };
 
             if (definition.Kind < 0 || definition.MaxHp <= 0 || definition.OrbDamage <= 0 ||
                 definition.AttackRange < 0f || definition.AttackCooldownSeconds <= 0f ||
                 definition.StoneReward < 0 || definition.HeartReward < 0 ||
-                definition.BootsReward < 0 || definition.KeyReward < 0 ||
+
                 definition.ContactRadiusScale <= 0f)
             {
                 throw new ArgumentException($"Invalid swarm monster data: kind={definition.Kind}");

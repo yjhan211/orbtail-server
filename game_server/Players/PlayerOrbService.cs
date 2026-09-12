@@ -141,7 +141,7 @@ internal sealed class PlayerOrbService(
         }
 
         var alivePlayers = runtime.GetAlivePlayers();
-        IReadOnlyList<MonsterCombatTarget>? monsterTargets = null;
+        IReadOnlyList<Monster>? monsterTargets = null;
         var orderedOrbs = owner.Orbs.GetOrderedOrbs();
         if (orderedOrbs.Count == 0)
         {
@@ -499,7 +499,7 @@ internal sealed class PlayerOrbService(
         long matchingId = runtime.MatchingId;
         var alivePlayers = runtime.GetAlivePlayers();
         var activeSessions = runtime.GetSessions().Where(session => !session.IsGameEnded).ToList();
-        IReadOnlyList<MonsterCombatTarget>? monsterTargets = null;
+        IReadOnlyList<Monster>? monsterTargets = null;
         var orderedOrbs = owner.Orbs.GetOrderedOrbs();
         if (orderedOrbs.Count == 0)
         {
@@ -525,7 +525,7 @@ internal sealed class PlayerOrbService(
             var orbPosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, owner.Position!, orbTiers);
             float radius = Config.SWARM_WIND_BLADE_RADIUS_BY_TIER[Math.Clamp(tier, 1, 3) - 1];
             monsterTargets ??= runtime.Monsters.GetCombatTargets(nowUtc);
-            List<MonsterCombatTarget>? monstersInRadius = null;
+            List<Monster>? monstersInRadius = null;
             foreach (var monster in monsterTargets)
             {
                 if (monster.Area != owner.CurrentArea)

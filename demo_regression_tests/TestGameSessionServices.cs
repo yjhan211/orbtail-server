@@ -80,7 +80,7 @@ internal static class TestGameSessionServices
         return new MatchRuntimeStore(logger.For<MatchRuntime>(), lifecycle);
     }
     public static MatchCombatDamageService CreateCombatDamageService(GameEventLogManager logs) =>
-        new(logs, new MatchMonsterService(new MonsterSupplyService(), new MonsterMovementService()));
+        new(logs, new MatchMonsterService(new MonsterMovementService()));
 
     public static PlayerMovementService CreateMovementService(GameEventLogManager logs) =>
         new(logs, NullLogger<PlayerMovementService>.Instance);

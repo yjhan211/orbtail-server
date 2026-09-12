@@ -1,5 +1,5 @@
-kind,max_hp,orb_damage,attack_range,attack_cooldown_seconds,stone_reward,heart_reward,boots_reward,key_reward,contact_radius_scale,comment
-0,12,1,0,1,1,0,0,0,1,해골(폴백) — 미등록 종의 기본값
-1,18,2,0,2,1,0,1,0,1.4,다트 고블린 — T1 오브 2방·부츠 드롭
-2,120,5,0,1.2,4,1,0,1,2.4,탈주 고블린 — 미니보스·하트/열쇠 확정
-3,48,2,0,2.5,4,1,0,0,1.8,볼러 — T1 오브 4방·하트 드롭
+kind,max_hp,orb_damage,attack_range,attack_cooldown_seconds,stone_reward,heart_reward,contact_radius_scale,comment
+0,12,1,0,1,1,0,1,해골(폴백) — 미등록 종의 기본값
+1,18,2,0,2,1,0,1.4,다트 고블린 — T1 오브 2방
+2,120,5,0,1.2,4,1,2.4,탈주 고블린 — 미니보스·하트 확정
+3,48,2,0,2.5,4,1,1.8,볼러 — T1 오브 4방·하트 드롭

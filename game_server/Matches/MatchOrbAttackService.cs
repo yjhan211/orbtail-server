@@ -103,7 +103,7 @@ internal sealed class MatchOrbAttackService(
         }
 
         var shapes = runtime.SunCrossfireShapes;
-        IReadOnlyList<MonsterCombatTarget>? monsters = null;
+        IReadOnlyList<Monster>? monsters = null;
         for (int index = shapes.Count - 1; index >= 0; index--)
         {
             var shape = shapes[index];

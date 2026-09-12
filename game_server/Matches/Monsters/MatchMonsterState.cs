@@ -135,16 +135,16 @@ public sealed class MatchMonsterState
         return statesByArea;
     }
 
-    public IReadOnlyList<MonsterCombatTarget> GetCombatTargets(DateTime nowUtc)
+    public IReadOnlyList<Monster> GetCombatTargets(DateTime nowUtc)
     {
-        var targets = new List<MonsterCombatTarget>();
+        var targets = new List<Monster>();
         foreach (var monster in Entities.Values)
         {
             if (!monster.Alive || nowUtc < monster.ActivatesAtUtc || monster.Health <= monster.PendingDamage)
             {
                 continue;
             }
-            targets.Add(new MonsterCombatTarget(monster.CombatTargetId, monster.Area, monster.Position, monster.MonsterId));
+            targets.Add(monster);
         }
         return targets;
     }

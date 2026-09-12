@@ -240,23 +240,22 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, Ma
         return critical ? Math.Max(damage + 1, (int)MathF.Round(damage * SwarmCriticalMultiplier)) : damage;
     }
 
-    private void SpawnSwarmSummonStone(MatchRuntime runtime, MonsterRuntimeInfo defeatedWave, IReadOnlyCollection<GameClientSession> sessions, int heartReward = 0)
+    private void SpawnSwarmSummonStone(MatchRuntime runtime, Monster defeated, int groundStoneReward, int heartReward, IReadOnlyCollection<GameClientSession> sessions)
     {
-        int groundStoneReward = defeatedWave.SummonStoneReward;
         if (groundStoneReward <= 0 && heartReward <= 0)
         {
             return;
         }
 
         int[] itemIds = Enumerable.Repeat(Config.SUMMON_STONE_GROUND_ITEM_ID, Math.Max(0, groundStoneReward)).Concat(Enumerable.Repeat(Config.HEART_GROUND_ITEM_ID, Math.Max(0, heartReward))).ToArray();
-        var spawned = runtime.GroundItems.SpawnItems(defeatedWave.AreaType, defeatedWave.PositionX, defeatedWave.PositionY, itemIds);
+        var spawned = runtime.GroundItems.SpawnItems(defeated.Area, defeated.Position.X, defeated.Position.Y, itemIds);
         foreach (var item in spawned)
         {
-            eventLogs.LogGroundItemSpawned(runtime.MatchingId, 0, item.GroundItemUid, item.ItemId, defeatedWave.AreaType.ToString(), 0, isBot: false);
+            eventLogs.LogGroundItemSpawned(runtime.MatchingId, 0, item.GroundItemUid, item.ItemId, defeated.Area.ToString(), 0, isBot: false);
         }
 
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)defeatedWave.AreaType, spawned.ToList());
-        foreach (var session in sessions.Where(session => session.Player.CurrentArea == defeatedWave.AreaType))
+        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)defeated.Area, spawned.ToList());
+        foreach (var session in sessions.Where(session => session.Player.CurrentArea == defeated.Area))
         {
             session.TrySend(packet);
         }
@@ -287,7 +286,7 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, Ma
         eventLogs.RecordMonsterHit(runtime.MatchingId, attackerId, damage, damageResult.Killed);
         var attacker = runtime.GetParticipant(attackerId);
         SendMonsterHitNotification(runtime, attacker, monsterId, area, weaponItemId, damage, critical, showDamageOnly: true);
-        if (damageResult.Killed && damageResult.MonsterState != null)
+        if (damageResult.Killed && damageResult.Monster != null)
         {
             SettleSwarmMonsterKill(runtime, damageResult, attackerId, damage, allSessions);
         }
@@ -300,23 +299,23 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, Ma
         int damage,
         List<GameClientSession> allSessions)
     {
-        if (damageResult.MonsterState == null)
+        if (damageResult.Monster is not { } defeated)
         {
             return;
         }
 
         eventLogs.LogSystem(runtime.MatchingId,
-            $"monster_lifetime kind={damageResult.Kind} area={damageResult.MonsterState.AreaType} " +
-            $"aliveSeconds={damageResult.AliveSeconds:F1} attackEvents={damageResult.AttackEventCount} " +
+            $"monster_lifetime kind={defeated.Kind} area={defeated.Area} " +
+            $"aliveSeconds={(defeated.DiedAtUtc - defeated.SpawnedAtUtc).TotalSeconds:F1} attackEvents={defeated.AttackEventCount} " +
             $"killer={attackerId}");
         eventLogs.LogSwarmAfterimageKilled(
-            runtime.MatchingId, damageResult.MonsterId,
-            damageResult.MonsterState.AreaType.ToString(),
-            isCore: damageResult.Kind == MonsterKind.RunawayGoblin,
+            runtime.MatchingId, defeated.MonsterId,
+            defeated.Area.ToString(),
+            isCore: defeated.Kind == MonsterKind.RunawayGoblin,
             firstAttackerPlayerId: attackerId,
             lastAttackerPlayerId: attackerId,
             new Dictionary<long, int> { [attackerId] = damage });
-        SpawnSwarmSummonStone(runtime, damageResult.MonsterState, allSessions, damageResult.HeartReward);
+        SpawnSwarmSummonStone(runtime, defeated, damageResult.SummonStoneReward, defeated.HeartReward, allSessions);
     }
 
     public void ApplySwarmShock(MatchRuntime runtime, PlayerHealthService healthService,
@@ -384,7 +383,7 @@ internal sealed class MatchCombatDamageService(GameEventLogManager eventLogs, Ma
                 eventLogs.RecordMonsterHit(matchingId, hit.AttackerId, hit.Damage, damageResult.Killed);
             }
 
-            if (damageResult.Applied && damageResult.Killed && damageResult.MonsterState != null)
+            if (damageResult.Applied && damageResult.Killed && damageResult.Monster != null)
             {
                 SettleSwarmMonsterKill(runtime, damageResult, hit.AttackerId, hit.Damage, sessions);
             }

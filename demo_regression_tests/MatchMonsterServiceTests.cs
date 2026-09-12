@@ -34,13 +34,13 @@ public class MatchMonsterServiceTests
         // 초반(페이즈 0)은 작은 몹만 나온다 (#229): 시작 오브 하나로는 핵이 벽처럼 서서
         // 파밍이 막힌다. 웨이브 보충(30마리/12초)은 구역 목표에 잘리므로 첫 웨이브는 목표치 8.
         Assert.Equal(8, firstTick.SpawnedMonsters.Count);
-        Assert.DoesNotContain(firstTick.SpawnedMonsters, monster => monster.Kind == 2);
+        Assert.DoesNotContain(firstTick.SpawnedMonsters, monster => monster.Kind == MonsterKind.RunawayGoblin);
         Assert.All(firstTick.SpawnedMonsters, monster =>
         {
             // 공급 몹은 잠든 채 등장한다 — 개전은 근접·피격·접촉의 몫.
             Assert.Equal(0, monster.ChaseTargetPlayerId);
             // 페이즈 0 일반 HP — 상향분 원복 (2026-08-16 유저 결정: 잘 죽되 맞으면 치명적)
-            Assert.Equal(16, monster.MaxHealth);
+            Assert.Equal(16, monster.MaxHealthValue);
             Assert.Equal(1, monster.SummonStoneReward);
         });
 
@@ -86,10 +86,10 @@ public class MatchMonsterServiceTests
         var manager = CreateManager(217002);
 
         var lateTick = manager.Tick(ManyParticipants(8, AreaCenter(Config.SWARM_MATCH_GROUND_AREA)), true, now);
-        Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == 0),
-            normal => Assert.Equal(22, normal.MaxHealth));
-        Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == 2),
-            core => Assert.Equal(120, core.MaxHealth));
+        Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == MonsterKind.Skeleton),
+            normal => Assert.Equal(22, normal.MaxHealthValue));
+        Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == MonsterKind.RunawayGoblin),
+            core => Assert.Equal(120, core.MaxHealthValue));
 
         // 10인이 서로 다른 구역에 흩어져도 전역 상한 48을 넘지 않는다.
         var rooms = MatchSpawnData.GetPhaseRoomCandidates().Take(5).ToList();
@@ -173,8 +173,8 @@ public class MatchMonsterServiceTests
             var tick = manager.Tick(inRoom ? Participants(roomCenter, room) : Participants(elsewhere),
                 true,
                 now);
-            stones += tick.SupplyPackSpawns.Where(spawn => spawn.Area == room)
-                .Sum(spawn => spawn.StoneTotal);
+            stones += tick.SpawnedMonsters.Where(monster => monster.HomeArea == room)
+                .Sum(monster => monster.SummonStoneReward);
         }
 
         // 페이즈 0 예산 90 + 핵 1기 3 = 93이 상한이다.
@@ -255,7 +255,7 @@ public class MatchMonsterServiceTests
 
         Assert.True(result.Applied);
         Assert.True(result.Killed);
-        Assert.Equal(target.MonsterId, result.MonsterId);
+        Assert.Equal(target.MonsterId, result.Monster!.MonsterId);
         Assert.DoesNotContain(
             manager.GetCombatTargets(),
             candidate => candidate.CombatTargetId == target.CombatTargetId);
@@ -393,10 +393,13 @@ public class MatchMonsterServiceTests
 
     private static Arena CreateManager(long matchingId = 217001) => new(matchingId);
 
+    /// <summary>틱이 만든 접촉 피해와 그 틱에 새로 태어난 개체.</summary>
+    private sealed record TickResult(IReadOnlyList<MonsterContactDamage> PlayerDamage, IReadOnlyList<Monster> SpawnedMonsters);
+
     /// <summary>매치 런타임 하나와 디렉터를 묶어 매치 잠금 안에서 부른다. 마지막 틱 시각을 피해 정산·표적 조회에 쓴다.</summary>
     private sealed class Arena
     {
-        private readonly MatchMonsterService _director = new(new MonsterSupplyService(), new MonsterMovementService());
+        private readonly MatchMonsterService _director = new(new MonsterMovementService());
         private DateTime _lastNow = StartUtc;
 
         public Arena(long matchingId)
@@ -407,12 +410,15 @@ public class MatchMonsterServiceTests
 
         public MatchRuntime Runtime { get; }
 
-        public MonsterTickResult Tick(IReadOnlyCollection<PlayerPositionSnapshot> participants, bool isGameplayActive, DateTime nowUtc)
+        public TickResult Tick(IReadOnlyCollection<PlayerPositionSnapshot> participants, bool isGameplayActive, DateTime nowUtc)
         {
             _lastNow = nowUtc;
+            var known = Runtime.Monsters.Entities.Keys.ToHashSet();
             using (Runtime.Enter())
             {
-                return _director.ProcessTick(Runtime, participants, isGameplayActive, nowUtc);
+                var contacts = _director.ProcessTick(Runtime, participants, isGameplayActive, nowUtc);
+                var spawned = Runtime.Monsters.Entities.Values.Where(monster => !known.Contains(monster.MonsterId)).ToList();
+                return new TickResult(contacts, spawned);
             }
         }
 
@@ -426,7 +432,7 @@ public class MatchMonsterServiceTests
 
         public IReadOnlyList<MonsterRuntimeInfo> GetVisualStates() => Runtime.Monsters.Entities.Values.Select(monster => monster.ToMonsterRuntimeInfo()).ToList();
 
-        public IReadOnlyList<MonsterCombatTarget> GetCombatTargets() => Runtime.Monsters.GetCombatTargets(_lastNow);
+        public IReadOnlyList<Monster> GetCombatTargets() => Runtime.Monsters.GetCombatTargets(_lastNow);
     }
 
     private static Vector3f AreaCenter(AreaType area) =>
@@ -466,7 +472,7 @@ public class MatchMonsterServiceTests
                 var authored = GameMonsterCampData.GetAnchor(region.AreaType, campIndex);
                 if (authored == null) continue;
 
-                var inset = MonsterSupplyService.InsetAnchorFromAreaEdge(authored, region.AreaType);
+                var inset = MatchMonsterService.InsetAnchorFromAreaEdge(authored, region.AreaType);
                 int clearance = Math.Min(
                     Math.Min(inset.X - region.Start.X, region.End.X - inset.X),
                     Math.Min(inset.Y - region.Start.Y, region.End.Y - inset.Y));

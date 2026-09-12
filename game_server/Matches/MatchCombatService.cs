@@ -70,7 +70,7 @@ internal class MatchCombatService(
             participants.Add(new PlayerPositionSnapshot(player.PlayerId, player.CurrentArea, player.Position));
         }
 
-        var tick = monsters.ProcessTick(runtime, participants, runtime.IsGameplayActive(), nowUtc);
+        var contacts = monsters.ProcessTick(runtime, participants, runtime.IsGameplayActive(), nowUtc);
 
         if (!runtime.IsGameplayActive())
         {
@@ -90,7 +90,7 @@ internal class MatchCombatService(
             playerOrbs.ActivateWindOrbs(runtime, player, nowUtc);
         }
         orbAttacks.ProcessSunBurns(runtime, nowUtc);
-        foreach (var damage in tick.PlayerDamage)
+        foreach (var damage in contacts)
         {
             ApplySwarmParticipantDamage(runtime, damage, sessions);
         }

@@ -26,8 +26,6 @@ public sealed class Monster
     public DateTime WaveSlowUntilUtc { get; set; }
     public int SummonStoneReward { get; init; }
     public int HeartReward { get; init; }
-    public int BootsReward { get; init; }
-    public int KeyReward { get; init; }
     public int ContactDamageValue { get; init; }
     public long ChaseTargetPlayerId { get; set; }
     public MonsterKind Kind { get; init; } = MonsterKind.Skeleton;

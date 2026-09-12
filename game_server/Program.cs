@@ -128,7 +128,7 @@ internal static class Program
             sp.GetRequiredService<MatchResultService>(),
             sp.GetRequiredService<ILogger<PlayerEliminationService>>()));
         services.AddSingleton<PlayerHealthService>();
-        services.AddSingleton<MonsterSupplyService>();
+
         services.AddSingleton<MonsterMovementService>();
         services.AddSingleton<MatchMonsterService>();
         services.AddSingleton<MatchCombatDamageService>();
