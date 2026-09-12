@@ -50,7 +50,7 @@ internal sealed class MatchRuntime
         _logger = logger;
         _matchSessionCleanup = matchSessionCleanup;
         MatchingId = matchingId;
-        Bots = new BotPlayerManager(matchingId, logger);
+        Bots = new MatchBots(matchingId, logger);
         GroundItems = new MatchGroundItemState();
         Closures = new MatchAreaClosureState();
         Monsters = new MatchMonsters();
@@ -58,7 +58,7 @@ internal sealed class MatchRuntime
 
     // 매치 식별과 수명·잠금
     public long MatchingId { get; }
-    public BotPlayerManager Bots { get; }
+    public MatchBots Bots { get; }
     internal SwarmBotTickMetrics BotTickMetrics { get; } = new();
     public MatchMonsters Monsters { get; }
 

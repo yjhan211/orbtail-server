@@ -152,7 +152,7 @@ internal sealed class BotDecisionService(
                 continue;
 
             // door_info의 좌표는 셀 단위다 — 봇 위치(월드)와 직접 비교하면 절대 닿지 않는다.
-            var doorWorld = BotPlayerManager.CellToWorldPosition(
+            var doorWorld = MatchBots.CellToWorldPosition(
                 Config.SWARM_MATCH_MAP, new Cell((int)door.PositionX, (int)door.PositionY));
             float dx = doorWorld.X - bot.Player.Position!.X;
             float dy = doorWorld.Y - bot.Player.Position!.Y;
@@ -217,7 +217,7 @@ internal sealed class BotDecisionService(
                 cells[0].Distance > safeDistance - SwarmBotFieldEvacuateMarginCells * 2)
                 continue;
 
-            var innermost = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, cells[0].Cell);
+            var innermost = MatchBots.CellToWorldPosition(Config.SWARM_MATCH_MAP, cells[0].Cell);
             float dx = innermost.X - botPosition.X;
             float dy = innermost.Y - botPosition.Y;
             float distanceSq = dx * dx + dy * dy;
@@ -380,7 +380,7 @@ internal sealed class BotDecisionService(
         }
 
         return MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP,
-            BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area)),
+            MatchBots.CellToWorldPosition(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area)),
             position, area);
     }
 
@@ -411,7 +411,7 @@ internal sealed class BotDecisionService(
                 SwarmBotMode.Escort,
                 evacuationArea,
                 evacuationCell,
-                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, evacuationCell));
+                MatchBots.CellToWorldPosition(Config.SWARM_MATCH_MAP, evacuationCell));
         }
 
         // 0.2) 자기장 셀 대피 (#272): 구역 단위
@@ -436,7 +436,7 @@ internal sealed class BotDecisionService(
                     SwarmBotMode.Escort,
                     exitArea,
                     exitCell,
-                    BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, exitCell));
+                    MatchBots.CellToWorldPosition(Config.SWARM_MATCH_MAP, exitCell));
             }
 
             var botCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!);
@@ -453,7 +453,7 @@ internal sealed class BotDecisionService(
                 {
                     if (entry.Distance > fieldSafeDistance - SwarmBotFieldEvacuateMarginCells * 2)
                         break;
-                    var candidate = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, entry.Cell);
+                    var candidate = MatchBots.CellToWorldPosition(Config.SWARM_MATCH_MAP, entry.Cell);
                     float candidateDx = candidate.X - bot.Player.Position!.X;
                     float candidateDy = candidate.Y - bot.Player.Position!.Y;
                     float candidateSq = candidateDx * candidateDx + candidateDy * candidateDy;
@@ -467,7 +467,7 @@ internal sealed class BotDecisionService(
                         SwarmBotMode.Escort,
                         bot.Player.CurrentArea,
                         retreatCell,
-                        BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, retreatCell));
+                        MatchBots.CellToWorldPosition(Config.SWARM_MATCH_MAP, retreatCell));
 
                 // 이 방엔 이제 설 자리가 없다 — 자기장 안쪽 대피 구역으로.
                 var (fieldEvacuationArea, fieldEvacuationCell) =
@@ -476,7 +476,7 @@ internal sealed class BotDecisionService(
                     SwarmBotMode.Escort,
                     fieldEvacuationArea,
                     fieldEvacuationCell,
-                    BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fieldEvacuationCell));
+                    MatchBots.CellToWorldPosition(Config.SWARM_MATCH_MAP, fieldEvacuationCell));
             }
         }
 
@@ -544,7 +544,7 @@ internal sealed class BotDecisionService(
                             SwarmBotMode.Escort,
                             pressArea,
                             pressCell,
-                            BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, pressCell));
+                            MatchBots.CellToWorldPosition(Config.SWARM_MATCH_MAP, pressCell));
                     }
                 }
             }
@@ -583,7 +583,7 @@ internal sealed class BotDecisionService(
                 GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, fleeFallbackCell) is var fleeFallbackArea &&
                 fleeFallbackArea != AreaType.None)
             {
-                var fleeFallbackWorld = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fleeFallbackCell);
+                var fleeFallbackWorld = MatchBots.CellToWorldPosition(Config.SWARM_MATCH_MAP, fleeFallbackCell);
                 // 구석에서 벽에 막힌 probe는 제자리로 수렴한다 (#223) — 가까우면 구역 이탈로.
                 if (IsFarEnoughSwarmFleeTarget(bot, fleeFallbackWorld))
                     return new SwarmBotDirective(
@@ -596,7 +596,7 @@ internal sealed class BotDecisionService(
                 .Where(area => !IsSwarmAreaOutside(runtime, area))
                 .OrderBy(area =>
                 {
-                    var center = BotPlayerManager.CellToWorldPosition(
+                    var center = MatchBots.CellToWorldPosition(
                         Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
                     float dx = center.X - fleeProbe.X;
                     float dy = center.Y - fleeProbe.Y;
@@ -609,7 +609,7 @@ internal sealed class BotDecisionService(
                 SwarmBotMode.Escort,
                 fleeRetreatArea,
                 fleeRetreatCell,
-                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fleeRetreatCell));
+                MatchBots.CellToWorldPosition(Config.SWARM_MATCH_MAP, fleeRetreatCell));
         }
 
         // 절단 직후 회수 (#226 F): 방금 끊은 전리품부터 줍는다 — 추격은 그 다음이다.

@@ -12,7 +12,7 @@ public readonly record struct SwarmBotDodgeAdvice(float DirectionX, float Direct
 ///     매치 하나의 봇 등록·조회와 경로 재계산 순서를 보관한다.
 ///     호출자는 매치 잠금을 보유하며, 행동 결정과 실제 이동은 별도 서비스가 처리한다.
 /// </summary>
-public class BotPlayerManager
+public class MatchBots
 {
     private const double BotInitialDecisionDelayMinSeconds = 0.15;
     private const double BotInitialDecisionDelayMaxSeconds = 1.2;
@@ -28,7 +28,7 @@ public class BotPlayerManager
 
     private readonly Random _rng = Random.Shared;
 
-    internal BotPlayerManager(long matchingId, ILogger logger)
+    internal MatchBots(long matchingId, ILogger logger)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
         _matchingId = matchingId;
