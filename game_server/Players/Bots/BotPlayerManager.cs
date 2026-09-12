@@ -23,8 +23,8 @@ public partial class BotPlayerManager
     // 같은 매치의 문 상태를 이동 판정에 사용한다.
     private readonly MatchDoorState _doors;
 
-    // 회피 판단 시 같은 매치의 최신 공격 스냅샷을 읽는다.
-    private readonly MatchSunOrbAttackState _sunOrbAttacks;
+    // 회피 판단 시 같은 매치의 진행 중 태양 직선 모양을 읽는다.
+    private readonly IReadOnlyList<SwarmCrossfireShape> _sunCrossfireShapes;
 
     // 배회 폴백(잔상 사냥 실패 시)에서 최저 인원 방으로 흩어질 확률 — 봇이 한 방에 뭉치지 않게.
     private const double SwarmWanderScatterProbability = 0.3;
@@ -52,14 +52,14 @@ public partial class BotPlayerManager
 
     private readonly Random _rng = Random.Shared;
 
-    internal BotPlayerManager(long matchingId, ILogger logger, MatchDoorState doors, MatchSunOrbAttackState sunOrbAttacks, GameEventLogManager eventLogs)
+    internal BotPlayerManager(long matchingId, ILogger logger, MatchDoorState doors, IReadOnlyList<SwarmCrossfireShape> sunCrossfireShapes, GameEventLogManager eventLogs)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
         _matchingId = matchingId;
         _logger = logger;
         _eventLogs = eventLogs;
         _doors = doors ?? throw new ArgumentNullException(nameof(doors));
-        _sunOrbAttacks = sunOrbAttacks ?? throw new ArgumentNullException(nameof(sunOrbAttacks));
+        _sunCrossfireShapes = sunCrossfireShapes ?? throw new ArgumentNullException(nameof(sunCrossfireShapes));
     }
 
     /// <summary>

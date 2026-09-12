@@ -813,7 +813,7 @@ internal sealed class BotDecisionService(
                 runtime.Closures.IsAreaClosed(player.CurrentArea) ||
                 MatchFieldService.GetDamagePerTick(runtime, position, nowUtc) > 0 ||
                 nowUtc < bot.SwarmDodgeHoldUntilUtc ||
-                SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(runtime.SunOrbAttacks.DodgeSnapshot,
+                SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(runtime.SunCrossfireShapes,
                     player.PlayerId, position, player.CurrentArea, nowUtc) != null;
             foreach (var other in players)
             {

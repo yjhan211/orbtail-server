@@ -43,7 +43,7 @@ public sealed class MatchOrbAttackServiceTests
     }
 
     [Fact]
-    public void Process_WaitsForTelegraphHitsOnceAndRemovesExpiredDodgeSnapshot()
+    public void Process_WaitsForTelegraphHitsOnceAndRemovesExpiredShape()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947601);
@@ -64,8 +64,7 @@ public sealed class MatchOrbAttackServiceTests
                 SweepSpeed = 5, ArmedAtUtc = now.AddSeconds(1), ExpiresAtUtc = now.AddSeconds(3),
                 LastFront = -0.35f, DetonateAtWall = false
             };
-            match.SunOrbAttacks.Shapes.Add(shape);
-            match.SunOrbAttacks.DodgeSnapshot = MatchOrbAttackService.BuildDodgeSnapshot(match.SunOrbAttacks.Shapes);
+            match.SunCrossfireShapes.Add(shape);
             owner.Player.CurrentArea = victim.Player.CurrentArea = AreaType.S2Ground;
             owner.Player.Position = victim.Player.Position = new Vector3f(2, Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y, 0);
             service.ProcessSunCrossfires(match, now);
@@ -84,8 +83,7 @@ public sealed class MatchOrbAttackServiceTests
             Assert.Equal(healthAfterHit, victim.Player.Health);
             service.ProcessSunCrossfires(match, now.AddSeconds(3));
             Assert.Equal(healthAfterHit, victim.Player.Health);
-            Assert.Empty(match.SunOrbAttacks.Shapes);
-            Assert.Empty(match.SunOrbAttacks.DodgeSnapshot);
+            Assert.Empty(match.SunCrossfireShapes);
             match.TryMarkEnded();
         }
     }
@@ -139,14 +137,13 @@ public sealed class MatchOrbAttackServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(43000);
         var service = CreateService(store);
-        var shapes = match.SunOrbAttacks.Shapes;
+        var shapes = match.SunCrossfireShapes;
         SwarmCrossfireShape first = CreateShape(eventId: 1, ownerId: 10, anchorCombatTargetId: 101, armedAtUtc: NowUtc.AddSeconds(1));
         SwarmCrossfireShape second = CreateShape(eventId: 2, ownerId: 10, anchorCombatTargetId: 102, armedAtUtc: NowUtc.AddSeconds(2));
         using var scope = MatchRuntimeStore.Enter(match);
 
         shapes.Add(first);
         shapes.Add(second);
-        match.SunOrbAttacks.DodgeSnapshot = MatchOrbAttackService.BuildDodgeSnapshot(shapes);
 
         Assert.Equal(2, MatchOrbAttackService.CountTelegraphing(shapes, 10, NowUtc));
         Assert.Contains(10, service.CollectSunCrossfireCappedOwners(match, NowUtc));
@@ -158,58 +155,13 @@ public sealed class MatchOrbAttackServiceTests
         Assert.DoesNotContain(10, service.CollectSunCrossfireCappedOwners(match, NowUtc.AddSeconds(1)));
 
         shapes.RemoveAt(1);
-        match.SunOrbAttacks.DodgeSnapshot = MatchOrbAttackService.BuildDodgeSnapshot(shapes);
         Assert.Single(shapes);
-        Assert.Single(match.SunOrbAttacks.DodgeSnapshot);
         Assert.Equal([(10L, 101L)], service.CollectSunCrossfireAnchoredTargets(match));
 
         shapes.RemoveAt(0);
-        match.SunOrbAttacks.DodgeSnapshot = MatchOrbAttackService.BuildDodgeSnapshot(shapes);
         Assert.Empty(shapes);
-        Assert.Empty(match.SunOrbAttacks.DodgeSnapshot);
         Assert.Empty(service.CollectSunCrossfireAnchoredTargets(match));
         Assert.Empty(service.CollectSunCrossfireCappedOwners(match, NowUtc));
-    }
-
-    [Fact]
-    public void DodgeSnapshot_IsGroundScaledAndEachBuildIsAnIndependentArray()
-    {
-        var shapes = new List<SwarmCrossfireShape>();
-        SwarmCrossfireShape first = CreateShape(
-            eventId: 1, ownerId: 10, anchorCombatTargetId: 101, armedAtUtc: NowUtc.AddSeconds(1),
-            origin: new Vector3f(1f, 2f, 0f), end: new Vector3f(4f, 4f, 0f), groundLength: 7f, halfWidth: 0.4f, sweepSpeed: 5f);
-
-        shapes.Add(first);
-        IReadOnlyList<SwarmBotDodgePolicy.SwarmCrossfireDodgeThreat> firstSnapshot = MatchOrbAttackService.BuildDodgeSnapshot(shapes);
-        SwarmBotDodgePolicy.SwarmCrossfireDodgeThreat threat = Assert.Single(firstSnapshot);
-
-        Assert.Equal(first.Area, threat.Area);
-        Assert.Equal(first.OwnerId, threat.OwnerId);
-        Assert.Equal(1f, threat.OriginX);
-        Assert.Equal(2f, threat.OriginY);
-        Assert.Equal(0.6f, threat.AxisX, 3);
-        Assert.Equal(0.8f, threat.AxisY, 3);
-        Assert.Equal(7f, threat.GroundLength);
-        Assert.Equal(0.4f, threat.HalfWidth);
-        Assert.Equal(5f, threat.SweepSpeed);
-        Assert.Equal(first.ArmedAtUtc, threat.ArmedAtUtc);
-        Assert.Equal(first.ExpiresAtUtc, threat.ExpiresAtUtc);
-
-        // 길이 0에 가까운 모양은 방향이 없어 스냅샷에서 빠진다.
-        shapes.Add(CreateShape(eventId: 2, ownerId: 20, anchorCombatTargetId: 202, armedAtUtc: NowUtc,
-            origin: new Vector3f(5f, 5f, 0f), end: new Vector3f(5.001f, 5.001f, 0f)));
-        Assert.Single(MatchOrbAttackService.BuildDodgeSnapshot(shapes));
-
-        shapes.Add(CreateShape(eventId: 3, ownerId: 30, anchorCombatTargetId: 303, armedAtUtc: NowUtc,
-            origin: new Vector3f(0f, 0f, 0f), end: new Vector3f(2f, 0f, 0f)));
-        IReadOnlyList<SwarmBotDodgePolicy.SwarmCrossfireDodgeThreat> expandedSnapshot = MatchOrbAttackService.BuildDodgeSnapshot(shapes);
-        Assert.Equal(2, expandedSnapshot.Count);
-        Assert.Single(firstSnapshot);
-        Assert.NotSame(firstSnapshot, expandedSnapshot);
-
-        shapes.RemoveAt(2);
-        Assert.Equal(2, expandedSnapshot.Count);
-        Assert.Single(MatchOrbAttackService.BuildDodgeSnapshot(shapes));
     }
 
     [Fact]

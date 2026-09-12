@@ -513,7 +513,7 @@ public partial class BotPlayerManager
 
         bool committed = now < bot.SwarmDodgeHoldUntilUtc;
         var advice = SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(
-            _sunOrbAttacks.DodgeSnapshot, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now);
+            _sunCrossfireShapes, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now);
         if (advice == null)
         {
             if (!committed)

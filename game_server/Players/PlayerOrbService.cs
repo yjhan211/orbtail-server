@@ -300,7 +300,7 @@ internal sealed class PlayerOrbService(
         }
 
         OrbData.TryGetColorAndTier(attack.WeaponItemId, out _, out int tier);
-        if (MatchOrbAttackService.CountTelegraphing(runtime.SunOrbAttacks.Shapes, owner.PlayerId, nowUtc) >= Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER)
+        if (MatchOrbAttackService.CountTelegraphing(runtime.SunCrossfireShapes, owner.PlayerId, nowUtc) >= Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER)
         {
             return false;
         }
@@ -432,7 +432,7 @@ internal sealed class PlayerOrbService(
         float sweepSeconds = (selectedLength + width) / sweepSpeed;
         long eventId = MatchOrbAttackService.AllocateEventId();
         var telegraphEndsAtUtc = nowUtc.AddSeconds(Config.SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS);
-        runtime.SunOrbAttacks.Shapes.Add(new SwarmCrossfireShape
+        runtime.SunCrossfireShapes.Add(new SwarmCrossfireShape
         {
             EventId = eventId,
             OwnerId = attack.AttackerPlayerId,
@@ -452,7 +452,6 @@ internal sealed class PlayerOrbService(
             AnchorCombatTargetId = attack.TargetPlayerId,
             LastFront = -halfWidth
         });
-        runtime.SunOrbAttacks.DodgeSnapshot = MatchOrbAttackService.BuildDodgeSnapshot(runtime.SunOrbAttacks.Shapes);
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_SUN_ORB_ATTACK);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SUN_ORB_ATTACK

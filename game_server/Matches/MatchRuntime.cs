@@ -53,7 +53,7 @@ internal sealed class MatchRuntime
         _logger = logger;
         _matchSessionCleanup = matchSessionCleanup;
         MatchingId = matchingId;
-        Bots = new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks, eventLogs);
+        Bots = new BotPlayerManager(matchingId, logger, Doors, SunCrossfireShapes, eventLogs);
         GroundItems = new MatchGroundItemState();
         Closures = new MatchAreaClosureState();
         Monsters = new SwarmMonsterDirector(matchingId, Closures, playerId => GetParticipant(playerId)?.Orbs.HasAnyOrb() ?? false);
@@ -68,7 +68,7 @@ internal sealed class MatchRuntime
     // 전투와 오브
     public MatchCombatDamageState CombatDamage { get; } = new();
     public Dictionary<(long CutterId, long VictimId), CutRetaliationWindow> CutRetaliationWindows { get; } = new();
-    public MatchSunOrbAttackState SunOrbAttacks { get; } = new();
+    public List<SwarmCrossfireShape> SunCrossfireShapes { get; } = new();
     public List<PendingWaveAttack> PendingWaveAttacks { get; } = new();
 
     // 아이템과 재화

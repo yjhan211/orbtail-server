@@ -12,7 +12,7 @@ namespace game_server.players.bots;
 ///     판정 기하는 교차사격 서버 판정(바닥면 dy×2, 반폭 + 플레이어 반경)과 같다.
 ///     대상은 태양 투사체뿐이다: 바람 몸통박치기는 표적의 착지 순간 자리에 떨어져(호밍) 자리로는 못 피하고,
 ///     파도 물폭탄은 잔상 전용이다.
-///     상태 없는 순수 정책 (#297) — 매치별 스냅샷 발행(MatchSunOrbAttackState)과 분리.
+///     상태 없는 순수 정책. 매치가 든 진행 중 모양 목록을 매치 잠금 안에서 그대로 읽는다.
 /// </summary>
 public static class SwarmBotDodgePolicy
 {
@@ -23,61 +23,57 @@ public static class SwarmBotDodgePolicy
     // 회피 커밋 여유 — 앞머리가 지난 뒤 이만큼 더 선 자리에 있다가 경로로 돌아간다.
     private const float SwarmBotDodgeHoldSlackSeconds = 0.15f;
 
-    public readonly record struct SwarmCrossfireDodgeThreat(
-        AreaType Area,
-        long OwnerId,
-        float OriginX,
-        float OriginY,
-        float AxisX,
-        float AxisY,
-        float GroundLength,
-        float HalfWidth,
-        float SweepSpeed,
-        DateTime ArmedAtUtc,
-        DateTime ExpiresAtUtc);
-
     /// <summary>
     ///     이 봇이 지금 비켜서야 할 방향(월드 단위 벡터). 위협이 없으면 null.
     ///     가장 먼저 닿을 투사체 하나만 본다 — 여러 개가 겹치면 다음 틱에 다시 묻는다.
     /// </summary>
     public static SwarmBotDodgeAdvice? ResolveSwarmBotDodgeDirection(
-        IReadOnlyList<SwarmCrossfireDodgeThreat> threats,
+        IReadOnlyList<SwarmCrossfireShape> shapes,
         long botPlayerId, Vector3f position, AreaType area, DateTime nowUtc)
     {
-        if (threats.Count == 0)
+        if (shapes.Count == 0)
             return null;
 
         float bestTime = float.MaxValue;
         SwarmBotDodgeAdvice? bestDirection = null;
-        foreach (var threat in threats)
+        foreach (var shape in shapes)
         {
-            if (threat.Area != area || threat.OwnerId == botPlayerId)
+            if (shape.Area != area || shape.OwnerId == botPlayerId)
                 continue;
-            if (nowUtc >= threat.ExpiresAtUtc)
+            if (nowUtc >= shape.ExpiresAtUtc)
                 continue;
 
-            float rx = position.X - threat.OriginX;
-            float ry = (position.Y - threat.OriginY) * SwarmCombatGeometry.GroundYScale;
-            float along = rx * threat.AxisX + ry * threat.AxisY;
-            float perp = rx * -threat.AxisY + ry * threat.AxisX;
-            float band = threat.HalfWidth + SwarmCombatGeometry.PlayerRadius + SwarmBotDodgeMargin;
+            // 바닥면(dy×2) 축 단위벡터. 길이 0에 가까운 모양은 방향이 없어 위협이 아니다.
+            float axisX = shape.End.X - shape.Origin.X;
+            float axisY = (shape.End.Y - shape.Origin.Y) * SwarmCombatGeometry.GroundYScale;
+            float axisLength = MathF.Sqrt(axisX * axisX + axisY * axisY);
+            if (axisLength < 0.01f)
+                continue;
+            axisX /= axisLength;
+            axisY /= axisLength;
+
+            float rx = position.X - shape.Origin.X;
+            float ry = (position.Y - shape.Origin.Y) * SwarmCombatGeometry.GroundYScale;
+            float along = rx * axisX + ry * axisY;
+            float perp = rx * -axisY + ry * axisX;
+            float band = shape.HalfWidth + SwarmCombatGeometry.PlayerRadius + SwarmBotDodgeMargin;
             if (MathF.Abs(perp) > band)
                 continue;
-            if (along < -threat.HalfWidth - SwarmCombatGeometry.PlayerRadius ||
-                along > threat.GroundLength + threat.HalfWidth + SwarmCombatGeometry.PlayerRadius)
+            if (along < -shape.HalfWidth - SwarmCombatGeometry.PlayerRadius ||
+                along > shape.GroundLength + shape.HalfWidth + SwarmCombatGeometry.PlayerRadius)
                 continue;
 
             // 앞머리 위치: 예고 중이면 원점 앞 캡, 발동 뒤면 속도 × 경과.
-            double sinceArmed = (nowUtc - threat.ArmedAtUtc).TotalSeconds;
+            double sinceArmed = (nowUtc - shape.ArmedAtUtc).TotalSeconds;
             float front = sinceArmed <= 0d
-                ? -threat.HalfWidth
-                : -threat.HalfWidth + (float)sinceArmed * threat.SweepSpeed;
+                ? -shape.HalfWidth
+                : -shape.HalfWidth + (float)sinceArmed * shape.SweepSpeed;
             // 이미 지나간 투사체는 위협이 아니다.
             if (front > along + SwarmCombatGeometry.PlayerRadius)
                 continue;
 
             float timeToHit = (float)Math.Max(0d, -sinceArmed) +
-                              Math.Max(0f, along - front) / Math.Max(0.01f, threat.SweepSpeed);
+                              Math.Max(0f, along - front) / Math.Max(0.01f, shape.SweepSpeed);
             if (timeToHit > SwarmBotDodgeHorizonSeconds || timeToHit >= bestTime)
                 continue;
 
@@ -85,14 +81,14 @@ public static class SwarmBotDodgePolicy
             // 이미 치우친 쪽으로 빠진다 — 축 위에 딱 서 있으면 봇 id 홀짝으로 갈라 무리가 한쪽으로 몰리지 않게.
             float side = MathF.Abs(perp) < 0.02f ? ((botPlayerId & 1) == 0 ? 1f : -1f) : MathF.Sign(perp);
             // 바닥면 수직 (-ay, ax) → 월드로 되돌린다 (Y는 ÷2).
-            float wx = -threat.AxisY * side;
-            float wy = threat.AxisX * side / SwarmCombatGeometry.GroundYScale;
+            float wx = -axisY * side;
+            float wy = axisX * side / SwarmCombatGeometry.GroundYScale;
             float wl = MathF.Sqrt(wx * wx + wy * wy);
             if (wl < 0.001f)
                 continue;
             // 유지 시간 = 앞머리가 내 자리를 지나 몸 반경만큼 더 간 뒤 한 박자. 그동안은 띠 밖에 서서 기다린다.
             float holdSeconds = timeToHit +
-                                (2f * SwarmCombatGeometry.PlayerRadius) / Math.Max(0.01f, threat.SweepSpeed) +
+                                (2f * SwarmCombatGeometry.PlayerRadius) / Math.Max(0.01f, shape.SweepSpeed) +
                                 SwarmBotDodgeHoldSlackSeconds;
             bestDirection = new SwarmBotDodgeAdvice(wx / wl, wy / wl, holdSeconds);
         }

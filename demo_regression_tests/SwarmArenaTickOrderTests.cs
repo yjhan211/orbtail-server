@@ -334,7 +334,7 @@ public sealed class SwarmArenaTickOrderTests
     }
 
     [Fact]
-    public void SunOrbAttackState_IsMatchOwnedAndDodgeLookupDoesNotCreateRuntime()
+    public void SunCrossfireShapes_AreMatchOwnedAndDodgeLookupDoesNotCreateRuntime()
     {
         string root = FindRepositoryRoot();
         string crossfire = ReadNormalizedSource(root, "game_server", "Matches", "MatchOrbAttackService.cs");
@@ -342,18 +342,18 @@ public sealed class SwarmArenaTickOrderTests
         string runtimeStates = ReadNormalizedSource(root, "game_server", "Matches", "MatchRuntime.cs");
 
         Assert.DoesNotContain("_swarmCrossfireShapes", crossfire);
-        Assert.DoesNotContain("_swarmCrossfireDodgeSnapshot", crossfire);
+        Assert.DoesNotContain("DodgeSnapshot", crossfire);
         Assert.DoesNotContain("_swarmCrossfireEventSeq", crossfire);
         Assert.DoesNotContain("_swarmSunBurns", crossfire);
         Assert.DoesNotContain("_swarmCrossfireConvergeWindows", crossfire);
         Assert.DoesNotContain("ClearSunOrbAttackState(", crossfire);
-        Assert.Contains("var shapes = runtime.SunOrbAttacks.Shapes;", crossfire);
+        Assert.Contains("var shapes = runtime.SunCrossfireShapes;", crossfire);
         Assert.DoesNotContain("MatchRuntimeStore matchRuntimes", crossfire);
-        Assert.Contains("public MatchSunOrbAttackState SunOrbAttacks { get; } = new();", botDodge);
+        Assert.Contains("public List<SwarmCrossfireShape> SunCrossfireShapes { get; } = new();", botDodge);
 
-        Assert.Contains("new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks, eventLogs)", botDodge);
+        Assert.Contains("new BotPlayerManager(matchingId, logger, Doors, SunCrossfireShapes, eventLogs)", botDodge);
         string botMovement = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotPlayerManager.Movement.cs");
-        Assert.Contains("_sunOrbAttacks.DodgeSnapshot, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now", botMovement);
+        Assert.Contains("_sunCrossfireShapes, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now", botMovement);
         Assert.DoesNotContain("matchRuntimes.GetOrThrow(matchingId).Swarm", botDodge);
         Assert.False(File.Exists(Path.Combine(root, "game_server", "GameServer.SwarmBotDodge.cs")));
     }

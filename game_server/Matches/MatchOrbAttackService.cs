@@ -44,34 +44,6 @@ internal sealed class MatchOrbAttackService(
         }
         return count;
     }
-    public static IReadOnlyList<SwarmBotDodgePolicy.SwarmCrossfireDodgeThreat> BuildDodgeSnapshot(IReadOnlyList<SwarmCrossfireShape> shapes)
-    {
-        var threats = new List<SwarmBotDodgePolicy.SwarmCrossfireDodgeThreat>(shapes.Count);
-        foreach (var shape in shapes)
-        {
-            float axisX = shape.End.X - shape.Origin.X;
-            float axisY = (shape.End.Y - shape.Origin.Y) * SwarmGroundYScale;
-            float length = MathF.Sqrt(axisX * axisX + axisY * axisY);
-            if (length < 0.01f)
-            {
-                continue;
-            }
-
-            threats.Add(new SwarmBotDodgePolicy.SwarmCrossfireDodgeThreat(
-                shape.Area,
-                shape.OwnerId,
-                shape.Origin.X,
-                shape.Origin.Y,
-                axisX / length,
-                axisY / length,
-                shape.GroundLength,
-                shape.HalfWidth,
-                shape.SweepSpeed,
-                shape.ArmedAtUtc,
-                shape.ExpiresAtUtc));
-        }
-        return threats.ToArray();
-    }
 
     public HashSet<(long OwnerId, long CombatTargetId)> CollectSunCrossfireAnchoredTargets(MatchRuntime runtime)
     {
@@ -80,7 +52,7 @@ internal sealed class MatchOrbAttackService(
             throw new InvalidOperationException("Sun orb attacks require the match lock.");
         }
         var anchored = new HashSet<(long, long)>();
-        foreach (var shape in runtime.SunOrbAttacks.Shapes)
+        foreach (var shape in runtime.SunCrossfireShapes)
         {
             anchored.Add((shape.OwnerId, shape.AnchorCombatTargetId));
         }
@@ -94,7 +66,7 @@ internal sealed class MatchOrbAttackService(
             throw new InvalidOperationException("Sun orb attacks require the match lock.");
         }
         var telegraphingByOwner = new Dictionary<long, int>();
-        foreach (var shape in runtime.SunOrbAttacks.Shapes)
+        foreach (var shape in runtime.SunCrossfireShapes)
         {
             if (nowUtc >= shape.ArmedAtUtc)
             {
@@ -133,9 +105,8 @@ internal sealed class MatchOrbAttackService(
             return;
         }
 
-        var shapes = runtime.SunOrbAttacks.Shapes;
+        var shapes = runtime.SunCrossfireShapes;
         IReadOnlyList<SwarmArenaCombatTarget>? monsters = null;
-        int shapesBefore = shapes.Count;
         for (int index = shapes.Count - 1; index >= 0; index--)
         {
             var shape = shapes[index];
@@ -250,11 +221,6 @@ internal sealed class MatchOrbAttackService(
             {
                 eventLogs.LogSystem(matchingId, $"ORB_CROSSFIRE_VANISH event={shape.EventId} owner={shape.OwnerId}");
             }
-        }
-
-        if (shapes.Count != shapesBefore)
-        {
-            runtime.SunOrbAttacks.DodgeSnapshot = BuildDodgeSnapshot(shapes);
         }
     }
 

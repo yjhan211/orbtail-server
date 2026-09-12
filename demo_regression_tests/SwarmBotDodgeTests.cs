@@ -1,4 +1,5 @@
 using game_server;
+using game_server.matches.combat;
 using game_server.players.bots;
 using network.common;
 using network.common.data.models;
@@ -15,10 +16,14 @@ public class SwarmBotDodgeTests
     private static readonly DateTime Now = new(2026, 8, 18, 0, 0, 0, DateTimeKind.Utc);
 
     // 원점 (0,0)에서 +X 방향으로 사거리 6, 반폭 0.35, 속도 4.5, 0.55초 예고 뒤 발동.
-    private static SwarmBotDodgePolicy.SwarmCrossfireDodgeThreat LineAlongX(long ownerId = 7, double armedInSeconds = 0.55) =>
-        new(AreaType.S2Ground, ownerId, 0f, 0f, 1f, 0f,
-            GroundLength: 6f, HalfWidth: 0.35f, SweepSpeed: 4.5f,
-            Now.AddSeconds(armedInSeconds), Now.AddSeconds(armedInSeconds + 1.5));
+    private static SwarmCrossfireShape LineAlongX(long ownerId = 7, double armedInSeconds = 0.55) =>
+        new()
+        {
+            Area = AreaType.S2Ground, OwnerId = ownerId,
+            Origin = new Vector3f(0f, 0f, 0f), End = new Vector3f(6f, 0f, 0f),
+            GroundLength = 6f, HalfWidth = 0.35f, SweepSpeed = 4.5f,
+            ArmedAtUtc = Now.AddSeconds(armedInSeconds), ExpiresAtUtc = Now.AddSeconds(armedInSeconds + 1.5)
+        };
 
     [Fact]
     public void BotOnTheLine_StepsPerpendicularToTheAxis()
@@ -98,8 +103,14 @@ public class SwarmBotDodgeTests
         // 바닥면 45° 축 (1/√2, 1/√2). 봇은 원점 앞 축 위. 비켜서는 방향은 바닥면 수직 (-1/√2, 1/√2)를
         // 월드로 되돌린 것 — Y가 절반이라 (-0.894, 0.447) 정규화값.
         float s = MathF.Sqrt(0.5f);
-        var threat = new SwarmBotDodgePolicy.SwarmCrossfireDodgeThreat(
-            AreaType.S2Ground, 7, 0f, 0f, s, s, 6f, 0.35f, 4.5f, Now.AddSeconds(0.55), Now.AddSeconds(2.05));
+        // 바닥면 길이 6의 45° 선 = 월드 끝점 (6s, 3s).
+        var threat = new SwarmCrossfireShape
+        {
+            Area = AreaType.S2Ground, OwnerId = 7,
+            Origin = new Vector3f(0f, 0f, 0f), End = new Vector3f(6f * s, 3f * s, 0f),
+            GroundLength = 6f, HalfWidth = 0.35f, SweepSpeed = 4.5f,
+            ArmedAtUtc = Now.AddSeconds(0.55), ExpiresAtUtc = Now.AddSeconds(2.05)
+        };
         // 축 위 점 (바닥면 (1,1)) = 월드 (1, 0.5). 살짝 왼쪽(+perp)으로 벗어난 곳.
         var direction = SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(
             new[] { threat }, -900000002, new Vector3f(0.98f, 0.52f, 0f), AreaType.S2Ground, Now);
@@ -107,5 +118,26 @@ public class SwarmBotDodgeTests
         Assert.NotNull(direction);
         Assert.Equal(-0.894f, direction!.Value.DirectionX, 2);
         Assert.Equal(0.447f, direction.Value.DirectionY, 2);
+    }
+
+    [Fact]
+    public void DegenerateShape_HasNoAxisAndIsIgnored()
+    {
+        // 길이 0에 가까운 모양은 방향이 없어 위협이 아니다. 봇이 그 자리에 서 있어도 반응하지 않는다.
+        var threat = new SwarmCrossfireShape
+        {
+            Area = AreaType.S2Ground, OwnerId = 7,
+            Origin = new Vector3f(5f, 5f, 0f), End = new Vector3f(5.001f, 5.001f, 0f),
+            GroundLength = 0.002f, HalfWidth = 0.35f, SweepSpeed = 4.5f,
+            ArmedAtUtc = Now.AddSeconds(0.55), ExpiresAtUtc = Now.AddSeconds(2.05)
+        };
+        Assert.Null(SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(
+            new[] { threat }, -900000001, new Vector3f(5f, 5f, 0f), AreaType.S2Ground, Now));
+
+        // 같은 목록에 정상 모양이 있으면 그 모양에는 반응한다.
+        var direction = SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(
+            new[] { threat, LineAlongX() }, -900000001, new Vector3f(2f, 0.05f, 0f), AreaType.S2Ground, Now);
+        Assert.NotNull(direction);
+        Assert.True(direction!.Value.DirectionY > 0.99f);
     }
 }
