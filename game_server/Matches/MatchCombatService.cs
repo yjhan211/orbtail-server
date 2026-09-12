@@ -56,14 +56,14 @@ internal class MatchCombatService(
 
         var nowUtc = DateTime.UtcNow;
         var aliveBots = bots.Where(bot => !bot.Player.IsEliminated).ToList();
-        var participants = new List<SwarmParticipantSpatial>();
+        var participants = new List<PlayerPositionSnapshot>();
         foreach (var player in players)
         {
             if (player.Position == null)
             {
                 continue;
             }
-            participants.Add(new SwarmParticipantSpatial(player.PlayerId, player.CurrentArea, player.Position));
+            participants.Add(new PlayerPositionSnapshot(player.PlayerId, player.CurrentArea, player.Position));
         }
 
         var tick = runtime.Monsters.Tick(participants, runtime.IsGameplayActive(), nowUtc);
@@ -235,7 +235,7 @@ internal class MatchCombatService(
                 double delaySeconds = OrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, distance);
                 runtime.Monsters.ReserveMonsterDamage(attack.TargetPlayerId, monsterDamage);
                 runtime.Monsters.RecordMonsterAttackEvent(attack.TargetPlayerId);
-                combatDamage.ScheduleMonsterHit(runtime, new PendingMonsterHit(attack.TargetPlayerId, attack.AttackerPlayerId, monsterDamage, nowUtc.AddSeconds(delaySeconds), attack.WeaponItemId, attack.AttackerItemUid, origin, anchor));
+                combatDamage.ScheduleMonsterHit(runtime, new PendingMonsterHit(attack.TargetPlayerId, attack.AttackerPlayerId, monsterDamage, nowUtc.AddSeconds(delaySeconds)));
                 continue;
             }
 
@@ -262,7 +262,7 @@ internal class MatchCombatService(
         }
     }
 
-    internal void ApplySwarmParticipantDamage(MatchRuntime runtime, SwarmPlayerDamage damage, List<GameClientSession> allSessions)
+    internal void ApplySwarmParticipantDamage(MatchRuntime runtime, MonsterContactDamage damage, List<GameClientSession> allSessions)
     {
         var victim = runtime.GetParticipant(damage.TargetPlayerId);
         if (runtime.IsEnded || victim == null || victim.IsEliminated)

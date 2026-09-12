@@ -149,7 +149,7 @@ internal sealed class PlayerOrbTrailService
     }
 
     /// <summary>참가자 이동을 경로 점으로 기록한다. 정지하면 경로가 얼어 열이 남고, 순간이동 거리면 경로를 새로 시작한다. 클라 PlayerTool.UpdateOrbTrail과 같은 규칙.</summary>
-    public void UpdateTrails(MatchRuntime runtime, List<SwarmParticipantSpatial> participants)
+    public void UpdateTrails(MatchRuntime runtime, List<PlayerPositionSnapshot> participants)
     {
         foreach (var participant in participants)
         {

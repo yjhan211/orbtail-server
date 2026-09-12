@@ -162,14 +162,14 @@ public sealed class MatchGameplayServiceTests
             player.CompleteDoor();
             player.BeginDoor(702000101, 0);
             service.ApplySwarmParticipantDamage(match,
-                new SwarmPlayerDamage(1, playerId, player.CurrentArea, 12), []);
+                new MonsterContactDamage(1, playerId, player.CurrentArea, 12), []);
             Assert.Equal(100 - network.common.Config.ScaleSwarmDamageTaken(12), player.Health);
             Assert.False(player.TryFinishDoor(702000101, 3000, TimeSpan.FromSeconds(3), out _));
 
             player.Status = network.common.PlayerMatchStatus.ELIMINATED;
             int health = player.Health;
             service.ApplySwarmParticipantDamage(match,
-                new SwarmPlayerDamage(1, playerId, player.CurrentArea, 12), []);
+                new MonsterContactDamage(1, playerId, player.CurrentArea, 12), []);
             Assert.Equal(health, player.Health);
         }
     }

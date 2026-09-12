@@ -33,7 +33,7 @@ internal sealed class MatchTrailCutService(
     private static double SwarmSingleCutHealLockSeconds => SwarmConfigData.GetDouble("SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS", 8d);
     private static double SwarmCutRetaliationWindowSeconds => SwarmConfigData.GetDouble("SWARM_CUT_RETALIATION_WINDOW_SECONDS", 1.2d);
 
-    public void ProcessTick(MatchRuntime runtime, DateTime nowUtc, List<SwarmParticipantSpatial> participants, List<GameClientSession> sessions)
+    public void ProcessTick(MatchRuntime runtime, DateTime nowUtc, List<PlayerPositionSnapshot> participants, List<GameClientSession> sessions)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {

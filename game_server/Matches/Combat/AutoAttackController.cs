@@ -4,66 +4,6 @@ using network.common.data.models;
 
 namespace game_server.matches.combat;
 
-public readonly record struct ProximityCombatActor(
-    long PlayerId,
-    AreaType Area,
-    Vector3f Position,
-    int WeaponItemId,
-    float AttackRange,
-    int Damage,
-    float AttackIntervalSeconds,
-    float ProjectileWidth = 0f,
-    float EffectDurationSeconds = 0f,
-    MapId MapId = MapId.None,
-    Cell? Cell = null,
-    int MaxTargets = 1,
-    float AdditionalTargetDamageMultiplier = 1f,
-    int InitialBurstAttackCount = 0,
-    float InitialBurstAttackIntervalMultiplier = 1f,
-    float BurstRechargeSeconds = 0f,
-    long WeaponItemUid = 0,
-    int WeaponStackIndex = 0,
-    int SunResonanceStage = 0,
-    bool WaveResonanceArmed = false,
-    float InitialAttackDelaySeconds = 0f,
-    bool IsMonsterTarget = false,
-    bool IsCoreMonsterTarget = false,
-    int TargetPriority = -1,
-    // #226 재개편: 발사 원점 전용 액터(오브) — 표적 후보에서 제외된다.
-    bool Untargetable = false,
-    // 오브열에서 몇 번째인가 (0 = 머리). 스웜 PvP가 "앞열 N개만 사람을 쏜다"를
-    // 판정하는 근거 — WeaponStackIndex는 인벤토리 스택 순번이라 열 순서와 다르다.
-    int TrailOrdinal = 0);
-
-public readonly record struct ProximityCombatAttack(
-    long AttackerPlayerId,
-    long TargetPlayerId,
-    AreaType Area,
-    int WeaponItemId,
-    int Damage,
-    float ProjectileWidth,
-    float EffectDurationSeconds,
-    int CandidateTargetCount = 0,
-    int SunResonanceStage = 0,
-    bool WaveResonanceArmed = false,
-    bool IsResonanceProc = false,
-    bool IsWaveAreaAttack = false,
-    bool IsWaveAreaSecondary = false,
-    bool IsWindAreaAttack = false,
-    bool IsWindAreaSecondary = false,
-    // #232 1단계 기준점 잠금: 발사 순간의 발사 원점(오브 월드 좌표)과 표적 위치를 박제한다.
-    // 교차사격(2단계) 모양은 이 두 점으로 방향·크기를 정하고, 예고 뒤 몬스터가 죽어도
-    // 잠근 위치에서 끝까지 처리한다. 레거시 생성 경로는 null이라 종전과 같다.
-    long AttackerItemUid = 0,
-    Vector3f? Origin = null,
-    Vector3f? AnchorPosition = null,
-    // 발사한 오브의 열 순번 — 클라가 실제로 그리는 오브 슬롯에 예고의 시작점을 붙이는 근거.
-    int AttackerTrailOrdinal = 0);
-
-/// <summary>
-///     매치 하나의 조준·공격 주기·재획득 상태를 보관하고 공격 대상을 고른다.
-///     호출자는 매치 잠금 안에서 실행하며, 실제 피해 적용은 같은 스냅샷의 공격을 모두 고른 뒤 처리한다.
-/// </summary>
 public sealed class AutoAttackController
 {
     private bool _released;
