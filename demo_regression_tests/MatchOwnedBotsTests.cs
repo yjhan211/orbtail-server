@@ -53,12 +53,12 @@ public sealed class MatchOwnedBotsTests
             Assert.Equal(17, profile.Hp);
             Assert.Equal(PlayerState.IDLE, profile.State);
             var spatial = match.Bots.SynthesizeGameObjectInfo(-1)!;
-            var snapshot = SwarmBotPlayerInfoSnapshot.Capture(profile, spatial);
-            Assert.Equal(PlayerState.SLEEP, snapshot.ToGameObjectInfo().State);
+
+            Assert.Equal(PlayerState.SLEEP, spatial.State);
         }
     }
     [Fact]
-    public void BotMovementPlanIsBoundToItsMatchAndRejectsReleasedWork()
+    public void BotMovementIsBoundToItsMatchAndRejectsReleasedWork()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(1);
@@ -66,18 +66,18 @@ public sealed class MatchOwnedBotsTests
         Assert.NotSame(first.Bots, second.Bots);
         var movementService = new BotMovementService(NullLogger<BotMovementService>.Instance);
         using (MatchRuntimeStore.Enter(first))
-            Assert.Equal(1L, movementService.PrepareMovementTick(first, first.Closures, first.GroundItems, [], [], _ => default).MatchingId);
+            movementService.ProcessTick(first, _ => default);
         using (MatchRuntimeStore.Enter(second))
-            Assert.Equal(2L, movementService.PrepareMovementTick(second, second.Closures, second.GroundItems, [], [], _ => default).MatchingId);
+            movementService.ProcessTick(second, _ => default);
         using (MatchRuntimeStore.Enter(first))
         {
             first.TryMarkEnded();
 
             Assert.Throws<InvalidOperationException>(() => movementService.ProcessTick(first, _ => default));
         }
-        Assert.Throws<InvalidOperationException>(() => movementService.PrepareMovementTick(first, first.Closures, first.GroundItems, [], [], _ => default));
+        Assert.Throws<InvalidOperationException>(() => movementService.ProcessTick(first, _ => default));
         using (MatchRuntimeStore.Enter(second))
-            Assert.Equal(2L, movementService.PrepareMovementTick(second, second.Closures, second.GroundItems, [], [], _ => default).MatchingId);
+            movementService.ProcessTick(second, _ => default);
     }
 
     [Fact]

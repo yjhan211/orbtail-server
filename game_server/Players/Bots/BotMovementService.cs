@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using System.Diagnostics;
 using game_server.matches;
 using game_server.sessions;
@@ -37,36 +36,38 @@ internal class BotMovementService(
         }
         if (runtime.IsEnded)
             throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
+        ArgumentNullException.ThrowIfNull(decideMovement);
         long matchingId = runtime.MatchingId;
         long tickStartedAt = Stopwatch.GetTimestamp();
-        GameClientSession[] sessionSnapshot = runtime.GetSessions()
-            .Where(session =>
-                session.PlayerId is > 0 &&
-                session.MatchingId == matchingId)
-            .ToArray();
-        ImmutableArray<SwarmBotObserverSnapshot> observers =
-            CaptureSwarmBotObservers(matchingId, sessionSnapshot);
-        double sessionSnapshotElapsedMilliseconds =
-            Stopwatch.GetElapsedTime(tickStartedAt).TotalMilliseconds;
-        SwarmBotMovementPlan plan = PrepareMovementTick(runtime,
-            runtime.Closures, runtime.GroundItems,
-            runtime.GetAlivePlayers(),
-            observers,
-            decideMovement);
+        var sessions = runtime.GetSessions();
+        var playerAreas = new Dictionary<long, AreaType>();
+        foreach (var player in runtime.GetAlivePlayers())
+        {
+            playerAreas.Add(player.PlayerId, player.CurrentArea);
+        }
+        double snapshotElapsedMilliseconds = Stopwatch.GetElapsedTime(tickStartedAt).TotalMilliseconds;
+        BotWalkingTickResult result = ProcessBotMovementTick(
+            runtime, runtime.Closures, playerAreas, runtime.GroundItems, decideMovement);
 
-        long dispatchStartedAt = Stopwatch.GetTimestamp();
-        DispatchSwarmBotMovementPlan(plan);
-        double broadcastElapsedMilliseconds =
-            plan.DispatchPreparationElapsedMilliseconds +
-            Stopwatch.GetElapsedTime(dispatchStartedAt).TotalMilliseconds;
+        // 모든 봇의 걸음을 확정한 뒤 같은 매치 잠금 안에서 결과를 순서대로 보낸다.
+        long broadcastStartedAt = Stopwatch.GetTimestamp();
+        foreach (var movement in result.Movements)
+        {
+            runtime.Bots.GetBot(movement.BotPlayerId)?.Player.AdvanceOrbOrbit(movement.Position);
+        }
+        foreach (var movement in result.Movements)
+        {
+            SendMovement(runtime, movement, sessions);
+        }
+        double broadcastElapsedMilliseconds = Stopwatch.GetElapsedTime(broadcastStartedAt).TotalMilliseconds;
 
         BotMovementMetricsBatch? batch = runtime.BotMovementMetrics.Record(
             matchingId,
             new BotMovementSample(
                 Stopwatch.GetElapsedTime(tickStartedAt).TotalMilliseconds,
-                sessionSnapshotElapsedMilliseconds + plan.SnapshotElapsedMilliseconds,
-                plan.PlanningElapsedMilliseconds,
-                plan.WalkingElapsedMilliseconds,
+                snapshotElapsedMilliseconds,
+                result.PlanningElapsedMilliseconds,
+                result.WalkingElapsedMilliseconds,
                 broadcastElapsedMilliseconds));
         if (batch != null)
             PublishBotMovementMetrics(batch);
@@ -99,84 +100,70 @@ internal class BotMovementService(
             broadcastP95Milliseconds);
     }
 
-    private static ImmutableArray<SwarmBotObserverSnapshot> CaptureSwarmBotObservers(
-        long matchingId,
-        IReadOnlyList<GameClientSession> sessionSnapshot)
+    private void SendMovement(
+        MatchRuntime runtime, BotMovementEvent movement, IReadOnlyList<GameClientSession> sessions)
     {
-        var observers = ImmutableArray.CreateBuilder<SwarmBotObserverSnapshot>();
-        foreach (var session in sessionSnapshot)
+        if (movement.IsAreaTransition)
         {
-            if (session.PlayerId is not > 0 ||
-                session.MatchingId != matchingId)
-                continue;
-
-            observers.Add(new SwarmBotObserverSnapshot(
-                session,
-                session.PlayerId.Value,
-                session.Player.CurrentArea));
-        }
-
-        return observers.ToImmutable();
-    }
-
-    private void DispatchSwarmBotMovementPlan(
-        SwarmBotMovementPlan plan)
-    {
-        foreach (SwarmBotMovementDispatch movement in plan.Movements)
-        {
-            if (movement.IsAreaTransition)
+            using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(movement.BotPlayerId);
+            foreach (var session in sessions)
             {
-                using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(movement.BotPlayerId);
-                foreach (var session in movement.LeaveRecipients)
-                    session.TrySend(leavePacket);
-
-                if (movement.EnteringBot != null)
+                if (session.PlayerId is > 0 && session.MatchingId == runtime.MatchingId &&
+                    session.Player.CurrentArea == movement.FromArea)
                 {
-                    using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(
-                        movement.EnteringBot.ToGameObjectInfo());
-                    foreach (var session in movement.DestinationRecipients)
-                        session.TrySend(enterPacket);
+                    session.TrySend(leavePacket);
                 }
             }
 
-            using (var movePacket = PacketMaker.G_TO_C_MOVE(
-                       movement.BotPlayerId,
-                       movement.Position.ToVector3f(),
-                       movement.Velocity.ToVector3f(),
-                       movement.Rotation,
-                       movement.ToCell.ToCell(),
-                       movement.ServerTimestamp,
-                       movement.OrbOrbitPhaseDegrees))
+            var enteringBot = runtime.Bots.SynthesizeGameObjectInfo(movement.BotPlayerId);
+            if (enteringBot != null)
             {
-                foreach (var session in movement.DestinationRecipients)
-                    session.TrySend(movePacket);
+                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(enteringBot);
+                foreach (var session in sessions)
+                {
+                    if (session.PlayerId is > 0 && session.MatchingId == runtime.MatchingId &&
+                        session.Player.CurrentArea == movement.ToArea)
+                    {
+                        session.TrySend(enterPacket);
+                    }
+                }
             }
-
         }
 
+        float orbOrbitPhase = runtime.Bots.GetBot(movement.BotPlayerId)?.Player.OrbOrbitPhaseDegrees
+                              ?? SwarmOrbOrbit.InitialPhaseDegrees(movement.BotPlayerId);
+        using var movePacket = PacketMaker.G_TO_C_MOVE(
+            movement.BotPlayerId,
+            movement.Position,
+            movement.Velocity,
+            movement.Rotation,
+            movement.ToCell,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            orbOrbitPhase);
+        foreach (var session in sessions)
+        {
+            if (session.PlayerId is > 0 && session.MatchingId == runtime.MatchingId &&
+                session.Player.CurrentArea == movement.ToArea)
+            {
+                session.TrySend(movePacket);
+            }
+        }
     }
 
     public void DispatchExternalMovement(MatchRuntime runtime, BotMovementEvent movement)
     {
+        ArgumentNullException.ThrowIfNull(movement);
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Bot movement requires the match lock.");
         }
         if (runtime.IsEnded)
+        {
             throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
-        long matchingId = runtime.MatchingId;
-        GameClientSession[] sessionSnapshot = runtime.GetSessions()
-            .Where(session =>
-                session.PlayerId is > 0 &&
-                session.MatchingId == matchingId)
-            .ToArray();
-        ImmutableArray<SwarmBotObserverSnapshot> observers =
-            CaptureSwarmBotObservers(matchingId, sessionSnapshot);
-        SwarmBotMovementPlan plan = PrepareExternalMovement(runtime,
-            movement,
-            runtime.GetAlivePlayers(),
-            observers);
-        DispatchSwarmBotMovementPlan(plan);
+        }
+
+        // 외부에서 확정한 이동은 정기 틱과 달리 오브 공전 위상을 갱신하지 않는다.
+        SendMovement(runtime, movement, runtime.GetSessions());
     }
 
     private static double CalculatePercentile(IReadOnlyList<double> sortedValues, double percentile)
@@ -193,172 +180,6 @@ internal class BotMovementService(
         return sortedValues[lowerIndex] + (sortedValues[upperIndex] - sortedValues[lowerIndex]) * fraction;
     }
 
-    internal SwarmBotMovementPlan PrepareMovementTick(MatchRuntime runtime,
-        MatchAreaClosureState closures,
-        MatchGroundItemState groundItems,
-        IReadOnlyList<Player> players,
-        IReadOnlyList<SwarmBotObserverSnapshot> observers,
-        Func<long, BotMovementDecision> decideMovement)
-    {
-        ArgumentNullException.ThrowIfNull(observers);
-        ArgumentNullException.ThrowIfNull(decideMovement);
-
-        if (!Monitor.IsEntered(runtime.MatchLock))
-            throw new InvalidOperationException("Bot movement requires the match lock.");
-        if (runtime.IsEnded)
-            throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
-        long matchingId = runtime.MatchingId;
-        long snapshotStartedAt = Stopwatch.GetTimestamp();
-        var playerAreas = new Dictionary<long, AreaType>();
-        foreach (var player in players)
-        {
-            if (!player.IsEliminated)
-                playerAreas.Add(player.PlayerId, player.CurrentArea);
-        }
-        double snapshotElapsedMilliseconds =
-            Stopwatch.GetElapsedTime(snapshotStartedAt).TotalMilliseconds;
-        BotWalkingTickResult movementResult = ProcessBotMovementTick(runtime,
-            closures,
-            playerAreas,
-            groundItems,
-            decideMovement);
-
-        long preparationStartedAt = Stopwatch.GetTimestamp();
-        SwarmBotMovementPlan plan = PrepareResult(runtime,
-            matchingId,
-            movementResult.Movements,
-            players,
-            observers,
-            advanceOrbOrbit: true,
-            movementResult.PlanningElapsedMilliseconds,
-            movementResult.WalkingElapsedMilliseconds);
-        return plan with
-        {
-            SnapshotElapsedMilliseconds = snapshotElapsedMilliseconds,
-            DispatchPreparationElapsedMilliseconds =
-                Stopwatch.GetElapsedTime(preparationStartedAt).TotalMilliseconds
-        };
-    }
-
-    /// <summary>
-    ///     이미 확정된 외부 이동을 송신용 값으로 복사한다. 정기 이동과 달리 오브 공전 위상은 갱신하지 않는다.
-    /// </summary>
-    internal SwarmBotMovementPlan PrepareExternalMovement(MatchRuntime runtime,
-        BotMovementEvent movement,
-        IReadOnlyList<Player> players,
-        IReadOnlyList<SwarmBotObserverSnapshot> observers)
-    {
-        ArgumentNullException.ThrowIfNull(movement);
-        ArgumentNullException.ThrowIfNull(observers);
-        if (!Monitor.IsEntered(runtime.MatchLock))
-            throw new InvalidOperationException("Bot movement requires the match lock.");
-        if (runtime.IsEnded)
-            throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
-        long matchingId = runtime.MatchingId;
-
-        long preparationStartedAt = Stopwatch.GetTimestamp();
-        SwarmBotMovementPlan plan = PrepareResult(runtime,
-            matchingId,
-            [movement],
-            players,
-            observers,
-            advanceOrbOrbit: false,
-            planningElapsedMilliseconds: 0d,
-            walkingElapsedMilliseconds: 0d);
-        return plan with
-        {
-            DispatchPreparationElapsedMilliseconds =
-                Stopwatch.GetElapsedTime(preparationStartedAt).TotalMilliseconds
-        };
-    }
-
-    private SwarmBotMovementPlan PrepareResult(MatchRuntime runtime,
-        long matchingId,
-        IReadOnlyCollection<BotMovementEvent> movements,
-        IReadOnlyList<Player> players,
-        IReadOnlyList<SwarmBotObserverSnapshot> observers,
-        bool advanceOrbOrbit,
-        double planningElapsedMilliseconds,
-        double walkingElapsedMilliseconds)
-    {
-        var movementDispatches = ImmutableArray.CreateBuilder<SwarmBotMovementDispatch>();
-        foreach (BotMovementEvent movement in movements)
-        {
-            SwarmBotMovementDispatch? dispatch = PrepareMovement(runtime,
-                movement,
-                players,
-                observers,
-                advanceOrbOrbit);
-            if (dispatch != null)
-                movementDispatches.Add(dispatch);
-        }
-
-        return new SwarmBotMovementPlan(
-            matchingId,
-            movementDispatches.ToImmutable(),
-            planningElapsedMilliseconds,
-            walkingElapsedMilliseconds,
-            SnapshotElapsedMilliseconds: 0d,
-            DispatchPreparationElapsedMilliseconds: 0d);
-    }
-
-    private SwarmBotMovementDispatch? PrepareMovement(MatchRuntime runtime,
-        BotMovementEvent movement,
-        IReadOnlyList<Player> players,
-        IReadOnlyList<SwarmBotObserverSnapshot> observers,
-        bool advanceOrbOrbit)
-    {
-        Bot? bot = runtime.Bots.GetBot(movement.BotPlayerId);
-        if (advanceOrbOrbit)
-            bot?.Player.AdvanceOrbOrbit(movement.Position);
-
-        long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        ImmutableArray<GameClientSession> leaveRecipients = movement.IsAreaTransition
-            ? SelectRecipients(observers, observer => observer.Area == movement.FromArea)
-            : ImmutableArray<GameClientSession>.Empty;
-        ImmutableArray<GameClientSession> destinationRecipients = SelectRecipients(
-            observers,
-            observer => observer.Area == movement.ToArea);
-
-        SwarmBotPlayerInfoSnapshot? enteringBot = null;
-        if (movement.IsAreaTransition)
-        {
-            PlayerInfo? botInfo = runtime.Bots.GetPlayerProfile(movement.BotPlayerId);
-            GameObjectInfo? objectInfo = runtime.Bots.SynthesizeGameObjectInfo(movement.BotPlayerId);
-            if (botInfo != null && objectInfo != null)
-                enteringBot = SwarmBotPlayerInfoSnapshot.Capture(botInfo, objectInfo);
-        }
-
-        float orbOrbitPhase = bot?.Player.OrbOrbitPhaseDegrees
-                              ?? SwarmOrbOrbit.InitialPhaseDegrees(movement.BotPlayerId);
-        return new SwarmBotMovementDispatch(
-            movement.BotPlayerId,
-            movement.IsAreaTransition,
-            movement.ToArea,
-            SwarmCellSnapshot.Capture(movement.ToCell),
-            SwarmVectorSnapshot.Capture(movement.Position),
-            SwarmVectorSnapshot.Capture(movement.Velocity),
-            movement.Rotation,
-            serverTimestamp,
-            orbOrbitPhase,
-            leaveRecipients,
-            destinationRecipients,
-            enteringBot);
-    }
-
-    private static ImmutableArray<GameClientSession> SelectRecipients(
-        IReadOnlyList<SwarmBotObserverSnapshot> observers,
-        Func<SwarmBotObserverSnapshot, bool> predicate)
-    {
-        var recipients = ImmutableArray.CreateBuilder<GameClientSession>();
-        foreach (SwarmBotObserverSnapshot observer in observers)
-        {
-            if (predicate(observer))
-                recipients.Add(observer.Session);
-        }
-
-        return recipients.ToImmutable();
-    }
 
     private static float DistanceSquared(Vector3f position, float x, float y)
     {

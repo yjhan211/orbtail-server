@@ -43,11 +43,11 @@ internal static class TestGameSessionServices
         }
     }
     // 송신 계획의 수신자 참조를 검사하기 위한 소켓 없는 세션.
-    public static GameClientSession CreateRecipientSession()
+    public static GameClientSession CreateRecipientSession(network.core.TcpConnection? connection = null)
     {
         var store = CreateMatchRuntimeStore(NullLogger.Instance);
         return new GameClientSession(
-            new network.core.TcpConnection(), NullLogger.Instance, new InMemoryRedisOperations(),
+            connection ?? new network.core.TcpConnection(), NullLogger.Instance, new InMemoryRedisOperations(),
             static _ => false, CreateMatchCleanupService(), static (_, _) => null,
             CreatePlayerOrbGrowthService(), CreateMovementService(), new PlayerInteractionService(), new FakeGameSessionLifecycle(), static () => false,
             new FakeMatchEntryFailureHandler(),
