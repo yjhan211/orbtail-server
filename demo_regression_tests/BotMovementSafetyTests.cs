@@ -44,6 +44,34 @@ public sealed class BotMovementSafetyTests
     }
 
     [Fact]
+    public void OutsideFieldAllowsEqualDistanceStep()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(982003);
+        using (runtime.Enter())
+        {
+            // 문으로 접근하거나 통과할 때 인접 셀의 반올림 거리가 같을 수 있다.
+            var door = GameDoorData.Get(213)!;
+            var cell = new Cell((int)door.PositionX, (int)door.PositionY);
+            int distance = SwarmPressureField.GetDistance(cell);
+            var neighbors = new[]
+            {
+                new Cell(cell.X - 1, cell.Y), new Cell(cell.X + 1, cell.Y),
+                new Cell(cell.X, cell.Y - 1), new Cell(cell.X, cell.Y + 1)
+            };
+            var target = neighbors.First(candidate => SwarmPressureField.GetDistance(candidate) == distance);
+            var bot = new Bot { PlayerId = -1 };
+            bot.Player.CurrentArea = door.AreaType;
+            bot.Player.Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
+            var now = DateTime.UtcNow;
+            runtime.Closures.GameStartTime = now.AddHours(-1);
+            Assert.True(distance > runtime.Closures.GetSafeDistance(now));
+
+            Assert.False(BotMovementService.IsUnsafeStep(runtime, bot, target, bot.Player.CurrentArea, now));
+        }
+    }
+
+    [Fact]
     public void OutsideFieldAllowsInwardEscapeButRejectsOutwardStep()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();

@@ -609,9 +609,8 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             return false;
         }
 
-        // 이미 경계 밖이라면 안쪽으로 접근하는 탈출 이동은 허용한다.
         var currentCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!);
-        return targetDistance >= SwarmPressureField.GetDistance(currentCell);
+        return targetDistance > SwarmPressureField.GetDistance(currentCell);
     }
 
     private void ChooseNewWanderTarget(MatchRuntime runtime, Bot bot, IReadOnlyDictionary<long, AreaType> playerAreas)

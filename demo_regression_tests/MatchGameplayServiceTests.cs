@@ -333,6 +333,32 @@ public sealed class MatchGameplayServiceTests
     }
 
     [Fact]
+    public void BotWakesForSummonStoneAndSleepsAgainAfterItDisappears()
+    {
+        using var provider = GameServerDependencyInjectionTests.CreateProvider();
+        var service = provider.GetRequiredService<BotBehaviorService>();
+        var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947705);
+        var bot = new Bot { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.AreaType.S2Corridor9 } };
+        using (match.Enter())
+        {
+            match.RegisterParticipant(bot.Player);
+            var now = DateTime.UtcNow;
+            service.UpdateSleep(match, [bot], now);
+            Assert.True(bot.Player.IsSleeping);
+
+            match.GroundItems.SpawnItems(bot.Player.CurrentArea, 0, 0, [network.common.Config.SUMMON_STONE_GROUND_ITEM_ID]);
+            service.UpdateSleep(match, [bot], now);
+            Assert.False(bot.Player.IsSleeping);
+            service.UpdateSleep(match, [bot], now.AddSeconds(1));
+            Assert.False(bot.Player.IsSleeping);
+
+            match.GroundItems.Release();
+            service.UpdateSleep(match, [bot], now.AddSeconds(2));
+            Assert.True(bot.Player.IsSleeping);
+        }
+    }
+
+    [Fact]
     public void BotSleepUsesSharedWarmupRecoveryAndCombatLock()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();

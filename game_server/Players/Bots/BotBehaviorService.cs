@@ -126,26 +126,47 @@ internal sealed class BotBehaviorService(
             {
                 continue;
             }
+            var previousState = player.State;
             if (player.PendingDoorInteractionId is { } doorId)
             {
-                if (!interactions.TryFinishDoor(runtime, player, doorId, doorId, now, out _))
+                if (interactions.TryFinishDoor(runtime, player, doorId, doorId, now, out var error))
                 {
-                    continue;
+                    using var openPacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, bot.PlayerId);
+                    foreach (var session in sessions)
+                    {
+                        session.TrySend(openPacket);
+                    }
+                    logger.LogInformation("Swarm bot unlocked door: MatchingId={MatchingId}, BotId={BotId}, DoorId={DoorId}",
+                        runtime.MatchingId, bot.PlayerId, doorId);
+                    player.State = PlayerState.IDLE;
                 }
-                using var openPacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, bot.PlayerId);
-                foreach (var session in sessions)
+                else if (error != ErrorCode.DOOR_OPEN_TOO_EARLY)
                 {
-                    session.TrySend(openPacket);
+                    interactions.CancelPendingInteractions(runtime, player);
+                    player.State = PlayerState.IDLE;
                 }
-                logger.LogInformation("Swarm bot unlocked door: MatchingId={MatchingId}, BotId={BotId}, DoorId={DoorId}",
-                    runtime.MatchingId, bot.PlayerId, doorId);
-                continue;
             }
-            if (!TryFindNearestClosedDoor(runtime, bot, out int targetDoorId))
+            else if (player.State == PlayerState.EXPLORE_1)
+            {
+                player.State = PlayerState.IDLE;
+            }
+            else if (TryFindNearestClosedDoor(runtime, bot, out int targetDoorId) && interactions.StartDoor(runtime, player, targetDoorId, targetDoorId, now) == ErrorCode.SUCCESS)
+            {
+                player.State = PlayerState.EXPLORE_1;
+            }
+
+            if (player.State == previousState)
             {
                 continue;
             }
-            interactions.StartDoor(runtime, player, targetDoorId, targetDoorId, now);
+            using var statePacket = PacketMaker.G_TO_C_PLAYER_STATE(player.PlayerId, player.State);
+            foreach (var session in sessions)
+            {
+                if (!session.Player.IsEliminated && session.Player.CurrentArea == player.CurrentArea)
+                {
+                    session.TrySend(statePacket);
+                }
+            }
         }
     }
 
@@ -803,7 +824,15 @@ internal sealed class BotBehaviorService(
         {
             var player = bot.Player;
             bool unsafeToSleep = IsUnsafeToSleep(runtime, bot, players, monsterTargets, safeRadiusSquared, nowUtc);
-            bool changed = unsafeToSleep || player.Health >= Config.MAX_HEALTH ? player.TryStopSleep() : player.TryStartSleep(nowUtc);
+            bool hasSummonStone = false;
+            foreach (var item in runtime.GroundItems.GetItemsInArea(player.CurrentArea))
+            {
+                if (item.ItemId != Config.SUMMON_STONE_GROUND_ITEM_ID) continue;
+                hasSummonStone = true;
+                break;
+            }
+            // 소환석 반응 대기 중에도 잠들지 않는다. 이동·획득의 기존 반응 시간은 유지한다.
+            bool changed = unsafeToSleep || hasSummonStone || player.Health >= Config.MAX_HEALTH ? player.TryStopSleep() : player.TryStartSleep(nowUtc);
             if (!changed)
             {
                 continue;

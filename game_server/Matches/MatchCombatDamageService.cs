@@ -171,7 +171,14 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         victim.MarkSwarmCombat(nowUtc);
         if (victim.InterruptDoor() is { } interactId)
         {
+            victim.State = PlayerState.IDLE;
             victim.Session?.SendDoorOpenInterrupted(interactId);
+            using var statePacket = PacketMaker.G_TO_C_PLAYER_STATE(victim.PlayerId, victim.State);
+            foreach (var observer in runtime.GetSessions())
+            {
+                if (!observer.Player.IsEliminated && observer.Player.CurrentArea == victim.CurrentArea)
+                    observer.TrySend(statePacket);
+            }
         }
 
         var bot = runtime.Bots.GetBots().FirstOrDefault(bot => ReferenceEquals(bot.Player, victim));
@@ -196,7 +203,14 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         victim.MarkSwarmCombat(nowUtc);
         if (victim.InterruptDoor() is { } interactId)
         {
+            victim.State = PlayerState.IDLE;
             victim.Session?.SendDoorOpenInterrupted(interactId);
+            using var statePacket = PacketMaker.G_TO_C_PLAYER_STATE(victim.PlayerId, victim.State);
+            foreach (var observer in runtime.GetSessions())
+            {
+                if (!observer.Player.IsEliminated && observer.Player.CurrentArea == victim.CurrentArea)
+                    observer.TrySend(statePacket);
+            }
         }
 
         var bot = runtime.Bots.GetBots().FirstOrDefault(bot => ReferenceEquals(bot.Player, victim));
