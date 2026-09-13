@@ -443,7 +443,7 @@ public class MatchMonsterTickTests
             }
         }
 
-        public IReadOnlyList<MonsterRuntimeInfo> GetVisualStates() => Runtime.Monsters.Entities.Values.Select(monster => monster.ToMonsterRuntimeInfo()).ToList();
+        public IReadOnlyList<MonsterInfo> GetVisualStates() => Runtime.Monsters.Entities.Values.Select(monster => monster.ToMonsterInfo()).ToList();
 
         public IReadOnlyList<Monster> GetCombatTargets()
         {

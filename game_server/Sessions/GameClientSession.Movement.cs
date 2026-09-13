@@ -106,7 +106,7 @@ public partial class GameClientSession
         TrySend(packet);
     }
 
-    internal void SendMonsterSnapshot(IReadOnlyDictionary<AreaType, List<MonsterRuntimeInfo>> snapshotsByArea, bool preMatch)
+    internal void SendMonsterSnapshot(IReadOnlyDictionary<AreaType, List<MonsterInfo>> snapshotsByArea, bool preMatch)
     {
         foreach (var (area, monsters) in snapshotsByArea)
         {

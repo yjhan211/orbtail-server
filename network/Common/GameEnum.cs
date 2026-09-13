@@ -157,6 +157,7 @@ namespace network.common
         ITEM,
         EXPLORETARGET,
         INTERACTPROP,
+        MONSTER,
     }
 
     public enum InventoryOwnerType
@@ -233,7 +234,7 @@ namespace network.common
         UI = 7,
     }
 
-    // 잔상 몬스터 종. 값은 swarm_monster.csv의 kind이며 MonsterRuntimeInfo.Kind로 클라에 전달된다.
+    // 잔상 몬스터 종. 값은 swarm_monster.csv의 kind이며 MonsterInfo.Kind로 클라에 전달된다.
     public enum MonsterKind
     {
         Skeleton = 0,

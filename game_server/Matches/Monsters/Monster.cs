@@ -92,7 +92,7 @@ public sealed class Monster
         }
     }
 
-    public MonsterRuntimeInfo ToMonsterRuntimeInfo() => new()
+    public MonsterInfo ToMonsterInfo() => new()
     {
         MonsterId = MonsterId,
         AreaType = Area,

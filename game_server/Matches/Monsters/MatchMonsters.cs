@@ -42,9 +42,9 @@ public sealed class MatchMonsters
         return true;
     }
 
-    public IReadOnlyDictionary<AreaType, List<MonsterRuntimeInfo>> GetVisualStatesByArea()
+    public IReadOnlyDictionary<AreaType, List<MonsterInfo>> GetVisualStatesByArea()
     {
-        var statesByArea = new Dictionary<AreaType, List<MonsterRuntimeInfo>>();
+        var statesByArea = new Dictionary<AreaType, List<MonsterInfo>>();
         foreach (var monster in Entities.Values)
         {
             if (monster.MonsterId <= 0 || monster.Area == AreaType.None)
@@ -53,10 +53,10 @@ public sealed class MatchMonsters
             }
             if (!statesByArea.TryGetValue(monster.Area, out var areaStates))
             {
-                areaStates = new List<MonsterRuntimeInfo>();
+                areaStates = new List<MonsterInfo>();
                 statesByArea[monster.Area] = areaStates;
             }
-            areaStates.Add(monster.ToMonsterRuntimeInfo());
+            areaStates.Add(monster.ToMonsterInfo());
         }
         foreach (var areaStates in statesByArea.Values)
         {

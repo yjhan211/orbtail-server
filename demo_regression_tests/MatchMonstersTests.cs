@@ -33,7 +33,7 @@ public sealed class MatchMonstersTests
         runtime.Monsters.Entities[100] = new Monster { MonsterId = 100, Area = AreaType.S2Gym1, Alive = true };
         runtime.Monsters.Entities[200] = new Monster { MonsterId = 200, Area = AreaType.None, Alive = true };
 
-        IReadOnlyDictionary<AreaType, List<MonsterRuntimeInfo>> groups;
+        IReadOnlyDictionary<AreaType, List<MonsterInfo>> groups;
         using (runtime.Enter())
         {
             groups = runtime.Monsters.GetVisualStatesByArea();
