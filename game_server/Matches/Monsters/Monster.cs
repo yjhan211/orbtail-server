@@ -60,8 +60,7 @@ public sealed class Monster
     public int PendingDamage { get; set; }
     public bool Infiltrating { get; set; }
     public bool MarchIsPursuit { get; set; }
-    public List<Vector3f> MarchWaypoints { get; } = new();
-    public int MarchIndex { get; set; }
+    public MovementState Movement { get; } = new();
     public double MarchBudgetSeconds { get; set; }
     public float MarchSpeedScale { get; set; } = 1f;
     public DateTime NextChasePlanAtUtc { get; set; }

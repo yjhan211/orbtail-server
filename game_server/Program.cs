@@ -115,7 +115,7 @@ internal static class Program
             sp.GetRequiredService<ILogger<PlayerEliminationService>>()));
         services.AddSingleton<PlayerHealthService>();
 
-        services.AddSingleton<MonsterMovementService>();
+        services.AddSingleton<MonsterBehaviorService>();
         services.AddSingleton<MonsterCombatService>();
         services.AddSingleton<MatchMonsterSpawnService>();
         services.AddSingleton<MatchCombatDamageService>();
@@ -127,7 +127,7 @@ internal static class Program
         services.AddSingleton<PlayerPickupService>();
         services.AddSingleton<PlayerOrbTrailService>();
         services.AddSingleton<MatchOrbAttackService>();
-        services.AddSingleton<BotMovementService>();
+        services.AddSingleton<MatchMovementService>();
         services.AddSingleton<BotBehaviorService>();
         services.AddSingleton<MatchTrailCutService>();
         services.AddSingleton<MatchAutoAttackService>();
@@ -137,7 +137,6 @@ internal static class Program
         {
             var field = sp.GetRequiredService<MatchFieldService>();
             var combat = sp.GetRequiredService<MatchCombatService>();
-            var botMovement = sp.GetRequiredService<BotMovementService>();
             var botBehavior = sp.GetRequiredService<BotBehaviorService>();
             var runtimes = sp.GetRequiredService<MatchRuntimeStore>();
             var loopLogger = sp.GetRequiredService<ILogger<MatchTickLoop>>();
@@ -148,7 +147,7 @@ internal static class Program
                 return new MatchTickLoop(
                     runtime,
                     runtimes, loopLogger, pickup,
-                    entryFailureHandler, combat, field, botMovement, botBehavior, clock);
+                    entryFailureHandler, combat, field, botBehavior, clock);
             };
         });
         services.AddSingleton<MatchTickService>();

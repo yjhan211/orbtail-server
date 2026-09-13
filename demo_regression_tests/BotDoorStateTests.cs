@@ -29,7 +29,7 @@ public sealed class BotDoorStateTests
 
             Assert.Equal(PlayerState.IDLE, bot.Player.State);
             Assert.Null(bot.Player.PendingDoorInteractionId);
-            var service = new BotBehaviorService(null!, null!, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
+            var service = new BotBehaviorService(null!, null!, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance, new game_server.matches.MatchMovementService());
             service.ProcessDoorInteractions(runtime, [bot], [], now.AddMilliseconds(100));
             Assert.Equal(PlayerState.EXPLORE_1, bot.Player.State);
             Assert.Equal(213, bot.Player.PendingDoorInteractionId);
@@ -50,7 +50,7 @@ public sealed class BotDoorStateTests
             runtime.Bots.RegisterBots(runtime.MatchingId, [-1L], new Dictionary<long, Cell> { [-1] = cell });
             var bot = runtime.Bots.GetBot(-1)!;
             bot.Player.CurrentArea = door.AreaType;
-            var service = new BotBehaviorService(null!, null!, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
+            var service = new BotBehaviorService(null!, null!, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance, new game_server.matches.MatchMovementService());
             var now = DateTime.UtcNow;
 
             service.ProcessDoorInteractions(runtime, [bot], [], now);

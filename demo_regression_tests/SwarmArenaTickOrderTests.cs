@@ -23,7 +23,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(composition,
             "services.AddSingleton<Func<MatchRuntime, TimeProvider, MatchTickLoop>>",
             "return (runtime, clock) =>",
-            "entryFailureHandler, combat, field, botMovement, botBehavior, clock);",
+            "entryFailureHandler, combat, field, botBehavior, clock);",
 
             "services.AddSingleton<MatchTickService>");
         AssertInOrder(runner,
@@ -75,7 +75,7 @@ public sealed class SwarmArenaTickOrderTests
             "if (currentEnvironmentInterval > _lastEnvironmentInterval)",
             "field.ProcessDamageTick(runtime);",
             "runtime.IsEnded ||",
-            "botMovement.ProcessTick(runtime, botPlayerId => botBehavior.DecideMovement(runtime, botPlayerId));");
+            "botBehavior.ProcessTick(runtime, botPlayerId => botBehavior.DecideMovement(runtime, botPlayerId));");
 
         string matchingSettlement = ReadMethodSlice(
             settlement,
@@ -279,7 +279,7 @@ public sealed class SwarmArenaTickOrderTests
         string root = FindRepositoryRoot();
         string composition = ReadNormalizedSource(root, "game_server", "Program.cs");
         string field = ReadNormalizedSource(root, "game_server", "Matches", "MatchFieldService.cs");
-        Assert.Contains("combat, field, botMovement, botBehavior, clock)", composition);
+        Assert.Contains("combat, field, botBehavior, clock)", composition);
         string tick = ReadMethodSlice(
             field,
             "public void ProcessClosureTick(",
@@ -348,7 +348,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.Contains("public List<SwarmCrossfireShape> SunCrossfireShapes { get; } = new();", botDodge);
 
         Assert.Contains("new MatchBots(logger)", botDodge);
-        string botMovement = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotMovementService.cs");
+        string botMovement = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotBehaviorService.cs");
         Assert.Contains("runtime.SunCrossfireShapes, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now", botMovement);
         Assert.DoesNotContain("matchRuntimes.GetOrThrow(matchingId).Swarm", botDodge);
         Assert.False(File.Exists(Path.Combine(root, "game_server", "GameServer.SwarmBotDodge.cs")));

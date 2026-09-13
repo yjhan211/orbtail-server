@@ -433,7 +433,7 @@ public sealed class MatchGameplayServiceTests
         using (match.Enter())
         {
             Assert.True(bot.Player.TryStartSleep(DateTime.UtcNow));
-            var result = provider.GetRequiredService<BotMovementService>().ProcessBotMovementTick(match,
+            var result = provider.GetRequiredService<BotBehaviorService>().ProcessBotMovementTick(match,
                 new Dictionary<long, network.common.AreaType>(),
                 _ => throw new InvalidOperationException("A sleeping bot must not request a movement plan."));
             Assert.Single(result.Movements);

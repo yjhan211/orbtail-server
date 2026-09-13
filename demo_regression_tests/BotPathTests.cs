@@ -13,9 +13,9 @@ public sealed class BotPathTests
         {
             MovementMode = BotMovementMode.Return,
             MovementDestination = AreaType.S2Ground,
-            PathIndex = 2
+            Movement = { WaypointIndex = 2 }
         };
-        var path = bot.Path;
+        var path = bot.Movement.Waypoints;
         var cell = new network.common.data.models.Cell(3, 4);
         var position = new network.common.data.models.Vector3f(10, 20, 0);
 
@@ -27,8 +27,8 @@ public sealed class BotPathTests
         Assert.Same(position, bot.DesiredMovementPosition);
         Assert.Equal(BotMovementMode.Return, bot.MovementMode);
         Assert.Equal(AreaType.S2Ground, bot.MovementDestination);
-        Assert.Same(path, bot.Path);
-        Assert.Equal(2, bot.PathIndex);
+        Assert.Same(path, bot.Movement.Waypoints);
+        Assert.Equal(2, bot.Movement.WaypointIndex);
     }
 
     [Fact]
@@ -36,7 +36,7 @@ public sealed class BotPathTests
     {
         var bot = new Bot
         {
-            PathIndex = 3,
+            Movement = { WaypointIndex = 3 },
             MovementDestination = AreaType.S2Ground,
             MovementMode = BotMovementMode.Return
         };
@@ -44,16 +44,17 @@ public sealed class BotPathTests
 
         bot.SetPath(path);
 
-        Assert.Same(path, bot.Path);
-        Assert.Equal(0, bot.PathIndex);
+        Assert.NotSame(path, bot.Movement.Waypoints);
+        Assert.Empty(bot.Movement.Waypoints);
+        Assert.Equal(0, bot.Movement.WaypointIndex);
         Assert.Equal(AreaType.S2Ground, bot.MovementDestination);
         Assert.Equal(BotMovementMode.Return, bot.MovementMode);
 
-        bot.PathIndex = 2;
+        bot.Movement.WaypointIndex = 2;
         bot.ClearPath();
 
-        Assert.Empty(bot.Path);
-        Assert.Equal(0, bot.PathIndex);
+        Assert.Empty(bot.Movement.Waypoints);
+        Assert.Equal(0, bot.Movement.WaypointIndex);
         Assert.Equal(AreaType.S2Ground, bot.MovementDestination);
         Assert.Equal(BotMovementMode.Return, bot.MovementMode);
     }

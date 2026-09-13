@@ -26,7 +26,6 @@ internal sealed class MatchTickLoop(
     MatchEntryFailureHandler entryFailureHandler,
     MatchCombatService combat,
     MatchFieldService field,
-    BotMovementService botMovement,
     BotBehaviorService botBehavior,
     TimeProvider? timeProvider = null)
 {
@@ -134,6 +133,6 @@ internal sealed class MatchTickLoop(
             return;
         }
 
-        botMovement.ProcessTick(runtime, botPlayerId => botBehavior.DecideMovement(runtime, botPlayerId));
+        botBehavior.ProcessTick(runtime, botPlayerId => botBehavior.DecideMovement(runtime, botPlayerId));
     }
 }

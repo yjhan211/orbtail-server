@@ -30,10 +30,10 @@ public sealed class BotMovementSafetyTests
             runtime.Closures.InitializeMatching([(AreaType.S2Library1, 0)]);
             runtime.Closures.CloseDueAreas();
 
-            var service = new BotMovementService(NullLogger<BotMovementService>.Instance);
+            var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance, new game_server.matches.MatchMovementService());
             var result = service.ProcessBotMovementTick(runtime, new Dictionary<long, AreaType>(), _ => { });
 
-            Assert.Empty(bot.Path);
+            Assert.Empty(bot.Movement.Waypoints);
             Assert.Same(originalPosition, bot.Player.Position);
             Assert.Equal(DateTime.MinValue, bot.MovementModeUntilUtc);
             var movement = Assert.Single(result.Movements);
@@ -67,7 +67,7 @@ public sealed class BotMovementSafetyTests
             runtime.Closures.GameStartTime = now.AddHours(-1);
             Assert.True(distance > runtime.Closures.GetSafeDistance(now));
 
-            Assert.False(BotMovementService.IsUnsafeStep(runtime, bot, target, bot.Player.CurrentArea, now));
+            Assert.False(BotBehaviorService.IsUnsafeStep(runtime, bot, target, bot.Player.CurrentArea, now));
         }
     }
 
@@ -89,9 +89,9 @@ public sealed class BotMovementSafetyTests
             bot.Player.Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, outer);
             runtime.Closures.GameStartTime = DateTime.UtcNow.AddHours(-1);
 
-            Assert.False(BotMovementService.IsUnsafeStep(runtime, bot, inner, bot.Player.CurrentArea, DateTime.UtcNow));
+            Assert.False(BotBehaviorService.IsUnsafeStep(runtime, bot, inner, bot.Player.CurrentArea, DateTime.UtcNow));
             bot.Player.Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, inner);
-            Assert.True(BotMovementService.IsUnsafeStep(runtime, bot, outer, bot.Player.CurrentArea, DateTime.UtcNow));
+            Assert.True(BotBehaviorService.IsUnsafeStep(runtime, bot, outer, bot.Player.CurrentArea, DateTime.UtcNow));
         }
     }
 }

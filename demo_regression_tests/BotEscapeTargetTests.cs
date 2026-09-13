@@ -34,7 +34,7 @@ public sealed class BotEscapeTargetTests
             };
             rival.Orbs.TryAddItemWithCapacity(107000020, 8, out _);
             runtime.RegisterParticipant(rival);
-            var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
+            var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance, new game_server.matches.MatchMovementService());
 
             service.DecideMovement(runtime, bot.PlayerId);
 

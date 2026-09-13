@@ -1,3 +1,4 @@
+using game_server.matches;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -36,8 +37,7 @@ public class Bot
     };
     public long PlayerId { get => Player.PlayerId; set => Player.Profile.PlayerId = value; }
     public long LastProximityAttackerPlayerId { get; set; }
-    public List<MapPathfinder.Step> Path { get; set; } = new();
-    public int PathIndex { get; set; }
+    public MovementState Movement { get; } = new();
     public DateTime LastWalkStepTime { get; set; } = DateTime.UtcNow;
     public DateTime LoopWaitUntil { get; set; } = DateTime.MinValue;
     public AreaType LastLockedDoorBlockArea { get; set; } = AreaType.None;
@@ -64,13 +64,15 @@ public class Bot
 
     public void SetPath(List<MapPathfinder.Step> path)
     {
-        Path = path;
-        PathIndex = 0;
+        Movement.Clear();
+        foreach (var step in path)
+        {
+            Movement.Waypoints.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, step.Cell));
+        }
     }
 
     public void ClearPath()
     {
-        Path.Clear();
-        PathIndex = 0;
+        Movement.Clear();
     }
 }

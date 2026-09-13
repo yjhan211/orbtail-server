@@ -58,11 +58,9 @@ internal static class GameServerTestAccess
         var health = TestGameSessionServices.CreateHealthService(runtimes);
         var combatDamage = TestGameSessionServices.CreateCombatDamageService();
         var results = new MatchResultService(runtimes, logger);
-        var movement = new BotMovementService(
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<BotMovementService>.Instance);
         var interactions = new PlayerInteractionService();
         var decisions = new BotBehaviorService(growth, orbTrails, interactions,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<BotBehaviorService>.Instance);
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<BotBehaviorService>.Instance, new game_server.matches.MatchMovementService());
         var field = new MatchFieldService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchFieldService>.Instance, orbTrails, health,
             cleanup, matchEliminations, results);
         var trailCuts = new MatchTrailCutService(orbTrails, combatDamage, health, decisions);
@@ -74,11 +72,11 @@ internal static class GameServerTestAccess
                 health, combatDamage, results,
                 new PlayerOrbService(health, combatDamage, orbTrails),
                 orbTrails, trailCuts, new MatchCombatActorBuilder(orbTrails), new MatchAutoAttackService(),
-                new MatchOrbAttackService(health, combatDamage), decisions, new MonsterCombatService(new MatchMonsterSpawnService(new MonsterMovementService())),
-                new MatchMonsterSpawnService(new MonsterMovementService()), new MonsterMovementService());
+                new MatchOrbAttackService(health, combatDamage), decisions, new MonsterCombatService(new MatchMonsterSpawnService(new MonsterBehaviorService(new game_server.matches.MatchMovementService()))),
+                new MatchMonsterSpawnService(new MonsterBehaviorService(new game_server.matches.MatchMovementService())), new MonsterBehaviorService(new game_server.matches.MatchMovementService()));
 
             return new MatchTickLoop(runtime, runtimes, logger, groundPickup,
-            entryFailure, combat, field, movement, decisions, clock);
+            entryFailure, combat, field, decisions, clock);
         };
         return new GameServer(
             configuration: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),

@@ -27,7 +27,7 @@ internal class MatchCombatService(
     BotBehaviorService botBehavior,
     MonsterCombatService monsterCombat,
     MatchMonsterSpawnService monsterSpawns,
-    MonsterMovementService monsterMovement)
+    MonsterBehaviorService monsterMovement)
 {
     internal List<MonsterContactDamage> ProcessMonsterTick(MatchRuntime runtime, IReadOnlyCollection<PlayerPositionSnapshot> participants, bool isGameplayActive, DateTime nowUtc)
     {

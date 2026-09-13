@@ -10,58 +10,6 @@ namespace network.common.data
     {
         private const int DoorClearanceStepCount = 2;
 
-        public static Vector3f AdvanceRoute(MapId mapId, Vector3f position, IReadOnlyList<Vector3f> route,
-            ref int index, float distanceBudget, Func<int, bool>? isDoorOpen = null,
-            Func<Vector3f, bool>? canEnter = null)
-        {
-            var current = new Vector3f(position.X, position.Y, 0f);
-            while (distanceBudget > 0f && index < route.Count)
-            {
-                var target = route[index];
-                float dx = target.X - current.X;
-                float dy = target.Y - current.Y;
-                float distance = MathF.Sqrt(dx * dx + dy * dy);
-                if (distance == 0f)
-                {
-                    index++;
-                    continue;
-                }
-
-                var fromCell = MapCoordinateConverter.WorldToCell(mapId, current);
-                var targetCell = MapCoordinateConverter.WorldToCell(mapId, target);
-                var fromArea = GameMapData.GetCurrentArea(mapId, fromCell);
-                var targetArea = GameMapData.GetCurrentArea(mapId, targetCell);
-                var door = GameDoorData.GetDoorForTransition(fromArea, targetArea, fromCell, targetCell);
-                if (door != null && isDoorOpen != null && !isDoorOpen(door.DoorId))
-                {
-                    break;
-                }
-                if (canEnter != null && !canEnter(target))
-                {
-                    break;
-                }
-                if (!IsSegmentWalkable(mapId, current, target))
-                {
-                    break;
-                }
-
-                float step = Math.Min(distanceBudget, distance);
-                var next = Vector3f.MoveTowardsXY(current, target, step);
-                if (canEnter != null && !canEnter(next))
-                {
-                    break;
-                }
-                current = next;
-                distanceBudget -= step;
-                if (step == distance)
-                {
-                    current = new Vector3f(target.X, target.Y, 0f);
-                    index++;
-                }
-            }
-            return current;
-        }
-
         public class Step
         {
             public Cell Cell { get; set; } = new(0, 0);

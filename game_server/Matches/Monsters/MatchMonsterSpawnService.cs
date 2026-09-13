@@ -8,7 +8,7 @@ namespace game_server.matches.monsters;
 ///     매치의 몬스터 공급·스폰과 공급 보상 예산을 처리한다.
 ///     상태는 MatchMonsters에 보관하며, 호출자는 매치 잠금을 보유해야 한다.
 /// </summary>
-internal sealed class MatchMonsterSpawnService(MonsterMovementService movement)
+internal sealed class MatchMonsterSpawnService(MonsterBehaviorService movement)
 {
     private const int CampsPerArea = 3;
     private const int FirstMonsterId = 7_000_000;
@@ -388,8 +388,8 @@ internal sealed class MatchMonsterSpawnService(MonsterMovementService movement)
             if (route != null)
             {
                 monster.Infiltrating = true;
-                monster.MarchWaypoints.AddRange(route);
-                monster.MarchBudgetSeconds = MonsterMovementService.ComputeMarchBudgetSeconds(position, route);
+                monster.Movement.Waypoints.AddRange(route);
+                monster.MarchBudgetSeconds = MonsterBehaviorService.ComputeMarchBudgetSeconds(position, route);
                 monster.MarchSpeedScale = 1f + (float)(state.Rng.NextDouble() * 2d - 1d) * Config.SWARM_MONSTER_MARCH_SPEED_JITTER;
             }
 

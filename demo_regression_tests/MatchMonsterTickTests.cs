@@ -401,7 +401,7 @@ public class MatchMonsterTickTests
     private sealed class Arena
     {
         private readonly MatchCombatService _combat = TestGameSessionServices.CreateMonsterTickService();
-        private readonly MonsterCombatService _monsterCombat = new(new MatchMonsterSpawnService(new MonsterMovementService()));
+        private readonly MonsterCombatService _monsterCombat = new(new MatchMonsterSpawnService(new MonsterBehaviorService(new game_server.matches.MatchMovementService())));
         private DateTime _lastNow = StartUtc;
 
         public Arena(long matchingId)
