@@ -32,7 +32,7 @@ namespace network.common.data.models
             Rotation = 0f;
         }
 
-        public GameObjectInfo(ObjectType objectType, long objectId, MapId mapId, long mapSubId, Cell cell)
+        public GameObjectInfo(ObjectType objectType, long objectId, MapId mapId, Cell cell)
         {
             cell ??= new Cell(0, 0);
             ObjectType = objectType;
@@ -42,7 +42,7 @@ namespace network.common.data.models
             Velocity = new Vector3f(0, 0, 0);
             Rotation = 0f;
             MapId = mapId;
-            MapSubId = mapSubId;
+            Area = GameMapData.GetCurrentArea(mapId, cell);
         }
 
         [Key("objectType")]
@@ -54,8 +54,8 @@ namespace network.common.data.models
         [Key("mapId")]
         public MapId MapId { get; set; }
 
-        [Key("mapSubId")]
-        public long MapSubId { get; set; }
+        [Key("area")]
+        public AreaType Area { get; set; }
 
         [Key("cell")]
         public Cell Cell { get; set; }
@@ -76,7 +76,7 @@ namespace network.common.data.models
                 ObjectType = ObjectType,
                 ObjectId = ObjectId,
                 MapId = MapId,
-                MapSubId = MapSubId,
+                Area = Area,
                 Cell = Cell.Clone(Cell),
                 Position = new Vector3f(Position.X, Position.Y, Position.Z),
                 Velocity = new Vector3f(Velocity.X, Velocity.Y, Velocity.Z),

@@ -14,7 +14,7 @@ namespace network.common.data.models
         [IgnoreMember] public GameObjectInfo ObjectInfo { get; } = new GameObjectInfo { ObjectType = ObjectType.MONSTER };
 
         [Key("monsterId")] public int MonsterId { get => (int)ObjectInfo.ObjectId; set => ObjectInfo.ObjectId = value; }
-        [Key("areaType")] public AreaType AreaType { get; set; }
+        [Key("areaType")] public AreaType AreaType { get => ObjectInfo.Area; set => ObjectInfo.Area = value; }
         [Key("positionX")] public float PositionX { get => ObjectInfo.Position.X; set => ObjectInfo.Position.X = value; }
         [Key("positionY")] public float PositionY { get => ObjectInfo.Position.Y; set => ObjectInfo.Position.Y = value; }
         [Key("maxHealth")] public int MaxHealth { get; set; }

@@ -59,7 +59,6 @@ public sealed class Monster
     public long OwnerPlayerId { get; set; }
     public int PendingDamage { get; set; }
     public MovementState Movement { get; } = new();
-    public DateTime NextChasePlanAtUtc { get; set; }
 
     public static bool IsCombatTargetId(long actorId) => actorId < -1_000_000_000_000L;
 

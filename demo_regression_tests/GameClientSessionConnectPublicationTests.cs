@@ -221,7 +221,7 @@ public sealed class GameClientSessionConnectPublicationTests
         velocity.X = 999;
         cell.X = 999;
         Assert.Equal(8105, snapshot.ObjectId);
-        Assert.Equal(74006, snapshot.MapSubId);
+        Assert.Equal(session.Player.CurrentArea, snapshot.Area);
         Assert.Equal(10.25f, snapshot.Position.X);
         Assert.Equal(20.75f, snapshot.Position.Y);
         Assert.Equal(2f, snapshot.Velocity.X);

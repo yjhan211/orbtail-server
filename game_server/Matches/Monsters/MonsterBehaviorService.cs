@@ -153,23 +153,6 @@ internal sealed class MonsterBehaviorService
         }
     }
 
-    internal void ReplanBlockedPath(MatchRuntime runtime, Monster monster, DateTime now)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-            throw new InvalidOperationException("Monster path planning requires the match lock.");
-        if (runtime.IsEnded || monster.Movement.Waypoints.Count == 0 || now < monster.NextChasePlanAtUtc)
-            return;
-        monster.NextChasePlanAtUtc = now.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS);
-        var destination = monster.Movement.Waypoints[^1];
-        var destinationArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP,
-            MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, destination));
-        if (!MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, monster.Area, monster.Position,
-                destinationArea, destination, null, out var route))
-            return;
-        monster.Movement.Waypoints.Clear();
-        monster.Movement.Waypoints.AddRange(route);
-        monster.Movement.WaypointIndex = 0;
-    }
     internal void CompleteMovement(MatchRuntime runtime, Monster monster, bool holdAtThreshold)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -268,19 +251,7 @@ internal sealed class MonsterBehaviorService
             }
         }
 
-        if (now >= monster.NextChasePlanAtUtc)
-        {
-            monster.NextChasePlanAtUtc = now.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS);
-            bool direct = MapPathfinder.IsSegmentWalkable(Config.SWARM_MATCH_MAP, monster.Position, target.Position);
-            if (!direct && MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, monster.Area, monster.Position, target.Area, target.Position, null, out var detour))
-            {
-                monster.Movement.Waypoints.Clear();
-                monster.Movement.Waypoints.AddRange(detour);
-                monster.Movement.WaypointIndex = 0;
-                return;
-            }
-        }
-
+        monster.Movement.PlanPathToTarget = true;
         PlanDirectMovement(monster, target.Position, now);
     }
 

@@ -16,15 +16,13 @@ public enum BotMovementMode
 public class Bot
 {
     public BotMovementMode DesiredMovementMode { get; private set; }
-    public AreaType DesiredMovementArea { get; private set; }
-    public Cell DesiredMovementCell { get; private set; } = new(0, 0);
 
     /// <summary>이번 판단만 갱신한다. 현재 이동 모드와 경로는 재계산 차례에 적용한다.</summary>
     public void SetMovementTarget(BotMovementMode mode, AreaType area, Cell cell)
     {
         DesiredMovementMode = mode;
-        DesiredMovementArea = area;
-        DesiredMovementCell = cell;
+        Movement.DestinationArea = area;
+        Movement.DestinationCell = cell;
     }
 
     public Player Player { get; } = new()

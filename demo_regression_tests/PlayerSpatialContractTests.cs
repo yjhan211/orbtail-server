@@ -122,13 +122,34 @@ public sealed class PlayerSpatialContractTests
         AssertPlayerObject(copy.Player);
     }
 
+    [Fact]
+    public void AreaUsesTheSharedSpatialObjectAndSnapshotIsIndependent()
+    {
+        var player = new Player { Profile = new PlayerInfo { PlayerId = 17 } };
+        player.CurrentArea = AreaType.S2Corridor9;
+        Assert.Equal(AreaType.S2Corridor9, player.Profile.ObjectInfo.Area);
+        player.Profile.ObjectInfo.Area = AreaType.S2Library1;
+        Assert.Equal(AreaType.S2Library1, player.CurrentArea);
+        var snapshot = player.Profile.ObjectInfo.Clone();
+        player.CurrentArea = AreaType.None;
+        Assert.Equal(AreaType.S2Library1, snapshot.Area);
+
+        var monster = new network.common.data.models.MonsterInfo { AreaType = AreaType.S2Corridor9 };
+        Assert.Equal(AreaType.S2Corridor9, monster.ObjectInfo.Area);
+        monster.ObjectInfo.Area = AreaType.S2Library1;
+        Assert.Equal(AreaType.S2Library1, monster.AreaType);
+        var copy = MessagePackSerializer.Deserialize<network.common.data.models.MonsterInfo>(
+            MessagePackSerializer.Serialize(monster));
+        Assert.Equal(AreaType.S2Library1, copy.ObjectInfo.Area);
+    }
     private static PlayerInfo CreatePlayerObject() => new()
     {
         PlayerId = 42,
         Name = "TestPlayer",
         WearItemIdList = [101000003],
-        ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, 42, MapId.Camp, 123, new Cell(3, 4))
+        ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, 42, MapId.Camp, new Cell(3, 4))
         {
+            Area = AreaType.S2Corridor9,
             Position = new Vector3f(3.25f, 4.75f, 0),
             Velocity = new Vector3f(1.5f, -0.5f, 0),
             Rotation = 75f
@@ -141,7 +162,8 @@ public sealed class PlayerSpatialContractTests
     {
         var info = player.ObjectInfo;
         Assert.Equal(42, info.ObjectId);
-        Assert.Equal(123, info.MapSubId);
+        Assert.Equal(AreaType.S2Corridor9, info.Area);
+        Assert.Null(typeof(GameObjectInfo).GetProperty("MapSubId"));
         Assert.Equal(3.25f, info.Position.X);
         Assert.Equal(4.75f, info.Position.Y);
         Assert.Equal(1.5f, info.Velocity.X);

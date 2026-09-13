@@ -21,8 +21,8 @@ public sealed class BotPathTests
         bot.SetMovementTarget(BotMovementMode.Escort, AreaType.S2Gym1, cell);
 
         Assert.Equal(BotMovementMode.Escort, bot.DesiredMovementMode);
-        Assert.Equal(AreaType.S2Gym1, bot.DesiredMovementArea);
-        Assert.Same(cell, bot.DesiredMovementCell);
+        Assert.Equal(AreaType.S2Gym1, bot.Movement.DestinationArea);
+        Assert.Same(cell, bot.Movement.DestinationCell);
         Assert.Equal(BotMovementMode.Return, bot.MovementMode);
         Assert.Equal(AreaType.S2Ground, bot.MovementDestination);
         Assert.Same(path, bot.Movement.Waypoints);

@@ -21,7 +21,6 @@ public class Player
     private GameClientSession? _session;
     private bool _hasPosition;
     private bool _hasCell;
-    private long _matchingId;
     private float? _orbOrbitPhaseDegrees;
     private Vector3f? _orbOrbitLastPosition;
 
@@ -97,7 +96,7 @@ public class Player
         get => Profile.ObjectInfo?.Rotation ?? 0f;
         internal set => EnsureObject().Rotation = value;
     }
-    public AreaType CurrentArea { get; internal set; } = AreaType.None;
+    public AreaType CurrentArea { get => Profile.ObjectInfo?.Area ?? AreaType.None; internal set => EnsureObject().Area = value; }
     /// <summary>승인된 이동 구간에서 획득 반경에 닿은 바닥 아이템(uid 키). 다음 자동 줍기 틱이 집는다.</summary>
     internal Dictionary<long, ReachableItem> ReachableItems { get; } = new();
     public float OrbOrbitPhaseDegrees => _orbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(PlayerId);
@@ -207,17 +206,7 @@ public class Player
     public void RecordMoveResponse(long timestamp) => _lastMoveResponseTimestamp = timestamp;
 
     private GameObjectInfo EnsureObject() =>
-        Profile.ObjectInfo ??= new GameObjectInfo(ObjectType.PLAYER, PlayerId, Config.SWARM_MATCH_MAP, _matchingId, new Cell(0, 0));
-
-    /// <summary>매치 등록 시 공통 객체가 속한 매치를 잡는다.</summary>
-    internal void AttachToMatch(long matchingId)
-    {
-        _matchingId = matchingId;
-        if (Profile.ObjectInfo != null)
-        {
-            Profile.ObjectInfo.MapSubId = matchingId;
-        }
-    }
+        Profile.ObjectInfo ??= new GameObjectInfo(ObjectType.PLAYER, PlayerId, Config.SWARM_MATCH_MAP, new Cell(0, 0));
 
     /// <summary>등장 전송 단위. 공간 복사본에 현재 행동 상태를 붙인다.</summary>
     public PlayerInfo CreatePlayerObjectInfo() => new()
@@ -244,7 +233,6 @@ public class Player
         var source = Profile.ObjectInfo;
         var snapshot = source.Clone();
         snapshot.ObjectId = PlayerId;
-        snapshot.MapSubId = _matchingId;
         if (!_hasCell)
         {
             snapshot.Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, source.Position);

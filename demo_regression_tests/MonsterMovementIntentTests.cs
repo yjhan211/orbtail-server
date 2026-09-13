@@ -20,8 +20,9 @@ public sealed class MonsterMovementIntentTests
         var monster = new Monster
         {
             Position = position, Area = AreaType.S2Corridor9, HomeArea = AreaType.S2Corridor9,
-            Alive = true, Aggro = true, Health = 100, NextChasePlanAtUtc = DateTime.MaxValue
+            Alive = true, Aggro = true, Health = 100
         };
+        monster.Movement.NextPathPlanAtUtc = DateTime.MaxValue;
         var target = new Vector3f(position.X + 0.1f, position.Y, 0f);
         var behavior = new MonsterBehaviorService();
         var movement = new MatchMovementService(null!, behavior, new MatchMonsterSpawnService(behavior));
@@ -87,5 +88,31 @@ public sealed class MonsterMovementIntentTests
         Assert.Null(state.PositionCorrection);
         state.Clear();
         Assert.Empty(state.Waypoints);
+    }
+    [Fact]
+    public void TargetPathPlanningRespectsThrottleAndDoesNotMoveActor()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(987643);
+        using var scope = runtime.Enter();
+        var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
+        var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
+        var monster = new Monster { Position = position, Area = AreaType.S2Corridor9 };
+        var movement = monster.Movement;
+        var now = DateTime.UtcNow;
+        movement.DirectTarget = position;
+        movement.PlanPathToTarget = true;
+        movement.NextPathPlanAtUtc = now.AddSeconds(10);
+
+        MatchMovementService.PlanTargetPath(runtime, monster.Info.ObjectInfo, movement, now);
+        Assert.Equal(now.AddSeconds(10), movement.NextPathPlanAtUtc);
+        Assert.Same(position, monster.Position);
+
+        MatchMovementService.PlanTargetPath(runtime, monster.Info.ObjectInfo, movement, now.AddSeconds(10));
+        Assert.True(movement.NextPathPlanAtUtc > now.AddSeconds(10));
+        Assert.Empty(movement.Waypoints);
+        Assert.Same(position, monster.Position);
+        movement.ResetIntent();
+        Assert.False(movement.PlanPathToTarget);
     }
 }

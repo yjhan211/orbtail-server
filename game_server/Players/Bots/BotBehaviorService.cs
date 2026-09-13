@@ -292,7 +292,7 @@ internal class BotBehaviorService(
             return;
         }
 
-        if (bot.DesiredMovementArea == memory.PreviousArea && bot.DesiredMovementArea != bot.Player.CurrentArea && (DateTime.UtcNow - memory.LeftAtUtc).TotalSeconds < Config.SWARM_BOT_AREA_RETURN_COOLDOWN_SECONDS)
+        if (bot.Movement.DestinationArea == memory.PreviousArea && bot.Movement.DestinationArea != bot.Player.CurrentArea && (DateTime.UtcNow - memory.LeftAtUtc).TotalSeconds < Config.SWARM_BOT_AREA_RETURN_COOLDOWN_SECONDS)
         {
             bot.SetMovementTarget(BotMovementMode.Escort, bot.Player.CurrentArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!));
         }
@@ -991,7 +991,7 @@ internal class BotBehaviorService(
             bot.Player.CurrentArea,
             (nowUtc - bot.IdleWatchLastMovedAtUtc).TotalSeconds,
             bot.DesiredMovementMode,
-            bot.DesiredMovementArea,
+            bot.Movement.DestinationArea,
             Math.Max(0, bot.Movement.Waypoints.Count - bot.Movement.WaypointIndex));
     }
 
@@ -1015,11 +1015,8 @@ internal class BotBehaviorService(
                 GameMapData.GetCurrentArea(mapId, candidate) != bot.Player.CurrentArea)
                 continue;
 
-            var path = MapPathfinder.FindPath(mapId, bot.Player.CurrentArea, bot.Player.Cell!, bot.Player.CurrentArea, candidate);
-            if (path == null || path.Count == 0)
+            if (!MatchMovementService.TryPlanCellPath(runtime, bot.Player.Profile.ObjectInfo, bot.Movement, bot.Player.CurrentArea, candidate))
                 continue;
-
-            bot.SetPath(path);
             return;
         }
     }
@@ -1052,9 +1049,10 @@ internal class BotBehaviorService(
             {
                 bot.MovementModeUntilUtc = now.AddSeconds(1.5);
             }
-            bot.MovementDestination = bot.DesiredMovementArea;
-            bot.SetPath(MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.CurrentArea,
-                bot.Player.Cell!, bot.DesiredMovementArea, bot.DesiredMovementCell) ?? []);
+            bot.MovementDestination = bot.Movement.DestinationArea;
+            if (!MatchMovementService.TryPlanCellPath(runtime, bot.Player.Profile.ObjectInfo, bot.Movement,
+                    movement.DestinationArea, movement.DestinationCell))
+                bot.ClearPath();
         }
         TrackIdleTime(bot, now);
         if (movement.WaypointIndex >= movement.Waypoints.Count)

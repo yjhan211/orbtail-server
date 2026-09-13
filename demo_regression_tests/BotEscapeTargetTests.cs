@@ -39,12 +39,12 @@ public sealed class BotEscapeTargetTests
             service.DecideMovement(runtime, bot.PlayerId);
 
             Assert.True(bot.FleeDirective);
-            var target = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, bot.DesiredMovementCell);
+            var target = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, bot.Movement.DestinationCell);
             float dx = target.X - threatPosition.X;
             float dy = target.Y - threatPosition.Y;
             Assert.True(dx * dx + dy * dy >= threatOffset * threatOffset);
-            Assert.NotEqual(AreaType.None, bot.DesiredMovementArea);
-            Assert.True(GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, bot.DesiredMovementCell));
+            Assert.NotEqual(AreaType.None, bot.Movement.DestinationArea);
+            Assert.True(GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, bot.Movement.DestinationCell));
         }
     }
 }
