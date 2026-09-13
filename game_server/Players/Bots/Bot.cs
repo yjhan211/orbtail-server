@@ -22,7 +22,7 @@ public class Bot
     {
         DesiredMovementMode = mode;
         Movement.DestinationArea = area;
-        Movement.DestinationCell = cell;
+        Movement.Destination = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
     }
 
     public Player Player { get; } = new()
@@ -38,8 +38,6 @@ public class Bot
     public float SwarmDodgeDirectionX { get; set; }
     public float SwarmDodgeDirectionY { get; set; }
     public DateTime SwarmDodgeHoldUntilUtc { get; set; } = DateTime.MinValue;
-    public AreaType EvacuationDestination { get; set; } = AreaType.None;
-    public AreaType MovementDestination { get; set; } = AreaType.None;
     public BotMovementMode MovementMode { get; set; } = BotMovementMode.None;
     public DateTime MovementModeUntilUtc { get; set; } = DateTime.MinValue;
     public DateTime LastDamagedAtUtc { get; set; } = DateTime.MinValue;
@@ -55,18 +53,4 @@ public class Bot
     public DateTime BootsSpeedUntilUtc { get; set; } = DateTime.MinValue;
     public bool IsSwarmBareHanded { get; set; }
     public DateTime SwarmBareSpeedUntilUtc { get; set; } = DateTime.MinValue;
-
-    public void SetPath(List<MapPathfinder.Step> path)
-    {
-        Movement.Clear();
-        foreach (var step in path)
-        {
-            Movement.Waypoints.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, step.Cell));
-        }
-    }
-
-    public void ClearPath()
-    {
-        Movement.Clear();
-    }
 }

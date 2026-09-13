@@ -30,11 +30,8 @@ public sealed class BotMovementStopTests
             if (reason != "no_target")
                 bot.SetMovementTarget(BotMovementMode.Escort, bot.Player.CurrentArea, cell);
             if (reason is "waiting" or "blocked_cell")
-                bot.SetPath([new MapPathfinder.Step
-                {
-                    Area = bot.Player.CurrentArea,
-                    Cell = reason == "blocked_cell" ? new Cell(-10000, -10000) : cell
-                }]);
+                bot.Movement.Waypoints.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP,
+                    reason == "blocked_cell" ? new Cell(-10000, -10000) : cell));
             if (reason == "waiting")
                 bot.LoopWaitUntil = DateTime.UtcNow.AddMinutes(1);
             var first = MovementTickTestDriver.RunBotTick(runtime, _ => { });

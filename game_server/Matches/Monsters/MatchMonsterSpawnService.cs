@@ -387,6 +387,8 @@ internal sealed class MatchMonsterSpawnService(MonsterBehaviorService movement)
 
             if (route != null)
             {
+                monster.Movement.Destination = destination;
+                monster.Movement.DestinationArea = monster.HomeArea;
                 monster.Movement.Waypoints.AddRange(route);
             }
 

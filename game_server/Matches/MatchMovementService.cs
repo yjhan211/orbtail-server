@@ -49,6 +49,21 @@ internal class MatchMovementService(
                 }
                 botBehavior.PlanMovement(runtime, bot, now, bot.PlayerId == planningBotId);
                 var intent = bot.Movement;
+                if (intent.PathRequest == MovementPathRequest.CellPath && intent.Destination != null)
+                {
+                    if (!TryPlanCellPath(runtime, bot.Player.Profile.ObjectInfo, intent, intent.DestinationArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, intent.Destination)))
+                    {
+                        intent.Clear();
+                    }
+                }
+                foreach (var targetCell in botBehavior.GetIdleWanderTargets(runtime, bot, now))
+                {
+                    if (TryPlanCellPath(runtime, bot.Player.Profile.ObjectInfo, intent, bot.Player.CurrentArea, targetCell))
+                    {
+                        break;
+                    }
+                }
+                botBehavior.ConfigureMovement(runtime, bot, now);
                 float botDeltaSeconds = (float)(now - intent.LastProcessedAtUtc).TotalSeconds;
                 intent.LastProcessedAtUtc = now;
                 if (botDeltaSeconds <= 0f)
@@ -77,9 +92,7 @@ internal class MatchMovementService(
                     canDodge: candidate =>
                     {
                         var cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, candidate);
-                        return GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell) &&
-                            GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == fromArea &&
-                            !BotBehaviorService.IsUnsafeStep(runtime, bot, cell, fromArea, now);
+                        return GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell) && GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == fromArea && !BotBehaviorService.IsUnsafeStep(runtime, bot, cell, fromArea, now);
                     });
                 if (attemptedDodge)
                 {
@@ -144,6 +157,15 @@ internal class MatchMovementService(
             }
             monsterBehavior.PlanMovement(runtime, monster, participants, nowUtc, preMatch);
             var intent = monster.Movement;
+            if (intent.PathRequest == MovementPathRequest.WorldPath && intent.Destination != null)
+            {
+                if (!TryPlanWorldPath(runtime, monster.Info.ObjectInfo, intent, intent.DestinationArea, intent.Destination))
+                {
+                    intent.FollowPath = false;
+                    intent.PathRequest = MovementPathRequest.None;
+                    monsterBehavior.PlanReturnOrPatrol(runtime, monster, nowUtc);
+                }
+            }
             PlanTargetPath(runtime, monster.Info.ObjectInfo, intent, nowUtc);
             bool followingPath = intent.FollowPath;
             var movementResult = Move(runtime, monster.Info.ObjectInfo, intent, (float)deltaSeconds,
@@ -239,13 +261,13 @@ internal class MatchMovementService(
                     break;
                 }
             }
-            if (next == null && distance > 0f && (intent.FollowPath || intent.DirectTarget != null))
+            if (next == null && distance > 0f && (intent.FollowPath || (intent.MoveToDestination && intent.Destination != null)))
             {
                 var path = intent;
-                if (intent.DirectTarget != null)
+                if (intent.MoveToDestination && intent.Destination != null)
                 {
                     path = new MovementState();
-                    path.Waypoints.Add(intent.DirectTarget);
+                    path.Waypoints.Add(intent.Destination);
                 }
                 next = AdvanceRoute(runtime, path, previous, distance, ignoreClosedDoors, canEnter);
                 pathBlocked = next.Equals(previous);
@@ -355,27 +377,20 @@ internal class MatchMovementService(
         monster.Movement.NextPathPlanAtUtc = now.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS);
         var destination = monster.Movement.Waypoints[^1];
         var destinationArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, destination));
-        if (!MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, monster.Area, monster.Position, destinationArea, destination, null, out var route))
-        {
-            return;
-        }
-        monster.Movement.Waypoints.Clear();
-        monster.Movement.Waypoints.AddRange(route);
-        monster.Movement.WaypointIndex = 0;
+        TryPlanWorldPath(runtime, monster.Info.ObjectInfo, monster.Movement, destinationArea, destination);
     }
-
     internal static void PlanTargetPath(MatchRuntime runtime, GameObjectInfo objectInfo, MovementState movement, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Path planning requires the match lock.");
         }
-        if (runtime.IsEnded || !movement.PlanPathToTarget || movement.DirectTarget == null || nowUtc < movement.NextPathPlanAtUtc)
+        if (runtime.IsEnded || movement.PathRequest != MovementPathRequest.Detour || movement.Destination == null || nowUtc < movement.NextPathPlanAtUtc)
         {
             return;
         }
         movement.NextPathPlanAtUtc = nowUtc.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS);
-        var target = movement.DirectTarget;
+        var target = movement.Destination;
         if (MapPathfinder.IsSegmentWalkable(Config.SWARM_MATCH_MAP, objectInfo.Position, target))
         {
             return;
@@ -383,14 +398,10 @@ internal class MatchMovementService(
 
         var targetCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target);
         var targetArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, targetCell);
-        if (!MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, objectInfo.Area, objectInfo.Position, targetArea, target, null, out var path))
+        if (!TryPlanWorldPath(runtime, objectInfo, movement, targetArea, target))
         {
             return;
         }
-
-        movement.Waypoints.Clear();
-        movement.Waypoints.AddRange(path);
-        movement.WaypointIndex = 0;
         movement.ResetIntent();
     }
 
@@ -417,6 +428,27 @@ internal class MatchMovementService(
         {
             movement.Waypoints.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, step.Cell));
         }
+        return true;
+    }
+    internal static bool TryPlanWorldPath(MatchRuntime runtime, GameObjectInfo objectInfo, MovementState movement,
+        AreaType destinationArea, Vector3f destination)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Path planning requires the match lock.");
+        }
+        if (runtime.IsEnded)
+        {
+            return false;
+        }
+        if (!MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, objectInfo.Area, objectInfo.Position,
+                destinationArea, destination, null, out var path))
+        {
+            return false;
+        }
+        movement.Waypoints.Clear();
+        movement.Waypoints.AddRange(path);
+        movement.WaypointIndex = 0;
         return true;
     }
 }

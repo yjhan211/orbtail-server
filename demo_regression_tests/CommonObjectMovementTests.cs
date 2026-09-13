@@ -27,8 +27,10 @@ public sealed class CommonObjectMovementTests
         var monsterIntent = new MovementState { Speed = 1f, FollowPath = !directTarget };
         if (directTarget)
         {
-            playerIntent.DirectTarget = target;
-            monsterIntent.DirectTarget = target;
+            playerIntent.Destination = target;
+            playerIntent.MoveToDestination = true;
+            monsterIntent.Destination = target;
+            monsterIntent.MoveToDestination = true;
         }
         else
         {

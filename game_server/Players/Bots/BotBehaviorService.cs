@@ -995,11 +995,20 @@ internal class BotBehaviorService(
             Math.Max(0, bot.Movement.Waypoints.Count - bot.Movement.WaypointIndex));
     }
 
-    private void TryStartIdleWander(MatchRuntime runtime, Bot bot, DateTime nowUtc)
+    internal IEnumerable<Cell> GetIdleWanderTargets(MatchRuntime runtime, Bot bot, DateTime nowUtc)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+            throw new InvalidOperationException("Bot movement planning requires the match lock.");
+        if (runtime.IsEnded || bot.Player.IsEliminated || bot.Player.IsSleeping ||
+            bot.Player.Position == null || bot.DesiredMovementMode == BotMovementMode.None)
+            yield break;
+
+        TrackIdleTime(bot, nowUtc);
+        if (bot.Movement.WaypointIndex < bot.Movement.Waypoints.Count)
+            yield break;
         if ((nowUtc - bot.IdleWatchLastMovedAtUtc).TotalSeconds < 4d || nowUtc < bot.NextIdleWanderAtUtc)
         {
-            return;
+            yield break;
         }
 
         bot.NextIdleWanderAtUtc = nowUtc.AddSeconds(3d);
@@ -1015,9 +1024,7 @@ internal class BotBehaviorService(
                 GameMapData.GetCurrentArea(mapId, candidate) != bot.Player.CurrentArea)
                 continue;
 
-            if (!MatchMovementService.TryPlanCellPath(runtime, bot.Player.Profile.ObjectInfo, bot.Movement, bot.Player.CurrentArea, candidate))
-                continue;
-            return;
+            yield return candidate;
         }
     }
 
@@ -1037,7 +1044,7 @@ internal class BotBehaviorService(
         if (bot.DesiredMovementMode == BotMovementMode.None)
         {
             bot.MovementMode = BotMovementMode.None;
-            bot.ClearPath();
+            bot.Movement.Clear();
             return;
         }
         bool underFire = (now - bot.LastDamagedAtUtc).TotalSeconds <= 6d;
@@ -1049,21 +1056,19 @@ internal class BotBehaviorService(
             {
                 bot.MovementModeUntilUtc = now.AddSeconds(1.5);
             }
-            bot.MovementDestination = bot.Movement.DestinationArea;
-            if (!MatchMovementService.TryPlanCellPath(runtime, bot.Player.Profile.ObjectInfo, bot.Movement,
-                    movement.DestinationArea, movement.DestinationCell))
-                bot.ClearPath();
+            movement.PathRequest = MovementPathRequest.CellPath;
         }
-        TrackIdleTime(bot, now);
-        if (movement.WaypointIndex >= movement.Waypoints.Count)
-        {
-            TryStartIdleWander(runtime, bot, now);
-            if (movement.WaypointIndex >= movement.Waypoints.Count)
-            {
-                return;
-            }
-        }
+    }
 
+    internal void ConfigureMovement(MatchRuntime runtime, Bot bot, DateTime now)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+            throw new InvalidOperationException("Bot movement planning requires the match lock.");
+        var movement = bot.Movement;
+        if (runtime.IsEnded || bot.Player.IsEliminated || bot.Player.IsSleeping ||
+            bot.Player.Position == null || bot.DesiredMovementMode == BotMovementMode.None ||
+            movement.WaypointIndex >= movement.Waypoints.Count)
+            return;
         if (bot.Player.CurrentArea != AreaType.None)
         {
             bool committed = now < bot.SwarmDodgeHoldUntilUtc;
@@ -1112,9 +1117,7 @@ internal class BotBehaviorService(
 
     internal void HandleBlockedPath(Bot bot, DateTime now)
     {
-        bot.ClearPath();
-        bot.MovementDestination = AreaType.None;
-        bot.EvacuationDestination = AreaType.None;
+        bot.Movement.Clear();
         bot.MovementModeUntilUtc = DateTime.MinValue;
         bot.LoopWaitUntil = now.AddSeconds(0.4 + Random.Shared.NextDouble() * 0.5);
     }

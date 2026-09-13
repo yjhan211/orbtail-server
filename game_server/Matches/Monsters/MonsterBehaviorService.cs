@@ -229,7 +229,7 @@ internal sealed class MonsterBehaviorService
 
         bool found = TrySelectMovementTarget(runtime, monster, participants, now, out var target);
 
-        if (!found && TryStartCrossAreaPursuit(monster, participants))
+        if (!found && TrySelectCrossAreaDestination(monster, participants))
         {
             PlanPathMovement(monster, now, holdAtThreshold);
             return;
@@ -237,7 +237,7 @@ internal sealed class MonsterBehaviorService
 
         if (!found)
         {
-            PlanReturnOrPatrol(monster, now);
+            PlanReturnOrPatrol(runtime, monster, now);
             return;
         }
 
@@ -251,7 +251,7 @@ internal sealed class MonsterBehaviorService
             }
         }
 
-        monster.Movement.PlanPathToTarget = true;
+        monster.Movement.PathRequest = MovementPathRequest.Detour;
         PlanDirectMovement(monster, target.Position, now);
     }
 
@@ -328,7 +328,7 @@ internal sealed class MonsterBehaviorService
         return found;
     }
 
-    private bool TryStartCrossAreaPursuit(Monster monster, IReadOnlyList<PlayerPositionSnapshot> participants)
+    private bool TrySelectCrossAreaDestination(Monster monster, IReadOnlyList<PlayerPositionSnapshot> participants)
     {
         if (monster.ChaseTargetPlayerId != 0 && monster.Movement.Waypoints.Count == 0)
         {
@@ -340,13 +340,9 @@ internal sealed class MonsterBehaviorService
                     continue;
                 }
 
-                if (!MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, monster.Area, monster.Position, participant.Area, participant.Position, null, out var route))
-                {
-                    break;
-                }
-                monster.Movement.Waypoints.Clear();
-                monster.Movement.Waypoints.AddRange(route);
-                monster.Movement.WaypointIndex = 0;
+                monster.Movement.Destination = participant.Position;
+                monster.Movement.DestinationArea = participant.Area;
+                monster.Movement.PathRequest = MovementPathRequest.WorldPath;
                 return true;
             }
         }
@@ -354,8 +350,12 @@ internal sealed class MonsterBehaviorService
         return false;
     }
 
-    private void PlanReturnOrPatrol(Monster monster, DateTime now)
+    internal void PlanReturnOrPatrol(MatchRuntime runtime, Monster monster, DateTime now)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+            throw new InvalidOperationException("Monster movement requires the match lock.");
+        if (runtime.IsEnded)
+            return;
         var anchor = new Vector3f(monster.AnchorX, monster.AnchorY, 0f);
         float homeDx = anchor.X - monster.Position.X;
         float homeDy = anchor.Y - monster.Position.Y;
@@ -469,7 +469,10 @@ internal sealed class MonsterBehaviorService
 
     private void PlanDirectMovement(Monster monster, Vector3f target, DateTime now)
     {
-        monster.Movement.DirectTarget = target;
+        monster.Movement.Destination = target;
+        monster.Movement.DestinationArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP,
+            MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target));
+        monster.Movement.MoveToDestination = true;
         monster.Movement.Speed = Config.SWARM_MONSTER_MOVE_SPEED * GetMonsterWaveSlowMultiplier(monster, now);
     }
 }

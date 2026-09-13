@@ -30,13 +30,14 @@ public sealed class MonsterMovementIntentTests
 
         behavior.PlanMovement(runtime, monster, [new PlayerPositionSnapshot(1, monster.Area, target)], now, false);
         Assert.Same(position, monster.Position);
-        Assert.Same(target, monster.Movement.DirectTarget);
+        Assert.Same(target, monster.Movement.Destination);
         Assert.True(monster.Movement.Speed > 0);
 
         MatchMovementService.Move(runtime, monster.Info.ObjectInfo, monster.Movement, 0.05f, ignoreClosedDoors: true);
         Assert.True(monster.Position.X > position.X);
         Assert.Equal(0f, monster.Movement.Speed);
-        Assert.Null(monster.Movement.DirectTarget);
+        Assert.Same(target, monster.Movement.Destination);
+        Assert.False(monster.Movement.MoveToDestination);
         var after = monster.Position;
         MatchMovementService.Move(runtime, monster.Info.ObjectInfo, monster.Movement, 0.05f, ignoreClosedDoors: true);
         Assert.Equal(after, monster.Position);
@@ -79,12 +80,13 @@ public sealed class MonsterMovementIntentTests
     [Fact]
     public void ResetIntentPreservesRouteButClearsOneTickCommands()
     {
-        var state = new MovementState { Speed = 3f, DirectTarget = new Vector3f(), PositionCorrection = new Vector3f() };
+        var state = new MovementState { Speed = 3f, Destination = new Vector3f(), MoveToDestination = true, PositionCorrection = new Vector3f() };
         state.Waypoints.Add(new Vector3f(1, 2, 0));
         state.ResetIntent();
         Assert.Single(state.Waypoints);
         Assert.Equal(0f, state.Speed);
-        Assert.Null(state.DirectTarget);
+        Assert.NotNull(state.Destination);
+        Assert.False(state.MoveToDestination);
         Assert.Null(state.PositionCorrection);
         state.Clear();
         Assert.Empty(state.Waypoints);
@@ -100,8 +102,8 @@ public sealed class MonsterMovementIntentTests
         var monster = new Monster { Position = position, Area = AreaType.S2Corridor9 };
         var movement = monster.Movement;
         var now = DateTime.UtcNow;
-        movement.DirectTarget = position;
-        movement.PlanPathToTarget = true;
+        movement.Destination = position;
+        movement.PathRequest = MovementPathRequest.Detour;
         movement.NextPathPlanAtUtc = now.AddSeconds(10);
 
         MatchMovementService.PlanTargetPath(runtime, monster.Info.ObjectInfo, movement, now);
@@ -113,6 +115,62 @@ public sealed class MonsterMovementIntentTests
         Assert.Empty(movement.Waypoints);
         Assert.Same(position, monster.Position);
         movement.ResetIntent();
-        Assert.False(movement.PlanPathToTarget);
+        Assert.Equal(MovementPathRequest.None, movement.PathRequest);
+    }
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void CrossAreaGoalIsPlannedByMovementTickAndFailedRouteFallsBack(bool reachable)
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(987644);
+        using var scope = runtime.Enter();
+        var now = DateTime.UtcNow;
+        runtime.StartGameplay(now.AddSeconds(-1));
+        runtime.Monsters.Initialize(now.AddSeconds(-0.05));
+        var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP,
+            GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9));
+        var destination = reachable
+            ? MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP,
+                GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Library1))
+            : new Vector3f(10000f, 10000f, 0f);
+        var monster = new Monster
+        {
+            MonsterId = 1, Position = position, Area = AreaType.S2Corridor9,
+            HomeArea = AreaType.S2Corridor9, AnchorX = position.X, AnchorY = position.Y,
+            Alive = true, Aggro = true, Health = 100, ChaseTargetPlayerId = 77, SpawnedAtUtc = now
+        };
+        runtime.Monsters.Entities.Add(monster.MonsterId, monster);
+        runtime.RegisterParticipant(new game_server.players.Player
+        {
+            Profile = new PlayerInfo { PlayerId = 77 }, Health = 100,
+            Position = destination, CurrentArea = AreaType.S2Library1
+        });
+        var behavior = new MonsterBehaviorService();
+        behavior.PlanMovement(runtime, monster,
+            [new PlayerPositionSnapshot(77, AreaType.S2Library1, destination)], now, false);
+        Assert.Equal(MovementPathRequest.WorldPath, monster.Movement.PathRequest);
+        Assert.Same(destination, monster.Movement.Destination);
+        Assert.Empty(monster.Movement.Waypoints);
+        Assert.Same(position, monster.Position);
+
+        var movement = new MatchMovementService(null!, behavior, new MatchMonsterSpawnService(behavior));
+        movement.ProcessTick(runtime, now);
+
+        if (reachable)
+        {
+            Assert.NotEmpty(monster.Movement.Waypoints);
+            Assert.Equal(destination, monster.Movement.Waypoints[^1]);
+            Assert.NotEqual(position, monster.Position);
+            Assert.Equal(77, monster.ChaseTargetPlayerId);
+        }
+        else
+        {
+            Assert.Empty(monster.Movement.Waypoints);
+            Assert.Equal(0, monster.ChaseTargetPlayerId);
+            Assert.NotEqual(destination, monster.Movement.Destination);
+        }
+        Assert.Equal(MovementPathRequest.None, monster.Movement.PathRequest);
+        Assert.False(monster.Movement.MoveToDestination);
     }
 }
