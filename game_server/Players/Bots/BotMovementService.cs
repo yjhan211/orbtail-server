@@ -15,13 +15,6 @@ namespace game_server.players.bots;
 /// </summary>
 internal class BotMovementService(ILogger<BotMovementService> logger)
 {
-    private const double WanderScatterProbability = 0.3;
-    private const double BotRoomDwellMinSeconds = 1.25;
-    private const double BotRoomDwellMaxSeconds = 2.25;
-    private const float BotWalkSpeed = 5f;
-    private const float IsoVerticalSpeedScale = 1f;
-    public static readonly TimeSpan SummonStoneBotReactionDelay = TimeSpan.FromSeconds(2.5);
-
     public virtual void ProcessTick(MatchRuntime runtime, Action<long> decideMovement)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -114,9 +107,8 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
 
     private static float ScaledWalkSpeed(float dirX, float dirY, float movementMultiplier = 1f)
     {
-        float tileY = dirY / IsoVerticalSpeedScale;
-        float tileFactor = (float)Math.Sqrt(dirX * dirX + tileY * tileY);
-        float baseSpeed = BotWalkSpeed * Math.Max(0f, movementMultiplier);
+        float tileFactor = (float)Math.Sqrt(dirX * dirX + dirY * dirY);
+        float baseSpeed = Config.SWARM_BOT_WALK_SPEED * Math.Max(0f, movementMultiplier);
         return tileFactor > 0.0001f ? baseSpeed / tileFactor : baseSpeed;
     }
 
@@ -167,6 +159,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         }
 
         result.PlanningBotId = runtime.Bots.SelectMovementPlanningBot(activeBots);
+        // 판단은 모든 봇이 하되, 이 경로 갱신은 틱마다 한 봇씩 차례를 나눈다.
         var nowUtc = DateTime.UtcNow;
         foreach (var bot in activeBots)
         {
@@ -379,7 +372,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         float dx = targetPos.X - bot.Player.Position!.X;
         float dy = targetPos.Y - bot.Player.Position!.Y;
         float dist = (float)Math.Sqrt(dx * dx + dy * dy);
-        float maxDist = BotWalkSpeed * GetBotMovementSpeedMultiplier(bot) * deltaSec;
+        float maxDist = Config.SWARM_BOT_WALK_SPEED * GetBotMovementSpeedMultiplier(bot) * deltaSec;
         if (dist >= 0.01f)
         {
             maxDist = ScaledWalkSpeed(dx / dist, dy / dist, GetBotMovementSpeedMultiplier(bot)) * deltaSec;
@@ -594,7 +587,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         }
         if (destination == bot.Player.CurrentArea)
         {
-            bot.LoopWaitUntil = GetRandomWaitDeadline(BotRoomDwellMinSeconds, BotRoomDwellMaxSeconds);
+            bot.LoopWaitUntil = GetRandomWaitDeadline(Config.SWARM_BOT_ROOM_DWELL_MIN_SECONDS, Config.SWARM_BOT_ROOM_DWELL_MAX_SECONDS);
             return;
         }
 
@@ -670,7 +663,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         {
             return AreaType.None;
         }
-        if (Random.Shared.NextDouble() < WanderScatterProbability)
+        if (Random.Shared.NextDouble() < Config.SWARM_BOT_WANDER_SCATTER_PROBABILITY)
         {
             var pop = CountRoomPopulations(rooms, playerAreas);
             return rooms.OrderBy(a => pop[a]).ThenBy(_ => Random.Shared.Next()).First();
@@ -679,14 +672,10 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         return others.Count > 0 ? others[Random.Shared.Next(others.Count)] : AreaType.None;
     }
 
-    private double RandomRange(double min, double max)
-    {
-        return min + Random.Shared.NextDouble() * (max - min);
-    }
-
     private DateTime GetRandomWaitDeadline(double minSeconds, double maxSeconds)
     {
-        return DateTime.UtcNow.AddSeconds(RandomRange(minSeconds, maxSeconds));
+        double waitSeconds = minSeconds + Random.Shared.NextDouble() * (maxSeconds - minSeconds);
+        return DateTime.UtcNow.AddSeconds(waitSeconds);
     }
 
     private static Dictionary<AreaType, int> CountRoomPopulations(List<AreaType> rooms, IReadOnlyDictionary<long, AreaType> playerAreas)

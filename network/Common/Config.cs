@@ -11,6 +11,12 @@ namespace network.common
     /// </summary>
     public class Config
     {
+        public static float SWARM_BOT_WALK_SPEED => SwarmConfigData.GetFloat("SWARM_BOT_WALK_SPEED", 5f);
+        public static double SWARM_BOT_WANDER_SCATTER_PROBABILITY => SwarmConfigData.GetDouble("SWARM_BOT_WANDER_SCATTER_PROBABILITY", 0.3d);
+        public static double SWARM_BOT_ROOM_DWELL_MIN_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_ROOM_DWELL_MIN_SECONDS", 1.25d);
+        public static double SWARM_BOT_ROOM_DWELL_MAX_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_ROOM_DWELL_MAX_SECONDS", 2.25d);
+        public static double SWARM_BOT_SUMMON_STONE_REACTION_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_SUMMON_STONE_REACTION_SECONDS", 2.5d);
+
         public static float SWARM_BOT_DOOR_UNLOCK_RANGE => SwarmConfigData.GetFloat("SWARM_BOT_DOOR_UNLOCK_RANGE", 1.6f);
         public static double SWARM_BOT_AREA_RETURN_COOLDOWN_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_AREA_RETURN_COOLDOWN_SECONDS", 5d);
         public static double SWARM_BOT_POST_CUT_LOOT_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_POST_CUT_LOOT_SECONDS", 5d);

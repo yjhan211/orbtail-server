@@ -879,7 +879,7 @@ internal sealed class BotBehaviorService(
         float bestDistanceSquared = float.MaxValue;
         foreach (var item in runtime.GroundItems.GetItemsInArea(bot.Player.CurrentArea))
         {
-            if (item.ItemId != Config.SUMMON_STONE_GROUND_ITEM_ID || runtime.GroundItems.WasSpawnedWithin(item.GroundItemUid, BotMovementService.SummonStoneBotReactionDelay))
+            if (item.ItemId != Config.SUMMON_STONE_GROUND_ITEM_ID || runtime.GroundItems.WasSpawnedWithin(item.GroundItemUid, TimeSpan.FromSeconds(Config.SWARM_BOT_SUMMON_STONE_REACTION_SECONDS)))
             {
                 continue;
             }
