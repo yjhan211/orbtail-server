@@ -98,6 +98,7 @@ namespace network.common.data.models
     public class G_TO_C_AREA_PLAYER_ENTER : IMessagePackObject
     {
         [Key("player")] public PlayerInfo Player { get; set; }
+        [Key("objectInfo")] public GameObjectInfo ObjectInfo { get; set; }
     }
 
     [MessagePackObject]
@@ -130,17 +131,6 @@ namespace network.common.data.models
         // "때리면 닳는 게 보인다". -1 = 미동기(표시 유지).
         [Key("gauge")] public int BodyHealth { get; set; } = -1;
     }
-
-
-
-
-
-
-
-
-
-
-
 
     /// <summary>
     ///     오브 공용 링 연출. 같은 구역에 브로드캐스트 — 링 중심·반경.
@@ -259,7 +249,7 @@ namespace network.common.data.models
     [MessagePackObject]
     public class G_TO_C_OBJECT_INFO : IMessagePackObject
     {
-        [Key("players")] public List<PlayerInfo> Players { get; set; }
+        [Key("players")] public List<PlayerPresenceInfo> Players { get; set; }
     }
 
     [MessagePackObject]

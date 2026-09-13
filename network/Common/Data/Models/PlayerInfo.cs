@@ -50,7 +50,7 @@ namespace network.common.data.models
         // 서버가 중간 실패 후 재시도할 수 있어야 하므로 Redis 직렬화 대상이다.
         [Key("isNew")] public bool IsNew { get; set; }
 
-        [Key("objectInfo")] public GameObjectInfo ObjectInfo { get; set; }
+        [IgnoreMember] public GameObjectInfo ObjectInfo { get; set; }
 
         [Key("state")] public PlayerState State { get; set; } = PlayerState.IDLE;
 

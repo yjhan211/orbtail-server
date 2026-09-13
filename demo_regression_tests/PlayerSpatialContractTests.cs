@@ -49,16 +49,19 @@ public sealed class PlayerSpatialContractTests
     }
 
     [Fact]
-    public void PlayerInfoSerialization_ContainsCommonSpatialAndActionState()
+    public void PlayerInfoSerialization_IncludesStateButExcludesSpatialReference()
     {
         var player = CreatePlayerObject();
         Assert.NotNull(player.ObjectInfo);
         string json = MessagePackSerializer.ConvertToJson(MessagePackSerializer.Serialize(player));
         Assert.DoesNotContain("lastMap", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("lastCell", json, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("objectInfo", json);
-        Assert.Contains("position", json);
-        AssertPlayerObject(MessagePackSerializer.Deserialize<PlayerInfo>(MessagePackSerializer.Serialize(player)));
+        Assert.DoesNotContain("objectInfo", json);
+        Assert.DoesNotContain("position", json);
+        var copy = MessagePackSerializer.Deserialize<PlayerInfo>(MessagePackSerializer.Serialize(player));
+        Assert.Null(copy.ObjectInfo);
+        Assert.Equal(PlayerState.SLEEP, copy.State);
+        Assert.NotNull(player.ObjectInfo);
         Assert.Contains("playerId", json);
     }
 
@@ -89,9 +92,16 @@ public sealed class PlayerSpatialContractTests
     [Fact]
     public void ObjectPresence_RoundTripsProfileSpatialAndActionState()
     {
-        var bytes = MessagePackSerializer.Serialize(new G_TO_C_OBJECT_INFO { Players = [CreatePlayerObject()] });
+        using var packet = PacketMaker.G_TO_C_OBJECT_INFO([CreatePlayerObject()]);
+        using var wire = Packet.Create(packet.ToBytes());
+        wire.PopProtocolId();
+        wire.PopPlayerId();
+        var bytes = wire.PopBody();
         var copy = MessagePackSerializer.Deserialize<G_TO_C_OBJECT_INFO>(bytes);
-        AssertPlayerObject(Assert.Single(copy.Players));
+        var presence = Assert.Single(copy.Players);
+        Assert.Null(presence.Player.ObjectInfo);
+        presence.Player.ObjectInfo = presence.ObjectInfo;
+        AssertPlayerObject(presence.Player);
         string json = MessagePackSerializer.ConvertToJson(bytes);
         Assert.DoesNotContain("playerInfo", json, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("wearItemIdList", json);
@@ -101,8 +111,14 @@ public sealed class PlayerSpatialContractTests
     [Fact]
     public void AreaEntry_RoundTripsSameSpatialContract()
     {
-        var bytes = MessagePackSerializer.Serialize(new G_TO_C_AREA_PLAYER_ENTER { Player = CreatePlayerObject() });
+        using var packet = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(CreatePlayerObject());
+        using var wire = Packet.Create(packet.ToBytes());
+        wire.PopProtocolId();
+        wire.PopPlayerId();
+        var bytes = wire.PopBody();
         var copy = MessagePackSerializer.Deserialize<G_TO_C_AREA_PLAYER_ENTER>(bytes);
+        Assert.Null(copy.Player.ObjectInfo);
+        copy.Player.ObjectInfo = copy.ObjectInfo;
         AssertPlayerObject(copy.Player);
     }
 

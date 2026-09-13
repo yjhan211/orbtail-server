@@ -47,7 +47,10 @@ public static partial class PacketMaker
     public static Packet G_TO_C_OBJECT_INFO(List<PlayerInfo> players)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_OBJECT_INFO);
-        G_TO_C_OBJECT_INFO body = new() { Players = players };
+        var presences = new List<PlayerPresenceInfo>(players.Count);
+        foreach (var player in players)
+            presences.Add(new PlayerPresenceInfo { Player = player, ObjectInfo = player.ObjectInfo });
+        G_TO_C_OBJECT_INFO body = new() { Players = presences };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -75,7 +78,7 @@ public static partial class PacketMaker
     public static Packet G_TO_C_AREA_PLAYER_ENTER(PlayerInfo player)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_AREA_PLAYER_ENTER);
-        G_TO_C_AREA_PLAYER_ENTER body = new() { Player = player };
+        G_TO_C_AREA_PLAYER_ENTER body = new() { Player = player, ObjectInfo = player.ObjectInfo };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
