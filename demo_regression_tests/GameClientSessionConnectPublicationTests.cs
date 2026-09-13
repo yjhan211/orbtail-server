@@ -533,8 +533,8 @@ public sealed class GameClientSessionConnectPublicationTests
     {
         string scripts = Path.Combine(FindRepositoryRoot(), "client", "Assets", "Scripts");
         string packets = File.ReadAllText(Path.Combine(scripts, "Managers", "Map", "MapManager.Packets.cs"));
-        Assert.Contains("info.ObjectInfo = existingPlayer.ObjectInfo", packets);
-        Assert.Contains("info.State = existingPlayer.State", packets);
+        Assert.Contains("resetExistingPosition && playerId != GameUser.Instance.PlayerInfo.PlayerId", packets);
+        Assert.Contains("existingPlayer.SetGameObject(gameInfo, this)", packets);
         string map = File.ReadAllText(Path.Combine(scripts, "Managers", "Map", "MapManager.cs"));
         Assert.Contains("SetPlayer(GameUser.Instance.PlayerInfo)", map);
         string inventory = File.ReadAllText(Path.Combine(scripts, "GameUser.Inventory.cs"));

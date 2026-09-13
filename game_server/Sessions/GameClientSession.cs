@@ -382,7 +382,7 @@ public partial class GameClientSession : SessionBase
             }
 
             var bots = match.Bots.GetBots().Where(bot => !bot.Player.IsEliminated && bot.Player.CurrentArea == Player.CurrentArea).ToList();
-            var botPlayers = bots.Select(bot => match.Bots.GetPlayerObjectInfo(bot.PlayerId)).OfType<PlayerInfo>().ToList();
+            var botPlayers = bots.Select(bot => match.Bots.GetPlayerObjectInfo(bot.PlayerId)).OfType<PlayerPresenceInfo>().ToList();
             if (botPlayers.Count <= 0)
             {
                 return;

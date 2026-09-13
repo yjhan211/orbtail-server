@@ -48,8 +48,6 @@ public partial class PlayerInfo
         if (serialized == RedisValue.Null) return null;
 
         var playerInfo = MessagePackSerializer.Deserialize<PlayerInfo>(serialized);
-        playerInfo.ObjectInfo = null;
-        playerInfo.State = PlayerState.IDLE;
 
         playerInfo.InventoryInfo = await InventoryInfo.Load(redisOperations, InventoryOwnerType.PLAYER, playerId) ??
                                    new InventoryInfo(InventoryOwnerType.PLAYER, playerId);
@@ -68,8 +66,6 @@ public partial class PlayerInfo
         return hashStrings.Select(hashString =>
         {
             var player = MessagePackSerializer.Deserialize<PlayerInfo>(hashString);
-            player.ObjectInfo = null;
-            player.State = PlayerState.IDLE;
             return player;
         }).ToList();
     }

@@ -8,6 +8,6 @@ namespace network.common.data.models
     public class PlayerPresenceInfo
     {
         [Key("player")] public PlayerInfo Player { get; set; }
-        [Key("objectInfo")] public GameObjectInfo ObjectInfo { get; set; }
+        [Key("gamePlayer")] public GamePlayerInfo GamePlayer { get; set; }
     }
 }

@@ -85,7 +85,7 @@ public class MatchBots
     }
 
     public PlayerInfo? GetPlayerProfile(long botPlayerId) => GetBot(botPlayerId)?.Player.Profile;
-    public PlayerInfo? GetPlayerObjectInfo(long botPlayerId) => GetBot(botPlayerId)?.Player.CreatePlayerObjectInfo();
+    public PlayerPresenceInfo? GetPlayerObjectInfo(long botPlayerId) => GetBot(botPlayerId)?.Player.CreatePlayerObjectInfo();
 
     internal static Vector3f CellToWorldPosition(MapId mapId, Cell cell) => MapCoordinateConverter.CellToWorld(mapId, cell);
 

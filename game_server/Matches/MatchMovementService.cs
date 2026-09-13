@@ -51,14 +51,14 @@ internal class MatchMovementService(
                 var intent = bot.Movement;
                 if (intent.PathRequest == MovementPathRequest.CellPath && intent.Destination != null)
                 {
-                    if (!TryPlanCellPath(runtime, bot.Player.Profile.ObjectInfo, intent, intent.DestinationArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, intent.Destination)))
+                    if (!TryPlanCellPath(runtime, bot.Player.GameInfo.ObjectInfo, intent, intent.DestinationArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, intent.Destination)))
                     {
                         intent.Clear();
                     }
                 }
                 foreach (var targetCell in botBehavior.GetIdleWanderTargets(runtime, bot, now))
                 {
-                    if (TryPlanCellPath(runtime, bot.Player.Profile.ObjectInfo, intent, bot.Player.CurrentArea, targetCell))
+                    if (TryPlanCellPath(runtime, bot.Player.GameInfo.ObjectInfo, intent, bot.Player.CurrentArea, targetCell))
                     {
                         break;
                     }
@@ -80,7 +80,7 @@ internal class MatchMovementService(
                 {
                     intent.ResetIntent();
                 }
-                targets.Add(new MovementTarget(bot.Player.Profile.ObjectInfo, intent, botDeltaSeconds, false, bot, null, bot.Player.CurrentArea, intent.DodgeDirection != null, false));
+                targets.Add(new MovementTarget(bot.Player.GameInfo.ObjectInfo, intent, botDeltaSeconds, false, bot, null, bot.Player.CurrentArea, intent.DodgeDirection != null, false));
             }
         }
 

@@ -46,8 +46,9 @@ public class Player
 
     public long PlayerId => Profile.PlayerId;
     public required PlayerInfo Profile { get; init; }
+    public GamePlayerInfo GameInfo { get; } = new();
     public bool IsEliminated => Status is PlayerMatchStatus.ELIMINATED or PlayerMatchStatus.SPECTATING;
-    public PlayerMatchStatus Status { get; set; } = PlayerMatchStatus.ACTIVE;
+    public PlayerMatchStatus Status { get => GameInfo.Status; set => GameInfo.Status = value; }
     public EliminationReason EliminationReason { get; set; } = EliminationReason.NONE;
     public DateTime? EliminatedAt { get; set; }
     public long AttackerPlayerId { get; set; }
@@ -55,11 +56,11 @@ public class Player
     public int EliminationRank { get; set; }
     public int FinalOrbTier { get; set; }
 
-    // 공간 정보는 Profile.ObjectInfo, 행동 상태는 Profile.State에 보관한다.
+    // 공간 정보는 GameInfo.ObjectInfo, 행동 상태는 GameInfo.State에 보관한다.
     // 스폰 완료(_hasPosition)는 객체 생성과 별개다. 행동 상태만 먼저 바뀌어도 위치는 여전히 없다.
     public Vector3f? Position
     {
-        get => _hasPosition ? Profile.ObjectInfo.Position : null;
+        get => _hasPosition ? GameInfo.ObjectInfo.Position : null;
         internal set
         {
             if (value == null)
@@ -74,7 +75,7 @@ public class Player
 
     public Cell? Cell
     {
-        get => _hasCell ? Profile.ObjectInfo.Cell : null;
+        get => _hasCell ? GameInfo.ObjectInfo.Cell : null;
         internal set
         {
             if (value == null)
@@ -88,20 +89,20 @@ public class Player
     }
     public Vector3f Velocity
     {
-        get => Profile.ObjectInfo?.Velocity ?? new Vector3f();
+        get => GameInfo.ObjectInfo?.Velocity ?? new Vector3f();
         internal set => EnsureObject().Velocity = value;
     }
     public float Rotation
     {
-        get => Profile.ObjectInfo?.Rotation ?? 0f;
+        get => GameInfo.ObjectInfo?.Rotation ?? 0f;
         internal set => EnsureObject().Rotation = value;
     }
-    public AreaType CurrentArea { get => Profile.ObjectInfo?.Area ?? AreaType.None; internal set => EnsureObject().Area = value; }
+    public AreaType CurrentArea { get => GameInfo.ObjectInfo?.Area ?? AreaType.None; internal set => EnsureObject().Area = value; }
     /// <summary>승인된 이동 구간에서 획득 반경에 닿은 바닥 아이템(uid 키). 다음 자동 줍기 틱이 집는다.</summary>
     internal Dictionary<long, ReachableItem> ReachableItems { get; } = new();
     public float OrbOrbitPhaseDegrees => _orbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(PlayerId);
 
-    public int Health { get; set; } = Config.MAX_HEALTH;
+    public int Health { get => GameInfo.Health; set => GameInfo.Health = value; }
     /// <summary>보유 오브 컬렉션. 각 오브의 UID와 꼬리 순서를 유지한다.</summary>
     public PlayerOrbCollection Orbs { get; } = new();
     /// <summary>오브별 자동공격 표적·조준·발사 주기. MatchAutoAttackService가 매치 잠금 안에서 갱신한다.</summary>
@@ -128,11 +129,11 @@ public class Player
 
     public PlayerState State
     {
-        get => Profile.State;
+        get => GameInfo.State;
         set
         {
-            if (Profile.State == value) return;
-            Profile.State = value;
+            if (GameInfo.State == value) return;
+            GameInfo.State = value;
             ResetSleep();
         }
     }
@@ -205,21 +206,26 @@ public class Player
     /// <summary>이동 응답을 전송한 시각을 기록한다. 즉시 보정 응답도 같은 간격에 반영한다.</summary>
     public void RecordMoveResponse(long timestamp) => _lastMoveResponseTimestamp = timestamp;
 
-    private GameObjectInfo EnsureObject() =>
-        Profile.ObjectInfo ??= new GameObjectInfo(ObjectType.PLAYER, PlayerId, Config.SWARM_MATCH_MAP, new Cell(0, 0));
-
-    /// <summary>등장 전송 단위. 공간 복사본에 현재 행동 상태를 붙인다.</summary>
-    public PlayerInfo CreatePlayerObjectInfo() => new()
+    private GameObjectInfo EnsureObject()
     {
-        PlayerId = PlayerId,
-        Name = Profile.Name,
-        WearItemIdList = new List<int>(Profile.WearItemIdList),
-        Gold = Profile.Gold,
-        IsNew = Profile.IsNew,
-        ObjectInfo = CreateGameObjectInfo(),
-        State = State
-    };
+        GameInfo.ObjectInfo.ObjectId = PlayerId;
+        GameInfo.ObjectInfo.MapId = Config.SWARM_MATCH_MAP;
+        return GameInfo.ObjectInfo;
+    }
 
+    /// <summary>등장 전송 단위. 프로필과 공간·체력·행동·참가 상태를 독립 복사한다.</summary>
+    public PlayerPresenceInfo CreatePlayerObjectInfo() => new()
+    {
+        Player = new PlayerInfo
+        {
+            PlayerId = PlayerId, Name = Profile.Name,
+            WearItemIdList = new List<int>(Profile.WearItemIdList), Gold = Profile.Gold, IsNew = Profile.IsNew
+        },
+        GamePlayer = new GamePlayerInfo
+        {
+            ObjectInfo = CreateGameObjectInfo(), State = State, Health = Health, Status = Status
+        }
+    };
     /// <summary>
     ///     전송용 공간 복사본. 식별자는 프로필과 매치에서 채우고, 셀이 아직 없으면 위치로 계산한다.
     ///     공유 객체를 그대로 내보내지 않는 이유는 직렬화 도중 이동이 값을 바꾸지 않게 하기 위해서다.
@@ -230,7 +236,7 @@ public class Player
         {
             throw new InvalidOperationException("Cannot publish a player before its spawn is initialized.");
         }
-        var source = Profile.ObjectInfo;
+        var source = GameInfo.ObjectInfo;
         var snapshot = source.Clone();
         snapshot.ObjectId = PlayerId;
         if (!_hasCell)

@@ -36,7 +36,7 @@ public sealed class BotMovementIntentTests
         Assert.True(bot.Movement.Speed > 0f);
         Assert.True(bot.Movement.FollowPath);
         if (sleepBeforeExecution) bot.Movement.ResetIntent();
-        var result = MatchMovementService.Move(runtime, bot.Player.Profile.ObjectInfo, bot.Movement, 0.05f);
+        var result = MatchMovementService.Move(runtime, bot.Player.GameInfo.ObjectInfo, bot.Movement, 0.05f);
         if (sleepBeforeExecution)
         {
             Assert.Same(before, bot.Player.Position);
@@ -49,7 +49,7 @@ public sealed class BotMovementIntentTests
         Assert.Equal(0f, bot.Movement.Speed);
         Assert.False(bot.Movement.FollowPath);
         var after = bot.Player.Position;
-        MatchMovementService.Move(runtime, bot.Player.Profile.ObjectInfo, bot.Movement, 0.05f);
+        MatchMovementService.Move(runtime, bot.Player.GameInfo.ObjectInfo, bot.Movement, 0.05f);
         Assert.Equal(after, bot.Player.Position);
     }
 
@@ -72,7 +72,7 @@ public sealed class BotMovementIntentTests
         var behavior = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
         var movement = new MatchMovementService(behavior, null!, null!);
 
-        var result = MatchMovementService.Move(runtime, bot.Player.Profile.ObjectInfo, bot.Movement, 0.05f);
+        var result = MatchMovementService.Move(runtime, bot.Player.GameInfo.ObjectInfo, bot.Movement, 0.05f);
 
         Assert.True(result.Changed);
         Assert.NotEqual(before, bot.Player.Position);
@@ -118,7 +118,7 @@ public sealed class BotMovementIntentTests
         Assert.Equal(0f, bot.Movement.Speed);
         if (canPlanThisTick)
         {
-            Assert.True(MatchMovementService.TryPlanCellPath(runtime, bot.Player.Profile.ObjectInfo,
+            Assert.True(MatchMovementService.TryPlanCellPath(runtime, bot.Player.GameInfo.ObjectInfo,
                 bot.Movement, bot.Movement.DestinationArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, bot.Movement.Destination!)));
             Assert.DoesNotContain(oldTarget, bot.Movement.Waypoints);
             Assert.Equal(MovementPathRequest.None, bot.Movement.PathRequest);

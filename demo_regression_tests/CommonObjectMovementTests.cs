@@ -38,21 +38,21 @@ public sealed class CommonObjectMovementTests
             monsterIntent.Waypoints.Add(target);
         }
 
-        MatchMovementService.Move(runtime, player.Profile.ObjectInfo, playerIntent, 0.05f);
+        MatchMovementService.Move(runtime, player.GameInfo.ObjectInfo, playerIntent, 0.05f);
         MatchMovementService.Move(runtime, monster.Info.ObjectInfo, monsterIntent, 0.05f);
         Assert.True(player.Position!.X > before.X);
         Assert.Equal(player.Position, monster.Position);
-        Assert.Equal(player.Profile.ObjectInfo.Cell, monster.Info.ObjectInfo.Cell);
+        Assert.Equal(player.GameInfo.ObjectInfo.Cell, monster.Info.ObjectInfo.Cell);
         Assert.Equal(player.Velocity, monster.Info.ObjectInfo.Velocity);
         Assert.Equal(player.Rotation, monster.Info.ObjectInfo.Rotation);
         Assert.Equal(0f, playerIntent.Speed);
         Assert.Equal(0f, monsterIntent.Speed);
 
         var stoppedAt = player.Position;
-        var stopped = MatchMovementService.Move(runtime, player.Profile.ObjectInfo, playerIntent, 0.05f);
+        var stopped = MatchMovementService.Move(runtime, player.GameInfo.ObjectInfo, playerIntent, 0.05f);
         Assert.True(stopped.Changed);
         Assert.Same(stoppedAt, player.Position);
         Assert.Equal(0f, player.Velocity.X);
-        Assert.False(MatchMovementService.Move(runtime, player.Profile.ObjectInfo, playerIntent, 0.05f).Changed);
+        Assert.False(MatchMovementService.Move(runtime, player.GameInfo.ObjectInfo, playerIntent, 0.05f).Changed);
     }
 }

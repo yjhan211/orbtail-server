@@ -7,7 +7,7 @@ using network.common.data;
 
 namespace network.common.data.models
 {
-    /// <summary>플레이어의 공통 데이터. 프로필과 행동 상태를 소유하고, 범용 공간 정보는 ObjectInfo에 둔다. 영속 저장 범위는 서버 저장 경로가 선택한다.</summary>
+    /// <summary>플레이어의 영속 프로필. 매치 중 공간·체력·행동 상태는 GamePlayerInfo가 소유한다.</summary>
     [MessagePackObject]
     public partial class PlayerInfo : IMessagePackObject
     {
@@ -50,9 +50,7 @@ namespace network.common.data.models
         // 서버가 중간 실패 후 재시도할 수 있어야 하므로 Redis 직렬화 대상이다.
         [Key("isNew")] public bool IsNew { get; set; }
 
-        [IgnoreMember] public GameObjectInfo ObjectInfo { get; set; }
 
-        [Key("state")] public PlayerState State { get; set; } = PlayerState.IDLE;
 
         public string GetLockKey()
         {

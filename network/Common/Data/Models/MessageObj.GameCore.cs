@@ -98,7 +98,7 @@ namespace network.common.data.models
     public class G_TO_C_AREA_PLAYER_ENTER : IMessagePackObject
     {
         [Key("player")] public PlayerInfo Player { get; set; }
-        [Key("objectInfo")] public GameObjectInfo ObjectInfo { get; set; }
+        [Key("gamePlayer")] public GamePlayerInfo GamePlayer { get; set; }
     }
 
     [MessagePackObject]

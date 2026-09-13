@@ -51,7 +51,7 @@ public sealed class MatchOwnedBotsTests
             Assert.Equal("Updated", profile.Name);
             var spatial = match.Bots.GetPlayerObjectInfo(-1)!;
 
-            Assert.Equal(PlayerState.SLEEP, spatial.State);
+            Assert.Equal(PlayerState.SLEEP, spatial.GamePlayer.State);
         }
     }
     [Fact]
@@ -174,7 +174,7 @@ public sealed class MatchOwnedBotsTests
             player.Velocity = new Vector3f(6, 0, 0);
             player.Rotation = 180;
             player.CurrentArea = AreaType.S2Corridor9;
-            var snapshot = match.Bots.GetPlayerObjectInfo(-1)!.ObjectInfo;
+            var snapshot = match.Bots.GetPlayerObjectInfo(-1)!.GamePlayer.ObjectInfo;
             Assert.Equal(12, snapshot.Position.X);
             Assert.Equal(34, snapshot.Position.Y);
             Assert.Equal(180, snapshot.Rotation);
