@@ -178,14 +178,14 @@ public sealed class MatchOwnedBotsTests
             player.Cell = new Cell(3, 4);
             player.Velocity = new Vector3f(6, 0, 0);
             player.Rotation = 180;
-            player.CurrentArea = Config.SWARM_MATCH_GROUND_AREA;
+            player.CurrentArea = AreaType.S2Corridor9;
             var snapshot = match.Bots.SynthesizeGameObjectInfo(match.MatchingId, -1)!;
             Assert.Equal(12, snapshot.Position.X);
             Assert.Equal(34, snapshot.Position.Y);
             Assert.Equal(180, snapshot.Rotation);
             Assert.Equal(3, bot.Player.Cell!.X);
             Assert.Equal(6, bot.Player.Velocity.X);
-            Assert.Equal(Config.SWARM_MATCH_GROUND_AREA, bot.Player.CurrentArea);
+            Assert.Equal(AreaType.S2Corridor9, bot.Player.CurrentArea);
             Assert.NotSame(player.Position, snapshot.Position);
             Assert.Null(match.GetParticipant(1)!.Position);
             foreach (string field in new[] { "Position", "Cell", "WalkVelocity", "Rotation", "CurrentArea" })

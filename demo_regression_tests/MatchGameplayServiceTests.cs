@@ -216,7 +216,7 @@ public sealed class MatchGameplayServiceTests
         var bot = new Bot
         {
             PlayerId = -11,
-            Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA }
+            Player = { Health = 10, CurrentArea = network.common.AreaType.S2Corridor9 }
         };
         var enemy = new game_server.players.Player
         {
@@ -339,7 +339,7 @@ public sealed class MatchGameplayServiceTests
         var service = provider.GetRequiredService<BotBehaviorService>();
         var store = provider.GetRequiredService<MatchRuntimeStore>();
         var match = store.GetOrCreate(947703);
-        var bot = new Bot { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA } };
+        var bot = new Bot { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.AreaType.S2Corridor9 } };
         match.RegisterParticipant(bot.Player);
         var now = DateTime.UtcNow;
         using (match.Enter())
@@ -370,7 +370,7 @@ public sealed class MatchGameplayServiceTests
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var service = provider.GetRequiredService<BotBehaviorService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947704);
-        var bot = new Bot { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA } };
+        var bot = new Bot { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.AreaType.S2Corridor9 } };
         var enemy = new Bot { PlayerId = -12 };
         match.RegisterParticipant(bot.Player);
         var now = DateTime.UtcNow;
@@ -402,7 +402,7 @@ public sealed class MatchGameplayServiceTests
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947706);
-        var bot = new Bot { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.Config.SWARM_MATCH_GROUND_AREA, Velocity = new Vector3f(3, 0, 0) } };
+        var bot = new Bot { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.AreaType.S2Corridor9, Velocity = new Vector3f(3, 0, 0) } };
         match.Bots.GetBots().Add(bot);
         using (match.Enter())
         {

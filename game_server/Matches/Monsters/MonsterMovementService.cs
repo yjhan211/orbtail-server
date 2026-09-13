@@ -19,12 +19,12 @@ internal sealed class MonsterMovementService
             throw new InvalidOperationException("Monster movement requires the match lock.");
         }
         route = null!;
-        var originCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, Config.SWARM_MATCH_GROUND_AREA));
+        var originCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9));
         var state = runtime.Monsters;
         float baseAngle = ResolveInfiltrationExitBearing(runtime, destinationArea, destination, originCenter);
         double golden = (state.NextInfiltrationOriginOrdinal++ * InfiltrationGoldenAngle) % 1d;
         float angle = baseAngle + (float)((golden - 0.5d) * 2d) * Config.SWARM_MONSTER_INFILTRATION_ORIGIN_JITTER_RADIANS;
-        origin = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(originCenter.X + MathF.Cos(angle) * Config.SWARM_MONSTER_INFILTRATION_ORIGIN_RADIUS, originCenter.Y + MathF.Sin(angle) * Config.SWARM_MONSTER_INFILTRATION_ORIGIN_RADIUS, 0f), originCenter, Config.SWARM_MATCH_GROUND_AREA);
+        origin = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(originCenter.X + MathF.Cos(angle) * Config.SWARM_MONSTER_INFILTRATION_ORIGIN_RADIUS, originCenter.Y + MathF.Sin(angle) * Config.SWARM_MONSTER_INFILTRATION_ORIGIN_RADIUS, 0f), originCenter, AreaType.S2Corridor9);
 
         float burstDistance = Config.SWARM_MONSTER_INFILTRATION_BURST_DISTANCE;
         var burstPosition = new Vector3f(
@@ -35,14 +35,14 @@ internal sealed class MonsterMovementService
             Config.SWARM_MATCH_MAP,
             burstPosition,
             originCenter,
-            Config.SWARM_MATCH_GROUND_AREA);
+            AreaType.S2Corridor9);
 
         bool canReachBurst = MapPathfinder.IsSegmentWalkable(Config.SWARM_MATCH_MAP, origin, burst);
         if (canReachBurst)
         {
             bool routeFound = MapPathfinder.TryPlanRoute(
                 Config.SWARM_MATCH_MAP,
-                Config.SWARM_MATCH_GROUND_AREA,
+                AreaType.S2Corridor9,
                 burst,
                 destinationArea,
                 destination,
@@ -55,7 +55,7 @@ internal sealed class MonsterMovementService
             }
         }
 
-        return MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, Config.SWARM_MATCH_GROUND_AREA, origin, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out route);
+        return MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9, origin, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out route);
     }
 
     private float ResolveInfiltrationExitBearing(MatchRuntime runtime, AreaType destinationArea, Vector3f destination, Vector3f originCenter)
@@ -67,7 +67,7 @@ internal sealed class MonsterMovementService
         }
 
         float fallback = MathF.Atan2(destination.Y - originCenter.Y, destination.X - originCenter.X);
-        if (!MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, Config.SWARM_MATCH_GROUND_AREA, originCenter, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out var probe))
+        if (!MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9, originCenter, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out var probe))
         {
             return fallback;
         }

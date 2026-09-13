@@ -108,8 +108,8 @@ public class SwarmDamagePathTests
             Path.Combine(FindRepositoryRoot(), "game_server", "Players", "Bots", "BotBehaviorService.cs"));
 
         // ① 절단 자제: 봇 전용, 래치 앞에서 걸린다.
-        Assert.Contains("SwarmBotCutMinHealthRatio = 0.5f", botSource);
-        Assert.Contains("SwarmBotCutCooldownSeconds = 6d", botSource);
+        Assert.Contains("Config.SWARM_BOT_CUT_MIN_HEALTH_RATIO", botSource);
+        Assert.Contains("Config.SWARM_BOT_CUT_COOLDOWN_SECONDS", botSource);
         int cutMethodStart = source.IndexOf("internal void TryPerformSwarmTrailCut(", StringComparison.Ordinal);
         int cutMethodEnd = source.LastIndexOf("}", StringComparison.Ordinal);
         string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
@@ -119,13 +119,13 @@ public class SwarmDamagePathTests
         Assert.Single(Regex.Matches(cutBody, @"CanCutTrail\("));
 
         // ② 도주 임계: 강자 판정과 피격 반응 둘 다 ×1.5를 쓴다.
-        Assert.Contains("SwarmBotFleePowerRatio = 1.5f", botSource);
-        Assert.Contains("rivalPower >= myPower * SwarmBotFleePowerRatio", botSource);
-        Assert.Contains("wounded || attackerPower >= squadPower * SwarmBotFleePowerRatio", botSource);
+        Assert.Contains("Config.SWARM_BOT_FLEE_POWER_RATIO", botSource);
+        Assert.Contains("rivalPower >= myPower * Config.SWARM_BOT_FLEE_POWER_RATIO", botSource);
+        Assert.Contains("wounded || attackerPower >= squadPower * Config.SWARM_BOT_FLEE_POWER_RATIO", botSource);
 
         // ③ 치명상 이탈: 히스테리시스 + 전력 0으로 스캔.
-        Assert.Contains("SwarmBotWoundedEnterRatio = 0.4f", botSource);
-        Assert.Contains("SwarmBotWoundedExitRatio = 0.55f", botSource);
+        Assert.Contains("Config.SWARM_BOT_WOUNDED_ENTER_RATIO", botSource);
+        Assert.Contains("Config.SWARM_BOT_WOUNDED_EXIT_RATIO", botSource);
         Assert.Contains("wounded ? 0f : squadPower", botSource);
     }
 

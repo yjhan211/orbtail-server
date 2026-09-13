@@ -742,7 +742,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
             SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
             TestGameSessionServices.BindMatch(session, matchingId);
-            TestGameSessionServices.SetMovementProperty(session, "CurrentArea", Config.SWARM_MATCH_GROUND_AREA);
+            TestGameSessionServices.SetMovementProperty(session, "CurrentArea", AreaType.S2Corridor9);
             TestGameSessionServices.SetMovementProperty(session, "Position", new Vector3f(0f, 0f, 0f));
         }
 

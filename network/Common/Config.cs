@@ -11,6 +11,27 @@ namespace network.common
     /// </summary>
     public class Config
     {
+        public static float SWARM_BOT_DOOR_UNLOCK_RANGE => SwarmConfigData.GetFloat("SWARM_BOT_DOOR_UNLOCK_RANGE", 1.6f);
+        public static double SWARM_BOT_AREA_RETURN_COOLDOWN_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_AREA_RETURN_COOLDOWN_SECONDS", 5d);
+        public static double SWARM_BOT_POST_CUT_LOOT_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_POST_CUT_LOOT_SECONDS", 5d);
+        public static int SWARM_BOT_FIELD_EVACUATE_MARGIN_CELLS => SwarmConfigData.GetInt("SWARM_BOT_FIELD_EVACUATE_MARGIN_CELLS", 5);
+        public static double SWARM_BOT_AREA_EXIT_LEAD_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_AREA_EXIT_LEAD_SECONDS", 25d);
+        public static float SWARM_BOT_MONSTER_DANGER_RADIUS => SwarmConfigData.GetFloat("SWARM_BOT_MONSTER_DANGER_RADIUS", 5f);
+        public static float SWARM_BOT_MONSTER_FLEE_DISTANCE => SwarmConfigData.GetFloat("SWARM_BOT_MONSTER_FLEE_DISTANCE", 5f);
+        public static float SWARM_BOT_MONSTER_ROAM_DISTANCE => SwarmConfigData.GetFloat("SWARM_BOT_MONSTER_ROAM_DISTANCE", 3f);
+        public static float SWARM_BOT_MIN_THREAT_FLEE_DISTANCE => SwarmConfigData.GetFloat("SWARM_BOT_MIN_THREAT_FLEE_DISTANCE", 2f);
+        public static double SWARM_BOT_FLEE_COMMIT_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_FLEE_COMMIT_SECONDS", 2d);
+        public static float SWARM_BOT_RIVAL_SCAN_RADIUS => SwarmConfigData.GetFloat("SWARM_BOT_RIVAL_SCAN_RADIUS", 11f);
+        public static float SWARM_BOT_FLEE_PROBE_DISTANCE => SwarmConfigData.GetFloat("SWARM_BOT_FLEE_PROBE_DISTANCE", 8f);
+        public static float SWARM_BOT_MIN_FLEE_TARGET_DISTANCE => SwarmConfigData.GetFloat("SWARM_BOT_MIN_FLEE_TARGET_DISTANCE", 3f);
+        public static float SWARM_BOT_CHASE_POWER_ADVANTAGE => SwarmConfigData.GetFloat("SWARM_BOT_CHASE_POWER_ADVANTAGE", 1.25f);
+        public static float SWARM_BOT_FLEE_POWER_RATIO => SwarmConfigData.GetFloat("SWARM_BOT_FLEE_POWER_RATIO", 1.5f);
+        public static double SWARM_BOT_DAMAGED_FLEE_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_DAMAGED_FLEE_SECONDS", 6d);
+        public static float SWARM_BOT_WOUNDED_ENTER_RATIO => SwarmConfigData.GetFloat("SWARM_BOT_WOUNDED_ENTER_RATIO", 0.4f);
+        public static float SWARM_BOT_WOUNDED_EXIT_RATIO => SwarmConfigData.GetFloat("SWARM_BOT_WOUNDED_EXIT_RATIO", 0.55f);
+        public static float SWARM_BOT_CUT_MIN_HEALTH_RATIO => SwarmConfigData.GetFloat("SWARM_BOT_CUT_MIN_HEALTH_RATIO", 0.5f);
+        public static double SWARM_BOT_CUT_COOLDOWN_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_CUT_COOLDOWN_SECONDS", 6d);
+
         public static double SWARM_BOT_INITIAL_DECISION_DELAY_MIN_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_INITIAL_DECISION_DELAY_MIN_SECONDS", 0.15d);
         public static double SWARM_BOT_INITIAL_DECISION_DELAY_MAX_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_INITIAL_DECISION_DELAY_MAX_SECONDS", 1.2d);
         public static int[] SWARM_BOT_DEFAULT_WEAR_ITEM_IDS => SwarmConfigData.GetIntArray("SWARM_BOT_DEFAULT_WEAR_ITEM_IDS", new[] { 101000003, 102000003, 104000005, 105000005, 106000003 });
@@ -304,14 +325,6 @@ namespace network.common
         ///     MapId.School 하드코딩 대신 이 상수를 본다 (School은 데이터·테스트로 보존).
         /// </summary>
         public static readonly MapId SWARM_MATCH_MAP = MapId.School2;
-
-        /// <summary>
-        ///     매치 맵의 중앙 수렴 구역 (자기장 중심·보스 무대·교차사격 샌드박스 스폰).
-        ///     #272 가운데 병합: 1차 통로·테라스·운동장을 S2Corridor9
-        ///     하나로 묶었다 — 구역 단위 프랍 가시성이 광장 내부에서 토글되지 않게. 자기장
-        ///     중심은 이 구역 rect들의 경계 상자 중심(138.5, 23)이라 병합 전과 동일하다.
-        /// </summary>
-        public static readonly AreaType SWARM_MATCH_GROUND_AREA = AreaType.S2Corridor9;
 
         /// <summary>
         ///     매치 길이 (#226 단계 B) — 5분 오브 점수전. 개전(카운트다운 종료) 앵커 기준이며,

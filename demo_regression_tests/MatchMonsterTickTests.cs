@@ -86,7 +86,7 @@ public class MatchMonsterTickTests
         DateTime now = StartUtc.AddSeconds(255);
         var manager = CreateManager(217002);
 
-        var lateTick = manager.Tick(ManyParticipants(8, AreaCenter(Config.SWARM_MATCH_GROUND_AREA)), true, now);
+        var lateTick = manager.Tick(ManyParticipants(8, AreaCenter(AreaType.S2Corridor9)), true, now);
         Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == MonsterKind.Skeleton),
             normal => Assert.Equal(22, normal.MaxHealthValue));
         Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == MonsterKind.RunawayGoblin),
@@ -118,7 +118,7 @@ public class MatchMonsterTickTests
         var manager = CreateManager(217004);
         var room = MatchSpawnData.GetPhaseRoomCandidates()[0];
         Vector3f roomCenter = AreaCenter(room);
-        Vector3f elsewhere = AreaCenter(Config.SWARM_MATCH_GROUND_AREA);
+        Vector3f elsewhere = AreaCenter(AreaType.S2Corridor9);
 
         // 방을 채운다 — #272 School2: 운동장 발원 침투의 행군 거리가 길어져(외곽 시작방)
         // 도착까지 재는 창을 40초로 넓힌다 (RegionSupply_Holds의 60초 창과 같은 이유).
@@ -163,7 +163,7 @@ public class MatchMonsterTickTests
         var manager = CreateManager(217003);
         var room = MatchSpawnData.GetPhaseRoomCandidates()[0];
         Vector3f roomCenter = AreaCenter(room);
-        Vector3f elsewhere = AreaCenter(Config.SWARM_MATCH_GROUND_AREA);
+        Vector3f elsewhere = AreaCenter(AreaType.S2Corridor9);
 
         int stones = 0;
         // 이 구역에 머물다 나갔다를 반복한다 — 페이즈 0(0:00~1:40) 안에서만 논다.
@@ -190,7 +190,7 @@ public class MatchMonsterTickTests
         // 운동장은 침투 발원지라 첫 틱에 앵커 자리에 바로 선다 (행군 없음).
         DateTime now = StartUtc.AddSeconds(0.25);
         var manager = CreateManager();
-        Vector3f center = AreaCenter(Config.SWARM_MATCH_GROUND_AREA);
+        Vector3f center = AreaCenter(AreaType.S2Corridor9);
         var damageEvents = new List<MonsterContactDamage>();
         var firstTick = manager.Tick(Participants(center), true, now);
         Assert.NotEmpty(firstTick.SpawnedMonsters);
@@ -239,7 +239,7 @@ public class MatchMonsterTickTests
     {
         DateTime now = StartUtc;
         var manager = CreateManager();
-        Vector3f center = AreaCenter(Config.SWARM_MATCH_GROUND_AREA);
+        Vector3f center = AreaCenter(AreaType.S2Corridor9);
 
         manager.Tick(Participants(center), true, StartUtc.AddSeconds(0.25));
         now = StartUtc.AddSeconds(3.5);
@@ -269,7 +269,7 @@ public class MatchMonsterTickTests
         var manager = CreateManager();
         // 다른 구역 참가자는 도서관1에 세운다. 몹은 자기장 경계 띠에서 태어나므로 위치는 실제 스폰 규칙을 따른다.
         Vector3f corridor = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, new Cell(126, 90));
-        manager.Tick([new PlayerPositionSnapshot(1, Config.SWARM_MATCH_GROUND_AREA, AreaCenter(Config.SWARM_MATCH_GROUND_AREA))], true, now);
+        manager.Tick([new PlayerPositionSnapshot(1, AreaType.S2Corridor9, AreaCenter(AreaType.S2Corridor9))], true, now);
 
         var monster = manager.GetVisualStates().First(state => state.IsAlive);
         var onMonster = new Vector3f(monster.PositionX, monster.PositionY, 0f);
@@ -280,7 +280,7 @@ public class MatchMonsterTickTests
             now = StartUtc.AddSeconds(elapsed);
             var participants = new[]
             {
-                new PlayerPositionSnapshot(1, Config.SWARM_MATCH_GROUND_AREA, onMonster),
+                new PlayerPositionSnapshot(1, AreaType.S2Corridor9, onMonster),
                 new PlayerPositionSnapshot(2, AreaType.S2Library1, corridor)
             };
             damageEvents.AddRange(manager.Tick(participants, true, now).PlayerDamage);
@@ -291,7 +291,7 @@ public class MatchMonsterTickTests
         Assert.NotEmpty(damageEvents);
         Assert.Contains(damageEvents, damage => damage.TargetPlayerId == 1);
         Assert.All(damageEvents, damage => Assert.Equal(
-            damage.TargetPlayerId == 1 ? Config.SWARM_MATCH_GROUND_AREA : AreaType.S2Library1,
+            damage.TargetPlayerId == 1 ? AreaType.S2Corridor9 : AreaType.S2Library1,
             damage.Area));
     }
 
@@ -310,7 +310,7 @@ public class MatchMonsterTickTests
 
     // 기본 구역 = 매치 맵 운동장 (기본 매개변수는 컴파일 상수만 허용 — None을 센티널로 쓴다).
     private static AreaType ResolveArea(AreaType area) =>
-        area == AreaType.None ? Config.SWARM_MATCH_GROUND_AREA : area;
+        area == AreaType.None ? AreaType.S2Corridor9 : area;
 
     [Fact]
     public void RegionSupply_MonsterPursuesOwnerAcrossDoor()

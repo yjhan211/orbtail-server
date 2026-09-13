@@ -213,7 +213,7 @@ public sealed class MatchOwnedStateTests
         var player = new Player
         {
             Profile = new PlayerInfo { PlayerId = 42 },
-            CurrentArea = Config.SWARM_MATCH_GROUND_AREA,
+            CurrentArea = AreaType.S2Corridor9,
             Position = new Vector3f(0, 0, 0)
         };
         match.RegisterParticipant(player);

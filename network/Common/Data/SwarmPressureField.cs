@@ -147,7 +147,7 @@ namespace network.common.data
 
                 // 원 중심 = 운동장 사각(들)의 경계 상자 중심. 셀은 끝값 포함이라 중심은 (Start+End)/2.
                 var groundRects = areas
-                    .Where(region => region.AreaType == Config.SWARM_MATCH_GROUND_AREA).ToList();
+                    .Where(region => region.AreaType == AreaType.S2Corridor9).ToList();
                 if (groundRects.Count > 0)
                 {
                     int groundMinX = groundRects.Min(region => Math.Min(region.Start.X, region.End.X));

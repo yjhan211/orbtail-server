@@ -499,8 +499,8 @@ namespace network.common.data
             }
 
             var definedAreas = new HashSet<AreaType>(areas.Select(area => area.AreaType));
-            if (!definedAreas.Contains(Config.SWARM_MATCH_GROUND_AREA))
-                errors.Add($"map_region({matchMap}): 공용 구역 {Config.SWARM_MATCH_GROUND_AREA}의 area 행이 없다");
+            if (!definedAreas.Contains(AreaType.S2Corridor9))
+                errors.Add($"map_region({matchMap}): 공용 구역 {AreaType.S2Corridor9}의 area 행이 없다");
 
             ValidateSpawnAnchors(matchMap, definedAreas, errors);
             ValidateDoors(matchMap, definedAreas, errors);

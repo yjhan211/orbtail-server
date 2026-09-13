@@ -16,12 +16,12 @@ public sealed class PlayerPickupServiceTests
         using (match.Enter())
         {
             var item = Assert.Single(match.GroundItems.SpawnItems(
-                Config.SWARM_MATCH_GROUND_AREA, 0, 0, [Config.KEY_GROUND_ITEM_ID]));
+                AreaType.S2Corridor9, 0, 0, [Config.KEY_GROUND_ITEM_ID]));
             TestGroundItemLanding.Complete(match.GroundItems);
             var player = new Player
             {
                 Profile = new PlayerInfo { PlayerId = 1 },
-                CurrentArea = Config.SWARM_MATCH_GROUND_AREA,
+                CurrentArea = AreaType.S2Corridor9,
                 Position = At(item, 0, 0)
             };
             match.RegisterParticipant(player);
@@ -51,11 +51,11 @@ public sealed class PlayerPickupServiceTests
             var player = new Player
             {
                 Profile = new PlayerInfo { PlayerId = 1 },
-                CurrentArea = Config.SWARM_MATCH_GROUND_AREA,
+                CurrentArea = AreaType.S2Corridor9,
                 Position = At(item, 5, 0)
             };
             match.RegisterParticipant(player);
-            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, Config.SWARM_MATCH_GROUND_AREA,
+            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, AreaType.S2Corridor9,
                 At(item, -5, 0), At(item, 5, 0));
             var candidate = Assert.Single(PlayerPickupService.TakeReachableItems(player));
             Assert.Equal(item.GroundItemUid, candidate.GroundItemUid);
@@ -93,7 +93,7 @@ public sealed class PlayerPickupServiceTests
         var player = new Player
         {
             Profile = new PlayerInfo { PlayerId = 1 },
-            CurrentArea = Config.SWARM_MATCH_GROUND_AREA,
+            CurrentArea = AreaType.S2Corridor9,
             Position = new Vector3f(0, 0, 0)
         };
         player.ReachableItems.TryAdd(
@@ -121,9 +121,9 @@ public sealed class PlayerPickupServiceTests
         {
             var item = Spawn(match);
             var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
-            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, Config.SWARM_MATCH_GROUND_AREA, At(item, -5, 0), At(item, -5, 5));
-            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, Config.SWARM_MATCH_GROUND_AREA, At(item, -5, 5), At(item, 5, 5));
-            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, Config.SWARM_MATCH_GROUND_AREA, At(item, 5, 5), At(item, 5, 0));
+            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, AreaType.S2Corridor9, At(item, -5, 0), At(item, -5, 5));
+            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, AreaType.S2Corridor9, At(item, -5, 5), At(item, 5, 5));
+            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, AreaType.S2Corridor9, At(item, 5, 5), At(item, 5, 0));
             Assert.Empty(PlayerPickupService.TakeReachableItems(player));
             match.TryMarkEnded();
         }
@@ -137,7 +137,7 @@ public sealed class PlayerPickupServiceTests
         using (match.Enter())
         {
             var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
-            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, Config.SWARM_MATCH_GROUND_AREA,
+            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, AreaType.S2Corridor9,
                 new Vector3f(-5, 0, 0), new Vector3f(5, 0, 0));
             Spawn(match);
             Assert.Empty(PlayerPickupService.TakeReachableItems(player));
@@ -154,8 +154,8 @@ public sealed class PlayerPickupServiceTests
         {
             var item = Spawn(match);
             var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
-            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, Config.SWARM_MATCH_GROUND_AREA, At(item, 0, 0), At(item, 0, 0));
-            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, Config.SWARM_MATCH_GROUND_AREA, At(item, 0, 0), At(item, 0, 0));
+            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, AreaType.S2Corridor9, At(item, 0, 0), At(item, 0, 0));
+            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, AreaType.S2Corridor9, At(item, 0, 0), At(item, 0, 0));
             Assert.Single(PlayerPickupService.TakeReachableItems(player));
             match.TryMarkEnded();
         }
@@ -168,13 +168,13 @@ public sealed class PlayerPickupServiceTests
         var match = store.GetOrCreate(984303);
         using (match.Enter())
         {
-            var item = Assert.Single(match.GroundItems.SpawnItems(Config.SWARM_MATCH_GROUND_AREA, 0, 0,
+            var item = Assert.Single(match.GroundItems.SpawnItems(AreaType.S2Corridor9, 0, 0,
                 [PlayerPickupService.HeartItemId]));
             TestGroundItemLanding.Complete(match.GroundItems);
             var player = new Player
             {
                 Profile = new PlayerInfo { PlayerId = 1 },
-                CurrentArea = Config.SWARM_MATCH_GROUND_AREA,
+                CurrentArea = AreaType.S2Corridor9,
                 Position = At(item, 0, 0),
                 Health = Config.MAX_HEALTH
             };
@@ -198,7 +198,7 @@ public sealed class PlayerPickupServiceTests
 
     private static GroundItemInfo Spawn(MatchRuntime match)
     {
-        var item = Assert.Single(match.GroundItems.SpawnItems(Config.SWARM_MATCH_GROUND_AREA, 0, 0,
+        var item = Assert.Single(match.GroundItems.SpawnItems(AreaType.S2Corridor9, 0, 0,
             [Config.SUMMON_STONE_GROUND_ITEM_ID]));
         TestGroundItemLanding.Complete(match.GroundItems);
         return item;

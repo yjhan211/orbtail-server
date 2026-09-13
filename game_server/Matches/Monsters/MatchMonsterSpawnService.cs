@@ -304,8 +304,8 @@ internal sealed class MatchMonsterSpawnService(MonsterMovementService movement)
             }
         }
 
-        bool infiltrate = area != Config.SWARM_MATCH_GROUND_AREA;
-        var inward = MapCoordinateConverter.GetAreaDirection(Config.SWARM_MATCH_MAP, area, Config.SWARM_MATCH_GROUND_AREA);
+        bool infiltrate = area != AreaType.S2Corridor9;
+        var inward = MapCoordinateConverter.GetAreaDirection(Config.SWARM_MATCH_MAP, area, AreaType.S2Corridor9);
         var freeAnchors = SelectSpawnAnchors(area, participants, infiltrate, inward);
         if (freeAnchors.Count == 0)
         {
@@ -345,7 +345,7 @@ internal sealed class MatchMonsterSpawnService(MonsterMovementService movement)
             else if (infiltrate && movement.TryPlanInfiltration(runtime, area, destination, out var origin, out var planned))
             {
                 position = origin;
-                spawnArea = Config.SWARM_MATCH_GROUND_AREA;
+                spawnArea = AreaType.S2Corridor9;
                 route = planned;
             }
 

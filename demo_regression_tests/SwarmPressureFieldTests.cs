@@ -17,7 +17,7 @@ public class SwarmPressureFieldTests
     [Fact]
     public void Ground_IsZeroAndMaxDistanceIsSane()
     {
-        Assert.Equal(0, SwarmPressureField.GetAreaMinDistance(Config.SWARM_MATCH_GROUND_AREA));
+        Assert.Equal(0, SwarmPressureField.GetAreaMinDistance(AreaType.S2Corridor9));
         Assert.InRange(SwarmPressureField.MaxDistance, 10, 1000);
     }
 
@@ -43,7 +43,7 @@ public class SwarmPressureFieldTests
             Config.SWARM_MATCH_MAP,
             new network.common.data.models.Cell(
                 (int)Math.Round(centerX), (int)Math.Round(centerY)));
-        Assert.Equal(Config.SWARM_MATCH_GROUND_AREA, centerArea);
+        Assert.Equal(AreaType.S2Corridor9, centerArea);
     }
 
     [Fact]

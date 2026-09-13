@@ -393,7 +393,7 @@ public sealed class GameClientSessionTerminalPublicationTests
             SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
             SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
             TestGameSessionServices.BindMatch(session, matchingId);
-            TestGameSessionServices.SetMovementProperty(session, "CurrentArea", Config.SWARM_MATCH_GROUND_AREA);
+            TestGameSessionServices.SetMovementProperty(session, "CurrentArea", AreaType.S2Corridor9);
             session.Player.Status = status;
         }
 
