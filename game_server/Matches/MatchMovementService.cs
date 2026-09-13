@@ -82,18 +82,7 @@ internal class MatchMovementService(
                 }
                 var fromArea = bot.Player.CurrentArea;
                 bool attemptedDodge = intent.DodgeDirection != null;
-                var moved = Move(runtime, bot.Player.Profile.ObjectInfo, intent, botDeltaSeconds,
-                    canEnter: candidate =>
-                    {
-                        var cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, candidate);
-                        var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
-                        return !BotBehaviorService.IsUnsafeStep(runtime, bot, cell, area, now);
-                    },
-                    canDodge: candidate =>
-                    {
-                        var cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, candidate);
-                        return GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell) && GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == fromArea && !BotBehaviorService.IsUnsafeStep(runtime, bot, cell, fromArea, now);
-                    });
+                var moved = Move(runtime, bot.Player.Profile.ObjectInfo, intent, botDeltaSeconds, nowUtc: now);
                 if (attemptedDodge)
                 {
                     botBehavior.CompleteDodge(bot, moved.DodgeDirection);
@@ -104,11 +93,6 @@ internal class MatchMovementService(
                     botBehavior.HandleBlockedPath(bot, now);
                 }
                 var objectInfo = bot.Player.Profile.ObjectInfo;
-                var resolvedArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, objectInfo.Cell);
-                if (resolvedArea != AreaType.None)
-                {
-                    bot.Player.CurrentArea = resolvedArea;
-                }
                 if (moved.Changed)
                 {
                     movements.Add(new BotMovementResult
@@ -127,6 +111,7 @@ internal class MatchMovementService(
             }
             BotMovementPublisher.SendMovements(runtime, movements);
         }
+
         var participants = new List<PlayerPositionSnapshot>();
         foreach (var player in runtime.GetAlivePlayers())
         {
@@ -139,6 +124,7 @@ internal class MatchMovementService(
         {
             return;
         }
+
         var state = runtime.Monsters;
         state.Initialize(nowUtc);
         double deltaSeconds = Math.Clamp((nowUtc - state.LastTickAtUtc).TotalSeconds, 0d, 0.25d);
@@ -162,6 +148,7 @@ internal class MatchMovementService(
                 if (!TryPlanWorldPath(runtime, monster.Info.ObjectInfo, intent, intent.DestinationArea, intent.Destination))
                 {
                     intent.FollowPath = false;
+                    intent.StopBeforeArea = null;
                     intent.PathRequest = MovementPathRequest.None;
                     monsterBehavior.PlanReturnOrPatrol(runtime, monster, nowUtc);
                 }
@@ -169,60 +156,22 @@ internal class MatchMovementService(
             PlanTargetPath(runtime, monster.Info.ObjectInfo, intent, nowUtc);
             bool followingPath = intent.FollowPath;
             var movementResult = Move(runtime, monster.Info.ObjectInfo, intent, (float)deltaSeconds,
-                ignoreClosedDoors: true,
-                canEnter: candidate => !followingPath || !preMatch || GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, candidate)) != monster.HomeArea);
+                ignoreClosedDoors: true, nowUtc: nowUtc);
             if (movementResult.PathBlocked && !preMatch)
             {
                 ReplanBlockedPath(runtime, monster, nowUtc);
             }
-            var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, monster.Info.ObjectInfo.Cell);
-            if (followingPath || area != AreaType.None)
-            {
-                monster.Area = area;
-            }
-
             if (followingPath)
             {
                 monsterBehavior.CompleteMovement(runtime, monster, preMatch);
             }
-
-            if (intent.PositionCorrection != null)
-            {
-                monster.Position = intent.PositionCorrection;
-            }
-            RescueMonsterFromBlockedCell(runtime, monster);
-            monster.Info.ObjectInfo.Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, monster.Position);
-            intent.ResetIntent();
         }
         state.RemoveExpiredDead(nowUtc);
     }
 
-    private static void RescueMonsterFromBlockedCell(MatchRuntime runtime, Monster monster)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Monster movement requires the match lock.");
-        }
-        if (monster.Movement.Waypoints.Count > 0)
-        {
-            return;
-        }
-        if (GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, monster.Position)))
-        {
-            return;
-        }
-        var areaCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, monster.Area));
-        var rescued = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, monster.Position, areaCenter, monster.Area);
-        if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, rescued)))
-        {
-            rescued = MapPathfinder.ClampToWalkable(Config.SWARM_MATCH_MAP, monster.Position, areaCenter);
-        }
-        monster.Position = rescued;
-    }
-
     internal readonly record struct MovementResult(bool Changed, bool PathBlocked, Vector3f? DodgeDirection);
 
-    internal static MovementResult Move(MatchRuntime runtime, GameObjectInfo objectInfo, MovementState intent, float deltaSeconds, bool ignoreClosedDoors = false, Func<Vector3f, bool>? canEnter = null, Func<Vector3f, bool>? canDodge = null)
+    internal static MovementResult Move(MatchRuntime runtime, GameObjectInfo objectInfo, MovementState intent, float deltaSeconds, bool ignoreClosedDoors = false, DateTime? nowUtc = null)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -236,7 +185,8 @@ internal class MatchMovementService(
 
         try
         {
-            var previous = intent.PositionCorrection ?? objectInfo.Position;
+            var previous = objectInfo.Position;
+            var now = nowUtc ?? DateTime.UtcNow;
             Vector3f? next = null;
             Vector3f? dodgeDirection = null;
             bool pathBlocked = false;
@@ -249,10 +199,14 @@ internal class MatchMovementService(
                     float sign = attempt == 0 ? 1f : -1f;
                     var direction = new Vector3f(intent.DodgeDirection.X * sign, intent.DodgeDirection.Y * sign, 0f);
                     var normalized = direction.Normalized();
-                    var path = new MovementState();
+                    var path = new MovementState { StopBeforeArea = intent.StopBeforeArea };
                     path.Waypoints.Add(new Vector3f(previous.X + normalized.X * distance, previous.Y + normalized.Y * distance, 0f));
-                    var candidate = AdvanceRoute(runtime, path, previous, distance, ignoreClosedDoors);
-                    if (candidate.Equals(previous) || (canDodge != null && !canDodge(candidate)))
+                    var candidate = AdvanceRoute(runtime, path, previous, distance, ignoreClosedDoors, now);
+                    var candidateCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, candidate);
+                    var sourceArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP,
+                        MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, previous));
+                    if (candidate.Equals(previous) || !GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, candidateCell) ||
+                        GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, candidateCell) != sourceArea)
                     {
                         continue;
                     }
@@ -266,16 +220,30 @@ internal class MatchMovementService(
                 var path = intent;
                 if (intent.MoveToDestination && intent.Destination != null)
                 {
-                    path = new MovementState();
+                    path = new MovementState { StopBeforeArea = intent.StopBeforeArea };
                     path.Waypoints.Add(intent.Destination);
                 }
-                next = AdvanceRoute(runtime, path, previous, distance, ignoreClosedDoors, canEnter);
+                next = AdvanceRoute(runtime, path, previous, distance, ignoreClosedDoors, now);
                 pathBlocked = next.Equals(previous);
                 reachedDestination = path.WaypointIndex >= path.Waypoints.Count;
             }
             next ??= previous;
+            // 문턱을 지나는 경로 중에는 보정하지 않는다. 경로가 끝났거나 없을 때 양쪽 모두 복구한다.
+            bool corrected = false;
+            var nextCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, next);
+            if (intent.WaypointIndex >= intent.Waypoints.Count && !GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, nextCell))
+            {
+                var areaCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP,
+                    GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, objectInfo.Area));
+                var rescued = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, next, areaCenter, objectInfo.Area);
+                if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP,
+                        MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, rescued)))
+                    rescued = MapPathfinder.ClampToWalkable(Config.SWARM_MATCH_MAP, next, areaCenter);
+                corrected = !rescued.Equals(next);
+                next = rescued;
+            }
             bool moved = !next.Equals(previous);
-            var velocity = moved && !reachedDestination
+            var velocity = moved && !reachedDestination && !corrected
                 ? new Vector3f((next.X - previous.X) / deltaSeconds, (next.Y - previous.Y) / deltaSeconds, 0f)
                 : new Vector3f();
             bool changed = !next.Equals(objectInfo.Position) || !velocity.Equals(objectInfo.Velocity);
@@ -284,6 +252,9 @@ internal class MatchMovementService(
                 objectInfo.Position = next;
             }
             objectInfo.Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, objectInfo.Position);
+            var resolvedArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, objectInfo.Cell);
+            if (resolvedArea != AreaType.None)
+                objectInfo.Area = resolvedArea;
             objectInfo.Velocity = velocity;
             if (velocity.X > 0.1f)
             {
@@ -301,7 +272,7 @@ internal class MatchMovementService(
         }
     }
 
-    internal static Vector3f AdvanceRoute(MatchRuntime runtime, MovementState movement, Vector3f position, float distanceBudget, bool ignoreClosedDoors = false, Func<Vector3f, bool>? canEnter = null)
+    internal static Vector3f AdvanceRoute(MatchRuntime runtime, MovementState movement, Vector3f position, float distanceBudget, bool ignoreClosedDoors = false, DateTime? nowUtc = null)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -312,6 +283,7 @@ internal class MatchMovementService(
             throw new InvalidOperationException("Cannot move after the match has ended.");
         }
         var mapId = Config.SWARM_MATCH_MAP;
+        var now = nowUtc ?? DateTime.UtcNow;
         var route = movement.Waypoints;
         int index = movement.WaypointIndex;
         var current = new Vector3f(position.X, position.Y, 0f);
@@ -336,7 +308,9 @@ internal class MatchMovementService(
             {
                 break;
             }
-            if (canEnter != null && !canEnter(target))
+            if ((movement.StopBeforeArea.HasValue && targetArea == movement.StopBeforeArea.Value) ||
+                IsUnsafeStep(runtime, position, GameMapData.GetCurrentArea(mapId,
+                    MapCoordinateConverter.WorldToCell(mapId, position)), targetCell, targetArea, now))
             {
                 break;
             }
@@ -347,7 +321,11 @@ internal class MatchMovementService(
 
             float step = Math.Min(distanceBudget, distance);
             var next = Vector3f.MoveTowardsXY(current, target, step);
-            if (canEnter != null && !canEnter(next))
+            var nextCell = MapCoordinateConverter.WorldToCell(mapId, next);
+            var nextArea = GameMapData.GetCurrentArea(mapId, nextCell);
+            if ((movement.StopBeforeArea.HasValue && nextArea == movement.StopBeforeArea.Value) ||
+                IsUnsafeStep(runtime, position, GameMapData.GetCurrentArea(mapId,
+                    MapCoordinateConverter.WorldToCell(mapId, position)), nextCell, nextArea, now))
             {
                 break;
             }
@@ -451,4 +429,22 @@ internal class MatchMovementService(
         movement.WaypointIndex = 0;
         return true;
     }
+    internal static bool IsUnsafeStep(MatchRuntime runtime, Vector3f position, AreaType currentArea, Cell targetCell, AreaType targetArea, DateTime nowUtc)
+    {
+        if (targetArea != currentArea && runtime.Closures.IsAreaClosed(targetArea))
+        {
+            return true;
+        }
+
+        double safeDistance = runtime.Closures.GetSafeDistance(nowUtc);
+        int targetDistance = SwarmPressureField.GetDistance(targetCell);
+        if (targetDistance <= safeDistance)
+        {
+            return false;
+        }
+
+        var currentCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, position);
+        return targetDistance > SwarmPressureField.GetDistance(currentCell);
+    }
+
 }

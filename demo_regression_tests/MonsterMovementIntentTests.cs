@@ -80,14 +80,14 @@ public sealed class MonsterMovementIntentTests
     [Fact]
     public void ResetIntentPreservesRouteButClearsOneTickCommands()
     {
-        var state = new MovementState { Speed = 3f, Destination = new Vector3f(), MoveToDestination = true, PositionCorrection = new Vector3f() };
+        var state = new MovementState { Speed = 3f, Destination = new Vector3f(), MoveToDestination = true, StopBeforeArea = AreaType.S2Library1 };
         state.Waypoints.Add(new Vector3f(1, 2, 0));
         state.ResetIntent();
         Assert.Single(state.Waypoints);
         Assert.Equal(0f, state.Speed);
         Assert.NotNull(state.Destination);
         Assert.False(state.MoveToDestination);
-        Assert.Null(state.PositionCorrection);
+        Assert.Null(state.StopBeforeArea);
         state.Clear();
         Assert.Empty(state.Waypoints);
     }

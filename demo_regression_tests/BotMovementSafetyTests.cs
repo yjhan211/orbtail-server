@@ -1,3 +1,4 @@
+using game_server.matches;
 using game_server.players.bots;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -64,7 +65,7 @@ public sealed class BotMovementSafetyTests
             runtime.Closures.GameStartTime = now.AddHours(-1);
             Assert.True(distance > runtime.Closures.GetSafeDistance(now));
 
-            Assert.False(BotBehaviorService.IsUnsafeStep(runtime, bot, target, bot.Player.CurrentArea, now));
+            Assert.False(MatchMovementService.IsUnsafeStep(runtime, bot.Player.Position!, bot.Player.CurrentArea, target, bot.Player.CurrentArea, now));
         }
     }
 
@@ -86,9 +87,9 @@ public sealed class BotMovementSafetyTests
             bot.Player.Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, outer);
             runtime.Closures.GameStartTime = DateTime.UtcNow.AddHours(-1);
 
-            Assert.False(BotBehaviorService.IsUnsafeStep(runtime, bot, inner, bot.Player.CurrentArea, DateTime.UtcNow));
+            Assert.False(MatchMovementService.IsUnsafeStep(runtime, bot.Player.Position!, bot.Player.CurrentArea, inner, bot.Player.CurrentArea, DateTime.UtcNow));
             bot.Player.Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, inner);
-            Assert.True(BotBehaviorService.IsUnsafeStep(runtime, bot, outer, bot.Player.CurrentArea, DateTime.UtcNow));
+            Assert.True(MatchMovementService.IsUnsafeStep(runtime, bot.Player.Position!, bot.Player.CurrentArea, outer, bot.Player.CurrentArea, DateTime.UtcNow));
         }
     }
 }

@@ -30,7 +30,8 @@ public sealed class MovementState
     public Vector3f? DodgeDirection { get; set; }
     public bool MoveToDestination { get; set; }
     public MovementPathRequest PathRequest { get; set; }
-    public Vector3f? PositionCorrection { get; set; }
+    // 이번 틱에는 해당 구역 경계 전에 멈춘다 (예: 입장 카운트다운).
+    public AreaType? StopBeforeArea { get; set; }
 
     public void ResetIntent()
     {
@@ -39,7 +40,7 @@ public sealed class MovementState
         DodgeDirection = null;
         MoveToDestination = false;
         PathRequest = MovementPathRequest.None;
-        PositionCorrection = null;
+        StopBeforeArea = null;
     }
 
     public void Clear()

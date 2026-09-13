@@ -66,22 +66,49 @@ public sealed class RouteMovementTests
         Assert.Equal(0, monster.WaypointIndex);
     }
 
-    [Fact]
-    public void StopsBeforeForbiddenWaypointAndDoesNotSkipIt()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StopsBeforeForbiddenAreaAndDoesNotSkipIt(bool ignoreClosedDoors)
     {
         var runtime = CreateRuntime();
         using var scope = runtime.Enter();
+        foreach (var door in GameDoorData.GetAll()) runtime.Doors.OpenDoor(door.DoorId);
         var map = Config.SWARM_MATCH_MAP;
         var cell = GameMapData.GetAreaSpawnCell(map, AreaType.S2Corridor9);
         var start = MapCoordinateConverter.CellToWorld(map, cell);
-        var target = new Vector3f(start.X + 0.01f, start.Y, 0);
-        var path = CreatePath([start, target]);
-        var result = MatchMovementService.AdvanceRoute(runtime, path, start, 10f,
-            canEnter: point => point.X <= start.X);
-        Assert.Equal(1, path.WaypointIndex);
-        Assert.Equal(start, result);
+        var targetCell = GameMapData.GetAreaSpawnCell(map, AreaType.S2Library1);
+        var steps = MapPathfinder.FindPath(map, AreaType.S2Corridor9, cell, AreaType.S2Library1, targetCell)!;
+        var path = CreatePath(steps.Select(step => MapCoordinateConverter.CellToWorld(map, step.Cell)));
+        path.StopBeforeArea = AreaType.S2Library1;
+        var result = MatchMovementService.AdvanceRoute(runtime, path, start, 10000f, ignoreClosedDoors);
+        Assert.True(path.WaypointIndex < path.Waypoints.Count);
+        Assert.NotEqual(AreaType.S2Library1, GameMapData.GetCurrentArea(map,
+            MapCoordinateConverter.WorldToCell(map, result)));
+        Assert.Equal(AreaType.S2Library1, GameMapData.GetCurrentArea(map,
+            MapCoordinateConverter.WorldToCell(map, path.Waypoints[path.WaypointIndex])));
     }
-
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ClosedAreaBlocksBothEvenWithOpenDoors(bool ignoreClosedDoors)
+    {
+        var runtime = CreateRuntime();
+        using var scope = runtime.Enter();
+        foreach (var door in GameDoorData.GetAll()) runtime.Doors.OpenDoor(door.DoorId);
+        var map = Config.SWARM_MATCH_MAP;
+        var from = GameMapData.GetAreaSpawnCell(map, AreaType.S2Corridor9);
+        var to = GameMapData.GetAreaSpawnCell(map, AreaType.S2Library1);
+        var steps = MapPathfinder.FindPath(map, AreaType.S2Corridor9, from, AreaType.S2Library1, to)!;
+        var path = CreatePath(steps.Select(step => MapCoordinateConverter.CellToWorld(map, step.Cell)));
+        runtime.Closures.InitializeMatching([(AreaType.S2Library1, 0)]);
+        runtime.Closures.CloseDueAreas();
+        var position = MatchMovementService.AdvanceRoute(runtime, path,
+            MapCoordinateConverter.CellToWorld(map, from), 10000f, ignoreClosedDoors);
+        Assert.True(path.WaypointIndex < path.Waypoints.Count);
+        Assert.NotEqual(AreaType.S2Library1, GameMapData.GetCurrentArea(map,
+            MapCoordinateConverter.WorldToCell(map, position)));
+    }
     [Fact]
     public void RequiresMatchLockAndKeepsPerEntityProgressIndependent()
     {

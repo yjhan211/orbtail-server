@@ -432,12 +432,15 @@ public sealed class MatchGameplayServiceTests
         match.Bots.GetBots().Add(bot);
         using (match.Enter())
         {
+            var spawnCell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, bot.Player.CurrentArea);
+            bot.Player.Position = network.common.data.MapCoordinateConverter.CellToWorld(network.common.Config.SWARM_MATCH_MAP, spawnCell);
+            var originalPosition = bot.Player.Position;
             Assert.True(bot.Player.TryStartSleep(DateTime.UtcNow));
             var result = MovementTickTestDriver.RunBotTick(match,
                 _ => throw new InvalidOperationException("A sleeping bot must not request a movement plan."));
             Assert.Single(result.Movements);
             Assert.Equal(0, bot.Player.Velocity.X);
-            Assert.Equal(0, bot.Player.Position!.X);
+            Assert.Equal(originalPosition, bot.Player.Position);
             Assert.True(bot.Player.IsSleeping);
             Assert.Equal(network.common.PlayerState.SLEEP, match.Bots.GetPlayerObjectInfo(bot.PlayerId)!.State);
         }

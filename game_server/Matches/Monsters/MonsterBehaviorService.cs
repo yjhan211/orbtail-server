@@ -146,6 +146,7 @@ internal sealed class MonsterBehaviorService
 
     private void PlanPathMovement(Monster monster, DateTime now, bool holdAtThreshold)
     {
+        monster.Movement.StopBeforeArea = holdAtThreshold ? monster.HomeArea : null;
         if (!holdAtThreshold || monster.Area != monster.HomeArea)
         {
             monster.Movement.FollowPath = true;
@@ -169,12 +170,6 @@ internal sealed class MonsterBehaviorService
 
     private void FinishPath(Monster monster)
     {
-        if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, monster.Position)))
-        {
-            var areaCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, monster.Area));
-            monster.Movement.PositionCorrection = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, monster.Position, areaCenter, monster.Area);
-        }
-
         if (monster.ChaseTargetPlayerId == 0 && monster.Movement.Waypoints.Count > 0)
         {
             var destination = monster.Movement.Waypoints[^1];
@@ -183,8 +178,8 @@ internal sealed class MonsterBehaviorService
         }
         else
         {
-            monster.AnchorX = (monster.Movement.PositionCorrection ?? monster.Position).X;
-            monster.AnchorY = (monster.Movement.PositionCorrection ?? monster.Position).Y;
+            monster.AnchorX = monster.Position.X;
+            monster.AnchorY = monster.Position.Y;
         }
 
         if (monster.ChaseTargetPlayerId != 0)

@@ -1122,22 +1122,4 @@ internal class BotBehaviorService(
         bot.LoopWaitUntil = now.AddSeconds(0.4 + Random.Shared.NextDouble() * 0.5);
     }
 
-    internal static bool IsUnsafeStep(MatchRuntime runtime, Bot bot, Cell targetCell, AreaType targetArea, DateTime nowUtc)
-    {
-        if (targetArea != bot.Player.CurrentArea && runtime.Closures.IsAreaClosed(targetArea))
-        {
-            return true;
-        }
-
-        double safeDistance = runtime.Closures.GetSafeDistance(nowUtc);
-        int targetDistance = SwarmPressureField.GetDistance(targetCell);
-        if (targetDistance <= safeDistance)
-        {
-            return false;
-        }
-
-        var currentCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!);
-        return targetDistance > SwarmPressureField.GetDistance(currentCell);
-    }
-
 }
