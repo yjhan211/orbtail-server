@@ -349,6 +349,26 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         var nextStep = bot.Path[bot.PathIndex];
         var mapId = Config.SWARM_MATCH_MAP;
         var fromArea = bot.Player.CurrentArea;
+        if (IsUnsafeStep(runtime, bot, nextStep.Cell, nextStep.Area, now))
+        {
+            bot.ClearPath();
+            bot.MovementDestination = AreaType.None;
+            bot.EvacuationDestination = AreaType.None;
+            bot.MovementModeUntilUtc = DateTime.MinValue;
+            bot.LoopWaitUntil = DateTime.MinValue;
+            bot.Player.Velocity = new Vector3f();
+            return new BotMovementResult
+            {
+                BotPlayerId = bot.PlayerId,
+                FromArea = fromArea,
+                ToArea = fromArea,
+                ToCell = bot.Player.Cell!,
+                Position = bot.Player.Position!,
+                Velocity = bot.Player.Velocity,
+                Rotation = bot.Player.Rotation,
+                IsAreaTransition = false
+            };
+        }
         bool reachedStep = false;
         if (nextStep.Area != bot.Player.CurrentArea)
         {
@@ -396,7 +416,9 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             bot.PathIndex++;
             reachedStep = true;
             velocity = new Vector3f(0f, 0f, 0f);
-            if (bot.PathIndex < bot.Path.Count)
+            // 구역 경계는 다음 틱의 문·위험 검사 후 통과한다.
+            if (bot.PathIndex < bot.Path.Count && bot.Path[bot.PathIndex].Area == fromArea &&
+                !IsUnsafeStep(runtime, bot, bot.Path[bot.PathIndex].Cell, bot.Path[bot.PathIndex].Area, now))
             {
                 var followingPos = MapCoordinateConverter.CellToWorld(mapId, bot.Path[bot.PathIndex].Cell);
                 float nextDx = followingPos.X - newPosition.X;
@@ -528,7 +550,8 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             float step = ScaledWalkSpeed(dirX, dirY, multiplier) * deltaSec;
             var candidate = new Vector3f(bot.Player.Position!.X + dirX * step, bot.Player.Position!.Y + dirY * step, 0f);
             var candidateCell = MapCoordinateConverter.WorldToCell(mapId, candidate);
-            if (!GameMapData.IsMoveablePosition(mapId, candidateCell) || GameMapData.GetCurrentArea(mapId, candidateCell) != bot.Player.CurrentArea)
+            if (!GameMapData.IsMoveablePosition(mapId, candidateCell) || GameMapData.GetCurrentArea(mapId, candidateCell) != bot.Player.CurrentArea ||
+                IsUnsafeStep(runtime, bot, candidateCell, bot.Player.CurrentArea, now))
             {
                 continue;
             }
@@ -561,6 +584,25 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
 
         bot.SwarmDodgeHoldUntilUtc = DateTime.MinValue;
         return false;
+    }
+
+    internal static bool IsUnsafeStep(MatchRuntime runtime, Bot bot, Cell targetCell, AreaType targetArea, DateTime nowUtc)
+    {
+        if (targetArea != bot.Player.CurrentArea && runtime.Closures.IsAreaClosed(targetArea))
+        {
+            return true;
+        }
+
+        double safeDistance = runtime.Closures.GetSafeDistance(nowUtc);
+        int targetDistance = SwarmPressureField.GetDistance(targetCell);
+        if (targetDistance <= safeDistance)
+        {
+            return false;
+        }
+
+        // 이미 경계 밖이라면 안쪽으로 접근하는 탈출 이동은 허용한다.
+        var currentCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!);
+        return targetDistance >= SwarmPressureField.GetDistance(currentCell);
     }
 
     private void ChooseNewWanderTarget(MatchRuntime runtime, Bot bot, IReadOnlyDictionary<long, AreaType> playerAreas)
