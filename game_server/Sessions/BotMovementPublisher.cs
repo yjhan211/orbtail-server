@@ -11,6 +11,14 @@ internal static class BotMovementPublisher
 {
     public static void SendMovements(MatchRuntime runtime, IReadOnlyList<BotMovementResult> movements)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Bot movement publication requires the match lock.");
+        }
+        if (runtime.IsEnded)
+        {
+            throw new InvalidOperationException("Cannot publish bot movement after the match has ended.");
+        }
         if (movements.Count == 0) return;
         var sessions = runtime.GetSessions();
         foreach (var movement in movements)

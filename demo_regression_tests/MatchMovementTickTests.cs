@@ -30,6 +30,7 @@ public sealed class MatchMovementTickTests
         movement.ProcessTick(runtime, DateTime.UtcNow);
 
         Assert.Equal(started ? 1 : 0, bots.Calls);
+        Assert.Equal(started ? 1 : 0, bots.Decisions);
         Assert.True(runtime.Monsters.IsInitialized);
     }
 
@@ -48,7 +49,9 @@ public sealed class MatchMovementTickTests
     private sealed class BotProbe() : BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance)
     {
         public int Calls { get; private set; }
-        public override void ProcessTick(MatchRuntime runtime, Action<long> decideMovement)
+        public int Decisions { get; private set; }
+        public override void DecideMovement(MatchRuntime runtime, long botPlayerId) => Decisions++;
+        public override void PlanMovement(MatchRuntime runtime, Bot bot, DateTime now, bool canPlanThisTick)
         {
             Assert.True(Monitor.IsEntered(runtime.MatchLock));
             Calls++;

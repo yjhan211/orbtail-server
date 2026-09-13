@@ -36,7 +36,6 @@ public class Bot
     public long PlayerId { get => Player.PlayerId; set => Player.Profile.PlayerId = value; }
     public long LastProximityAttackerPlayerId { get; set; }
     public MovementState Movement { get; } = new();
-    public DateTime LastWalkStepTime { get; set; } = DateTime.UtcNow;
     public DateTime LoopWaitUntil { get; set; } = DateTime.MinValue;
     public float SwarmDodgeDirectionX { get; set; }
     public float SwarmDodgeDirectionY { get; set; }

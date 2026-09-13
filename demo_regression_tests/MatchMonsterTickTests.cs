@@ -430,7 +430,23 @@ public class MatchMonsterTickTests
                         Runtime.RegisterParticipant(new Player { Profile = new PlayerInfo { PlayerId = participant.PlayerId } });
                     }
                 }
-                _movement.ProcessMonsters(Runtime, participants.ToArray(), isGameplayActive, nowUtc);
+                foreach (var player in Runtime.GetAlivePlayers())
+                    player.Position = null;
+                foreach (var participant in participants)
+                {
+                    var player = Runtime.GetParticipant(participant.PlayerId)!;
+                    player.Position = participant.Position;
+                    player.CurrentArea = participant.Area;
+                }
+                if (isGameplayActive) Runtime.StartGameplay(StartUtc);
+                if (participants.Count == 0)
+                {
+                    // 빈 참가자 공급 정책은 공급 서비스를 직접 검증한다. 운영 이동 틱은 이 경우 조기 반환한다.
+                    new MatchMonsterSpawnService(new MonsterBehaviorService())
+                        .ProcessSupply(Runtime, [], nowUtc, !isGameplayActive);
+                }
+                else
+                    _movement.ProcessTick(Runtime, nowUtc);
                 var contacts = _combat.CollectMonsterContacts(Runtime, participants, nowUtc);
                 var spawned = Runtime.Monsters.Entities.Values.Where(monster => !known.Contains(monster.MonsterId)).ToList();
                 return new TickResult(contacts, spawned);

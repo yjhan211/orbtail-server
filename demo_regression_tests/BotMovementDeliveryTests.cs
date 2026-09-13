@@ -23,15 +23,14 @@ public sealed class BotMovementDeliveryTests
         var bot = new Bot { PlayerId = -20 };
         bot.Player.State = PlayerState.EXPLORE_1;
         bot.Player.BeginDoor(213, 0);
-        var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
         using (match.Enter())
         {
             match.Bots.GetBots().Add(bot);
-            service.DispatchExternalMovement(match, new BotMovementResult
+            BotMovementPublisher.SendMovements(match, [new BotMovementResult
             {
                 BotPlayerId = -20, FromArea = AreaType.S2Ground, ToArea = AreaType.S2Ground,
                 Position = new Vector3f(1, 1, 0), Velocity = new Vector3f(1, 0, 0), ToCell = new Cell(1, 1)
-            });
+            }]);
             Assert.Null(bot.Player.PendingDoorInteractionId);
             Assert.Equal(PlayerState.IDLE, bot.Player.State);
         }
@@ -67,12 +66,11 @@ public sealed class BotMovementDeliveryTests
         bot.Player.Cell = movement.ToCell;
         bot.Player.Position = movement.Position;
         bot.Player.State = PlayerState.SLEEP;
-        var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
         using (match.Enter())
         {
             match.Bots.GetBots().Add(bot);
             float phase = bot.Player.OrbOrbitPhaseDegrees;
-            service.DispatchExternalMovement(match, movement);
+            BotMovementPublisher.SendMovements(match, [movement]);
             Assert.Equal(phase, bot.Player.OrbOrbitPhaseDegrees);
         }
 
@@ -107,13 +105,12 @@ public sealed class BotMovementDeliveryTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(44003);
-        var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
         var movement = new BotMovementResult();
-        Assert.Throws<InvalidOperationException>(() => service.DispatchExternalMovement(match, movement));
+        Assert.Throws<InvalidOperationException>(() => BotMovementPublisher.SendMovements(match, [movement]));
         using (match.Enter())
         {
             match.TryMarkEnded();
-            Assert.Throws<InvalidOperationException>(() => service.DispatchExternalMovement(match, movement));
+            Assert.Throws<InvalidOperationException>(() => BotMovementPublisher.SendMovements(match, [movement]));
         }
     }
 

@@ -37,16 +37,14 @@ public sealed class BotMovementStopTests
                 }]);
             if (reason == "waiting")
                 bot.LoopWaitUntil = DateTime.UtcNow.AddMinutes(1);
-
-            var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
-            var first = service.ProcessBotMovementTick(runtime, new Dictionary<long, AreaType>(), _ => { });
+            var first = MovementTickTestDriver.RunBotTick(runtime, _ => { });
 
             var stopped = Assert.Single(first.Movements);
             Assert.Equal(0f, stopped.Velocity.X);
             Assert.Equal(0f, stopped.Velocity.Y);
             Assert.Same(originalPosition, stopped.Position);
             Assert.False(stopped.IsAreaTransition);
-            var second = service.ProcessBotMovementTick(runtime, new Dictionary<long, AreaType>(), _ => { });
+            var second = MovementTickTestDriver.RunBotTick(runtime, _ => { });
             Assert.Empty(second.Movements);
         }
     }

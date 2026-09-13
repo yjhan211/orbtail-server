@@ -28,9 +28,7 @@ public sealed class BotMovementSafetyTests
             var originalPosition = bot.Player.Position;
             runtime.Closures.InitializeMatching([(AreaType.S2Library1, 0)]);
             runtime.Closures.CloseDueAreas();
-
-            var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
-            var result = service.ProcessBotMovementTick(runtime, new Dictionary<long, AreaType>(), _ => { });
+            var result = MovementTickTestDriver.RunBotTick(runtime, _ => { });
 
             Assert.Empty(bot.Movement.Waypoints);
             Assert.Same(originalPosition, bot.Player.Position);

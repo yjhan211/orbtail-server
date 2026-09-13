@@ -348,7 +348,8 @@ public sealed class SwarmArenaTickOrderTests
 
         Assert.Contains("new MatchBots(logger)", botDodge);
         string botMovement = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotBehaviorService.cs");
-        Assert.Contains("runtime.SunCrossfireShapes, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now", botMovement);
+        Assert.Contains("BotDodgeCalculator.CalculateDodge(runtime.SunCrossfireShapes,", botMovement);
+        Assert.Contains("bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now)", botMovement);
         Assert.DoesNotContain("matchRuntimes.GetOrThrow(matchingId).Swarm", botDodge);
         Assert.False(File.Exists(Path.Combine(root, "game_server", "GameServer.SwarmBotDodge.cs")));
     }

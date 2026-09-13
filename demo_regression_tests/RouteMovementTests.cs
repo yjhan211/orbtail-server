@@ -36,14 +36,14 @@ public sealed class RouteMovementTests
         var start = MapCoordinateConverter.CellToWorld(map, from);
         var bot = CreatePath(route);
         var monster = CreatePath(route);
-        MatchMovementService.Move(runtime, bot, start, 10000f);
+        MatchMovementService.AdvanceRoute(runtime, bot, start, 10000f);
         Assert.True(bot.WaypointIndex < route.Count);
-        var monsterPosition = MatchMovementService.Move(runtime, monster, start, 10000f, ignoreClosedDoors: true);
+        var monsterPosition = MatchMovementService.AdvanceRoute(runtime, monster, start, 10000f, ignoreClosedDoors: true);
         Assert.Equal(route.Count, monster.WaypointIndex);
         Assert.Equal(route[^1], monsterPosition);
         foreach (var door in GameDoorData.GetAll()) runtime.Doors.OpenDoor(door.DoorId);
         var openBot = CreatePath(route);
-        var openBotPosition = MatchMovementService.Move(runtime, openBot, start, 10000f);
+        var openBotPosition = MatchMovementService.AdvanceRoute(runtime, openBot, start, 10000f);
         Assert.Equal(monster.WaypointIndex, openBot.WaypointIndex);
         Assert.Equal(monsterPosition, openBotPosition);
     }
@@ -60,8 +60,8 @@ public sealed class RouteMovementTests
         Assert.False(MapPathfinder.IsSegmentWalkable(map, start, target));
         var bot = CreatePath([target]);
         var monster = CreatePath([target]);
-        Assert.Equal(start, MatchMovementService.Move(runtime, bot, start, 1000));
-        Assert.Equal(start, MatchMovementService.Move(runtime, monster, start, 1000, ignoreClosedDoors: true));
+        Assert.Equal(start, MatchMovementService.AdvanceRoute(runtime, bot, start, 1000));
+        Assert.Equal(start, MatchMovementService.AdvanceRoute(runtime, monster, start, 1000, ignoreClosedDoors: true));
         Assert.Equal(0, bot.WaypointIndex);
         Assert.Equal(0, monster.WaypointIndex);
     }
@@ -76,7 +76,7 @@ public sealed class RouteMovementTests
         var start = MapCoordinateConverter.CellToWorld(map, cell);
         var target = new Vector3f(start.X + 0.01f, start.Y, 0);
         var path = CreatePath([start, target]);
-        var result = MatchMovementService.Move(runtime, path, start, 10f,
+        var result = MatchMovementService.AdvanceRoute(runtime, path, start, 10f,
             canEnter: point => point.X <= start.X);
         Assert.Equal(1, path.WaypointIndex);
         Assert.Equal(start, result);
@@ -90,9 +90,9 @@ public sealed class RouteMovementTests
             GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9));
         var first = CreatePath([start]);
         var second = CreatePath([start]);
-        Assert.Throws<InvalidOperationException>(() => MatchMovementService.Move(runtime, first, start, 1));
+        Assert.Throws<InvalidOperationException>(() => MatchMovementService.AdvanceRoute(runtime, first, start, 1));
         using var scope = runtime.Enter();
-        MatchMovementService.Move(runtime, first, start, 1);
+        MatchMovementService.AdvanceRoute(runtime, first, start, 1);
         Assert.Equal(1, first.WaypointIndex);
         Assert.Equal(0, second.WaypointIndex);
         first.Clear();

@@ -58,11 +58,7 @@ public sealed class Monster
     public int PhaseTier { get => Info.Phase; set => Info.Phase = value; }
     public long OwnerPlayerId { get; set; }
     public int PendingDamage { get; set; }
-    public bool Infiltrating { get; set; }
-    public bool MarchIsPursuit { get; set; }
     public MovementState Movement { get; } = new();
-    public double MarchBudgetSeconds { get; set; }
-    public float MarchSpeedScale { get; set; } = 1f;
     public DateTime NextChasePlanAtUtc { get; set; }
 
     public static bool IsCombatTargetId(long actorId) => actorId < -1_000_000_000_000L;

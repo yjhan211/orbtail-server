@@ -204,7 +204,7 @@ internal sealed class MatchMonsterSpawnService(MonsterBehaviorService movement)
                 continue;
             }
 
-            if (monster.Infiltrating && monster.MarchIsPursuit)
+            if (monster.Movement.Waypoints.Count > 0 && monster.ChaseTargetPlayerId != 0)
             {
                 continue;
             }
@@ -342,7 +342,7 @@ internal sealed class MatchMonsterSpawnService(MonsterBehaviorService movement)
                 var fieldAnchorWorld = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Anchor);
                 destination = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(fieldAnchorWorld.X + MathF.Cos(angle) * Config.SWARM_MONSTER_SUPPLY_SCATTER_RADIUS, fieldAnchorWorld.Y + MathF.Sin(angle) * Config.SWARM_MONSTER_SUPPLY_SCATTER_RADIUS, 0f), fieldAnchorWorld, area);
             }
-            else if (infiltrate && movement.TryPlanInfiltration(runtime, area, destination, out var origin, out var planned))
+            else if (infiltrate && movement.TryPlanSpawnRoute(runtime, area, destination, out var origin, out var planned))
             {
                 position = origin;
                 spawnArea = AreaType.S2Corridor9;
@@ -387,10 +387,7 @@ internal sealed class MatchMonsterSpawnService(MonsterBehaviorService movement)
 
             if (route != null)
             {
-                monster.Infiltrating = true;
                 monster.Movement.Waypoints.AddRange(route);
-                monster.MarchBudgetSeconds = MonsterBehaviorService.ComputeMarchBudgetSeconds(position, route);
-                monster.MarchSpeedScale = 1f + (float)(state.Rng.NextDouble() * 2d - 1d) * Config.SWARM_MONSTER_MARCH_SPEED_JITTER;
             }
 
             state.Entities[monster.MonsterId] = monster;

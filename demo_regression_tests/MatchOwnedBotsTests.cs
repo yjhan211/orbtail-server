@@ -61,20 +61,19 @@ public sealed class MatchOwnedBotsTests
         var first = store.GetOrCreate(1);
         var second = store.GetOrCreate(2);
         Assert.NotSame(first.Bots, second.Bots);
-        var movementService = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
         using (MatchRuntimeStore.Enter(first))
-            movementService.ProcessTick(first, _ => { });
+            MovementTickTestDriver.RunBotTick(first, _ => { });
         using (MatchRuntimeStore.Enter(second))
-            movementService.ProcessTick(second, _ => { });
+            MovementTickTestDriver.RunBotTick(second, _ => { });
         using (MatchRuntimeStore.Enter(first))
         {
             first.TryMarkEnded();
 
-            Assert.Throws<InvalidOperationException>(() => movementService.ProcessTick(first, _ => { }));
+            MovementTickTestDriver.RunBotTick(first, _ => throw new InvalidOperationException("Ended match must not plan."));
         }
-        Assert.Throws<InvalidOperationException>(() => movementService.ProcessTick(first, _ => { }));
+        Assert.Throws<InvalidOperationException>(() => MovementTickTestDriver.RunBotTick(first, _ => { }));
         using (MatchRuntimeStore.Enter(second))
-            movementService.ProcessTick(second, _ => { });
+            MovementTickTestDriver.RunBotTick(second, _ => { });
     }
 
     [Fact]
@@ -83,7 +82,6 @@ public sealed class MatchOwnedBotsTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(101);
         var second = store.GetOrCreate(102);
-        var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
         foreach (var match in new[] { first, second })
         {
             using (match.Enter())
@@ -97,12 +95,12 @@ public sealed class MatchOwnedBotsTests
         {
             using (match.Enter())
             {
-                return service.ProcessBotMovementTick(match,
-                    new Dictionary<long, AreaType>(), _ => { }).PlanningBotId;
+                return MovementTickTestDriver.RunBotTick(match,
+                    _ => { }).PlanningBotId;
             }
         }
 
-        Assert.Throws<InvalidOperationException>(() => service.ProcessTick(first, _ => { }));
+        Assert.Throws<InvalidOperationException>(() => MovementTickTestDriver.RunBotTick(first, _ => { }));
         Assert.Equal(-2L, SelectNext(first));
         Assert.Equal(-2L, SelectNext(second));
         Assert.Equal(-1L, SelectNext(first));
@@ -200,7 +198,6 @@ public sealed class MatchOwnedBotsTests
         first.Bots.GetBots().Add(new Bot { PlayerId = -1 });
         Assert.True(first.Bots.HasBots());
         Assert.NotSame(first.Bots, second.Bots);
-        var movementService = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
         Assert.Single(first.Bots.GetBots());
         Assert.Empty(second.Bots.GetBots());
         using (MatchRuntimeStore.Enter(first)) first.TryMarkEnded();

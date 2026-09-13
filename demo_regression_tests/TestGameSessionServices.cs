@@ -26,10 +26,10 @@ internal static class TestGameSessionServices
 
     public static PlayerOrbGrowthService CreatePlayerOrbGrowthService() =>
         new(NullLogger<PlayerOrbGrowthService>.Instance);
-    internal static void StartGameplay(this MatchRuntime runtime)
+    internal static void StartGameplay(this MatchRuntime runtime, DateTime? startsAtUtc = null)
     {
         typeof(MatchRuntime).GetField("_startsAtUtc", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .SetValue(runtime, DateTime.UtcNow);
+            .SetValue(runtime, startsAtUtc ?? DateTime.UtcNow);
     }
 
     internal static void PrepareEntry(this MatchRuntime runtime, params long[] playerIds)
