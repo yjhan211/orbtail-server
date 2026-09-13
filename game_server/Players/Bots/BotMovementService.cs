@@ -119,12 +119,6 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         return dx * dx + dy * dy;
     }
 
-    private static float ScaledWalkSpeed(float dirX, float dirY, float movementMultiplier = 1f)
-    {
-        float tileFactor = (float)Math.Sqrt(dirX * dirX + dirY * dirY);
-        float baseSpeed = Config.SWARM_BOT_WALK_SPEED * Math.Max(0f, movementMultiplier);
-        return tileFactor > 0.0001f ? baseSpeed / tileFactor : baseSpeed;
-    }
 
     internal static float GetBotMovementSpeedMultiplier(Bot bot)
     {
@@ -133,11 +127,6 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         float bare = bot.IsSwarmBareHanded && DateTime.UtcNow < bot.SwarmBareSpeedUntilUtc ? Config.SWARM_BARE_MOVE_SPEED_MULTIPLIER : 1f;
         float waveSlow = DateTime.UtcNow < bot.Player.WaveSlowUntilUtc ? OrbData.WaveSlowMoveSpeedMultiplier : 1f;
         return wind * boots * bare * waveSlow;
-    }
-    private static Vector3f ScaledWalkVelocity(float dirX, float dirY, float movementMultiplier = 1f)
-    {
-        float speed = ScaledWalkSpeed(dirX, dirY, movementMultiplier);
-        return new Vector3f(dirX * speed, dirY * speed, 0f);
     }
 
     public class BotWalkingTickResult
@@ -380,106 +369,46 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             }
         }
 
-        var nextStep = bot.Path[bot.PathIndex];
         var mapId = Config.SWARM_MATCH_MAP;
         var fromArea = bot.Player.CurrentArea;
-        if (IsUnsafeStep(runtime, bot, nextStep.Cell, nextStep.Area, now))
+        var previousPosition = bot.Player.Position!;
+        var route = new List<Vector3f>(bot.Path.Count);
+        foreach (var step in bot.Path)
+        {
+            route.Add(MapCoordinateConverter.CellToWorld(mapId, step.Cell));
+        }
+        float speed = Config.SWARM_BOT_WALK_SPEED * GetBotMovementSpeedMultiplier(bot);
+        int pathIndex = bot.PathIndex;
+        var newPosition = MapPathfinder.AdvanceRoute(mapId, previousPosition, route, ref pathIndex,
+            speed * deltaSec, runtime.Doors.IsDoorOpen, candidate =>
+            {
+                var cell = MapCoordinateConverter.WorldToCell(mapId, candidate);
+                var area = GameMapData.GetCurrentArea(mapId, cell);
+                return !IsUnsafeStep(runtime, bot, cell, area, now);
+            });
+        bot.PathIndex = pathIndex;
+        float movedX = newPosition.X - previousPosition.X;
+        float movedY = newPosition.Y - previousPosition.Y;
+        if (movedX == 0f && movedY == 0f)
         {
             bot.ClearPath();
             bot.MovementDestination = AreaType.None;
             bot.EvacuationDestination = AreaType.None;
             bot.MovementModeUntilUtc = DateTime.MinValue;
-            bot.LoopWaitUntil = DateTime.MinValue;
-            return StopMovement(bot);
-        }
-        bool reachedStep = false;
-        if (nextStep.Area != bot.Player.CurrentArea)
-        {
-            var transitionDoor = GameDoorData.GetDoorForTransition(bot.Player.CurrentArea, nextStep.Area, bot.Player.Cell!, nextStep.Cell);
-            if (transitionDoor != null && !runtime.Doors.IsDoorOpen(transitionDoor.DoorId))
-            {
-                bot.ClearPath();
-                bot.MovementDestination = AreaType.None;
-                bot.EvacuationDestination = AreaType.None;
-                bot.LoopWaitUntil = GetRandomWaitDeadline(0.8, 1.4);
-                if (bot.LastLockedDoorBlockArea != nextStep.Area)
-                {
-                    bot.LastLockedDoorBlockArea = nextStep.Area;
-                    logger.LogInformation("Bot blocked at closed door: MatchingId={MatchingId}, BotId={BotId}, " + "From={From}, To={To}, DoorId={DoorId}", runtime.MatchingId, bot.PlayerId, bot.Player.CurrentArea, nextStep.Area, transitionDoor.DoorId);
-                }
-                return StopMovement(bot);
-            }
-        }
-
-        var targetPos = MapCoordinateConverter.CellToWorld(mapId, nextStep.Cell);
-        float dx = targetPos.X - bot.Player.Position!.X;
-        float dy = targetPos.Y - bot.Player.Position!.Y;
-        float dist = (float)Math.Sqrt(dx * dx + dy * dy);
-        float maxDist = Config.SWARM_BOT_WALK_SPEED * GetBotMovementSpeedMultiplier(bot) * deltaSec;
-        if (dist >= 0.01f)
-        {
-            maxDist = ScaledWalkSpeed(dx / dist, dy / dist, GetBotMovementSpeedMultiplier(bot)) * deltaSec;
-        }
-
-        Vector3f newPosition;
-        Vector3f velocity;
-        if (!GameMapData.IsMoveablePosition(mapId, nextStep.Cell) && GameMapData.IsMoveablePosition(mapId, bot.Player.Cell!))
-        {
-            bot.ClearPath();
-            bot.MovementDestination = AreaType.None;
             bot.LoopWaitUntil = GetRandomWaitDeadline(0.4, 0.9);
             return StopMovement(bot);
         }
-
-        if (dist <= maxDist || dist < 0.01f)
+        bot.Player.Position = newPosition;
+        bot.Player.Cell = MapCoordinateConverter.WorldToCell(mapId, newPosition);
+        var resolvedArea = GameMapData.GetCurrentArea(mapId, bot.Player.Cell);
+        if (resolvedArea != AreaType.None)
         {
-            newPosition = targetPos;
-            bot.Player.Cell = nextStep.Cell;
-            bot.Player.Position = newPosition;
-            bot.PathIndex++;
-            reachedStep = true;
-            velocity = new Vector3f(0f, 0f, 0f);
-            // 구역 경계는 다음 틱의 문·위험 검사 후 통과한다.
-            if (bot.PathIndex < bot.Path.Count && bot.Path[bot.PathIndex].Area == fromArea &&
-                !IsUnsafeStep(runtime, bot, bot.Path[bot.PathIndex].Cell, bot.Path[bot.PathIndex].Area, now))
-            {
-                var followingPos = MapCoordinateConverter.CellToWorld(mapId, bot.Path[bot.PathIndex].Cell);
-                float nextDx = followingPos.X - newPosition.X;
-                float nextDy = followingPos.Y - newPosition.Y;
-                float nextDist = (float)Math.Sqrt(nextDx * nextDx + nextDy * nextDy);
-                if (nextDist > 0.01f)
-                {
-                    velocity = ScaledWalkVelocity(nextDx / nextDist, nextDy / nextDist, GetBotMovementSpeedMultiplier(bot));
-
-                    float leftover = maxDist - dist;
-                    if (leftover > 0f)
-                    {
-                        float carry = Math.Min(leftover, nextDist);
-                        newPosition = new Vector3f(newPosition.X + nextDx / nextDist * carry, newPosition.Y + nextDy / nextDist * carry, 0f);
-                        bot.Player.Position = newPosition;
-                    }
-                }
-            }
+            bot.Player.CurrentArea = resolvedArea;
         }
-        else
-        {
-            float dirX = dx / dist;
-            float dirY = dy / dist;
-            newPosition = new Vector3f(bot.Player.Position!.X + dirX * maxDist, bot.Player.Position!.Y + dirY * maxDist, 0f);
-            velocity = ScaledWalkVelocity(dirX, dirY, GetBotMovementSpeedMultiplier(bot));
-            bot.Player.Position = newPosition;
-        }
-
-        bool areaChanged = false;
-        if (reachedStep)
-        {
-            var resolvedArea = GameMapData.GetCurrentArea(mapId, bot.Player.Cell!);
-            if (resolvedArea != AreaType.None && resolvedArea != bot.Player.CurrentArea)
-            {
-                bot.Player.CurrentArea = resolvedArea;
-                areaChanged = true;
-            }
-        }
+        bool areaChanged = fromArea != bot.Player.CurrentArea;
+        var velocity = bot.PathIndex >= bot.Path.Count
+            ? new Vector3f()
+            : new Vector3f(movedX / deltaSec, movedY / deltaSec, 0f);
 
         bot.Player.Velocity = velocity;
         if (velocity.X > 0.1f)
@@ -496,7 +425,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             BotPlayerId = bot.PlayerId,
             FromArea = fromArea,
             ToArea = bot.Player.CurrentArea,
-            ToCell = nextStep.Cell,
+            ToCell = bot.Player.Cell!,
             Position = newPosition,
             Velocity = velocity,
             Rotation = bot.Player.Rotation,
@@ -570,8 +499,17 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
                 bot.SwarmDodgeDirectionX = dirX;
                 bot.SwarmDodgeDirectionY = dirY;
             }
-            float step = ScaledWalkSpeed(dirX, dirY, multiplier) * deltaSec;
-            var candidate = new Vector3f(bot.Player.Position!.X + dirX * step, bot.Player.Position!.Y + dirY * step, 0f);
+            float speed = Config.SWARM_BOT_WALK_SPEED * multiplier;
+            float step = speed * deltaSec;
+            var direction = new Vector3f(dirX, dirY, 0f).Normalized();
+            var target = new Vector3f(bot.Player.Position!.X + direction.X * step, bot.Player.Position!.Y + direction.Y * step, 0f);
+            int pathIndex = 0;
+            var candidate = MapPathfinder.AdvanceRoute(mapId, bot.Player.Position!, new[] { target },
+                ref pathIndex, step, runtime.Doors.IsDoorOpen);
+            if (candidate.Equals(bot.Player.Position))
+            {
+                continue;
+            }
             var candidateCell = MapCoordinateConverter.WorldToCell(mapId, candidate);
             if (!GameMapData.IsMoveablePosition(mapId, candidateCell) || GameMapData.GetCurrentArea(mapId, candidateCell) != bot.Player.CurrentArea ||
                 IsUnsafeStep(runtime, bot, candidateCell, bot.Player.CurrentArea, now))
@@ -579,9 +517,10 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
                 continue;
             }
 
+            var velocity = new Vector3f((candidate.X - bot.Player.Position!.X) / deltaSec,
+                (candidate.Y - bot.Player.Position!.Y) / deltaSec, 0f);
             bot.Player.Position = candidate;
             bot.Player.Cell = candidateCell;
-            var velocity = ScaledWalkVelocity(dirX, dirY, multiplier);
             bot.Player.Velocity = velocity;
             if (velocity.X > 0.1f)
             {

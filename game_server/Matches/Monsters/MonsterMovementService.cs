@@ -167,52 +167,14 @@ internal sealed class MonsterMovementService
         }
 
         monster.MarchBudgetSeconds -= deltaSeconds;
-        float remaining = (float)(Config.SWARM_MONSTER_MOVE_SPEED * monster.MarchSpeedScale * GetMonsterWaveSlowMultiplier(monster, now) * deltaSeconds);
-        while (remaining > 0f && monster.MarchIndex < monster.MarchWaypoints.Count)
-        {
-            var waypoint = monster.MarchWaypoints[monster.MarchIndex];
-            if (MathF.Abs(monster.MarchLaneOffset) >= 0.01f && monster.MarchIndex < monster.MarchWaypoints.Count - 1)
-            {
-                var from = monster.MarchIndex == 0 ? monster.Position : monster.MarchWaypoints[monster.MarchIndex - 1];
-                float laneDx = waypoint.X - from.X;
-                float laneDy = waypoint.Y - from.Y;
-                float laneLength = MathF.Sqrt(laneDx * laneDx + laneDy * laneDy);
-                if (laneLength >= 0.05f)
-                {
-                    var offset = new Vector3f(waypoint.X - laneDy / laneLength * monster.MarchLaneOffset, waypoint.Y + laneDx / laneLength * monster.MarchLaneOffset, 0f);
-                    if (GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, offset)))
-                    {
-                        waypoint = offset;
-                    }
-                }
-            }
-            float dx = waypoint.X - monster.Position.X;
-            float dy = waypoint.Y - monster.Position.Y;
-            float distance = MathF.Sqrt(dx * dx + dy * dy);
-            if (distance <= Config.SWARM_MONSTER_MARCH_WAYPOINT_ARRIVE_DISTANCE)
-            {
-                monster.MarchIndex++;
-                continue;
-            }
+        float distanceBudget = (float)(Config.SWARM_MONSTER_MOVE_SPEED * monster.MarchSpeedScale * GetMonsterWaveSlowMultiplier(monster, now) * deltaSeconds);
+        int pathIndex = monster.MarchIndex;
+        monster.Position = MapPathfinder.AdvanceRoute(Config.SWARM_MATCH_MAP, monster.Position,
+            monster.MarchWaypoints, ref pathIndex, distanceBudget, canEnter: candidate =>
+                !holdAtThreshold || GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP,
+                    MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, candidate)) != monster.HomeArea);
+        monster.MarchIndex = pathIndex;
 
-            float step = Math.Min(remaining, distance);
-            var proposed = new Vector3f(monster.Position.X + dx / distance * step, monster.Position.Y + dy / distance * step, 0f);
-
-            if (holdAtThreshold && GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, proposed)) == monster.HomeArea)
-            {
-                return;
-            }
-
-            if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, proposed)) &&
-                !GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, waypoint)))
-            {
-                monster.MarchIndex++;
-                continue;
-            }
-
-            monster.Position = proposed;
-            remaining -= step;
-        }
 
         monster.Area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, monster.Position));
         if (monster.Area == monster.HomeArea)
@@ -589,39 +551,15 @@ internal sealed class MonsterMovementService
 
     private void MoveTowardPlayer(Monster monster, Vector3f playerPosition, double deltaSeconds, DateTime now)
     {
-        var target = playerPosition;
-        float dx = target.X - monster.Position.X;
-        float dy = target.Y - monster.Position.Y;
-        float distance = MathF.Sqrt(dx * dx + dy * dy);
-        if (distance < 0.05f)
+        float distanceBudget = (float)(Config.SWARM_MONSTER_MOVE_SPEED * GetMonsterWaveSlowMultiplier(monster, now) * deltaSeconds);
+        int pathIndex = 0;
+        monster.Position = MapPathfinder.AdvanceRoute(Config.SWARM_MATCH_MAP, monster.Position,
+            new[] { playerPosition }, ref pathIndex, distanceBudget);
+        var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP,
+            MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, monster.Position));
+        if (area != AreaType.None)
         {
-            return;
-        }
-
-        float step = (float)(Config.SWARM_MONSTER_MOVE_SPEED * GetMonsterWaveSlowMultiplier(monster, now) * deltaSeconds);
-        if (step > distance)
-        {
-            step = distance;
-        }
-        var proposed = new Vector3f(monster.Position.X + dx / distance * step, monster.Position.Y + dy / distance * step, 0f);
-        var proposedCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, proposed);
-        if (GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, proposedCell))
-        {
-            monster.Position = proposed;
-            return;
-        }
-
-        var slideX = new Vector3f(proposed.X, monster.Position.Y, 0f);
-        if (GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, slideX)))
-        {
-            monster.Position = slideX;
-            return;
-        }
-
-        var slideY = new Vector3f(monster.Position.X, proposed.Y, 0f);
-        if (GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, slideY)))
-        {
-            monster.Position = slideY;
+            monster.Area = area;
         }
     }
 }

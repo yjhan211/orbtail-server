@@ -63,6 +63,19 @@ namespace network.common.data.models
             return new Vector3f(a.X * scalar, a.Y * scalar, a.Z * scalar);
         }
 
+        public static Vector3f MoveTowardsXY(Vector3f current, Vector3f target, float maxDistance)
+        {
+            float dx = target.X - current.X;
+            float dy = target.Y - current.Y;
+            float distance = (float)Math.Sqrt(dx * dx + dy * dy);
+            if (distance == 0f || maxDistance <= 0f)
+            {
+                return new Vector3f(current.X, current.Y, 0f);
+            }
+            float step = Math.Min(maxDistance, distance);
+            return new Vector3f(current.X + dx / distance * step, current.Y + dy / distance * step, 0f);
+        }
+
         public static float Distance(Vector3f a, Vector3f b)
         {
             return (a - b).Magnitude();

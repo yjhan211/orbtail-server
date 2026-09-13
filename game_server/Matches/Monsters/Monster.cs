@@ -7,29 +7,47 @@ namespace game_server.matches.monsters;
 /// <summary>몬스터 한 개체의 상태와 피해·감속·공격 예약 변경을 담당한다. 매치 잠금 안에서 사용한다.</summary>
 public sealed class Monster
 {
+    private readonly MonsterInsignia _insignia;
+
     public static float BaseContactRadius => Config.SWARM_MONSTER_BASE_CONTACT_RADIUS;
 
     public static float GetContactRadius(MonsterKind kind) => BaseContactRadius * (SwarmMonsterData.Get((int)kind)?.ContactRadiusScale ?? 1f);
 
-    public int MonsterId { get; init; }
+    // 공통 값은 Info에만 보관하고, 전송할 때는 별도 스냅샷으로 복사한다.
+    public MonsterInfo Info { get; } = new() { RewardItemId = 107000010 };
+
+    public int MonsterId { get => Info.MonsterId; init => Info.MonsterId = value; }
     public long CombatTargetId { get; init; }
-    public MonsterInsignia Insignia { get; init; }
-    public AreaType Area { get; set; }
-    public Vector3f Position { get; set; } = new(0f, 0f, 0f);
-    public int Health { get; set; }
-    public bool Alive { get; set; }
+    public MonsterInsignia Insignia
+    {
+        get => _insignia;
+        init
+        {
+            _insignia = value;
+            Info.RewardItemId = value switch
+            {
+                MonsterInsignia.Sun => 107000010,
+                MonsterInsignia.Wind => 107000020,
+                _ => 107000030
+            };
+        }
+    }
+    public AreaType Area { get => Info.AreaType; set => Info.AreaType = value; }
+    public Vector3f Position { get => Info.ObjectInfo.Position; set => Info.ObjectInfo.Position = value; }
+    public int Health { get => Info.CurrentHealth; set => Info.CurrentHealth = value; }
+    public bool Alive { get => Info.IsAlive; set => Info.IsAlive = value; }
     public DateTime ActivatesAtUtc { get; set; }
     public DateTime NextContactAtUtc { get; set; }
     public DateTime DiedAtUtc { get; set; }
     public DateTime SpawnedAtUtc { get; set; }
     public float ScatterAngle { get; init; }
     public DateTime WaveSlowUntilUtc { get; set; }
-    public int SummonStoneReward { get; init; }
+    public int SummonStoneReward { get => Info.SummonStoneReward; init => Info.SummonStoneReward = value; }
     public int HeartReward { get; init; }
     public int ContactDamageValue { get; init; }
-    public long ChaseTargetPlayerId { get; set; }
-    public MonsterKind Kind { get; init; } = MonsterKind.Skeleton;
-    public int MaxHealthValue { get; init; }
+    public long ChaseTargetPlayerId { get => Info.ChaseTargetPlayerId; set => Info.ChaseTargetPlayerId = value; }
+    public MonsterKind Kind { get => (MonsterKind)Info.Kind; init => Info.Kind = (int)value; }
+    public int MaxHealthValue { get => Info.MaxHealth; init => Info.MaxHealth = value; }
     public float AttackRangeValue { get; init; }
     public float AttackCooldownValue { get; init; }
     public DateTime NextTargetScanAtUtc { get; set; }
@@ -37,7 +55,7 @@ public sealed class Monster
     public float AnchorY { get; set; }
     public bool Aggro { get; set; }
     public AreaType HomeArea { get; set; }
-    public int PhaseTier { get; set; }
+    public int PhaseTier { get => Info.Phase; set => Info.Phase = value; }
     public long OwnerPlayerId { get; set; }
     public int PendingDamage { get; set; }
     public bool Infiltrating { get; set; }
@@ -45,7 +63,6 @@ public sealed class Monster
     public List<Vector3f> MarchWaypoints { get; } = new();
     public int MarchIndex { get; set; }
     public double MarchBudgetSeconds { get; set; }
-    public float MarchLaneOffset { get; set; }
     public float MarchSpeedScale { get; set; } = 1f;
     public DateTime NextChasePlanAtUtc { get; set; }
 
@@ -101,13 +118,8 @@ public sealed class Monster
         MaxHealth = MaxHealthValue,
         CurrentHealth = Health,
         IsAlive = Alive,
-        RewardItemId = Insignia switch
-        {
-            MonsterInsignia.Sun => 107000010,
-            MonsterInsignia.Wind => 107000020,
-            _ => 107000030
-        },
-        IsCore = false,
+        RewardItemId = Info.RewardItemId,
+        IsCore = Info.IsCore,
         Phase = PhaseTier,
         SummonStoneReward = SummonStoneReward,
         ChaseTargetPlayerId = ChaseTargetPlayerId,

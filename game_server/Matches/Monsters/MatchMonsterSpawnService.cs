@@ -390,7 +390,6 @@ internal sealed class MatchMonsterSpawnService(MonsterMovementService movement)
                 monster.Infiltrating = true;
                 monster.MarchWaypoints.AddRange(route);
                 monster.MarchBudgetSeconds = MonsterMovementService.ComputeMarchBudgetSeconds(position, route);
-                monster.MarchLaneOffset = (float)(state.Rng.NextDouble() * 2d - 1d) * Config.SWARM_MONSTER_MARCH_LANE_OFFSET_MAX;
                 monster.MarchSpeedScale = 1f + (float)(state.Rng.NextDouble() * 2d - 1d) * Config.SWARM_MONSTER_MARCH_SPEED_JITTER;
             }
 
