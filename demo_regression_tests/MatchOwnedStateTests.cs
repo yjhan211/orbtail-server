@@ -73,7 +73,7 @@ public sealed class MatchOwnedStateTests
         Assert.Empty(ground.GetItemsInArea(area));
         Assert.DoesNotContain(roster.BuildGameResult(), row => row.playerId == 11);
         Assert.Null(closures.GameStartTime);
-        Assert.Equal(Player.SummonStoneState.Empty, TestGameSessionServices.SummonStones(runtime, 11));
+        Assert.Equivalent(SummonStoneStateInfo.Empty, TestGameSessionServices.SummonStones(runtime, 11));
         Assert.Throws<InvalidOperationException>(() => TestGameSessionServices.Orbs(runtime, 11));
         Assert.Throws<InvalidOperationException>(() => TestGameSessionServices.AddSummonStones(runtime, 11, 1));
         Assert.Equal(7, TestGameSessionServices.SummonStones(sibling, 11).StoneCount);

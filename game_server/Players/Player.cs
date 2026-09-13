@@ -124,7 +124,7 @@ public class Player
     private DateTime? _windShockImmuneUntilUtc;
     private DateTime? _woundUntilUtc;
     /// <summary>소환석 잔액과 성공한 소환 횟수. 비용·후보·지급 규칙은 PlayerOrbGrowthService에 있다.</summary>
-    public SummonStoneState SummonStones { get; internal set; }
+    public SummonStoneStateInfo SummonStones { get; internal set; } = SummonStoneStateInfo.Empty;
 
     public PlayerState State
     {
@@ -456,24 +456,6 @@ public class Player
         _pendingDoor = null;
         _pending.Remove(id);
         return id;
-    }
-
-    /// <summary>소환석 잔액과 성공한 소환 횟수. 값이라 읽는 순간의 상태가 그대로 남고, 갱신은 통째로 바꾼다.</summary>
-    public readonly record struct SummonStoneState(int StoneCount, int SuccessfulSummonCount)
-    {
-        private const int BaseSummonCost = 2;
-
-        public static readonly SummonStoneState Empty = default;
-
-        /// <summary>다음 소환 비용. 성공한 소환 횟수의 삼각수이고 최소 2, 상한은 없다.</summary>
-        public int NextCost => CostAfter(SuccessfulSummonCount);
-
-        public static int CostAfter(int successfulSummonCount)
-        {
-            long summonNumber = (long)Math.Max(0, successfulSummonCount) + 1;
-            long cost = Math.Max(BaseSummonCost, summonNumber * (summonNumber + 1) / 2);
-            return (int)Math.Min(int.MaxValue, cost);
-        }
     }
 
     internal bool TryBeginWindOrbTick(long itemUid, DateTime nowUtc, double intervalSeconds)

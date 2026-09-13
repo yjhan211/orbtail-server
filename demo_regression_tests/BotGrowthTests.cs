@@ -29,7 +29,7 @@ public sealed class BotGrowthTests
             {
                 decisions.ProcessOrbGrowth(match, [bot]);
                 Assert.True(growth.Summon(match, human).Success);
-                Assert.Equal(TestGameSessionServices.SummonStones(match, 1), TestGameSessionServices.SummonStones(match, -1));
+                Assert.Equivalent(TestGameSessionServices.SummonStones(match, 1), TestGameSessionServices.SummonStones(match, -1));
             }
             Assert.Equal(3, TestGameSessionServices.Orbs(match, -1).GetOrbScore().OrbCount);
         }

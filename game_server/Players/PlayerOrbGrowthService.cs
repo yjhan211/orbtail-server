@@ -35,7 +35,7 @@ internal sealed class PlayerOrbGrowthService(
         return pool.ToArray();
     }
 
-    public static Player.SummonStoneState AddSummonStones(MatchRuntime match, Player player, int amount)
+    public static SummonStoneStateInfo AddSummonStones(MatchRuntime match, Player player, int amount)
     {
         if (!Monitor.IsEntered(match.MatchLock))
         {
@@ -44,7 +44,7 @@ internal sealed class PlayerOrbGrowthService(
 
         if (amount > 0)
         {
-            player.SummonStones = player.SummonStones with { StoneCount = checked(player.SummonStones.StoneCount + amount) };
+            player.SummonStones = new SummonStoneStateInfo(checked(player.SummonStones.StoneCount + amount), player.SummonStones.SuccessfulSummonCount);
         }
         return player.SummonStones;
     }
@@ -62,7 +62,7 @@ internal sealed class PlayerOrbGrowthService(
             return false;
         }
 
-        player.SummonStones = player.SummonStones with { StoneCount = player.SummonStones.StoneCount - amount };
+        player.SummonStones = new SummonStoneStateInfo(player.SummonStones.StoneCount - amount, player.SummonStones.SuccessfulSummonCount);
         return true;
     }
 
@@ -77,7 +77,7 @@ internal sealed class PlayerOrbGrowthService(
         }
         ArgumentNullException.ThrowIfNull(grantItem);
 
-        int cost = player.SummonStones.NextCost;
+        int cost = SummonStoneStateInfo.CostAfter(player.SummonStones.SuccessfulSummonCount);
         if (player.SummonStones.StoneCount < cost)
         {
             return SummonResult.Failed(ErrorCode.INSUFFICIENT_CURRENCY, player.SummonStones);
@@ -90,7 +90,7 @@ internal sealed class PlayerOrbGrowthService(
             return SummonResult.Failed(ErrorCode.INVENTORY_FULL, player.SummonStones);
         }
 
-        player.SummonStones = new Player.SummonStoneState(player.SummonStones.StoneCount - cost, player.SummonStones.SuccessfulSummonCount + 1);
+        player.SummonStones = new SummonStoneStateInfo(player.SummonStones.StoneCount - cost, player.SummonStones.SuccessfulSummonCount + 1);
         return new SummonResult(true, ErrorCode.SUCCESS, itemId, item, player.SummonStones);
     }
 
@@ -272,9 +272,9 @@ internal sealed class PlayerOrbGrowthService(
     }
 
     public readonly record struct SummonResult(bool Success, ErrorCode ErrorCode, int ItemId,
-        InGameItemInfo? AddedItem, Player.SummonStoneState State)
+        InGameItemInfo? AddedItem, SummonStoneStateInfo State)
     {
-        public static SummonResult Failed(ErrorCode errorCode, Player.SummonStoneState state) =>
+        public static SummonResult Failed(ErrorCode errorCode, SummonStoneStateInfo state) =>
             new(false, errorCode, 0, null, state);
     }
 }

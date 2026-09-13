@@ -32,12 +32,7 @@ public partial class GameClientSession
                 ErrorCode = ErrorCode.INVALID_GAME_STATE,
                 SummonedItemId = 0,
                 SummonedItemUid = 0,
-                State = new SummonStoneStateInfo
-                {
-                    StoneCount = Player.SummonStoneState.Empty.StoneCount,
-                    SuccessfulSummonCount = Player.SummonStoneState.Empty.SuccessfulSummonCount,
-                    NextCost = Player.SummonStoneState.Empty.NextCost
-                }
+                State = SummonStoneStateInfo.Empty
             }));
             TrySend(failurePacket);
             return Task.CompletedTask;
@@ -55,12 +50,7 @@ public partial class GameClientSession
                     ErrorCode = ErrorCode.INVALID_GAME_STATE,
                     SummonedItemId = 0,
                     SummonedItemUid = 0,
-                    State = new SummonStoneStateInfo
-                    {
-                        StoneCount = state.StoneCount,
-                        SuccessfulSummonCount = state.SuccessfulSummonCount,
-                        NextCost = state.NextCost
-                    }
+                    State = state.Copy()
                 }));
                 TrySend(failurePacket);
                 return Task.CompletedTask;
@@ -83,12 +73,7 @@ public partial class GameClientSession
                 ErrorCode = attempt.ErrorCode,
                 SummonedItemId = attempt.ItemId,
                 SummonedItemUid = attempt.AddedItem?.ItemUid ?? 0,
-                State = new SummonStoneStateInfo
-                {
-                    StoneCount = attempt.State.StoneCount,
-                    SuccessfulSummonCount = attempt.State.SuccessfulSummonCount,
-                    NextCost = attempt.State.NextCost
-                }
+                State = attempt.State.Copy()
             }));
             TrySend(packet);
 
@@ -124,7 +109,7 @@ public partial class GameClientSession
                 Success = false,
                 ResultItemId = 0,
                 TargetItemId = request.TargetItemId,
-                StoneCount = Player.SummonStoneState.Empty.StoneCount,
+                StoneCount = SummonStoneStateInfo.Empty.StoneCount,
                 TargetOrdinal = -1
             }));
             TrySend(packet);
@@ -197,16 +182,11 @@ public partial class GameClientSession
         }
 
         var match = Volatile.Read(ref _match);
-        var state = Player != null ? Player.SummonStones : Player.SummonStoneState.Empty;
+        var state = Player != null ? Player.SummonStones : SummonStoneStateInfo.Empty;
         using var packet = Packet.Create((int)Protocol.G_TO_C_SUMMON_STONE_STATE, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SUMMON_STONE_STATE
         {
-            State = new SummonStoneStateInfo
-            {
-                StoneCount = state.StoneCount,
-                SuccessfulSummonCount = state.SuccessfulSummonCount,
-                NextCost = state.NextCost
-            },
+            State = state.Copy(),
             AwardedStones = Math.Max(0, awardedStones),
             AwardSourceX = awardSourceX,
             AwardSourceY = awardSourceY

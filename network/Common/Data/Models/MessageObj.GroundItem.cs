@@ -7,11 +7,13 @@ namespace network.common.data.models
     [MessagePackObject]
     public class GroundItemInfo
     {
-        [Key("groundItemUid")] public long GroundItemUid { get; set; }
+        // ID·구역·위치는 공통 공간 정보에 보관한다. 맵·셀·속도·회전은 이 패킷의 동기화 대상이 아니다.
+        [IgnoreMember] public GameObjectInfo ObjectInfo { get; } = new GameObjectInfo { ObjectType = ObjectType.ITEM };
+        [Key("groundItemUid")] public long GroundItemUid { get => ObjectInfo.ObjectId; set => ObjectInfo.ObjectId = value; }
         [Key("itemId")] public int ItemId { get; set; }
-        [Key("areaType")] public int AreaType { get; set; }
-        [Key("positionX")] public float PositionX { get; set; }
-        [Key("positionY")] public float PositionY { get; set; }
+        [Key("areaType")] public int AreaType { get => (int)ObjectInfo.Area; set => ObjectInfo.Area = (network.common.AreaType)value; }
+        [Key("positionX")] public float PositionX { get => ObjectInfo.Position.X; set => ObjectInfo.Position.X = value; }
+        [Key("positionY")] public float PositionY { get => ObjectInfo.Position.Y; set => ObjectInfo.Position.Y = value; }
         [Key("spawnOriginX")] public float SpawnOriginX { get; set; }
         [Key("spawnOriginY")] public float SpawnOriginY { get; set; }
         [Key("sourcePlayerId")] public long SourcePlayerId { get; set; }

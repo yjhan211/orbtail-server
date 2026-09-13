@@ -143,10 +143,23 @@ public class PlayerSummonStoneTests
             Assert.False(attempt.Success);
             Assert.Equal(ErrorCode.INSUFFICIENT_CURRENCY, attempt.ErrorCode);
             Assert.False(grantCalled);
-            Assert.Equal(new Player.SummonStoneState(1, 0), attempt.State);
+            Assert.Equivalent(new SummonStoneStateInfo(1, 0), attempt.State);
         }
     }
 
+    [Fact]
+    public void SummonRecalculatesCostInsteadOfTrustingDisplayValue()
+    {
+        var (match, player) = Create(205);
+        using var scope = match.Enter();
+        PlayerOrbGrowthService.AddSummonStones(match, player, 1);
+        player.SummonStones.NextCost = 0;
+        var result = PlayerOrbGrowthService.TrySummon(match, player, _ =>
+            throw new InvalidOperationException("Insufficient balance must not grant an orb."));
+        Assert.False(result.Success);
+        Assert.Equal(ErrorCode.INSUFFICIENT_CURRENCY, result.ErrorCode);
+        Assert.Equal(1, player.SummonStones.StoneCount);
+    }
     [Fact]
     public void StoneChanges_RequireTheMatchLock()
     {
@@ -154,7 +167,7 @@ public class PlayerSummonStoneTests
         Assert.Throws<InvalidOperationException>(() => PlayerOrbGrowthService.AddSummonStones(match, player, 1));
         Assert.Throws<InvalidOperationException>(() => PlayerOrbGrowthService.TrySpendSummonStones(match, player, 1));
         Assert.Throws<InvalidOperationException>(() => PlayerOrbGrowthService.TrySummon(match, player, Grant(1)));
-        Assert.Equal(Player.SummonStoneState.Empty, player.SummonStones);
+        Assert.Equivalent(SummonStoneStateInfo.Empty, player.SummonStones);
     }
 
     [Fact]
@@ -167,8 +180,8 @@ public class PlayerSummonStoneTests
 
         using (MatchRuntimeStore.Enter(runtime)) { runtime.TryMarkEnded(); }
 
-        Assert.Equal(Player.SummonStoneState.Empty, TestGameSessionServices.SummonStones(runtime, 10));
-        Assert.Equal(Player.SummonStoneState.Empty, TestGameSessionServices.SummonStones(runtime, 20));
+        Assert.Equivalent(SummonStoneStateInfo.Empty, TestGameSessionServices.SummonStones(runtime, 10));
+        Assert.Equivalent(SummonStoneStateInfo.Empty, TestGameSessionServices.SummonStones(runtime, 20));
         Assert.Null(store.GetOrNull(202));
     }
 }
