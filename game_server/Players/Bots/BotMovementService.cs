@@ -166,20 +166,10 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             if (bot.Player.IsSleeping)
             {
                 bot.LastWalkStepTime = nowUtc;
-                if (bot.Player.Velocity.X != 0f || bot.Player.Velocity.Y != 0f)
+                var stopped = StopMovement(bot);
+                if (stopped != null)
                 {
-                    bot.Player.Velocity = new Vector3f();
-                    result.Movements.Add(new BotMovementResult
-                    {
-                        BotPlayerId = bot.PlayerId,
-                        FromArea = bot.Player.CurrentArea,
-                        ToArea = bot.Player.CurrentArea,
-                        ToCell = bot.Player.Cell!,
-                        Position = bot.Player.Position!,
-                        Velocity = bot.Player.Velocity,
-                        Rotation = bot.Player.Rotation,
-                        IsAreaTransition = false
-                    });
+                    result.Movements.Add(stopped);
                 }
                 continue;
             }
@@ -190,6 +180,11 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
                 bot.MovementMode = BotMovementMode.None;
                 bot.ClearPath();
                 bot.LastWalkStepTime = nowUtc;
+                var stopped = StopMovement(bot);
+                if (stopped != null)
+                {
+                    result.Movements.Add(stopped);
+                }
                 continue;
             }
 
@@ -215,6 +210,11 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
                 if (bot.PathIndex >= bot.Path.Count)
                 {
                     bot.LastWalkStepTime = nowUtc;
+                    var stopped = StopMovement(bot);
+                    if (stopped != null)
+                    {
+                        result.Movements.Add(stopped);
+                    }
                     continue;
                 }
             }
@@ -313,6 +313,26 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         return runtime.Closures.IsAreaClosed(area);
     }
 
+    private static BotMovementResult? StopMovement(Bot bot)
+    {
+        if (bot.Player.Velocity.X == 0f && bot.Player.Velocity.Y == 0f)
+        {
+            return null;
+        }
+        bot.Player.Velocity = new Vector3f();
+        return new BotMovementResult
+        {
+            BotPlayerId = bot.PlayerId,
+            FromArea = bot.Player.CurrentArea,
+            ToArea = bot.Player.CurrentArea,
+            ToCell = bot.Player.Cell!,
+            Position = bot.Player.Position!,
+            Velocity = bot.Player.Velocity,
+            Rotation = bot.Player.Rotation,
+            IsAreaTransition = false
+        };
+    }
+
     private BotMovementResult? WalkStep(MatchRuntime runtime, Bot bot, IReadOnlyDictionary<long, AreaType> playerAreas, bool allowPathPlanning)
     {
         var now = DateTime.UtcNow;
@@ -326,23 +346,23 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
 
         if (now < bot.LoopWaitUntil)
         {
-            return null;
+            return StopMovement(bot);
         }
 
         if (bot.Path.Count == 0 || bot.PathIndex >= bot.Path.Count)
         {
             if (!allowPathPlanning)
             {
-                return null;
+                return StopMovement(bot);
             }
             ChooseNewWanderTarget(runtime, bot, playerAreas);
             if (bot.Path.Count == 0)
             {
-                return null;
+                return StopMovement(bot);
             }
             if (now < bot.LoopWaitUntil)
             {
-                return null;
+                return StopMovement(bot);
             }
         }
 
@@ -356,18 +376,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             bot.EvacuationDestination = AreaType.None;
             bot.MovementModeUntilUtc = DateTime.MinValue;
             bot.LoopWaitUntil = DateTime.MinValue;
-            bot.Player.Velocity = new Vector3f();
-            return new BotMovementResult
-            {
-                BotPlayerId = bot.PlayerId,
-                FromArea = fromArea,
-                ToArea = fromArea,
-                ToCell = bot.Player.Cell!,
-                Position = bot.Player.Position!,
-                Velocity = bot.Player.Velocity,
-                Rotation = bot.Player.Rotation,
-                IsAreaTransition = false
-            };
+            return StopMovement(bot);
         }
         bool reachedStep = false;
         if (nextStep.Area != bot.Player.CurrentArea)
@@ -384,7 +393,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
                     bot.LastLockedDoorBlockArea = nextStep.Area;
                     logger.LogInformation("Bot blocked at closed door: MatchingId={MatchingId}, BotId={BotId}, " + "From={From}, To={To}, DoorId={DoorId}", runtime.MatchingId, bot.PlayerId, bot.Player.CurrentArea, nextStep.Area, transitionDoor.DoorId);
                 }
-                return null;
+                return StopMovement(bot);
             }
         }
 
@@ -405,7 +414,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             bot.ClearPath();
             bot.MovementDestination = AreaType.None;
             bot.LoopWaitUntil = GetRandomWaitDeadline(0.4, 0.9);
-            return null;
+            return StopMovement(bot);
         }
 
         if (dist <= maxDist || dist < 0.01f)
