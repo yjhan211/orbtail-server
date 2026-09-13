@@ -177,7 +177,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         {
             session.Player.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 2, 1, 10);
             Assert.True(session.Player.TryStartSleep(DateTime.UtcNow));
-            Assert.Equal(PlayerState.SLEEP, session.Player.CreateGameObjectInfo().State);
+            Assert.Equal(PlayerState.SLEEP, session.Player.CreatePlayerObjectInfo().State);
 
             Assert.True(session.Player.TryStopSleep());
             session.SendPlayerState();
@@ -185,10 +185,10 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Assert.Equal(PlayerState.IDLE, session.Player.State);
             Assert.False(session.Player.IsSleeping);
             Assert.True(TestGameSessionServices.GetPeriodicBuffCount(session.Player) > 0);
-            Assert.Equal(PlayerState.IDLE, session.Player.CreateGameObjectInfo().State);
+            Assert.Equal(PlayerState.IDLE, session.Player.CreatePlayerObjectInfo().State);
 
             session.Player.State = PlayerState.EXPLORE_1;
-            Assert.Equal(PlayerState.EXPLORE_1, session.Player.CreateGameObjectInfo().State);
+            Assert.Equal(PlayerState.EXPLORE_1, session.Player.CreatePlayerObjectInfo().State);
         }
     }
 

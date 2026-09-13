@@ -10,6 +10,28 @@ namespace demo_regression_tests;
 public sealed class PlayerSpatialContractTests
 {
     [Fact]
+    public async Task RedisSave_ExcludesRuntimeStateWithoutChangingLiveModel()
+    {
+        var redis = new InMemoryRedisOperations();
+        var player = CreatePlayerObject();
+        player.InventoryInfo = new InventoryInfo(InventoryOwnerType.PLAYER, player.PlayerId);
+        var objectInfo = player.ObjectInfo;
+        var state = player.State;
+        await player.Save(redis);
+        var stored = await redis.HashGetAsync(PlayerInfo.HashKey, player.PlayerId);
+        string json = MessagePackSerializer.ConvertToJson((byte[])stored!);
+        Assert.DoesNotContain("objectInfo", json);
+        Assert.DoesNotContain("\"state\"", json);
+        Assert.Same(objectInfo, player.ObjectInfo);
+        Assert.Equal(state, player.State);
+        var loaded = await PlayerInfo.Load(redis, player.PlayerId);
+        Assert.NotNull(loaded);
+        Assert.Equal(player.Name, loaded.Name);
+        Assert.Null(loaded.ObjectInfo);
+        Assert.Equal(PlayerState.IDLE, loaded.State);
+    }
+
+    [Fact]
     public void LoginPacket_CarriesProfileAndCredentialWithoutLobbySpatialData()
     {
         var profile = new PlayerInfo(42, false) { Name = "ProfileOnly", Gold = 999 };
@@ -23,19 +45,20 @@ public sealed class PlayerSpatialContractTests
         Assert.Equal("test-credential", login.AccountToken);
         Assert.Null(typeof(U_TO_C_LOGIN).GetProperty("ObjectInfo"));
         string json = MessagePackSerializer.ConvertToJson(MessagePackSerializer.Serialize(login));
-        Assert.DoesNotContain("objectInfo", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(login.PlayerInfo.ObjectInfo);
     }
 
     [Fact]
-    public void PlayerInfoSerialization_ContainsNoSpatialData()
+    public void PlayerInfoSerialization_ContainsCommonSpatialAndActionState()
     {
-        var player = new PlayerInfo(42, false);
-        Assert.Null(typeof(PlayerInfo).GetProperty("ObjectInfo"));
+        var player = CreatePlayerObject();
+        Assert.NotNull(player.ObjectInfo);
         string json = MessagePackSerializer.ConvertToJson(MessagePackSerializer.Serialize(player));
         Assert.DoesNotContain("lastMap", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("lastCell", json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("objectInfo", json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("position", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("objectInfo", json);
+        Assert.Contains("position", json);
+        AssertPlayerObject(MessagePackSerializer.Deserialize<PlayerInfo>(MessagePackSerializer.Serialize(player)));
         Assert.Contains("playerId", json);
     }
 
@@ -60,46 +83,55 @@ public sealed class PlayerSpatialContractTests
         Assert.Equal(42, player.PlayerId);
         Assert.Equal("ExistingPlayer", player.Name);
         Assert.Equal(999, player.Gold);
-        Assert.Null(typeof(PlayerInfo).GetProperty("ObjectInfo"));
+        Assert.Null(player.ObjectInfo);
     }
 
     [Fact]
-    public void ObjectPresence_RoundTripsExactPositionWithoutPlayerProfile()
+    public void ObjectPresence_RoundTripsProfileSpatialAndActionState()
     {
-        var bytes = MessagePackSerializer.Serialize(new G_TO_C_OBJECT_INFO { Objects = [CreateObject()] });
+        var bytes = MessagePackSerializer.Serialize(new G_TO_C_OBJECT_INFO { Players = [CreatePlayerObject()] });
         var copy = MessagePackSerializer.Deserialize<G_TO_C_OBJECT_INFO>(bytes);
-        AssertSpatialData(Assert.Single(copy.Objects));
+        AssertPlayerObject(Assert.Single(copy.Players));
         string json = MessagePackSerializer.ConvertToJson(bytes);
         Assert.DoesNotContain("playerInfo", json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("wearItemIdList", json);
-        Assert.DoesNotContain("gold", json);
+        Assert.Contains("wearItemIdList", json);
+        Assert.Contains("gold", json);
     }
 
     [Fact]
     public void AreaEntry_RoundTripsSameSpatialContract()
     {
-        var bytes = MessagePackSerializer.Serialize(new G_TO_C_AREA_PLAYER_ENTER { ObjectInfo = CreateObject() });
+        var bytes = MessagePackSerializer.Serialize(new G_TO_C_AREA_PLAYER_ENTER { Player = CreatePlayerObject() });
         var copy = MessagePackSerializer.Deserialize<G_TO_C_AREA_PLAYER_ENTER>(bytes);
-        AssertSpatialData(copy.ObjectInfo);
+        AssertPlayerObject(copy.Player);
     }
 
-    private static GameObjectInfo CreateObject() => new(ObjectType.PLAYER, 42, MapId.Camp, 123, new Cell(3, 4))
+    private static PlayerInfo CreatePlayerObject() => new()
     {
-        Position = new Vector3f(3.25f, 4.75f, 0),
-        Velocity = new Vector3f(1.5f, -0.5f, 0),
-        Rotation = 75f,
+        PlayerId = 42,
+        Name = "TestPlayer",
+        WearItemIdList = [101000003],
+        ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, 42, MapId.Camp, 123, new Cell(3, 4))
+        {
+            Position = new Vector3f(3.25f, 4.75f, 0),
+            Velocity = new Vector3f(1.5f, -0.5f, 0),
+            Rotation = 75f
+        },
         State = PlayerState.SLEEP
     };
 
-    private static void AssertSpatialData(GameObjectInfo info)
+    // 공간 정보는 GameObjectInfo가, 행동 상태는 플레이어 전송 단위가 든다.
+    private static void AssertPlayerObject(PlayerInfo player)
     {
+        var info = player.ObjectInfo;
         Assert.Equal(42, info.ObjectId);
         Assert.Equal(123, info.MapSubId);
         Assert.Equal(3.25f, info.Position.X);
         Assert.Equal(4.75f, info.Position.Y);
         Assert.Equal(1.5f, info.Velocity.X);
         Assert.Equal(75f, info.Rotation);
-        Assert.Equal(PlayerState.SLEEP, info.State);
+        Assert.Null(typeof(GameObjectInfo).GetProperty("State"));
+        Assert.Equal(PlayerState.SLEEP, player.State);
     }
 
     // 행동 상태만 먼저 바뀐 플레이어는 아직 스폰 전이다. 위치는 없고 전송 스냅샷도 만들 수 없어야 한다.
@@ -112,10 +144,10 @@ public sealed class PlayerSpatialContractTests
         Assert.Throws<InvalidOperationException>(() => player.CreateGameObjectInfo());
 
         player.Position = new Vector3f(1f, 2f, 0f);
-        var snapshot = player.CreateGameObjectInfo();
+        var snapshot = player.CreatePlayerObjectInfo();
         Assert.Equal(PlayerState.SLEEP, snapshot.State);
-        Assert.Equal(7, snapshot.ObjectId);
-        snapshot.Position.X = 99f;
+        Assert.Equal(7, snapshot.ObjectInfo.ObjectId);
+        snapshot.ObjectInfo.Position.X = 99f;
         Assert.Equal(1f, player.Position!.X);
 
         player.Position = null;

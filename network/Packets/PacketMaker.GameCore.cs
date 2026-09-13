@@ -44,10 +44,10 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_OBJECT_INFO(List<GameObjectInfo> objects)
+    public static Packet G_TO_C_OBJECT_INFO(List<PlayerInfo> players)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_OBJECT_INFO);
-        G_TO_C_OBJECT_INFO body = new() { Objects = objects };
+        G_TO_C_OBJECT_INFO body = new() { Players = players };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -72,10 +72,10 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_AREA_PLAYER_ENTER(GameObjectInfo objectInfo)
+    public static Packet G_TO_C_AREA_PLAYER_ENTER(PlayerInfo player)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_AREA_PLAYER_ENTER);
-        G_TO_C_AREA_PLAYER_ENTER body = new() { ObjectInfo = objectInfo };
+        G_TO_C_AREA_PLAYER_ENTER body = new() { Player = player };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

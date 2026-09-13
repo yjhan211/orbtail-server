@@ -369,11 +369,11 @@ public partial class GameClientSession : SessionBase
 
             if (sessions.Count > 0)
             {
-                using var others = PacketMaker.G_TO_C_OBJECT_INFO(sessions.Select(s => s.Player.CreateGameObjectInfo()).ToList());
+                using var others = PacketMaker.G_TO_C_OBJECT_INFO(sessions.Select(s => s.Player.CreatePlayerObjectInfo()).ToList());
                 TrySend(others);
             }
 
-            using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([Player.CreateGameObjectInfo()]))
+            using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([Player.CreatePlayerObjectInfo()]))
             {
                 foreach (var session in sessions)
                 {
@@ -382,13 +382,13 @@ public partial class GameClientSession : SessionBase
             }
 
             var bots = match.Bots.GetBots().Where(bot => !bot.Player.IsEliminated && bot.Player.CurrentArea == Player.CurrentArea).ToList();
-            var objects = bots.Select(bot => match.Bots.GetGameObjectInfo(bot.PlayerId)).OfType<GameObjectInfo>().ToList();
-            if (objects.Count <= 0)
+            var botPlayers = bots.Select(bot => match.Bots.GetPlayerObjectInfo(bot.PlayerId)).OfType<PlayerInfo>().ToList();
+            if (botPlayers.Count <= 0)
             {
                 return;
             }
 
-            using var packet = PacketMaker.G_TO_C_OBJECT_INFO(objects);
+            using var packet = PacketMaker.G_TO_C_OBJECT_INFO(botPlayers);
             TrySend(packet);
         }
 

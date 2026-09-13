@@ -1,12 +1,11 @@
 // ReSharper disable All
 
-using System;
 using MessagePack;
 using network.common.data;
 
 namespace network.common.data.models
 {
-    /// <summary>게임 공간에 놓인 객체의 현재 맵·위치·속도·회전·행동 상태. PlayerInfo와 별도로 전달한다.</summary>
+    /// <summary>게임 공간에 놓인 객체의 현재 맵·위치·속도·회전. 플레이어·아이템·몬스터가 공유하며 종류별 상태는 싣지 않는다.</summary>
     [MessagePackObject]
     public partial class GameObjectInfo : IMessagePackObject
     {
@@ -21,9 +20,6 @@ namespace network.common.data.models
             Position = new Vector3f(0, 0, 0);
             Velocity = new Vector3f(0, 0, 0);
             Rotation = 0f;
-            MoveTimestamp = default;
-            DebuffTimestamp = default;
-            IsFlip = false;
         }
 
         public GameObjectInfo(long objectId)
@@ -34,13 +30,9 @@ namespace network.common.data.models
             Position = new Vector3f(0, 0, 0);
             Velocity = new Vector3f(0, 0, 0);
             Rotation = 0f;
-            MoveTimestamp = default;
-            DebuffTimestamp = default;
-            IsFlip = false;
         }
 
-        public GameObjectInfo(ObjectType objectType, long objectId, MapId mapId, long mapSubId, Cell cell,
-            bool isFlip = false)
+        public GameObjectInfo(ObjectType objectType, long objectId, MapId mapId, long mapSubId, Cell cell)
         {
             cell ??= new Cell(0, 0);
             ObjectType = objectType;
@@ -51,9 +43,6 @@ namespace network.common.data.models
             Rotation = 0f;
             MapId = mapId;
             MapSubId = mapSubId;
-            MoveTimestamp = DateTime.MinValue;
-            DebuffTimestamp = DateTime.MinValue;
-            IsFlip = isFlip;
         }
 
         [Key("objectType")]
@@ -80,33 +69,6 @@ namespace network.common.data.models
         [Key("rotation")]
         public float Rotation { get; set; }
 
-        [Key("moveTimestamp")]
-        public DateTime MoveTimestamp { get; set; }
-
-        [Key("debuffTimestamp")]
-        public DateTime DebuffTimestamp { get; set; }
-
-        [Key("isFlip")]
-        public bool IsFlip { get; set; }
-
-        [Key("state")]
-        public PlayerState State { get; set; }
-
-        // 하위 호환성을 위한 속성 (Deprecated)
-        [IgnoreMember]
-        public Cell CurrentCell
-        {
-            get => Cell;
-            set => Cell = value;
-        }
-
-        [IgnoreMember]
-        public Cell TargetCell
-        {
-            get => Cell;
-            set => Cell = value;
-        }
-
         public GameObjectInfo Clone()
         {
             return new GameObjectInfo
@@ -118,11 +80,7 @@ namespace network.common.data.models
                 Cell = Cell.Clone(Cell),
                 Position = new Vector3f(Position.X, Position.Y, Position.Z),
                 Velocity = new Vector3f(Velocity.X, Velocity.Y, Velocity.Z),
-                Rotation = Rotation,
-                MoveTimestamp = MoveTimestamp,
-                DebuffTimestamp = DebuffTimestamp,
-                IsFlip = IsFlip,
-                State = State
+                Rotation = Rotation
             };
         }
 

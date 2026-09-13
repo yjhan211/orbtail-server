@@ -34,7 +34,12 @@ public partial class PlayerInfo
     public async Task Save(IRedisOperations redisOperations)
     {
         await InventoryInfo.Save(redisOperations);
-        await redisOperations.HashSetAsync(HashKey, PlayerId, MessagePackSerializer.Serialize(this));
+        var profile = new StoredProfile
+        {
+            PlayerId = PlayerId, Name = Name, WearItemIdList = new List<int>(WearItemIdList),
+            Gold = Gold, IsNew = IsNew
+        };
+        await redisOperations.HashSetAsync(HashKey, PlayerId, MessagePackSerializer.Serialize(profile));
     }
 
     public static async Task<PlayerInfo?> Load(IRedisOperations redisOperations, long playerId)
@@ -43,6 +48,8 @@ public partial class PlayerInfo
         if (serialized == RedisValue.Null) return null;
 
         var playerInfo = MessagePackSerializer.Deserialize<PlayerInfo>(serialized);
+        playerInfo.ObjectInfo = null;
+        playerInfo.State = PlayerState.IDLE;
 
         playerInfo.InventoryInfo = await InventoryInfo.Load(redisOperations, InventoryOwnerType.PLAYER, playerId) ??
                                    new InventoryInfo(InventoryOwnerType.PLAYER, playerId);
@@ -58,7 +65,24 @@ public partial class PlayerInfo
             .Select(entry => entry)
             .ToList();
 
-        return hashStrings.Select(hashString => MessagePackSerializer.Deserialize<PlayerInfo>(hashString)).ToList();
+        return hashStrings.Select(hashString =>
+        {
+            var player = MessagePackSerializer.Deserialize<PlayerInfo>(hashString);
+            player.ObjectInfo = null;
+            player.State = PlayerState.IDLE;
+            return player;
+        }).ToList();
+    }
+
+    // 공통 모델의 인게임 상태를 제외하고 영속 프로필만 저장한다.
+    [MessagePackObject]
+    public sealed class StoredProfile
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("name")] public string Name { get; set; } = "";
+        [Key("wearItemIdList")] public List<int> WearItemIdList { get; set; } = [];
+        [Key("gold")] public long Gold { get; set; }
+        [Key("isNew")] public bool IsNew { get; set; }
     }
 
     public async Task Delete(IRedisOperations redisOperations, PlayerInfo playerInfo)

@@ -56,7 +56,7 @@ public sealed class BotMovementDeliveryTests
                 new[] { (1L, Protocol.G_TO_C_AREA_PLAYER_LEAVE), (2L, Protocol.G_TO_C_AREA_PLAYER_ENTER), (2L, Protocol.G_TO_C_MOVE) },
                 timeline);
             var appearance = destination.Read<G_TO_C_AREA_PLAYER_ENTER>(Protocol.G_TO_C_AREA_PLAYER_ENTER);
-            Assert.Equal(PlayerState.SLEEP, appearance.ObjectInfo.State);
+            Assert.Equal(PlayerState.SLEEP, appearance.Player.State);
         }
         else
         {

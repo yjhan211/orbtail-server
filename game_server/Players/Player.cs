@@ -19,7 +19,6 @@ public class Player
     private const float SwarmSleepRecoveryRatioPerSecond = 0.05f;
 
     private GameClientSession? _session;
-    private GameObjectInfo? _object;
     private bool _hasPosition;
     private bool _hasCell;
     private long _matchingId;
@@ -57,12 +56,11 @@ public class Player
     public int EliminationRank { get; set; }
     public int FinalOrbTier { get; set; }
 
-    // 위치·셀·속도·회전·State의 유일한 저장소는 _object(GameObjectInfo)이고 아래 프로퍼티는 위임이다.
-    // 객체 밖으로 노출하지 않는 이유는 State 변경이 ResetSleep 규칙을 반드시 거치게 하기 위해서다.
+    // 공간 정보는 Profile.ObjectInfo, 행동 상태는 Profile.State에 보관한다.
     // 스폰 완료(_hasPosition)는 객체 생성과 별개다. 행동 상태만 먼저 바뀌어도 위치는 여전히 없다.
     public Vector3f? Position
     {
-        get => _hasPosition ? _object!.Position : null;
+        get => _hasPosition ? Profile.ObjectInfo.Position : null;
         internal set
         {
             if (value == null)
@@ -74,9 +72,10 @@ public class Player
             _hasPosition = true;
         }
     }
+
     public Cell? Cell
     {
-        get => _hasCell ? _object!.Cell : null;
+        get => _hasCell ? Profile.ObjectInfo.Cell : null;
         internal set
         {
             if (value == null)
@@ -90,12 +89,12 @@ public class Player
     }
     public Vector3f Velocity
     {
-        get => _object?.Velocity ?? new Vector3f();
+        get => Profile.ObjectInfo?.Velocity ?? new Vector3f();
         internal set => EnsureObject().Velocity = value;
     }
     public float Rotation
     {
-        get => _object?.Rotation ?? 0f;
+        get => Profile.ObjectInfo?.Rotation ?? 0f;
         internal set => EnsureObject().Rotation = value;
     }
     public AreaType CurrentArea { get; internal set; } = AreaType.None;
@@ -130,11 +129,11 @@ public class Player
 
     public PlayerState State
     {
-        get => _object?.State ?? PlayerState.IDLE;
+        get => Profile.State;
         set
         {
-            if (State == value) return;
-            EnsureObject().State = value;
+            if (Profile.State == value) return;
+            Profile.State = value;
             ResetSleep();
         }
     }
@@ -208,20 +207,32 @@ public class Player
     public void RecordMoveResponse(long timestamp) => _lastMoveResponseTimestamp = timestamp;
 
     private GameObjectInfo EnsureObject() =>
-        _object ??= new GameObjectInfo(ObjectType.PLAYER, PlayerId, Config.SWARM_MATCH_MAP, _matchingId, new Cell(0, 0)) { State = PlayerState.IDLE };
+        Profile.ObjectInfo ??= new GameObjectInfo(ObjectType.PLAYER, PlayerId, Config.SWARM_MATCH_MAP, _matchingId, new Cell(0, 0));
 
     /// <summary>매치 등록 시 공통 객체가 속한 매치를 잡는다.</summary>
     internal void AttachToMatch(long matchingId)
     {
         _matchingId = matchingId;
-        if (_object != null)
+        if (Profile.ObjectInfo != null)
         {
-            _object.MapSubId = matchingId;
+            Profile.ObjectInfo.MapSubId = matchingId;
         }
     }
 
+    /// <summary>등장 전송 단위. 공간 복사본에 현재 행동 상태를 붙인다.</summary>
+    public PlayerInfo CreatePlayerObjectInfo() => new()
+    {
+        PlayerId = PlayerId,
+        Name = Profile.Name,
+        WearItemIdList = new List<int>(Profile.WearItemIdList),
+        Gold = Profile.Gold,
+        IsNew = Profile.IsNew,
+        ObjectInfo = CreateGameObjectInfo(),
+        State = State
+    };
+
     /// <summary>
-    ///     전송용 복사본. 식별자는 프로필과 매치에서 채우고, 셀이 아직 없으면 위치로 계산한다.
+    ///     전송용 공간 복사본. 식별자는 프로필과 매치에서 채우고, 셀이 아직 없으면 위치로 계산한다.
     ///     공유 객체를 그대로 내보내지 않는 이유는 직렬화 도중 이동이 값을 바꾸지 않게 하기 위해서다.
     /// </summary>
     public GameObjectInfo CreateGameObjectInfo()
@@ -230,7 +241,7 @@ public class Player
         {
             throw new InvalidOperationException("Cannot publish a player before its spawn is initialized.");
         }
-        var source = _object!;
+        var source = Profile.ObjectInfo;
         var snapshot = source.Clone();
         snapshot.ObjectId = PlayerId;
         snapshot.MapSubId = _matchingId;

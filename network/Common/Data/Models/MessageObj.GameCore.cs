@@ -97,7 +97,7 @@ namespace network.common.data.models
     [MessagePackObject]
     public class G_TO_C_AREA_PLAYER_ENTER : IMessagePackObject
     {
-        [Key("objectInfo")] public GameObjectInfo ObjectInfo { get; set; }
+        [Key("player")] public PlayerInfo Player { get; set; }
     }
 
     [MessagePackObject]
@@ -255,11 +255,11 @@ namespace network.common.data.models
         [Key("objects")] public List<InteractableObjectState> Objects { get; set; }
     }
 
-    /// <summary>등장할 객체들의 현재 공간 정보. 이름·외형은 매칭 로스터를 사용한다.</summary>
+    /// <summary>등장할 플레이어들의 현재 공간 정보와 행동 상태. 이름·외형은 매칭 로스터를 사용한다.</summary>
     [MessagePackObject]
     public class G_TO_C_OBJECT_INFO : IMessagePackObject
     {
-        [Key("objects")] public List<GameObjectInfo> Objects { get; set; }
+        [Key("players")] public List<PlayerInfo> Players { get; set; }
     }
 
     [MessagePackObject]
