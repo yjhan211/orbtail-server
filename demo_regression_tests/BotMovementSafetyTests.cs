@@ -22,8 +22,7 @@ public sealed class BotMovementSafetyTests
             bot.MovementMode = BotMovementMode.Escort;
             bot.MovementModeUntilUtc = DateTime.UtcNow.AddMinutes(1);
             bot.LoopWaitUntil = DateTime.MinValue;
-            bot.SetMovementTarget(BotMovementMode.Escort, AreaType.S2Library1, target,
-                MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, target));
+            bot.SetMovementTarget(BotMovementMode.Escort, AreaType.S2Library1, target);
             bot.SetPath([new MapPathfinder.Step { Cell = target, Area = AreaType.S2Library1 }]);
             bot.Player.Velocity = new Vector3f(5, 0, 0);
             var originalPosition = bot.Player.Position;

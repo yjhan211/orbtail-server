@@ -263,7 +263,7 @@ internal class BotBehaviorService(
         {
             return;
         }
-        bot.SetMovementTarget(BotMovementMode.None, AreaType.None, new Cell(0, 0), new Vector3f(0f, 0f, 0f));
+        bot.SetMovementTarget(BotMovementMode.None, AreaType.None, new Cell(0, 0));
         ChooseMovementTarget(runtime, bot);
         if (bot.Player.IsEliminated || bot.Player.CurrentArea == AreaType.None)
         {
@@ -294,7 +294,7 @@ internal class BotBehaviorService(
 
         if (bot.DesiredMovementArea == memory.PreviousArea && bot.DesiredMovementArea != bot.Player.CurrentArea && (DateTime.UtcNow - memory.LeftAtUtc).TotalSeconds < Config.SWARM_BOT_AREA_RETURN_COOLDOWN_SECONDS)
         {
-            bot.SetMovementTarget(BotMovementMode.Escort, bot.Player.CurrentArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!), bot.Player.Position!);
+            bot.SetMovementTarget(BotMovementMode.Escort, bot.Player.CurrentArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!));
         }
     }
 
@@ -331,7 +331,7 @@ internal class BotBehaviorService(
                 float commitDy = commitment.Destination.Y - position.Y;
                 if (commitDx * commitDx + commitDy * commitDy > 1f)
                 {
-                    bot.SetMovementTarget(BotMovementMode.Return, area, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, commitment.Destination), commitment.Destination);
+                    bot.SetMovementTarget(BotMovementMode.Return, area, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, commitment.Destination));
                     return;
                 }
             }
@@ -360,7 +360,7 @@ internal class BotBehaviorService(
         }
 
         var mode = threatCount > 0 ? BotMovementMode.Return : BotMovementMode.Escort;
-        bot.SetMovementTarget(mode, area, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, destination), destination);
+        bot.SetMovementTarget(mode, area, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, destination));
     }
 
     private static Vector3f FindMonsterEscapePosition(Vector3f position, AreaType area, float directionX, float directionY)
@@ -402,7 +402,7 @@ internal class BotBehaviorService(
         {
             bot.FleeDirective = true;
             var (evacuationArea, evacuationCell) = FindEvacuationTarget(runtime, bot.Player.Position!);
-            bot.SetMovementTarget(BotMovementMode.Escort, evacuationArea, evacuationCell, MatchBots.CellToWorldPosition(Config.SWARM_MATCH_MAP, evacuationCell));
+            bot.SetMovementTarget(BotMovementMode.Escort, evacuationArea, evacuationCell);
             return;
         }
 
@@ -416,7 +416,7 @@ internal class BotBehaviorService(
             {
                 bot.FleeDirective = true;
                 var (exitArea, exitCell) = FindEvacuationTarget(runtime, bot.Player.Position!);
-                bot.SetMovementTarget(BotMovementMode.Escort, exitArea, exitCell, MatchBots.CellToWorldPosition(Config.SWARM_MATCH_MAP, exitCell));
+                bot.SetMovementTarget(BotMovementMode.Escort, exitArea, exitCell);
                 return;
             }
 
@@ -447,12 +447,12 @@ internal class BotBehaviorService(
 
                 if (retreatCell != null)
                 {
-                    bot.SetMovementTarget(BotMovementMode.Escort, bot.Player.CurrentArea, retreatCell, MatchBots.CellToWorldPosition(Config.SWARM_MATCH_MAP, retreatCell));
+                    bot.SetMovementTarget(BotMovementMode.Escort, bot.Player.CurrentArea, retreatCell);
                     return;
                 }
 
                 var (fieldEvacuationArea, fieldEvacuationCell) = FindEvacuationTarget(runtime, bot.Player.Position!);
-                bot.SetMovementTarget(BotMovementMode.Escort, fieldEvacuationArea, fieldEvacuationCell, MatchBots.CellToWorldPosition(Config.SWARM_MATCH_MAP, fieldEvacuationCell));
+                bot.SetMovementTarget(BotMovementMode.Escort, fieldEvacuationArea, fieldEvacuationCell);
                 return;
             }
         }
@@ -493,7 +493,7 @@ internal class BotBehaviorService(
                     var pressCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, recentAttackerPosition);
                     if (GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, pressCell) && GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, pressCell) is var pressArea && pressArea != AreaType.None)
                     {
-                        bot.SetMovementTarget(BotMovementMode.Escort, pressArea, pressCell, MatchBots.CellToWorldPosition(Config.SWARM_MATCH_MAP, pressCell));
+                        bot.SetMovementTarget(BotMovementMode.Escort, pressArea, pressCell);
                         return;
                     }
                 }
@@ -595,13 +595,13 @@ internal class BotBehaviorService(
                 escapeArea = candidateArea;
             }
 
-            bot.SetMovementTarget(BotMovementMode.Escort, escapeArea == AreaType.None ? bot.Player.CurrentArea : escapeArea, escapeCell ?? MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, currentPosition), escapePosition ?? currentPosition);
+            bot.SetMovementTarget(BotMovementMode.Escort, escapeArea == AreaType.None ? bot.Player.CurrentArea : escapeArea, escapeCell ?? MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, currentPosition));
             return;
         }
 
         if (bot.LastTrailCutAtUtc is { } lastCutAtUtc && (DateTime.UtcNow - lastCutAtUtc).TotalSeconds < Config.SWARM_BOT_POST_CUT_LOOT_SECONDS && TryFindNearestSummonStone(runtime, bot, out var lootPosition))
         {
-            bot.SetMovementTarget(BotMovementMode.Escort, bot.Player.CurrentArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, lootPosition), lootPosition);
+            bot.SetMovementTarget(BotMovementMode.Escort, bot.Player.CurrentArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, lootPosition));
             return;
         }
 
@@ -611,19 +611,19 @@ internal class BotBehaviorService(
             var chaseCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, chaseTarget);
             var chaseArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, chaseCell);
             bool chaseCellUsable = chaseArea != AreaType.None && GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, chaseCell);
-            bot.SetMovementTarget(BotMovementMode.Escort, chaseCellUsable ? chaseArea : weakerRival.Value.Area, chaseCellUsable ? chaseCell : MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, weakerRival.Value.Position), chaseCellUsable ? chaseTarget : weakerRival.Value.Position);
+            bot.SetMovementTarget(BotMovementMode.Escort, chaseCellUsable ? chaseArea : weakerRival.Value.Area, chaseCellUsable ? chaseCell : MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, weakerRival.Value.Position));
             return;
         }
 
         if (TryFindNearestSummonStone(runtime, bot, out var stonePosition))
         {
-            bot.SetMovementTarget(BotMovementMode.Escort, bot.Player.CurrentArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, stonePosition), stonePosition);
+            bot.SetMovementTarget(BotMovementMode.Escort, bot.Player.CurrentArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, stonePosition));
             return;
         }
 
         if (hasSquadOrbs && HasMonsterInAttackRange(runtime, bot))
         {
-            bot.SetMovementTarget(BotMovementMode.Escort, bot.Player.CurrentArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!), bot.Player.Position!);
+            bot.SetMovementTarget(BotMovementMode.Escort, bot.Player.CurrentArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, bot.Player.Position!));
             return;
         }
 
@@ -631,7 +631,7 @@ internal class BotBehaviorService(
         {
             if (TryFindNearestHuntTarget(runtime, bot, out var supplyArea, out var supplyPosition))
             {
-                bot.SetMovementTarget(BotMovementMode.Escort, supplyArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, supplyPosition), supplyPosition);
+                bot.SetMovementTarget(BotMovementMode.Escort, supplyArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, supplyPosition));
                 return;
             }
         }
@@ -647,7 +647,7 @@ internal class BotBehaviorService(
         }
         if (!currentAreaHasSupply && TryFindNearestHuntTarget(runtime, bot, out var migrateArea, out var migratePosition))
         {
-            bot.SetMovementTarget(BotMovementMode.Escort, migrateArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, migratePosition), migratePosition);
+            bot.SetMovementTarget(BotMovementMode.Escort, migrateArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, migratePosition));
         }
 
     }

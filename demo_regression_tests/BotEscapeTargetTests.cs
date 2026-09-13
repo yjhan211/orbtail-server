@@ -39,7 +39,7 @@ public sealed class BotEscapeTargetTests
             service.DecideMovement(runtime, bot.PlayerId);
 
             Assert.True(bot.FleeDirective);
-            var target = bot.DesiredMovementPosition;
+            var target = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, bot.DesiredMovementCell);
             float dx = target.X - threatPosition.X;
             float dy = target.Y - threatPosition.Y;
             Assert.True(dx * dx + dy * dy >= threatOffset * threatOffset);

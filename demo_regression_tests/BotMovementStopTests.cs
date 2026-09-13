@@ -28,7 +28,7 @@ public sealed class BotMovementStopTests
             var originalPosition = bot.Player.Position!;
             bot.Player.Velocity = new Vector3f(5f, 1f, 0f);
             if (reason != "no_target")
-                bot.SetMovementTarget(BotMovementMode.Escort, bot.Player.CurrentArea, cell, originalPosition);
+                bot.SetMovementTarget(BotMovementMode.Escort, bot.Player.CurrentArea, cell);
             if (reason is "waiting" or "blocked_cell")
                 bot.SetPath([new MapPathfinder.Step
                 {

@@ -17,14 +17,12 @@ public sealed class BotPathTests
         };
         var path = bot.Movement.Waypoints;
         var cell = new network.common.data.models.Cell(3, 4);
-        var position = new network.common.data.models.Vector3f(10, 20, 0);
 
-        bot.SetMovementTarget(BotMovementMode.Escort, AreaType.S2Gym1, cell, position);
+        bot.SetMovementTarget(BotMovementMode.Escort, AreaType.S2Gym1, cell);
 
         Assert.Equal(BotMovementMode.Escort, bot.DesiredMovementMode);
         Assert.Equal(AreaType.S2Gym1, bot.DesiredMovementArea);
         Assert.Same(cell, bot.DesiredMovementCell);
-        Assert.Same(position, bot.DesiredMovementPosition);
         Assert.Equal(BotMovementMode.Return, bot.MovementMode);
         Assert.Equal(AreaType.S2Ground, bot.MovementDestination);
         Assert.Same(path, bot.Movement.Waypoints);
