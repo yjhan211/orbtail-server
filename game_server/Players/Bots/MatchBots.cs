@@ -85,18 +85,7 @@ public class MatchBots
     }
 
     public PlayerInfo? GetPlayerProfile(long botPlayerId) => GetBot(botPlayerId)?.Player.Profile;
-    public GameObjectInfo? SynthesizeGameObjectInfo(long matchingId, long botPlayerId)
-    {
-        var bot = GetBot(botPlayerId);
-        if (bot == null) return null;
-        var state = bot.Player.State;
-        return new GameObjectInfo(ObjectType.PLAYER, bot.PlayerId, Config.SWARM_MATCH_MAP, matchingId, bot.Player.Cell!)
-        {
-            Position = new Vector3f(bot.Player.Position!.X, bot.Player.Position!.Y, bot.Player.Position!.Z),
-            Rotation = bot.Player.Rotation,
-            State = state
-        };
-    }
+    public GameObjectInfo? GetGameObjectInfo(long botPlayerId) => GetBot(botPlayerId)?.Player.CreateGameObjectInfo();
 
     internal static Vector3f CellToWorldPosition(MapId mapId, Cell cell) => MapCoordinateConverter.CellToWorld(mapId, cell);
 

@@ -178,7 +178,7 @@ public partial class GameClientSession
                     }
 
                 }
-                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(_movement.CreateGameObjectInfo(Match, Player, Player.State));
+                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(Player.CreateGameObjectInfo());
                 foreach (var session in newAreaSessions)
                 {
                     session.TrySend(enterPacket);
@@ -191,14 +191,14 @@ public partial class GameClientSession
                         continue;
                     }
 
-                    using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(_movement.CreateGameObjectInfo(session.Match, session.Player, session.Player.State));
+                    using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(session.Player.CreateGameObjectInfo());
                     TrySend(otherEnterPacket);
                 }
 
                 var newAreaBots = Match.Bots.GetBots().Where(b => !b.Player.IsEliminated && b.Player.CurrentArea == newArea).ToList();
                 foreach (var bot in newAreaBots)
                 {
-                    var objectInfo = Match.Bots.SynthesizeGameObjectInfo(Match.MatchingId, bot.PlayerId);
+                    var objectInfo = Match.Bots.GetGameObjectInfo(bot.PlayerId);
                     if (objectInfo == null)
                     {
                         continue;

@@ -132,6 +132,7 @@ internal sealed class MatchRuntime
                 return;
             }
 
+            participant.AttachToMatch(MatchingId);
             _aliveCount = _participants.Count;
             _logger.LogInformation("Match participant registered: MatchingId={MatchingId}, PlayerId={PlayerId}, Count={Count}", MatchingId, participant.PlayerId, _aliveCount);
         }

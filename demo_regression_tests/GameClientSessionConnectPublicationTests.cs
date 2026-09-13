@@ -192,7 +192,7 @@ public sealed class GameClientSessionConnectPublicationTests
         using (session.Match.Enter())
         {
             session.Player.ApplyValidatedMovement(movement, 45f);
-            var snapshot = TestGameSessionServices.GetMovement(session).CreateGameObjectInfo(session.Match, session.Player, session.Player.State);
+            var snapshot = session.Player.CreateGameObjectInfo();
             Assert.Equal(10.25f, snapshot.Position.X);
             Assert.Equal(20.75f, snapshot.Position.Y);
             Assert.Equal(2f, snapshot.Velocity.X);
@@ -212,10 +212,11 @@ public sealed class GameClientSessionConnectPublicationTests
         var velocity = new Vector3f(2f, 3f, 0f);
         var cell = new Cell(10, 20);
         using var scope = session.Match.Enter();
+        session.Match.RegisterParticipant(session.Player);
         TestGameSessionServices.SetMovementProperty(session, "Position", position);
         TestGameSessionServices.SetMovementProperty(session, "Velocity", velocity);
         TestGameSessionServices.SetMovementProperty(session, "Cell", cell);
-        var snapshot = TestGameSessionServices.GetMovement(session).CreateGameObjectInfo(session.Match, session.Player, session.Player.State);
+        var snapshot = session.Player.CreateGameObjectInfo();
         position.X = 999;
         velocity.X = 999;
         cell.X = 999;

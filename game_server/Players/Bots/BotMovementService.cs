@@ -58,7 +58,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
                 }
             }
 
-            var enteringBot = runtime.Bots.SynthesizeGameObjectInfo(runtime.MatchingId, movement.BotPlayerId);
+            var enteringBot = runtime.Bots.GetGameObjectInfo(movement.BotPlayerId);
             if (enteringBot != null)
             {
                 using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(enteringBot);

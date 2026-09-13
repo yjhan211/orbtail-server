@@ -19,7 +19,10 @@ public class Player
     private const float SwarmSleepRecoveryRatioPerSecond = 0.05f;
 
     private GameClientSession? _session;
-    private PlayerState _state = PlayerState.IDLE;
+    private GameObjectInfo? _object;
+    private bool _hasPosition;
+    private bool _hasCell;
+    private long _matchingId;
     private float? _orbOrbitPhaseDegrees;
     private Vector3f? _orbOrbitLastPosition;
 
@@ -54,11 +57,47 @@ public class Player
     public int EliminationRank { get; set; }
     public int FinalOrbTier { get; set; }
 
-    // 서버가 확정한 공통 위치. 사람은 입장 초기화 전까지 위치와 셀이 없을 수 있다.
-    public Vector3f? Position { get; internal set; }
-    public Cell? Cell { get; internal set; }
-    public Vector3f Velocity { get; internal set; } = new();
-    public float Rotation { get; internal set; }
+    // 위치·셀·속도·회전·State의 유일한 저장소는 _object(GameObjectInfo)이고 아래 프로퍼티는 위임이다.
+    // 객체 밖으로 노출하지 않는 이유는 State 변경이 ResetSleep 규칙을 반드시 거치게 하기 위해서다.
+    // 스폰 완료(_hasPosition)는 객체 생성과 별개다. 행동 상태만 먼저 바뀌어도 위치는 여전히 없다.
+    public Vector3f? Position
+    {
+        get => _hasPosition ? _object!.Position : null;
+        internal set
+        {
+            if (value == null)
+            {
+                _hasPosition = false;
+                return;
+            }
+            EnsureObject().Position = value;
+            _hasPosition = true;
+        }
+    }
+    public Cell? Cell
+    {
+        get => _hasCell ? _object!.Cell : null;
+        internal set
+        {
+            if (value == null)
+            {
+                _hasCell = false;
+                return;
+            }
+            EnsureObject().Cell = value;
+            _hasCell = true;
+        }
+    }
+    public Vector3f Velocity
+    {
+        get => _object?.Velocity ?? new Vector3f();
+        internal set => EnsureObject().Velocity = value;
+    }
+    public float Rotation
+    {
+        get => _object?.Rotation ?? 0f;
+        internal set => EnsureObject().Rotation = value;
+    }
     public AreaType CurrentArea { get; internal set; } = AreaType.None;
     /// <summary>승인된 이동 구간에서 획득 반경에 닿은 바닥 아이템(uid 키). 다음 자동 줍기 틱이 집는다.</summary>
     internal Dictionary<long, ReachableItem> ReachableItems { get; } = new();
@@ -91,11 +130,11 @@ public class Player
 
     public PlayerState State
     {
-        get => _state;
+        get => _object?.State ?? PlayerState.IDLE;
         set
         {
-            if (_state == value) return;
-            _state = value;
+            if (State == value) return;
+            EnsureObject().State = value;
             ResetSleep();
         }
     }
@@ -167,6 +206,40 @@ public class Player
 
     /// <summary>이동 응답을 전송한 시각을 기록한다. 즉시 보정 응답도 같은 간격에 반영한다.</summary>
     public void RecordMoveResponse(long timestamp) => _lastMoveResponseTimestamp = timestamp;
+
+    private GameObjectInfo EnsureObject() =>
+        _object ??= new GameObjectInfo(ObjectType.PLAYER, PlayerId, Config.SWARM_MATCH_MAP, _matchingId, new Cell(0, 0)) { State = PlayerState.IDLE };
+
+    /// <summary>매치 등록 시 공통 객체가 속한 매치를 잡는다.</summary>
+    internal void AttachToMatch(long matchingId)
+    {
+        _matchingId = matchingId;
+        if (_object != null)
+        {
+            _object.MapSubId = matchingId;
+        }
+    }
+
+    /// <summary>
+    ///     전송용 복사본. 식별자는 프로필과 매치에서 채우고, 셀이 아직 없으면 위치로 계산한다.
+    ///     공유 객체를 그대로 내보내지 않는 이유는 직렬화 도중 이동이 값을 바꾸지 않게 하기 위해서다.
+    /// </summary>
+    public GameObjectInfo CreateGameObjectInfo()
+    {
+        if (!_hasPosition)
+        {
+            throw new InvalidOperationException("Cannot publish a player before its spawn is initialized.");
+        }
+        var source = _object!;
+        var snapshot = source.Clone();
+        snapshot.ObjectId = PlayerId;
+        snapshot.MapSubId = _matchingId;
+        if (!_hasCell)
+        {
+            snapshot.Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, source.Position);
+        }
+        return snapshot;
+    }
 
     /// <summary>입장 시 서버가 지정한 스폰으로 이동 상태를 초기화한다.</summary>
     public void InitializeSpawn(Cell spawnCell)

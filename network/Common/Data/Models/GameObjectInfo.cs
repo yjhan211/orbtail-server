@@ -68,11 +68,9 @@ namespace network.common.data.models
         [Key("mapSubId")]
         public long MapSubId { get; set; }
 
-        // 현재 위치한 셀. 위치를 갱신하는 코드가 Position과 함께 설정한다.
         [Key("cell")]
         public Cell Cell { get; set; }
 
-        // 자유 이동 필드
         [Key("position")]
         public Vector3f Position { get; set; }
 
@@ -107,6 +105,25 @@ namespace network.common.data.models
         {
             get => Cell;
             set => Cell = value;
+        }
+
+        public GameObjectInfo Clone()
+        {
+            return new GameObjectInfo
+            {
+                ObjectType = ObjectType,
+                ObjectId = ObjectId,
+                MapId = MapId,
+                MapSubId = MapSubId,
+                Cell = Cell.Clone(Cell),
+                Position = new Vector3f(Position.X, Position.Y, Position.Z),
+                Velocity = new Vector3f(Velocity.X, Velocity.Y, Velocity.Z),
+                Rotation = Rotation,
+                MoveTimestamp = MoveTimestamp,
+                DebuffTimestamp = DebuffTimestamp,
+                IsFlip = IsFlip,
+                State = State
+            };
         }
 
         public string GetGameObjectKey()

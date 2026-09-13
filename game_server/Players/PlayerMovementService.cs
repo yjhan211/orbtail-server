@@ -36,23 +36,6 @@ internal sealed class PlayerMovementService(
         return speed > MaximumSpeedUnitsPerSecond ? velocity.Normalized() * MaximumSpeedUnitsPerSecond : velocity;
     }
 
-    public GameObjectInfo CreateGameObjectInfo(MatchRuntime match, Player player, PlayerState state)
-    {
-        if (!Monitor.IsEntered(match.MatchLock))
-        {
-            throw new InvalidOperationException("Movement snapshots require the match lock.");
-        }
-
-        var position = player.Position ?? throw new InvalidOperationException("Cannot publish a player before its spawn is initialized.");
-        var cell = player.Cell ?? MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, position);
-        return new GameObjectInfo(ObjectType.PLAYER, player.PlayerId, Config.SWARM_MATCH_MAP, match.MatchingId, cell)
-        {
-            Position = new Vector3f(position.X, position.Y, position.Z),
-            Velocity = new Vector3f(player.Velocity.X, player.Velocity.Y, player.Velocity.Z),
-            Rotation = player.Rotation,
-            State = state
-        };
-    }
 
     public MovementResult ProcessMovement(MatchRuntime match, Player player, C_TO_G_MOVE msg, float deltaTime)
     {

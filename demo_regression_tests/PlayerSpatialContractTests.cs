@@ -1,4 +1,5 @@
 using System.Buffers;
+using game_server.players;
 using MessagePack;
 using network.common;
 using network.common.data.models;
@@ -99,5 +100,25 @@ public sealed class PlayerSpatialContractTests
         Assert.Equal(1.5f, info.Velocity.X);
         Assert.Equal(75f, info.Rotation);
         Assert.Equal(PlayerState.SLEEP, info.State);
+    }
+
+    // 행동 상태만 먼저 바뀐 플레이어는 아직 스폰 전이다. 위치는 없고 전송 스냅샷도 만들 수 없어야 한다.
+    [Fact]
+    public void PlayerStateBeforeSpawn_KeepsPositionEmptyAndBlocksSnapshot()
+    {
+        var player = new Player { Profile = new PlayerInfo { PlayerId = 7 } };
+        player.State = PlayerState.SLEEP;
+        Assert.Null(player.Position);
+        Assert.Throws<InvalidOperationException>(() => player.CreateGameObjectInfo());
+
+        player.Position = new Vector3f(1f, 2f, 0f);
+        var snapshot = player.CreateGameObjectInfo();
+        Assert.Equal(PlayerState.SLEEP, snapshot.State);
+        Assert.Equal(7, snapshot.ObjectId);
+        snapshot.Position.X = 99f;
+        Assert.Equal(1f, player.Position!.X);
+
+        player.Position = null;
+        Assert.Null(player.Position);
     }
 }
