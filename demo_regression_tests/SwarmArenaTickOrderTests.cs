@@ -23,7 +23,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(composition,
             "services.AddSingleton<Func<MatchRuntime, TimeProvider, MatchTickLoop>>",
             "return (runtime, clock) =>",
-            "entryFailureHandler, combat, field, botBehavior, clock);",
+            "entryFailureHandler, combat, field, movement, clock);",
 
             "services.AddSingleton<MatchTickService>");
         AssertInOrder(runner,
@@ -64,18 +64,17 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("PrepareAndDispatch", proximity);
         Assert.DoesNotContain("Coordinator", proximity);
 
-        // 환경 정산은 같은 50ms 펄스 안에서 전투 다음, 봇 걸음 전에 실행한다.
+        // 공통 이동 후 전투, 환경 정산을 같은 매치 잠금 안에서 실행한다.
         Assert.DoesNotContain("_resourceTickTimer", server);
         Assert.DoesNotContain("StartResourceTickTimer", server);
         AssertInOrder(
             proximityTick,
             "using var scope = runtime.Enter();",
+            "movement.ProcessTick(runtime, utcNow);",
             "combat.ProcessTick(runtime);",
             "runtime.StartsAtUtc",
             "if (currentEnvironmentInterval > _lastEnvironmentInterval)",
-            "field.ProcessDamageTick(runtime);",
-            "runtime.IsEnded ||",
-            "botBehavior.ProcessTick(runtime, botPlayerId => botBehavior.DecideMovement(runtime, botPlayerId));");
+            "field.ProcessDamageTick(runtime);");
 
         string matchingSettlement = ReadMethodSlice(
             settlement,
@@ -104,7 +103,7 @@ public sealed class SwarmArenaTickOrderTests
 
         AssertInOrder(
             arenaCode,
-            "ProcessMonsterTick(runtime,",
+            "CollectMonsterContacts(runtime,",
             "if (!runtime.IsGameplayActive())");
 
         string inactiveGameplayBranch = MaskCommentsAndLiterals(
@@ -140,7 +139,7 @@ public sealed class SwarmArenaTickOrderTests
 
         AssertInOrder(
             arenaTick,
-            "ProcessMonsterTick(runtime,",
+            "CollectMonsterContacts(runtime,",
             "if (!runtime.IsGameplayActive())",
             "orbTrails.UpdateTrails(",
             "trailCuts.ProcessTick(",
@@ -279,7 +278,7 @@ public sealed class SwarmArenaTickOrderTests
         string root = FindRepositoryRoot();
         string composition = ReadNormalizedSource(root, "game_server", "Program.cs");
         string field = ReadNormalizedSource(root, "game_server", "Matches", "MatchFieldService.cs");
-        Assert.Contains("combat, field, botBehavior, clock)", composition);
+        Assert.Contains("combat, field, movement, clock)", composition);
         string tick = ReadMethodSlice(
             field,
             "public void ProcessClosureTick(",

@@ -1,13 +1,84 @@
+using game_server.players.bots;
+using game_server.matches.monsters;
 using network.common;
 using network.common.data;
 using network.common.data.models;
 
 namespace game_server.matches;
 
-/// <summary>봇·몬스터의 경로 진행과 문 통과를 처리한다. 개체별 경로는 MovementState가 소유한다.</summary>
-internal sealed class MatchMovementService
+/// <summary>
+/// 전투 전에 봇·몬스터의 이동 단계를 실행한다. 카운트다운 중에는 몬스터만 이동한다.
+/// 행동 서비스가 개체별 이동을 수행하며 공통 경로 진행과 문 통과 검사는 Move를 사용한다.
+/// 개체별 경로는 MovementState가 소유하고 호출자는 매치 잠금을 보유한다.
+/// </summary>
+internal class MatchMovementService(
+    BotBehaviorService botBehavior,
+    MonsterBehaviorService monsterBehavior,
+    MatchMonsterSpawnService monsterSpawns)
 {
-    public Vector3f Move(MatchRuntime runtime, MovementState movement, Vector3f position,
+    public virtual void ProcessTick(MatchRuntime runtime, DateTime nowUtc)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Movement tick requires the match lock.");
+        }
+        if (runtime.IsEnded || runtime.Mode == MatchMode.SoloMapValidation)
+        {
+            return;
+        }
+        bool isGameplayActive = runtime.IsGameplayActive(nowUtc);
+        if (isGameplayActive && runtime.Bots.HasBots())
+        {
+            botBehavior.ProcessTick(runtime, id => botBehavior.DecideMovement(runtime, id));
+        }
+        var participants = new List<PlayerPositionSnapshot>();
+        foreach (var player in runtime.GetAlivePlayers())
+        {
+            if (player.Position != null)
+            {
+                participants.Add(new PlayerPositionSnapshot(player.PlayerId, player.CurrentArea, player.Position));
+            }
+        }
+        if (participants.Count == 0)
+        {
+            return;
+        }
+        ProcessMonsters(runtime, participants, isGameplayActive, nowUtc);
+    }
+
+    internal void ProcessMonsters(MatchRuntime runtime, IReadOnlyList<PlayerPositionSnapshot> participants, bool isGameplayActive, DateTime nowUtc)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Monster movement tick requires the match lock.");
+        }
+        if (runtime.IsEnded)
+        {
+            return;
+        }
+        var state = runtime.Monsters;
+        state.Initialize(nowUtc);
+        double deltaSeconds = Math.Clamp((nowUtc - state.LastTickAtUtc).TotalSeconds, 0d, 0.25d);
+        state.LastTickAtUtc = nowUtc;
+        if ((nowUtc - state.StartsAtUtc).TotalSeconds >= Config.SWARM_MONSTER_ESCALATION_STAGE2_AT_SECONDS)
+        {
+            deltaSeconds *= Config.SWARM_MONSTER_ESCALATION_STAGE2_MOVE_SPEED_MULTIPLIER;
+        }
+        bool preMatch = !isGameplayActive;
+        monsterSpawns.ProcessSupply(runtime, participants, nowUtc, preMatch);
+        foreach (var monster in state.Entities.Values)
+        {
+            if (!monster.Alive || nowUtc < monster.ActivatesAtUtc)
+            {
+                continue;
+            }
+            monsterBehavior.Move(runtime, monster, participants, nowUtc, deltaSeconds, preMatch);
+            monsterBehavior.RescueMonsterFromBlockedCell(runtime, monster);
+        }
+        state.RemoveExpiredDead(nowUtc);
+    }
+
+    public static Vector3f Move(MatchRuntime runtime, MovementState movement, Vector3f position,
         float distanceBudget, bool ignoreClosedDoors = false,
         Func<Vector3f, bool>? canEnter = null)
     {

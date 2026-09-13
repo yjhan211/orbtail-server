@@ -25,11 +25,9 @@ internal class MatchCombatService(
     MatchAutoAttackService autoAttacks,
     MatchOrbAttackService orbAttacks,
     BotBehaviorService botBehavior,
-    MonsterCombatService monsterCombat,
-    MatchMonsterSpawnService monsterSpawns,
-    MonsterBehaviorService monsterMovement)
+    MonsterCombatService monsterCombat)
 {
-    internal List<MonsterContactDamage> ProcessMonsterTick(MatchRuntime runtime, IReadOnlyCollection<PlayerPositionSnapshot> participants, bool isGameplayActive, DateTime nowUtc)
+    internal List<MonsterContactDamage> CollectMonsterContacts(MatchRuntime runtime, IReadOnlyCollection<PlayerPositionSnapshot> participants, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -43,8 +41,6 @@ internal class MatchCombatService(
         }
 
         var now = nowUtc;
-        double deltaSeconds = Math.Clamp((now - state.LastTickAtUtc).TotalSeconds, 0d, 0.25d);
-        state.LastTickAtUtc = now;
         var snapshot = new PlayerPositionSnapshot[participants.Count];
         int snapshotIndex = 0;
         foreach (var participant in participants)
@@ -52,12 +48,6 @@ internal class MatchCombatService(
             snapshot[snapshotIndex++] = participant;
         }
 
-        bool preMatch = !isGameplayActive;
-        double moveDeltaSeconds = (now - state.StartsAtUtc).TotalSeconds >= Config.SWARM_MONSTER_ESCALATION_STAGE2_AT_SECONDS
-            ? deltaSeconds * Config.SWARM_MONSTER_ESCALATION_STAGE2_MOVE_SPEED_MULTIPLIER
-            : deltaSeconds;
-
-        monsterSpawns.ProcessSupply(runtime, snapshot, now, preMatch);
         foreach (var monster in state.Entities.Values)
         {
             if (!monster.Alive || now < monster.ActivatesAtUtc)
@@ -65,11 +55,8 @@ internal class MatchCombatService(
                 continue;
             }
 
-            monsterMovement.Move(runtime, monster, snapshot, now, moveDeltaSeconds, preMatch);
-            monsterMovement.RescueMonsterFromBlockedCell(runtime, monster);
             monsterCombat.CollectContactDamage(runtime, monster, snapshot, now, contacts);
         }
-        state.RemoveExpiredDead(now);
         return contacts;
     }
 
@@ -112,10 +99,6 @@ internal class MatchCombatService(
             return;
         }
 
-        if (!runtime.Monsters.IsInitialized)
-        {
-            runtime.Monsters.Initialize(DateTime.UtcNow);
-        }
 
         var nowUtc = DateTime.UtcNow;
         var aliveBots = bots.Where(bot => !bot.Player.IsEliminated).ToList();
@@ -129,7 +112,7 @@ internal class MatchCombatService(
             participants.Add(new PlayerPositionSnapshot(player.PlayerId, player.CurrentArea, player.Position));
         }
 
-        var contacts = ProcessMonsterTick(runtime, participants, runtime.IsGameplayActive(), nowUtc);
+        var contacts = CollectMonsterContacts(runtime, participants, nowUtc);
 
         if (!runtime.IsGameplayActive())
         {

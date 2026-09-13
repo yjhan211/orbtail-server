@@ -26,7 +26,7 @@ public sealed class MatchTickLoopTests
     public async Task StageFailure_PropagatesWithoutRunningLaterStagesAndReleasesLock(string failingStage)
     {
         using var fixture = new Fixture(945111);
-        string[] stages = ["combat", "environment", "movement"];
+        string[] stages = ["movement", "combat", "environment"];
         var called = new List<string>();
         var failure = new InvalidOperationException("stage failure");
         void Process(string stage)
@@ -76,12 +76,12 @@ public sealed class MatchTickLoopTests
         fixture.Loops.Add(loop);
         TestMatchTickServices.ForceNextEnvironmentalTick(loop);
         loop.ProcessTick();
-        Assert.Equal(new[] { "combat", "environment", "movement" }, steps);
+        Assert.Equal(new[] { "movement", "combat", "environment" }, steps);
         Assert.All(locksHeld, Assert.True);
 
         steps.Clear();
         loop.ProcessTick();
-        Assert.Equal(new[] { "combat", "movement" }, steps);
+        Assert.Equal(new[] { "movement", "combat" }, steps);
     }
 
     [Fact]
@@ -112,11 +112,11 @@ public sealed class MatchTickLoopTests
         secondLoop.Stop();
         Assert.Contains(first.Match.MatchingId, combatIds);
         Assert.Contains(second.MatchingId, combatIds);
-        Assert.Equal(0, movements);
+        Assert.Equal(1, movements);
     }
 
     [Fact]
-    public void TerminalDuringCombat_SkipsMovementAndRemovesRuntime()
+    public void TerminalDuringCombat_DoesNotMoveAgainAndRemovesRuntime()
     {
         using var fixture = new Fixture(945104);
         int movements = 0;
@@ -134,7 +134,7 @@ public sealed class MatchTickLoopTests
         loop.ProcessTick();
         loop.ProcessTick();
         Assert.Equal(1, combats);
-        Assert.Equal(0, movements);
+        Assert.Equal(1, movements);
         Assert.Null(fixture.Store.GetOrNull(fixture.Match.MatchingId));
     }
 
@@ -191,7 +191,7 @@ public sealed class MatchTickLoopTests
     }
 
     [Fact]
-    public void CountdownMatch_RunsCombatWarmup_ButNotBotMovement()
+    public void CountdownMatch_RunsMovementAndCombatWarmup_ButNotEnvironment()
     {
         using var fixture = new Fixture(945107, startImmediately: false);
 
@@ -205,7 +205,7 @@ public sealed class MatchTickLoopTests
         fixture.Loops.Add(loop);
         TestMatchTickServices.ForceNextEnvironmentalTick(loop);
         loop.ProcessTick();
-        Assert.Equal(new[] { "combat" }, steps);
+        Assert.Equal(new[] { "movement", "combat" }, steps);
     }
 
 
@@ -218,7 +218,7 @@ public sealed class MatchTickLoopTests
             new PlayerPickupService(TestGameSessionServices.CreateHealthService(fixture.Store), NullLogger<PlayerPickupService>.Instance),
             (_, _) => fixture.Match.TryMarkEnded(),
             (_, _) => laterStages++,
-            _ => laterStages++,
+            _ => { },
             _ => laterStages++);
         fixture.Loops.Add(loop);
         loop.ProcessTick();

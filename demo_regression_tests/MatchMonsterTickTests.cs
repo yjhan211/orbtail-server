@@ -400,8 +400,9 @@ public class MatchMonsterTickTests
     /// <summary>운영 전투 조율자의 몬스터 단계를 매치 잠금 안에서 실행한다. 마지막 틱 시각을 피해 정산·표적 조회에 쓴다.</summary>
     private sealed class Arena
     {
+        private readonly MatchMovementService _movement = new(null!, new MonsterBehaviorService(), new MatchMonsterSpawnService(new MonsterBehaviorService()));
         private readonly MatchCombatService _combat = TestGameSessionServices.CreateMonsterTickService();
-        private readonly MonsterCombatService _monsterCombat = new(new MatchMonsterSpawnService(new MonsterBehaviorService(new game_server.matches.MatchMovementService())));
+        private readonly MonsterCombatService _monsterCombat = new(new MatchMonsterSpawnService(new MonsterBehaviorService()));
         private DateTime _lastNow = StartUtc;
 
         public Arena(long matchingId)
@@ -429,7 +430,8 @@ public class MatchMonsterTickTests
                         Runtime.RegisterParticipant(new Player { Profile = new PlayerInfo { PlayerId = participant.PlayerId } });
                     }
                 }
-                var contacts = _combat.ProcessMonsterTick(Runtime, participants, isGameplayActive, nowUtc);
+                _movement.ProcessMonsters(Runtime, participants.ToArray(), isGameplayActive, nowUtc);
+                var contacts = _combat.CollectMonsterContacts(Runtime, participants, nowUtc);
                 var spawned = Runtime.Monsters.Entities.Values.Where(monster => !known.Contains(monster.MonsterId)).ToList();
                 return new TickResult(contacts, spawned);
             }

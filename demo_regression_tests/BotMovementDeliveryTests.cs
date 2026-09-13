@@ -23,7 +23,7 @@ public sealed class BotMovementDeliveryTests
         var bot = new Bot { PlayerId = -20 };
         bot.Player.State = PlayerState.EXPLORE_1;
         bot.Player.BeginDoor(213, 0);
-        var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance, new game_server.matches.MatchMovementService());
+        var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
         using (match.Enter())
         {
             match.Bots.GetBots().Add(bot);
@@ -67,7 +67,7 @@ public sealed class BotMovementDeliveryTests
         bot.Player.Cell = movement.ToCell;
         bot.Player.Position = movement.Position;
         bot.Player.State = PlayerState.SLEEP;
-        var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance, new game_server.matches.MatchMovementService());
+        var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
         using (match.Enter())
         {
             match.Bots.GetBots().Add(bot);
@@ -107,7 +107,7 @@ public sealed class BotMovementDeliveryTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(44003);
-        var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance, new game_server.matches.MatchMovementService());
+        var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
         var movement = new BotMovementResult();
         Assert.Throws<InvalidOperationException>(() => service.DispatchExternalMovement(match, movement));
         using (match.Enter())

@@ -137,7 +137,7 @@ internal static class Program
         {
             var field = sp.GetRequiredService<MatchFieldService>();
             var combat = sp.GetRequiredService<MatchCombatService>();
-            var botBehavior = sp.GetRequiredService<BotBehaviorService>();
+            var movement = sp.GetRequiredService<MatchMovementService>();
             var runtimes = sp.GetRequiredService<MatchRuntimeStore>();
             var loopLogger = sp.GetRequiredService<ILogger<MatchTickLoop>>();
             var pickup = sp.GetRequiredService<PlayerPickupService>();
@@ -147,7 +147,7 @@ internal static class Program
                 return new MatchTickLoop(
                     runtime,
                     runtimes, loopLogger, pickup,
-                    entryFailureHandler, combat, field, botBehavior, clock);
+                    entryFailureHandler, combat, field, movement, clock);
             };
         });
         services.AddSingleton<MatchTickService>();

@@ -8,7 +8,7 @@ namespace game_server.matches.monsters;
 ///     몬스터의 침투·추격·배회 목적지와 경로를 결정하고 공통 이동 서비스를 호출한다.
 ///     개체 상태는 Monster, 매치별 침투 경로 상태는 MatchMonsters에 보관한다.
 /// </summary>
-internal sealed class MonsterBehaviorService(MatchMovementService movementService)
+internal sealed class MonsterBehaviorService
 {
     private const double InfiltrationGoldenAngle = 0.6180339887498949d;
 
@@ -168,7 +168,7 @@ internal sealed class MonsterBehaviorService(MatchMovementService movementServic
 
         monster.MarchBudgetSeconds -= deltaSeconds;
         float distanceBudget = (float)(Config.SWARM_MONSTER_MOVE_SPEED * monster.MarchSpeedScale * GetMonsterWaveSlowMultiplier(monster, now) * deltaSeconds);
-        monster.Position = movementService.Move(runtime, monster.Movement, monster.Position,
+        monster.Position = MatchMovementService.Move(runtime, monster.Movement, monster.Position,
             distanceBudget, ignoreClosedDoors: true, canEnter: candidate =>
                 !holdAtThreshold || GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP,
                     MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, candidate)) != monster.HomeArea);
@@ -552,7 +552,7 @@ internal sealed class MonsterBehaviorService(MatchMovementService movementServic
         float distanceBudget = (float)(Config.SWARM_MONSTER_MOVE_SPEED * GetMonsterWaveSlowMultiplier(monster, now) * deltaSeconds);
         var directPath = new MovementState();
         directPath.Waypoints.Add(playerPosition);
-        monster.Position = movementService.Move(runtime, directPath, monster.Position, distanceBudget, ignoreClosedDoors: true);
+        monster.Position = MatchMovementService.Move(runtime, directPath, monster.Position, distanceBudget, ignoreClosedDoors: true);
         var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP,
             MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, monster.Position));
         if (area != AreaType.None)

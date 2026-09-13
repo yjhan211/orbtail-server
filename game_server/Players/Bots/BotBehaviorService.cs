@@ -18,8 +18,7 @@ internal class BotBehaviorService(
     PlayerOrbGrowthService growth,
     PlayerOrbTrailService orbTrails,
     PlayerInteractionService interactions,
-    ILogger<BotBehaviorService> logger,
-    MatchMovementService movementService)
+    ILogger<BotBehaviorService> logger)
 {
 
     private bool TryUpgradePreferredOrb(MatchRuntime runtime, long playerId)
@@ -1251,7 +1250,7 @@ internal class BotBehaviorService(
         var fromArea = bot.Player.CurrentArea;
         var previousPosition = bot.Player.Position!;
         float speed = Config.SWARM_BOT_WALK_SPEED * GetBotMovementSpeedMultiplier(bot);
-        var newPosition = movementService.Move(runtime, bot.Movement, previousPosition,
+        var newPosition = MatchMovementService.Move(runtime, bot.Movement, previousPosition,
             speed * deltaSec, canEnter: candidate =>
             {
                 var cell = MapCoordinateConverter.WorldToCell(mapId, candidate);
@@ -1376,7 +1375,7 @@ internal class BotBehaviorService(
             var target = new Vector3f(bot.Player.Position!.X + direction.X * step, bot.Player.Position!.Y + direction.Y * step, 0f);
             var dodgePath = new MovementState();
             dodgePath.Waypoints.Add(target);
-            var candidate = movementService.Move(runtime, dodgePath, bot.Player.Position!, step);
+            var candidate = MatchMovementService.Move(runtime, dodgePath, bot.Player.Position!, step);
             if (candidate.Equals(bot.Player.Position))
             {
                 continue;

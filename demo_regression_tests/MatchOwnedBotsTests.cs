@@ -61,7 +61,7 @@ public sealed class MatchOwnedBotsTests
         var first = store.GetOrCreate(1);
         var second = store.GetOrCreate(2);
         Assert.NotSame(first.Bots, second.Bots);
-        var movementService = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance, new game_server.matches.MatchMovementService());
+        var movementService = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
         using (MatchRuntimeStore.Enter(first))
             movementService.ProcessTick(first, _ => { });
         using (MatchRuntimeStore.Enter(second))
@@ -83,7 +83,7 @@ public sealed class MatchOwnedBotsTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(101);
         var second = store.GetOrCreate(102);
-        var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance, new game_server.matches.MatchMovementService());
+        var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
         foreach (var match in new[] { first, second })
         {
             using (match.Enter())
@@ -200,7 +200,7 @@ public sealed class MatchOwnedBotsTests
         first.Bots.GetBots().Add(new Bot { PlayerId = -1 });
         Assert.True(first.Bots.HasBots());
         Assert.NotSame(first.Bots, second.Bots);
-        var movementService = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance, new game_server.matches.MatchMovementService());
+        var movementService = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
         Assert.Single(first.Bots.GetBots());
         Assert.Empty(second.Bots.GetBots());
         using (MatchRuntimeStore.Enter(first)) first.TryMarkEnded();

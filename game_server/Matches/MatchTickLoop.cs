@@ -1,5 +1,4 @@
 using game_server.players;
-using game_server.players.bots;
 using Microsoft.Extensions.Logging;
 using network.common;
 
@@ -7,10 +6,10 @@ namespace game_server.matches;
 
 /// <summary>
 ///     매치 하나의 게임 로직을 50ms 주기로 순서대로 실행한다.
-///     매치 잠금 안에서 입장 마감 확인, 아이템 획득, 전투,
-///     환경 정산, 구역 폐쇄 확인, 봇 이동을 처리한다.
+///     매치 잠금 안에서 입장 마감 확인, 아이템 획득, 공통 이동, 전투,
+///     환경 정산, 구역 폐쇄 확인을 처리한다.
 ///
-///     카운트다운 중에는 입장 확인과 전투 준비만 수행한다.
+///     카운트다운 중에는 입장 확인, 몬스터 이동과 전투 준비만 수행한다.
 ///     환경 정산은 시작 후 5초마다, 구역 폐쇄 확인은 1초마다 수행하며,
 ///     처리가 늦어져도 밀린 횟수를 몰아서 실행하지 않는다.
 ///
@@ -26,7 +25,7 @@ internal sealed class MatchTickLoop(
     MatchEntryFailureHandler entryFailureHandler,
     MatchCombatService combat,
     MatchFieldService field,
-    BotBehaviorService botBehavior,
+    MatchMovementService movement,
     TimeProvider? timeProvider = null)
 {
     private readonly PeriodicTimer _timer = new(TimeSpan.FromMilliseconds(50), timeProvider ?? TimeProvider.System);
@@ -100,6 +99,11 @@ internal sealed class MatchTickLoop(
             }
         }
 
+        movement.ProcessTick(runtime, utcNow);
+        if (runtime.IsEnded)
+        {
+            return;
+        }
         combat.ProcessTick(runtime);
         if (runtime.IsEnded || !isGameplayActive)
         {
@@ -128,11 +132,5 @@ internal sealed class MatchTickLoop(
             }
         }
 
-        if (runtime.IsEnded || !runtime.Bots.HasBots())
-        {
-            return;
-        }
-
-        botBehavior.ProcessTick(runtime, botPlayerId => botBehavior.DecideMovement(runtime, botPlayerId));
     }
 }

@@ -114,15 +114,15 @@ internal static class TestMatchTickServices
 
     private sealed class Combat(Action<long, List<GameClientSession>> run)
         : MatchCombatService(null!, null!, null!,
-            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!)
+            null!, null!, null!, null!, null!, null!, null!, null!)
     {
         public override void ProcessTick(MatchRuntime runtime) => run(runtime.MatchingId, runtime.GetSessions());
     }
 
     private sealed class Movement(Action<MatchRuntime> run)
-        : BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance, new game_server.matches.MatchMovementService())
+        : MatchMovementService(null!, null!, null!)
     {
-        public override void ProcessTick(MatchRuntime runtime, Action<long> decideMovement) => run(runtime);
+        public override void ProcessTick(MatchRuntime runtime, DateTime nowUtc) => run(runtime);
     }
 
     private sealed class Field(Action<MatchRuntime, List<GameClientSession>> damage, Action<MatchRuntime> closure)

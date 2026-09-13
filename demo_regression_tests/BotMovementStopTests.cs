@@ -38,7 +38,7 @@ public sealed class BotMovementStopTests
             if (reason == "waiting")
                 bot.LoopWaitUntil = DateTime.UtcNow.AddMinutes(1);
 
-            var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance, new game_server.matches.MatchMovementService());
+            var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
             var first = service.ProcessBotMovementTick(runtime, new Dictionary<long, AreaType>(), _ => { });
 
             var stopped = Assert.Single(first.Movements);
