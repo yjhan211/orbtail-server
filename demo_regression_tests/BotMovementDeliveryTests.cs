@@ -13,6 +13,32 @@ namespace demo_regression_tests;
 
 public sealed class BotMovementDeliveryTests
 {
+    [Fact]
+    public void MovingBotCancelsDoorAndPublishesIdleBeforeMovement()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(44004);
+        var timeline = new List<(long PlayerId, Protocol Protocol)>();
+        var recipient = AddRecipient(store, match.MatchingId, 1, AreaType.S2Ground, timeline);
+        var bot = new Bot { PlayerId = -20 };
+        bot.Player.State = PlayerState.EXPLORE_1;
+        bot.Player.BeginDoor(213, 0);
+        var service = new BotMovementService(NullLogger<BotMovementService>.Instance);
+        using (match.Enter())
+        {
+            match.Bots.GetBots().Add(bot);
+            service.DispatchExternalMovement(match, new BotMovementResult
+            {
+                BotPlayerId = -20, FromArea = AreaType.S2Ground, ToArea = AreaType.S2Ground,
+                Position = new Vector3f(1, 1, 0), Velocity = new Vector3f(1, 0, 0), ToCell = new Cell(1, 1)
+            });
+            Assert.Null(bot.Player.PendingDoorInteractionId);
+            Assert.Equal(PlayerState.IDLE, bot.Player.State);
+        }
+        Assert.Equal(new[] { (1L, Protocol.G_TO_C_PLAYER_STATE), (1L, Protocol.G_TO_C_MOVE) }, timeline);
+        Assert.Equal(PlayerState.IDLE, recipient.Read<G_TO_C_PLAYER_STATE>(Protocol.G_TO_C_PLAYER_STATE).State);
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

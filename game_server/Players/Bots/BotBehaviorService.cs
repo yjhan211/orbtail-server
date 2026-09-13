@@ -150,7 +150,8 @@ internal sealed class BotBehaviorService(
             {
                 player.State = PlayerState.IDLE;
             }
-            else if (TryFindNearestClosedDoor(runtime, bot, out int targetDoorId) && interactions.StartDoor(runtime, player, targetDoorId, targetDoorId, now) == ErrorCode.SUCCESS)
+            else if (player.Velocity.X == 0f && player.Velocity.Y == 0f &&
+                     TryFindNearestClosedDoor(runtime, bot, out int targetDoorId) && interactions.StartDoor(runtime, player, targetDoorId, targetDoorId, now) == ErrorCode.SUCCESS)
             {
                 player.State = PlayerState.EXPLORE_1;
             }

@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -27,7 +26,6 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
             throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
         }
         ArgumentNullException.ThrowIfNull(decideMovement);
-        var sessions = runtime.GetSessions();
         var playerAreas = new Dictionary<long, AreaType>();
         foreach (var player in runtime.GetAlivePlayers())
         {
@@ -39,47 +37,63 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         {
             runtime.Bots.GetBot(movement.BotPlayerId)?.Player.AdvanceOrbOrbit(movement.Position);
         }
-        foreach (var movement in result.Movements)
-        {
-            SendMovement(runtime, movement, sessions);
-        }
+        SendMovements(runtime, result.Movements);
     }
 
-    private void SendMovement(MatchRuntime runtime, BotMovementResult movement, IReadOnlyList<GameClientSession> sessions)
+    private void SendMovements(MatchRuntime runtime, IReadOnlyList<BotMovementResult> movements)
     {
-        if (movement.IsAreaTransition)
+        if (movements.Count == 0) return;
+        var sessions = runtime.GetSessions();
+        foreach (var movement in movements)
         {
-            using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(movement.BotPlayerId);
-            foreach (var session in sessions)
+            var player = runtime.Bots.GetBot(movement.BotPlayerId)?.Player;
+            if (player != null && player.State == PlayerState.EXPLORE_1 && (movement.Velocity.X != 0f || movement.Velocity.Y != 0f))
             {
-                if (session.PlayerId is > 0 && session.MatchingId == runtime.MatchingId && session.Player.CurrentArea == movement.FromArea)
-                {
-                    session.TrySend(leavePacket);
-                }
-            }
-
-            var enteringBot = runtime.Bots.GetPlayerObjectInfo(movement.BotPlayerId);
-            if (enteringBot != null)
-            {
-                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(enteringBot);
+                player.ClearPendingInteractions();
+                player.State = PlayerState.IDLE;
+                using var statePacket = PacketMaker.G_TO_C_PLAYER_STATE(player.PlayerId, player.State);
                 foreach (var session in sessions)
                 {
-                    if (session.PlayerId is > 0 && session.MatchingId == runtime.MatchingId &&
-                        session.Player.CurrentArea == movement.ToArea)
+                    if (session.Player.CurrentArea == movement.FromArea || session.Player.CurrentArea == movement.ToArea)
                     {
-                        session.TrySend(enterPacket);
+                        session.TrySend(statePacket);
                     }
                 }
             }
-        }
 
-        float orbOrbitPhase = runtime.Bots.GetBot(movement.BotPlayerId)?.Player.OrbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(movement.BotPlayerId);
-        using var movePacket = PacketMaker.G_TO_C_MOVE(movement.BotPlayerId, movement.Position, movement.Velocity, movement.Rotation, movement.ToCell, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), orbOrbitPhase);
-        foreach (var session in sessions)
-        {
-            if (session.PlayerId is > 0 && session.MatchingId == runtime.MatchingId && session.Player.CurrentArea == movement.ToArea)
+            if (movement.IsAreaTransition)
             {
-                session.TrySend(movePacket);
+                using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(movement.BotPlayerId);
+                foreach (var session in sessions)
+                {
+                    if (session.Player.CurrentArea == movement.FromArea)
+                    {
+                        session.TrySend(leavePacket);
+                    }
+                }
+
+                var enteringBot = runtime.Bots.GetPlayerObjectInfo(movement.BotPlayerId);
+                if (enteringBot != null)
+                {
+                    using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(enteringBot);
+                    foreach (var session in sessions)
+                    {
+                        if (session.Player.CurrentArea == movement.ToArea)
+                        {
+                            session.TrySend(enterPacket);
+                        }
+                    }
+                }
+            }
+
+            float orbOrbitPhase = runtime.Bots.GetBot(movement.BotPlayerId)?.Player.OrbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(movement.BotPlayerId);
+            using var movePacket = PacketMaker.G_TO_C_MOVE(movement.BotPlayerId, movement.Position, movement.Velocity, movement.Rotation, movement.ToCell, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), orbOrbitPhase);
+            foreach (var session in sessions)
+            {
+                if (session.Player.CurrentArea == movement.ToArea)
+                {
+                    session.TrySend(movePacket);
+                }
             }
         }
     }
@@ -95,7 +109,7 @@ internal class BotMovementService(ILogger<BotMovementService> logger)
         {
             throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
         }
-        SendMovement(runtime, movement, runtime.GetSessions());
+        SendMovements(runtime, [movement]);
     }
 
     private static float DistanceSquared(Vector3f position, float x, float y)
