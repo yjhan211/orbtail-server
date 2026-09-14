@@ -330,7 +330,7 @@ public sealed class UserServerMatchingReconciliationTests
         public int CancelCount { get; private set; }
         public int ReleaseCount { get; private set; }
 
-        public Task<bool> HasReservationAsync(long playerId)
+        public Task<bool> IsMatchingBlockedAsync(long playerId)
         {
             ReservationReadCount++;
             if (ReservationError != null)
@@ -350,7 +350,7 @@ public sealed class UserServerMatchingReconciliationTests
             return Task.FromResult(ErrorCode.SUCCESS);
         }
         public Task HandleEntryFailureAsync(long playerId, long matchingId) => Task.CompletedTask;
-        public Task ReleaseMatchingReservationAsync(long playerId, long matchingId)
+        public Task ReleaseAssignmentAsync(long playerId, long matchingId)
         {
             ReleaseCount++;
             return Task.CompletedTask;

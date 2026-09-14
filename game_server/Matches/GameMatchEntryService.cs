@@ -27,8 +27,9 @@ internal sealed class GameMatchEntryService(
     public MatchRuntime GetOrCreateMatch(long matchingId) => matchRuntimes.GetOrCreate(matchingId);
     public Task<GameEntryContext?> ConsumeTicketAsync(string? ticket) => ticketService.ConsumeAsync(ticket, nodeOptions.NodeId);
 
-    public async Task PrepareMatchAsync(long matchingId, MatchRuntime runtime)
+    public async Task PrepareMatchAsync(MatchRuntime runtime)
     {
+        long matchingId = runtime.MatchingId;
         var initializationLock = runtime.EntryInitializationLock;
         await initializationLock.WaitAsync();
         try

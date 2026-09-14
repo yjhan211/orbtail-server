@@ -198,7 +198,7 @@ public partial class GameClientSession : SessionBase
 
             var runtime = _matchEntry.GetOrCreateMatch(matchingId);
             Volatile.Write(ref _match, runtime);
-            await _matchEntry.PrepareMatchAsync(matchingId, runtime);
+            await _matchEntry.PrepareMatchAsync(runtime);
             EnsureConnectionActive();
             GameClientSession? previousSession = null;
             using (runtime.Enter())

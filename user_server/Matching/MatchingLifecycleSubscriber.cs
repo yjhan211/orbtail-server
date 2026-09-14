@@ -97,7 +97,7 @@ internal sealed class MatchingLifecycleSubscriber(
             {
                 MatchingLifecycleEvent.PlayerEntryFailed =>
                     matchingManager.HandleEntryFailureAsync(playerId, matchingId),
-                _ => matchingManager.ReleaseMatchingReservationAsync(playerId, matchingId)
+                _ => matchingManager.ReleaseAssignmentAsync(playerId, matchingId)
             },
             $"handle {lifecycleEvent} for player {playerId}, matching {matchingId}");
     }

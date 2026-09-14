@@ -260,7 +260,6 @@ public sealed class MatchEndLifecycleTests
         var redis = new InMemoryRedisOperations { BeforeKeyDeleteAsync = _ => release.Task };
         var service = new MatchSessionCleanupService(redis, new RecordingNatsClient(), new RecordingLogger<GameServer>());
         await redis.StringSetAsync(network.common.MatchingRedisKeys.Key(12345), "pending");
-        await redis.HashSetAsync("matching_bots", 12345, new byte[] { 1 });
         service.StartMatchDataCleanup(12345);
         Task drain = service.DrainAsync();
         try
@@ -274,7 +273,6 @@ public sealed class MatchEndLifecycleTests
         await drain.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(service.DrainAsync().IsCompletedSuccessfully);
         Assert.Null(redis.GetString(network.common.MatchingRedisKeys.Key(12345)));
-        Assert.Null(redis.GetHash("matching_bots", 12345));
     }
 
     [Fact]

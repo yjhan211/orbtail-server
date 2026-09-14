@@ -16,8 +16,8 @@ public sealed class MatchingQueueTests
 
     public MatchingQueueTests()
     {
-        var reservations = new MatchingReservationService(_cache, _logger.For<MatchingReservationService>());
-        _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), reservations, _logger.For<MatchingQueue>());
+        var assignments = new MatchingAssignmentService(_cache, _logger.For<MatchingAssignmentService>());
+        _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), assignments, _logger.For<MatchingQueue>());
     }
 
     [Fact]

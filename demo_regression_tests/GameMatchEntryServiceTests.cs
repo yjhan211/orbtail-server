@@ -23,7 +23,7 @@ public sealed class GameMatchEntryServiceTests
                 MatchingRedisKeys.EntryCanceledState, TimeSpan.FromMinutes(2));
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.PrepareMatchAsync(runtime.MatchingId, runtime)
+            service.PrepareMatchAsync(runtime)
                 .WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Contains(canceled ? "canceled" : "not committed", error.Message);
         Assert.False(runtime.IsSetupComplete);
@@ -39,7 +39,7 @@ public sealed class GameMatchEntryServiceTests
             MessagePackSerializer.Serialize(new MatchManifest { HumanPlayerIds = [1001, 1002], BotCount = 1, Mode = MatchMode.Normal }));
         await redis.StringSetAsync(MatchingRedisKeys.ReservationKey(1002), runtime.MatchingId, TimeSpan.FromMinutes(2));
 
-        await service.PrepareMatchAsync(runtime.MatchingId, runtime);
+        await service.PrepareMatchAsync(runtime);
 
         Assert.Empty(runtime.GetSessions());
         int humanStones = Config.SWARM_STARTING_STONE_GRANT;
@@ -58,7 +58,7 @@ public sealed class GameMatchEntryServiceTests
             Assert.Throws<InvalidOperationException>(() =>
                 runtime.InitializeMatch(runtime.Mode, runtime.SpawnCells, runtime.GetPlayerProfiles()));
         }
-        await service.PrepareMatchAsync(runtime.MatchingId, runtime);
+        await service.PrepareMatchAsync(runtime);
         Assert.Equal(humanStones, TestGameSessionServices.SummonStones(runtime, botId).StoneCount);
         Assert.Equal(humanStones - 1, TestGameSessionServices.SummonStones(runtime, 1001).StoneCount);
         Assert.Equal(humanStones, TestGameSessionServices.SummonStones(runtime, 1002).StoneCount);
@@ -69,7 +69,7 @@ public sealed class GameMatchEntryServiceTests
     public async Task EntryRosterContainsBotAppearanceWithoutSeparateAppearancePacket()
     {
         var (service, redis, store, runtime) = await Prepare(981014);
-        await service.PrepareMatchAsync(runtime.MatchingId, runtime);
+        await service.PrepareMatchAsync(runtime);
         long botId = Assert.Single(runtime.GetPlayerProfiles(), player => player.PlayerId < 0).PlayerId;
         var bot = Assert.Single(runtime.GetPlayerProfiles(), profile => profile.PlayerId == botId);
         Assert.False(string.IsNullOrWhiteSpace(bot.Name));
@@ -93,7 +93,7 @@ public sealed class GameMatchEntryServiceTests
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var (service, redis, store, runtime) = await Prepare(981013);
-        await service.PrepareMatchAsync(runtime.MatchingId, runtime);
+        await service.PrepareMatchAsync(runtime);
         int[] initialDoors = GameDoorData.GetAll().Where(door => door.IsInitiallyOpen)
             .Select(door => door.DoorId).Order().ToArray();
         Assert.Equal(initialDoors, runtime.Doors.GetOpenDoors().Order().ToArray());
@@ -103,7 +103,7 @@ public sealed class GameMatchEntryServiceTests
             runtime.Doors.CloseDoorsForAreas(GameDoorData.GetAll().Select(door => door.AreaType));
             runtime.Doors.OpenDoor(990013);
         }
-        await service.PrepareMatchAsync(runtime.MatchingId, runtime);
+        await service.PrepareMatchAsync(runtime);
         Assert.Equal(new[] { 990013 }, runtime.Doors.GetOpenDoors());
     }
 
@@ -113,7 +113,7 @@ public sealed class GameMatchEntryServiceTests
         var (service, redis, store, runtime) = await Prepare(981012);
         await redis.HashDeleteAsync(PlayerInfo.HashKey, "1001");
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.PrepareMatchAsync(runtime.MatchingId, runtime));
+            service.PrepareMatchAsync(runtime));
         Assert.False(runtime.IsSetupComplete);
         Assert.Equal(1, runtime.EntryInitializationLock.CurrentCount);
     }
@@ -128,12 +128,12 @@ public sealed class GameMatchEntryServiceTests
         profile.WearItemIdList = [202];
         await profile.Save(redis);
 
-        await service.PrepareMatchAsync(runtime.MatchingId, runtime);
+        await service.PrepareMatchAsync(runtime);
         var initialRoster = runtime.GetPlayerProfiles();
         profile.Name = "NextMatch";
         profile.WearItemIdList = [303];
         await profile.Save(redis);
-        await service.PrepareMatchAsync(runtime.MatchingId, runtime);
+        await service.PrepareMatchAsync(runtime);
 
         Assert.Equal(initialRoster, runtime.GetPlayerProfiles());
         var human = Assert.Single(runtime.GetPlayerProfiles(), entry => entry.PlayerId == 1001);
@@ -192,8 +192,8 @@ public sealed class GameMatchEntryServiceTests
     {
         var (service, redis, store, runtime) = await Prepare(981001);
         await runtime.EntryInitializationLock.WaitAsync();
-        Task first = service.PrepareMatchAsync(runtime.MatchingId, runtime);
-        Task second = service.PrepareMatchAsync(runtime.MatchingId, runtime);
+        Task first = service.PrepareMatchAsync(runtime);
+        Task second = service.PrepareMatchAsync(runtime);
         Assert.False(first.IsCompleted);
         Assert.False(second.IsCompleted);
         runtime.EntryInitializationLock.Release();
@@ -205,7 +205,7 @@ public sealed class GameMatchEntryServiceTests
         var bot = Assert.Single(runtime.Bots.GetBots());
         Assert.NotNull(bot.Player.Cell);
 
-        await service.PrepareMatchAsync(runtime.MatchingId, runtime);
+        await service.PrepareMatchAsync(runtime);
         Assert.Single(runtime.Bots.GetBots());
     }
     [Fact]
@@ -228,10 +228,10 @@ public sealed class GameMatchEntryServiceTests
     public async Task ExistingCompositionStillRequiresActiveReservation()
     {
         var (service, redis, store, runtime) = await Prepare(981002);
-        await service.PrepareMatchAsync(runtime.MatchingId, runtime);
+        await service.PrepareMatchAsync(runtime);
         await redis.StringSetAsync(MatchingRedisKeys.ReservationKey(1001), "another-match", TimeSpan.FromMinutes(1));
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.PrepareMatchAsync(runtime.MatchingId, runtime));
+            service.PrepareMatchAsync(runtime));
         Assert.True(runtime.IsSetupComplete);
         Assert.Equal(1, runtime.EntryInitializationLock.CurrentCount);
     }
@@ -241,7 +241,7 @@ public sealed class GameMatchEntryServiceTests
     {
         var (service, redis, store, runtime) = await Prepare(981003);
         await runtime.EntryInitializationLock.WaitAsync();
-        Task pending = service.PrepareMatchAsync(runtime.MatchingId, runtime);
+        Task pending = service.PrepareMatchAsync(runtime);
         using (MatchRuntimeStore.Enter(runtime))
             Assert.True(runtime.TryMarkEnded());
         runtime.EntryInitializationLock.Release();
@@ -261,8 +261,7 @@ public sealed class GameMatchEntryServiceTests
         await first.EntryInitializationLock.WaitAsync();
         try
         {
-            await service.PrepareMatchAsync(
-                second.MatchingId, second).WaitAsync(TimeSpan.FromSeconds(5));
+            await service.PrepareMatchAsync(second).WaitAsync(TimeSpan.FromSeconds(5));
             Assert.True(second.IsSetupComplete);
         }
         finally
@@ -282,7 +281,7 @@ public sealed class GameMatchEntryServiceTests
         else
             redis.HashGetError = new IOException("Redis unavailable");
         await Assert.ThrowsAnyAsync<Exception>(() =>
-            service.PrepareMatchAsync(runtime.MatchingId, runtime));
+            service.PrepareMatchAsync(runtime));
         Assert.False(runtime.IsSetupComplete);
         Assert.Equal(1, runtime.EntryInitializationLock.CurrentCount);
     }

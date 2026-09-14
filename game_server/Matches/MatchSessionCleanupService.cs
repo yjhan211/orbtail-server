@@ -162,7 +162,6 @@ public sealed class MatchSessionCleanupService(IRedisOperations redisOperations,
         try
         {
             await redisOperations.KeyDeleteAsync(MatchingRedisKeys.Key(matchingId));
-            await redisOperations.HashDeleteAsync("matching_bots", matchingId);
         }
         catch (Exception ex)
         {

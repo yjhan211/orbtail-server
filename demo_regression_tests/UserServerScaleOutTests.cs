@@ -279,8 +279,8 @@ public sealed class UserServerScaleOutTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var cache = new InMemoryRedisOperations();
         var logger = new RecordingLogger();
-        var reservations = new MatchingReservationService(cache, logger.For<MatchingReservationService>());
-        var queue = new MatchingQueue(cache, new FakeRedLockFactory(), reservations, logger.For<MatchingQueue>());
+        var assignments = new MatchingAssignmentService(cache, logger.For<MatchingAssignmentService>());
+        var queue = new MatchingQueue(cache, new FakeRedLockFactory(), assignments, logger.For<MatchingQueue>());
         var bus = new InMemoryNatsBus
         {
             RequestsToDropBeforeHandling = loseReply ? 0 : 1,
@@ -295,11 +295,11 @@ public sealed class UserServerScaleOutTests
         var entryService = new MatchEntryService(
             cache,
             new GameEntryTicketService(new RedisGameEntryTicketStore(cache), new GameEntryTicketOptions()),
-            reservations, sender,
+            assignments, sender,
             entryTasks,
             logger.For<MatchEntryService>());
         var pass = new MatchCreationService(
-            cache, queue, reservations, entryService,
+            cache, queue, assignments, entryService,
             new FixedGameServerAllocator(),
             false,
             logger.For<MatchCreationService>(), CancellationToken.None);

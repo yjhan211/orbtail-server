@@ -21,7 +21,7 @@ namespace user_server.matching;
 internal sealed class MatchEntryService(
     IRedisOperations redisOperations,
     GameEntryTicketService gameEntryTicketService,
-    MatchingReservationService reservations,
+    MatchingAssignmentService assignments,
     IPlayerSessionRouter sessions,
     BackgroundTaskTracker taskTracker,
     ILogger<MatchEntryService> logger) : IMatchEntryService
@@ -243,7 +243,7 @@ internal sealed class MatchEntryService(
 
                 try
                 {
-                    await reservations.ReleaseMatchingReservationAsync(playerId, matchingId);
+                    await assignments.ReleaseAssignmentAsync(playerId, matchingId);
                 }
                 catch (Exception ex)
                 {

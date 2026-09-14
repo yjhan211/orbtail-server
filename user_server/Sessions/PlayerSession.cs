@@ -411,7 +411,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
             return null;
         }
 
-        if (await _matchingManager.HasReservationAsync(playerId))
+        if (await _matchingManager.IsMatchingBlockedAsync(playerId))
         {
             return null;
         }
@@ -588,7 +588,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
 
         long matchingId = _matchingAssignment.TakeAndClear();
         if (matchingId > 0)
-            await _matchingManager.ReleaseMatchingReservationAsync(playerId, matchingId);
+            await _matchingManager.ReleaseAssignmentAsync(playerId, matchingId);
         else
             await _matchingManager.CancelMatching(playerId);
     }

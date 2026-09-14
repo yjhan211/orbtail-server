@@ -14,7 +14,7 @@ namespace demo_regression_tests;
 public sealed class MatchCreationServiceTests
 {
     private readonly InMemoryRedisOperations _cache = new();
-    private readonly MatchingReservationService _reservations;
+    private readonly MatchingAssignmentService _assignments;
     private readonly MatchingQueue _queue;
     private readonly RecordingEntryPublisher _entryService = new();
     private readonly FixedGameServerAllocator _gameServers = new();
@@ -23,13 +23,13 @@ public sealed class MatchCreationServiceTests
     public MatchCreationServiceTests()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
-        _reservations = new MatchingReservationService(_cache, _logger.For<MatchingReservationService>());
-        _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), _reservations, _logger.For<MatchingQueue>());
+        _assignments = new MatchingAssignmentService(_cache, _logger.For<MatchingAssignmentService>());
+        _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), _assignments, _logger.For<MatchingQueue>());
     }
 
     private MatchCreationService CreatePass(bool soloMapValidation = false, CancellationToken shutdown = default)
     {
-        return new MatchCreationService(_cache, _queue, _reservations, _entryService, _gameServers, soloMapValidation, _logger.For<MatchCreationService>(), shutdown);
+        return new MatchCreationService(_cache, _queue, _assignments, _entryService, _gameServers, soloMapValidation, _logger.For<MatchCreationService>(), shutdown);
     }
 
     private async Task<MatchingQueueData[]> EnqueueHumansAsync(int count, double score = 1)

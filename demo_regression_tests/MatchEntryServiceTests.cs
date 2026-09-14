@@ -197,7 +197,7 @@ public sealed class MatchEntryServiceTests
         return new MatchEntryService(
             redis,
             new GameEntryTicketService(new RedisGameEntryTicketStore(redis), new GameEntryTicketOptions()),
-            new MatchingReservationService(redis, logger.For<MatchingReservationService>()),
+            new MatchingAssignmentService(redis, logger.For<MatchingAssignmentService>()),
             router,
             taskTracker ?? new BackgroundTaskTracker(logger),
             logger.For<MatchEntryService>());

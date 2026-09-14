@@ -10,13 +10,13 @@ namespace user_server.matching.queue;
 
 /// <summary>
 ///     Redis에 저장된 매칭 대기열의 등록·취소·조회를 담당한다.
-///     등록과 취소는 플레이어별 락과 reservation 확인을 통해 매치 생성 작업과 충돌하지 않도록 처리한다.
+///     등록과 취소는 플레이어별 락과 배정 상태 확인을 통해 매치 생성 작업과 충돌하지 않도록 처리한다.
 ///     조회 시 손상되거나 중복된 항목을 정리하고, 지정한 시각까지 등록된 대기자를 반환한다.
 /// </summary>
 internal sealed class MatchingQueue(
     IRedisOperations redisOperations,
     IRedLockFactory redLock,
-    MatchingReservationService reservations,
+    MatchingAssignmentService assignments,
     ILogger<MatchingQueue> logger)
 {
     internal const string QueueKey = MatchingRedisKeys.MatchingQueueKey;
@@ -28,7 +28,7 @@ internal sealed class MatchingQueue(
         try
         {
             await using var queueLock = await redLock.AcquireLockAsync(MakeLockKey(playerId), Config.LOCK_TTL);
-            if (await reservations.HasReservationAsync(playerId))
+            if (await assignments.IsMatchingBlockedAsync(playerId))
             {
                 return ErrorCode.MATCHING_ALREADY_IN_QUEUE;
             }
@@ -39,8 +39,8 @@ internal sealed class MatchingQueue(
                 logger.LogInformation("Player {PlayerId}: removed {Count} stale matching requests", playerId, removedCount);
             }
 
-            // 위에서 제거한 snapshot을 다른 worker가 이미 reservation했을 수 있다.
-            if (await reservations.HasReservationAsync(playerId))
+            // 위에서 제거한 요청을 리더가 이미 매치에 배정했을 수 있다.
+            if (await assignments.IsMatchingBlockedAsync(playerId))
             {
                 return ErrorCode.MATCHING_ALREADY_IN_QUEUE;
             }
@@ -82,8 +82,8 @@ internal sealed class MatchingQueue(
         try
         {
             await using var queueLock = await redLock.AcquireLockAsync(MakeLockKey(playerId), Config.LOCK_TTL);
-            var cancellationReservation = await reservations.TryAcquireCancellationAsync(playerId);
-            if (cancellationReservation == null)
+            var cancellationId = await assignments.TryAcquireCancellationAsync(playerId);
+            if (cancellationId == null)
             {
                 return ErrorCode.MATCHING_FAILED;
             }
@@ -96,7 +96,7 @@ internal sealed class MatchingQueue(
             }
             finally
             {
-                await reservations.ReleaseCancellationAsync(cancellationReservation);
+                await assignments.ReleaseCancellationAsync(playerId, cancellationId);
             }
         }
         catch (Exception ex)

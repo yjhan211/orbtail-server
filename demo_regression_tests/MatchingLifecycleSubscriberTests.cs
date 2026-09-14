@@ -73,7 +73,7 @@ public sealed class MatchingLifecycleSubscriberTests
         public void Subscribe(string subject, Action<string, byte[]> handler, string? queue = null)
         { Handlers.Add(subject, handler); QueueGroups.Add(queue); }
         public void ClearMatchingAssignment(long playerId, long matchingId) => Clears.Add((playerId, matchingId));
-        public Task ReleaseMatchingReservationAsync(long playerId, long matchingId)
+        public Task ReleaseAssignmentAsync(long playerId, long matchingId)
         { Releases.Add((playerId, matchingId)); return Task.CompletedTask; }
         public Task HandleEntryFailureAsync(long playerId, long matchingId)
         { Failures.Add((playerId, matchingId)); return Task.CompletedTask; }
@@ -88,7 +88,7 @@ public sealed class MatchingLifecycleSubscriberTests
         public void AnnounceLogin(long playerId, long generation) => throw new NotSupportedException();
         public Task<ErrorCode> AddToQueue(long playerId, PlayerSession session) => throw new NotSupportedException();
         public Task<ErrorCode> CancelMatching(long playerId) => throw new NotSupportedException();
-        public Task<bool> HasReservationAsync(long playerId) => throw new NotSupportedException();
+        public Task<bool> IsMatchingBlockedAsync(long playerId) => throw new NotSupportedException();
         public Task StopMatchingLoopAsync() => Task.CompletedTask;
         public Task StopAsync() => Task.CompletedTask;
     }

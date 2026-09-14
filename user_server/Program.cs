@@ -81,7 +81,7 @@ internal static class Program
             sp.GetRequiredService<ILogger<NatsPlayerSessionRouter>>()));
         services.AddSingleton<IPlayerSessionRouter>(sp => sp.GetRequiredService<NatsPlayerSessionRouter>());
 
-        services.AddSingleton<MatchingReservationService>();
+        services.AddSingleton<MatchingAssignmentService>();
         services.AddSingleton<MatchingQueue>();
         bool soloMapValidation = Environment.GetEnvironmentVariable("SOLO_MAP_VALIDATION") == "1";
         services.AddSingleton<IGameServerRegistry, RedisGameServerRegistry>();
@@ -93,7 +93,7 @@ internal static class Program
         services.AddSingleton<MatchCreationService>(sp => new MatchCreationService(
             sp.GetRequiredService<IRedisOperations>(),
             sp.GetRequiredService<MatchingQueue>(),
-            sp.GetRequiredService<MatchingReservationService>(),
+            sp.GetRequiredService<MatchingAssignmentService>(),
             sp.GetRequiredService<IMatchEntryService>(),
             sp.GetRequiredService<IGameServerAllocator>(),
             soloMapValidation,

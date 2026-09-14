@@ -29,7 +29,7 @@ public sealed class GameMatchEntryRosterTests
             await redis.StringSetAsync(network.common.MatchingRedisKeys.ReservationKey(101),
                 matchingId, TimeSpan.FromMinutes(2));
             var runtime = store.GetOrCreate(matchingId);
-            await service.PrepareMatchAsync(matchingId, runtime);
+            await service.PrepareMatchAsync(runtime);
             return runtime.GetPlayerProfiles().Where(player => player.PlayerId < 0).Select(player => player.PlayerId).ToList();
         }
 
@@ -61,7 +61,7 @@ public sealed class GameMatchEntryRosterTests
         await redis.HashSetAsync(network.common.MatchingRedisKeys.Key(runtime.MatchingId),
             network.common.MatchingRedisKeys.ManifestField, MessagePack.MessagePackSerializer.Serialize(manifest));
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.PrepareMatchAsync(runtime.MatchingId, runtime));
+            service.PrepareMatchAsync(runtime));
         Assert.Equal($"Matching handoff was not committed for match {runtime.MatchingId}.", error.Message);
         Assert.False(runtime.IsSetupComplete);
         Assert.Empty(runtime.GetPlayerProfiles());
@@ -87,7 +87,7 @@ public sealed class GameMatchEntryRosterTests
         await redis.HashSetAsync(network.common.MatchingRedisKeys.Key(runtime.MatchingId),
             network.common.MatchingRedisKeys.ManifestField, MessagePack.MessagePackSerializer.Serialize(manifest));
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.PrepareMatchAsync(runtime.MatchingId, runtime));
+            service.PrepareMatchAsync(runtime));
         Assert.Equal("Invalid match participant count.", error.Message);
         Assert.False(runtime.IsSetupComplete);
         Assert.Equal(1, runtime.EntryInitializationLock.CurrentCount);
@@ -114,12 +114,12 @@ public sealed class GameMatchEntryRosterTests
         await redis.StringSetAsync(network.common.MatchingRedisKeys.ReservationKey(101), runtime.MatchingId, TimeSpan.FromMinutes(2));
         if (missingHuman)
         {
-            await Assert.ThrowsAsync<InvalidOperationException>(() => service.PrepareMatchAsync(runtime.MatchingId, runtime));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.PrepareMatchAsync(runtime));
             Assert.False(runtime.IsSetupComplete);
             Assert.Equal(1, runtime.EntryInitializationLock.CurrentCount);
             return;
         }
-        await service.PrepareMatchAsync(runtime.MatchingId, runtime);
+        await service.PrepareMatchAsync(runtime);
         Assert.Equal(2, runtime.GetPlayerProfiles().Count);
         var human = Assert.Single(runtime.GetPlayerProfiles(), player => player.PlayerId == 101);
         Assert.Equal("Human", human.Name);

@@ -16,7 +16,7 @@ namespace user_server.matching.creation;
 internal sealed class MatchCreationService(
     IRedisOperations redisOperations,
     MatchingQueue matchingQueue,
-    MatchingReservationService matchingReservationService,
+    MatchingAssignmentService matchingAssignments,
     IMatchEntryService matchEntryService,
     IGameServerAllocator gameServerAllocator,
     bool soloMapValidation,
@@ -71,8 +71,8 @@ internal sealed class MatchCreationService(
         }
 
         long matchingId = await redisOperations.StringIncrementAsync(MatchingRedisKeys.MatchingIdKey);
-        var reservationLease = await matchingReservationService.TryAcquireAsync(groupRequests, matchingId);
-        if (reservationLease == null)
+        bool assigned = await matchingAssignments.TryAssignAsync(groupRequests, matchingId);
+        if (!assigned)
         {
             logger.LogInformation("Matching group skipped because another worker owns a player reservation");
             return false;
@@ -119,7 +119,7 @@ internal sealed class MatchCreationService(
                 {
                     if (!delivered)
                     {
-                        await matchingReservationService.ReleaseMatchingReservationAsync(request.PlayerId, matchingId);
+                        await matchingAssignments.ReleaseAssignmentAsync(request.PlayerId, matchingId);
                     }
                     await matchingQueue.RemoveRequestAsync(request);
                 }
@@ -153,7 +153,7 @@ internal sealed class MatchCreationService(
                 {
                     await matchEntryService.DeleteMatchEntryDataAsync(matchingId);
                     await matchEntryService.NotifyBatchFailedAsync(batchPlayers, matchingId);
-                    await matchingReservationService.RollbackAsync(reservationLease);
+                    await matchingAssignments.ReleaseAssignmentsAsync(batchPlayers.Select(request => request.PlayerId), matchingId);
                 }
             }
         }
