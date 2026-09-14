@@ -116,10 +116,10 @@ internal sealed class MatchRuntime
         Volatile.Write(ref _isSetupComplete, true);
     }
 
-    // 참가자 등록·조회·탈락 처리는 모두 MatchLock으로 보호한다.
+    // 참가자 등록·조회·탈락 처리도 Enter()로 진입해 잠금 깊이를 함께 추적한다.
     public void RegisterParticipant(Player participant)
     {
-        lock (MatchLock)
+        using (Enter())
         {
             if (_cleanupStarted)
             {
@@ -142,7 +142,7 @@ internal sealed class MatchRuntime
 
     public Player? GetParticipant(long playerId)
     {
-        lock (MatchLock)
+        using (Enter())
         {
             if (_cleanupStarted || !_participants.TryGetValue(playerId, out var entry))
             {
@@ -156,7 +156,7 @@ internal sealed class MatchRuntime
     /// <summary>연결 유무와 관계없이 생존한 사람·봇 참가자의 스냅샷을 반환한다.</summary>
     public List<Player> GetAlivePlayers()
     {
-        lock (MatchLock)
+        using (Enter())
         {
             return _participants.Values.Where(player => !player.IsEliminated).ToList();
         }
@@ -165,7 +165,7 @@ internal sealed class MatchRuntime
     /// <summary>연결·탈락 여부와 관계없이 매치의 전체 참가자 스냅샷을 반환한다.</summary>
     public List<Player> GetPlayers()
     {
-        lock (MatchLock)
+        using (Enter())
         {
             return _participants.Values.ToList();
         }
@@ -173,7 +173,7 @@ internal sealed class MatchRuntime
 
     public List<PlayerInfo> GetPlayerProfiles()
     {
-        lock (MatchLock)
+        using (Enter())
         {
             return _participants.Values.Select(participant => participant.Profile).ToList();
         }
@@ -182,7 +182,7 @@ internal sealed class MatchRuntime
     public bool TryEliminatePlayer(long playerId, EliminationReason reason,
         long attackerPlayerId = 0, AreaType eliminatedArea = AreaType.None, int forcedRank = 0, int finalOrbTier = 0)
     {
-        lock (MatchLock)
+        using (Enter())
         {
             if (_cleanupStarted)
             {
@@ -208,7 +208,7 @@ internal sealed class MatchRuntime
     /// <summary>사람·봇 참가자 중 현재 연결이 있는 세션만 복사해 반환한다.</summary>
     public List<GameClientSession> GetSessions()
     {
-        lock (MatchLock)
+        using (Enter())
         {
             var sessions = new List<GameClientSession>();
             foreach (var player in _participants.Values)
@@ -223,7 +223,7 @@ internal sealed class MatchRuntime
 
     public (bool isGameOver, long? winnerId) CheckGameOver()
     {
-        lock (MatchLock)
+        using (Enter())
         {
             if (_cleanupStarted)
                 return (false, null);
@@ -249,7 +249,7 @@ internal sealed class MatchRuntime
         EliminationReason reason, PlayerMatchStatus finalStatus, DateTime? eliminatedAt,
         long attackerPlayerId, AreaType eliminatedArea, int eliminationRank, int finalOrbTier)> BuildGameResult()
     {
-        lock (MatchLock)
+        using (Enter())
         {
             if (_cleanupStarted)
                 return new();
@@ -269,8 +269,8 @@ internal sealed class MatchRuntime
         }
     }
 
-    public DateTime? EntryDeadlineUtc { get { lock (MatchLock) return _entryDeadlineUtc; } }
-    public DateTime? StartsAtUtc { get { lock (MatchLock) return _startsAtUtc; } }
+    public DateTime? EntryDeadlineUtc { get { using (Enter()) return _entryDeadlineUtc; } }
+    public DateTime? StartsAtUtc { get { using (Enter()) return _startsAtUtc; } }
     /// <summary>개전 게이트가 없는 봇 전용 매치의 시작 앵커. 전투 서비스가 스웜 첫 틱에 찍는다.</summary>
     public DateTime? FallbackStartedAtUtc { get; set; }
 
@@ -282,7 +282,7 @@ internal sealed class MatchRuntime
 
     public void BeginEntry(long playerId)
     {
-        lock (MatchLock)
+        using (Enter())
         {
             if (IsEnded || !IsSetupComplete || playerId <= 0 || GetParticipant(playerId) == null)
             {
@@ -294,7 +294,7 @@ internal sealed class MatchRuntime
 
     public void MarkPlayerReady(long playerId)
     {
-        lock (MatchLock)
+        using (Enter())
         {
             if (IsEnded || !_entryDeadlineUtc.HasValue || playerId <= 0 || GetParticipant(playerId) == null)
             {
@@ -311,13 +311,13 @@ internal sealed class MatchRuntime
 
     public bool IsGameplayActive(DateTime? utcNow = null)
     {
-        lock (MatchLock)
+        using (Enter())
             return !IsEnded && _startsAtUtc.HasValue && (utcNow ?? DateTime.UtcNow) >= _startsAtUtc.Value;
     }
 
     public bool IsEntryTimedOut(DateTime utcNow)
     {
-        lock (MatchLock)
+        using (Enter())
             return !IsEnded && !_startsAtUtc.HasValue && _entryDeadlineUtc.HasValue && utcNow >= _entryDeadlineUtc.Value;
     }
 

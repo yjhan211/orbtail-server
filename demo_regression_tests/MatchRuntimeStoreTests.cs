@@ -356,6 +356,49 @@ public sealed class MatchRuntimeStoreTests
         Assert.Equal(0, store.Count);
     }
 
+    [Fact]
+    public void GetOrCreate_EndDuringCreatedHandler_DefersCleanupUntilCreationScopeExits()
+    {
+        int cleanupCount = 0;
+        bool afterReleaseRan = false;
+        MatchRuntime? created = null;
+        var store = CreateStore(onRedisCleanup: _ =>
+        {
+            Assert.False(Monitor.IsEntered(created!.MatchLock));
+            cleanupCount++;
+        });
+        store.MatchCreated += runtime =>
+        {
+            created = runtime;
+            using (runtime.Enter())
+            {
+                runtime.TryMarkEnded();
+                runtime.AfterRelease.Add(() =>
+                {
+                    Assert.False(Monitor.IsEntered(runtime.MatchLock));
+                    afterReleaseRan = true;
+                });
+            }
+
+            // 조회 메서드의 중첩 진입도 생성 범위보다 먼저 정리하지 않는다.
+            Assert.Empty(runtime.GetPlayers());
+            Assert.Null(runtime.StartsAtUtc);
+            Assert.Same(runtime, store.GetOrNull(runtime.MatchingId));
+            Assert.False(afterReleaseRan);
+            Assert.Equal(0, cleanupCount);
+        };
+
+        var runtime = store.GetOrCreate(90002);
+
+        Assert.Same(created, runtime);
+        Assert.True(runtime.IsEnded);
+        Assert.Null(store.GetOrNull(90002));
+        Assert.True(afterReleaseRan);
+        Assert.Equal(1, cleanupCount);
+        Assert.Empty(runtime.GetPlayers());
+        Assert.Equal(1, cleanupCount);
+    }
+
     private static void InterlockedMax(ref int target, int value)
     {
         int current = Volatile.Read(ref target);

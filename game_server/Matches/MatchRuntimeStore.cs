@@ -33,7 +33,7 @@ internal sealed class MatchRuntimeStore
         }
 
         var newRuntime = new MatchRuntime(this, matchingId, _runtimeLogger, _matchSessionCleanup);
-        lock (newRuntime.MatchLock)
+        using (newRuntime.Enter())
         {
             var runtime = _runtimes.GetOrAdd(matchingId, newRuntime);
             if (!ReferenceEquals(runtime, newRuntime))
