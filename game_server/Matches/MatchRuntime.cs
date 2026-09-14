@@ -12,14 +12,13 @@ namespace game_server.matches;
 ///     게임 한 판의 참가자 프로필·탈락 기록, 참가 세션, 봇, 전투, 아이템, 문 등 상태와 처리 객체를 소유한다.
 ///     같은 매치의 패킷 처리와 틱은 매치 잠금 안에서 실행하고, 서로 다른 매치는 독립적으로 처리한다.
 ///
-///     Enter()로 잠금에 진입하며, 입장 초기화처럼 await가 필요한 작업은 EntryInitializationLock을 사용한다.
+///     Enter()로 잠금에 진입한다. 비동기 매치 초기화는 Store가 등록 전에 완료한다.
 ///     종료 표시 후 가장 바깥쪽 잠금 범위를 벗어나면 자원을 정리하고 Store에서 자신을 제거한다.
 /// </summary>
 internal sealed class MatchRuntime
 {
     public bool IsEnded => Volatile.Read(ref _ended) != 0;
     public object MatchLock { get; } = new();
-    public SemaphoreSlim EntryInitializationLock { get; } = new(1, 1);
 
     public bool IsSetupComplete => Volatile.Read(ref _isSetupComplete);
     public MatchMode Mode { get; private set; }

@@ -78,6 +78,7 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
     private readonly Dictionary<string, TimeSpan?> _expiries = new(StringComparer.Ordinal);
 
     public Func<string, Task>? BeforeKeyDeleteAsync { get; set; }
+    public Func<string, string, Task>? BeforeHashGetAsync { get; set; }
     public Exception? HashGetError { get; set; }
     public Exception? HashSetWithExpiryError { get; set; }
     public bool ApplyHashSetBeforeError { get; set; }
@@ -168,12 +169,13 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
     public Task HashSetPairAtomicAsync(string firstKey, string firstField, RedisValue firstValue, string secondKey,
         string secondField, RedisValue secondValue, int db = -1) => throw new NotSupportedException();
 
-    public Task<RedisValue> HashGetAsync(string key, string field, int db = -1)
+    public async Task<RedisValue> HashGetAsync(string key, string field, int db = -1)
     {
+        if (BeforeHashGetAsync != null) await BeforeHashGetAsync(key, field);
         HashGetCalls++;
         if (HashGetError != null) throw HashGetError;
         byte[]? value = GetHash(key, field);
-        return Task.FromResult(value == null ? RedisValue.Null : (RedisValue)value);
+        return value == null ? RedisValue.Null : (RedisValue)value;
     }
 
     public Task<RedisValue> HashGetAsync(string key, long field, int db = -1) => HashGetAsync(key, field.ToString(), db);

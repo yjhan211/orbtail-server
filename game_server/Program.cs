@@ -93,7 +93,8 @@ internal static class Program
             var lifecycle = sp.GetRequiredService<MatchSessionCleanupService>();
             return new MatchRuntimeStore(
                 sp.GetRequiredService<ILogger<MatchRuntime>>(),
-                matchSessionCleanup: lifecycle);
+                matchSessionCleanup: lifecycle,
+                redisOperations: sp.GetRequiredService<IRedisOperations>());
         });
         services.AddSingleton<MatchEntryFailureHandler>(sp => new MatchEntryFailureHandler(
             sp.GetRequiredService<MatchRuntimeStore>(), sp.GetRequiredService<GameSessionRegistry>(),

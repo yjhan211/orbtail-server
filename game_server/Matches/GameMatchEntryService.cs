@@ -1,7 +1,6 @@
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.common.data;
 using network.common.data.models;
 using network.gameentry;
 using network.infrastructure.redis;
@@ -11,7 +10,7 @@ namespace game_server.matches;
 
 /// <summary>
 ///     GameServer 입장 준비와 입장 기록을 담당한다.
-///     매치당 한 번 사람 프로필·봇·스폰 위치·참가자 명단을 초기화한다.
+///     manifest·입장 준비·참가자 배정을 검증하고, Store에서 초기화된 매치를 가져온다.
 ///     참가자가 입장하면 Redis의 매칭 예약을 연장하고 입장 여부를 기록하며,
 ///     모든 사람이 입장하면 매치 입장 상태를 completed로 변경한다.
 /// </summary>
@@ -22,16 +21,11 @@ internal sealed class GameMatchEntryService(
     GameEntryTicketService ticketService,
     GameServerNodeOptions nodeOptions)
 {
-    private static long _botIdCounter;
-
-    public MatchRuntime GetOrCreateMatch(long matchingId) => matchRuntimes.GetOrCreate(matchingId);
     public Task<GameEntryContext?> ConsumeTicketAsync(string? ticket) => ticketService.ConsumeAsync(ticket, nodeOptions.NodeId);
 
-    public async Task PrepareMatchAsync(MatchRuntime runtime)
+    public async Task<MatchRuntime> PrepareMatchAsync(long matchingId)
     {
-        long matchingId = runtime.MatchingId;
-        var initializationLock = runtime.EntryInitializationLock;
-        await initializationLock.WaitAsync();
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
         try
         {
             string matchingKey = MatchingRedisKeys.Key(matchingId);
@@ -82,75 +76,12 @@ internal sealed class GameMatchEntryService(
                 }
             }
 
-            using (runtime.Enter())
-            {
-                if (runtime.IsEnded)
-                {
-                    throw new OperationCanceledException("Match became terminal during game entry.");
-                }
-
-                if (runtime.IsSetupComplete)
-                {
-                    return;
-                }
-            }
-
-            var mode = manifest.Mode;
-            var humanPlayerIds = manifest.HumanPlayerIds.ToList();
-            var botPlayerIds = Enumerable.Range(0, manifest.BotCount).Select(_ => Interlocked.Decrement(ref _botIdCounter)).ToList();
-            List<long> participantIds = [.. humanPlayerIds, .. botPlayerIds];
-            var spawnCells = MatchSpawnData.CreatePhaseRoomAssignments(matchingId, participantIds);
-            var roster = new List<PlayerInfo>();
-
-            foreach (long playerId in humanPlayerIds)
-            {
-                var info = await PlayerInfo.Load(redisOperations, playerId);
-                if (info == null)
-                {
-                    logger.LogWarning("Match entry rejected: PlayerInfo missing ({PlayerId})", playerId);
-                    throw new InvalidOperationException($"PlayerInfo not found for match participant {playerId}.");
-                }
-                roster.Add(new PlayerInfo
-                {
-                    PlayerId = playerId,
-                    Name = info.Name,
-                    WearItemIdList = info.WearItemIdList.ToList()
-                });
-            }
-
-            using (runtime.Enter())
-            {
-                if (runtime.IsEnded)
-                {
-                    throw new OperationCanceledException("Match became terminal during game entry.");
-                }
-                if (botPlayerIds.Count > 0)
-                {
-                    runtime.Bots.RegisterBots(runtime.MatchingId, botPlayerIds, spawnCells);
-                }
-                foreach (long botPlayerId in botPlayerIds)
-                {
-                    var botProfile = runtime.Bots.GetPlayerProfile(botPlayerId);
-                    if (botProfile == null)
-                    {
-                        throw new InvalidOperationException($"Bot {botPlayerId} was not initialized.");
-                    }
-                    roster.Add(botProfile);
-                }
-                runtime.Doors.Initialize();
-                runtime.InitializeMatch(mode, spawnCells, roster);
-
-                logger.LogInformation("Match started: MatchingId={MatchingId}, Participants={ParticipantCount}, Bots={BotCount}", matchingId, participantIds.Count, botPlayerIds.Count);
-            }
+            return await matchRuntimes.GetOrCreateAsync(matchingId, manifest);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to load match setup: MatchingId={MatchingId}", matchingId);
             throw;
-        }
-        finally
-        {
-            initializationLock.Release();
         }
     }
 

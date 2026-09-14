@@ -14,7 +14,7 @@ public sealed class GameMatchEntryRosterTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var redis = new InMemoryRedisOperations();
         var logger = new RecordingLogger();
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(logger);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(logger, redis: redis);
         var service = TestGameSessionServices.CreateEntryService(redis, store, logger);
         await new PlayerInfo(101, false) { Name = "Human" }.Save(redis);
 
@@ -28,8 +28,8 @@ public sealed class GameMatchEntryRosterTests
                 new byte[] { network.common.MatchingRedisKeys.EntryReadyValue });
             await redis.StringSetAsync(network.common.MatchingRedisKeys.ReservationKey(101),
                 matchingId, TimeSpan.FromMinutes(2));
-            var runtime = store.GetOrCreate(matchingId);
-            await service.PrepareMatchAsync(runtime);
+            var runtime = store.Create(matchingId);
+            runtime = await service.PrepareMatchAsync(runtime.MatchingId);
             return runtime.GetPlayerProfiles().Where(player => player.PlayerId < 0).Select(player => player.PlayerId).ToList();
         }
 
@@ -50,9 +50,9 @@ public sealed class GameMatchEntryRosterTests
     {
         var redis = new InMemoryRedisOperations();
         var logger = new RecordingLogger();
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(logger);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(logger, redis: redis);
         var service = TestGameSessionServices.CreateEntryService(redis, store, logger);
-        var runtime = store.GetOrCreate(981021);
+        var runtime = store.Create(981021);
         var manifest = new MatchManifest
         {
             HumanPlayerIds = Enumerable.Range(1, humanCount).Select(id => (long)id).ToList(),
@@ -61,11 +61,10 @@ public sealed class GameMatchEntryRosterTests
         await redis.HashSetAsync(network.common.MatchingRedisKeys.Key(runtime.MatchingId),
             network.common.MatchingRedisKeys.ManifestField, MessagePack.MessagePackSerializer.Serialize(manifest));
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.PrepareMatchAsync(runtime));
+            service.PrepareMatchAsync(runtime.MatchingId));
         Assert.Equal($"Matching handoff was not committed for match {runtime.MatchingId}.", error.Message);
         Assert.False(runtime.IsSetupComplete);
         Assert.Empty(runtime.GetPlayerProfiles());
-        Assert.Equal(1, runtime.EntryInitializationLock.CurrentCount);
     }
     public static IEnumerable<object[]> InvalidParticipantCounts()
     {
@@ -81,16 +80,15 @@ public sealed class GameMatchEntryRosterTests
     {
         var redis = new InMemoryRedisOperations();
         var logger = new RecordingLogger();
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(logger);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(logger, redis: redis);
         var service = TestGameSessionServices.CreateEntryService(redis, store, logger);
-        var runtime = store.GetOrCreate(981020);
+        var runtime = store.Create(981020);
         await redis.HashSetAsync(network.common.MatchingRedisKeys.Key(runtime.MatchingId),
             network.common.MatchingRedisKeys.ManifestField, MessagePack.MessagePackSerializer.Serialize(manifest));
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.PrepareMatchAsync(runtime));
+            service.PrepareMatchAsync(runtime.MatchingId));
         Assert.Equal("Invalid match participant count.", error.Message);
         Assert.False(runtime.IsSetupComplete);
-        Assert.Equal(1, runtime.EntryInitializationLock.CurrentCount);
     }
     [Theory]
     [InlineData(false)]
@@ -100,9 +98,9 @@ public sealed class GameMatchEntryRosterTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var redis = new InMemoryRedisOperations();
         var logger = new RecordingLogger();
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(logger);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(logger, redis: redis);
         var service = TestGameSessionServices.CreateEntryService(redis, store, logger);
-        var runtime = store.GetOrCreate(981032);
+        var runtime = store.Create(981032);
         if (!missingHuman)
             await new PlayerInfo(101, false) { Name = "Human", WearItemIdList = [123] }.Save(redis);
         await redis.HashSetAsync(network.common.MatchingRedisKeys.Key(runtime.MatchingId),
@@ -114,12 +112,11 @@ public sealed class GameMatchEntryRosterTests
         await redis.StringSetAsync(network.common.MatchingRedisKeys.ReservationKey(101), runtime.MatchingId, TimeSpan.FromMinutes(2));
         if (missingHuman)
         {
-            await Assert.ThrowsAsync<InvalidOperationException>(() => service.PrepareMatchAsync(runtime));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.PrepareMatchAsync(runtime.MatchingId));
             Assert.False(runtime.IsSetupComplete);
-            Assert.Equal(1, runtime.EntryInitializationLock.CurrentCount);
-            return;
+                return;
         }
-        await service.PrepareMatchAsync(runtime);
+        runtime = await service.PrepareMatchAsync(runtime.MatchingId);
         Assert.Equal(2, runtime.GetPlayerProfiles().Count);
         var human = Assert.Single(runtime.GetPlayerProfiles(), player => player.PlayerId == 101);
         Assert.Equal("Human", human.Name);

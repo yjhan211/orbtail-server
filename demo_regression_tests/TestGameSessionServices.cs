@@ -12,6 +12,10 @@ namespace demo_regression_tests;
 
 internal static class TestGameSessionServices
 {
+    // 입장 절차가 관심사가 아닌 단위 테스트용 빈 매치 등록.
+    internal static MatchRuntime GetOrCreate(this MatchRuntimeStore store, long matchingId) =>
+        store.GetOrNull(matchingId) ?? store.Register(store.Create(matchingId));
+
     // 몬스터 단계는 운영 조율자를 그대로 실행하고 다른 전투 단계 의존성은 사용하지 않는다.
     internal static MatchCombatService CreateMonsterTickService()
     {
@@ -66,9 +70,9 @@ internal static class TestGameSessionServices
     // 단위 테스트도 실제 Lifecycle을 사용한다. Redis/NATS만 인메모리 구현으로 대체한다.
     public static MatchRuntimeStore CreateMatchRuntimeStore(
         Microsoft.Extensions.Logging.ILogger logger,
-        Action<long>? onRedisCleanup = null)
+        Action<long>? onRedisCleanup = null, InMemoryRedisOperations? redis = null)
     {
-        var redis = new InMemoryRedisOperations();
+        redis ??= new InMemoryRedisOperations();
         if (onRedisCleanup != null)
         {
             redis.BeforeKeyDeleteAsync = key =>
@@ -80,7 +84,7 @@ internal static class TestGameSessionServices
         }
         var lifecycle = new MatchSessionCleanupService(redis,
             new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
-        return new MatchRuntimeStore(logger.For<MatchRuntime>(), lifecycle);
+        return new MatchRuntimeStore(logger.For<MatchRuntime>(), lifecycle, redis);
     }
     public static MatchCombatDamageService CreateCombatDamageService() =>
         new(new MonsterCombatService(new MatchMonsterSpawnService(new MonsterBehaviorService())));
@@ -119,7 +123,7 @@ internal static class TestGameSessionServices
         const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
         var entry = (GameMatchEntryService?)typeof(GameClientSession).GetField("_matchEntry", flags)!.GetValue(session);
         typeof(GameClientSession).GetField("_match", flags)!.SetValue(session,
-            matchingId > 0 ? (store?.GetOrCreate(matchingId) ?? entry!.GetOrCreateMatch(matchingId)) : null);
+            matchingId > 0 ? (store?.GetOrCreate(matchingId) ?? ((MatchRuntimeStore)typeof(GameMatchEntryService).GetField("<matchRuntimes>P", flags)!.GetValue(entry)!).GetOrCreate(matchingId)) : null);
         session.Player = (matchingId > 0 ? session.Match.GetParticipant(session.PlayerId ?? 0) : null)
             ?? new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = session.PlayerId ?? 0 } };
     }

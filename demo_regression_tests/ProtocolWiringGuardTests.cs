@@ -89,8 +89,12 @@ public class ProtocolWiringGuardTests
         int join = source.IndexOf("SyncPlayersOnEntry()", StringComparison.Ordinal);
         Assert.True(roster >= 0 && roster < area && roster < join);
         string entry = File.ReadAllText(Path.Combine(root, "game_server", "Matches", "GameMatchEntryService.cs"));
-        Assert.True(entry.IndexOf("if (runtime.IsSetupComplete", StringComparison.Ordinal) <
-                    entry.IndexOf("Interlocked.Decrement(ref _botIdCounter)", StringComparison.Ordinal));
+        Assert.Contains("matchRuntimes.GetOrCreateAsync(matchingId, manifest)", entry);
+        Assert.DoesNotContain("_botIdCounter", entry);
+        string store = File.ReadAllText(Path.Combine(root, "game_server", "Matches", "MatchRuntimeStore.cs"));
+        int initialize = store.IndexOf("runtime.InitializeMatch(mode, spawnCells, roster)", StringComparison.Ordinal);
+        int register = store.IndexOf("return Register(runtime);", StringComparison.Ordinal);
+        Assert.True(initialize >= 0 && register > initialize);
     }
 
     [Fact]

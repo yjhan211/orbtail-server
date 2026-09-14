@@ -48,7 +48,7 @@ internal static class GameServerTestAccess
         var sessions = new game_server.sessions.GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<game_server.sessions.GameSessionRegistry>.Instance);
         var lifecycle = new MatchSessionCleanupService(new InMemoryRedisOperations(),
             new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
-        runtimes ??= new MatchRuntimeStore(logger.For<MatchRuntime>(), matchSessionCleanup: lifecycle);
+        runtimes ??= new MatchRuntimeStore(logger.For<MatchRuntime>(), matchSessionCleanup: lifecycle, redisOperations: new InMemoryRedisOperations());
         var entryFailure = new MatchEntryFailureHandler(runtimes, sessions, lifecycle, logger);
         var growth = new PlayerOrbGrowthService(
             Microsoft.Extensions.Logging.Abstractions.NullLogger<PlayerOrbGrowthService>.Instance);

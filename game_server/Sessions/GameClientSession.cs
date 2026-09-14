@@ -196,9 +196,8 @@ public partial class GameClientSession : SessionBase
             EnsureConnectionActive();
             Logger.LogInformation("Client connection authorized: PlayerId={PlayerId}, MatchingId={MatchingId}", playerId, matchingId);
 
-            var runtime = _matchEntry.GetOrCreateMatch(matchingId);
+            var runtime = await _matchEntry.PrepareMatchAsync(matchingId);
             Volatile.Write(ref _match, runtime);
-            await _matchEntry.PrepareMatchAsync(runtime);
             EnsureConnectionActive();
             GameClientSession? previousSession = null;
             using (runtime.Enter())

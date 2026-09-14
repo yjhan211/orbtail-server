@@ -28,13 +28,14 @@ public sealed class GameClientSessionConnectPublicationTests
         using var fixture = new ConnectFixture();
         bool successSent = false;
         bool successHeldLock = false;
-        var runtime = fixture.Store.GetOrCreate(74011);
+        MatchRuntime runtime = null!;
+        fixture.Store.MatchCreated += created => runtime = created;
         var session = fixture.CreateSession(74011, 8111, _ =>
         {
             successSent = true;
             successHeldLock = Monitor.IsEntered(runtime.MatchLock);
             return true;
-        });
+        }, prepareMatch: false);
         var initialPackets = new List<(Protocol Protocol, bool HeldLock)>();
         bool spawnInitialized = false;
         ((AcceptingConnection)fixture.Connection).BeforeSend = packet =>
@@ -237,7 +238,7 @@ public sealed class GameClientSessionConnectPublicationTests
         GameClientSession session = fixture.CreateSession(
             matchingId,
             playerId,
-            packet => { fixture.Record(packet); return true; });
+            packet => { fixture.Record(packet); return true; }, prepareMatch: false);
 
         using Packet packet = CreateSuccessPacket(session);
         (Protocol protocol, long packetPlayerId, G_TO_C_CONNECT_RESULT body) =
@@ -273,7 +274,7 @@ public sealed class GameClientSessionConnectPublicationTests
                 senderEntered.Set();
                 Assert.True(releaseSender.Wait(TimeSpan.FromSeconds(5)));
                 return true;
-            });
+            }, prepareMatch: false);
 
 
         Task connect = Task.Run(() => fixture.ConnectAsync(session, matchingId, playerId));
@@ -313,7 +314,7 @@ public sealed class GameClientSessionConnectPublicationTests
                 if (senderThrows)
                     throw new InvalidOperationException("transport failure");
                 return false;
-            });
+            }, prepareMatch: false);
 
         await fixture.ConnectAsync(session, matchingId, 8_103);
         Assert.Equal(1, Volatile.Read(ref senderCalls));
@@ -424,7 +425,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Contains("Connection.TryMarkAuthenticated(() => Volatile.Write(ref _entryCompleted, 1))", connectionSource);
 
         // 세션 등록·초기화 블록·인증 커밋은 매치 잠금 안에서, 성공 ACK 큐 적재는 잠금 밖에서.
-        int registration = connectionSource.IndexOf("_matchEntry.GetOrCreateMatch(matchingId)", StringComparison.Ordinal);
+        int registration = connectionSource.IndexOf("await _matchEntry.PrepareMatchAsync(matchingId)", StringComparison.Ordinal);
         int registerCallback = connectionSource.IndexOf("_registerSessionCallback(playerId, this)", registration, StringComparison.Ordinal);
         // 등록 콜백은 이전 세션을 반환하고, 매치·연결 잠금을 벗어난 뒤 이전 연결을 끊는다.
         string normalized = connectionSource.Replace("\r\n", "\n");
@@ -513,7 +514,7 @@ public sealed class GameClientSessionConnectPublicationTests
         int load = source.IndexOf("await _matchEntry.PrepareMatchAsync(", StringComparison.Ordinal);
         Assert.True(load >= 0);
         int statementEnd = source.IndexOf(';', load);
-        Assert.StartsWith("EnsureConnectionActive();", source[(statementEnd + 1)..].TrimStart());
+        Assert.StartsWith("Volatile.Write(ref _match, runtime);", source[(statementEnd + 1)..].TrimStart());
         int inventorySnapshot = source.IndexOf("SendOrbList();", statementEnd, StringComparison.Ordinal);
         Assert.True(inventorySnapshot > statementEnd);
         string initialization = source[statementEnd..inventorySnapshot];
@@ -646,7 +647,7 @@ public sealed class GameClientSessionConnectPublicationTests
 
         public ConnectFixture()
         {
-            Store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+            Store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance, redis: Redis);
         }
 
         public MatchRuntimeStore Store { get; }
@@ -658,10 +659,11 @@ public sealed class GameClientSessionConnectPublicationTests
             long matchingId,
             long playerId,
             Func<Packet, bool> sender,
-            Action<GameClientSession>? recordEntryFailure = null)
+            Action<GameClientSession>? recordEntryFailure = null,
+            bool prepareMatch = true)
         {
             Activate(Connection);
-            Store.GetOrCreate(matchingId);
+            if (prepareMatch) Store.GetOrCreate(matchingId);
             var session = new GameClientSession(
                 Connection,
                 NullLogger.Instance,
@@ -679,7 +681,13 @@ public sealed class GameClientSessionConnectPublicationTests
                 TestGameSessionServices.CreateEntryService(Redis, Store, NullLogger.Instance),
                 trySendConnectSuccessResponse: sender);
             Connection.SetSession(session);
-            SetIdentity(session, matchingId, playerId);
+            if (prepareMatch)
+                SetIdentity(session, matchingId, playerId);
+            else
+            {
+                SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
+                SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
+            }
             return session;
         }
 
