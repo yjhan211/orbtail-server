@@ -99,7 +99,7 @@ public class MatchBots
 
     internal long SelectMovementPlanningBot(IReadOnlyList<Bot> activeBots)
     {
-        int cursor = _movementPlanningCursor = (_movementPlanningCursor + 1) % activeBots.Count;
-        return activeBots[cursor % activeBots.Count].PlayerId;
+        _movementPlanningCursor = (_movementPlanningCursor + 1) % activeBots.Count;
+        return activeBots[_movementPlanningCursor].PlayerId;
     }
 }

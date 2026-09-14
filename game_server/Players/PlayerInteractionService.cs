@@ -21,7 +21,7 @@ internal sealed class PlayerInteractionService
         return canceledIds;
     }
 
-    public ErrorCode CheckDoorGauge(MatchRuntime runtime, AreaType area, int doorId)
+    public ErrorCode CheckDoorGauge(MatchRuntime runtime, Player player, int interactId, int doorId)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -38,9 +38,23 @@ internal sealed class PlayerInteractionService
             return ErrorCode.INVALID_GAME_STATE;
         }
 
-        if ((runtime.Closures.IsAreaClosed(door.AreaType) || runtime.Closures.IsAreaClosed(door.AreaTypeB)) && !runtime.Closures.IsAreaClosed(area))
+        if ((runtime.Closures.IsAreaClosed(door.AreaType) || runtime.Closures.IsAreaClosed(door.AreaTypeB)) && !runtime.Closures.IsAreaClosed(player.CurrentArea))
         {
             return ErrorCode.INVALID_GAME_STATE;
+        }
+        var info = GameInteractableData.Get(interactId);
+        if (info == null || info.DoorId != doorId)
+        {
+            return ErrorCode.INVALID_GAME_STATE;
+        }
+        if (info.ZoneId != (int)player.CurrentArea)
+        {
+            return ErrorCode.AREA_MISMATCH;
+        }
+        var cell = player.Cell;
+        if (cell.X != info.CellX || cell.Y != info.CellY)
+        {
+            return ErrorCode.DOOR_TOO_FAR;
         }
         return ErrorCode.SUCCESS;
     }
@@ -56,7 +70,7 @@ internal sealed class PlayerInteractionService
         {
             return ErrorCode.INVALID_GAME_STATE;
         }
-        var error = CheckDoorGauge(runtime, player.CurrentArea, doorId);
+        var error = CheckDoorGauge(runtime, player, interactId, doorId);
         if (error == ErrorCode.SUCCESS)
         {
             player.BeginDoor(interactId, now);
@@ -71,7 +85,7 @@ internal sealed class PlayerInteractionService
             throw new InvalidOperationException("Interaction changes require the match lock.");
         }
 
-        error = runtime.IsEnded || player.IsEliminated ? ErrorCode.INVALID_GAME_STATE : CheckDoorGauge(runtime, player.CurrentArea, doorId);
+        error = runtime.IsEnded || player.IsEliminated ? ErrorCode.INVALID_GAME_STATE : CheckDoorGauge(runtime, player, interactId, doorId);
         if (error != ErrorCode.SUCCESS)
         {
             player.TryFinishInteraction(interactId);

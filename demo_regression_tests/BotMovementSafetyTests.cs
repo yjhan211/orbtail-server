@@ -20,10 +20,9 @@ public sealed class BotMovementSafetyTests
             var target = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Library1);
             runtime.Bots.RegisterBots(runtime.MatchingId, [-1L], new Dictionary<long, Cell> { [-1] = cell });
             var bot = runtime.Bots.GetBot(-1)!;
-            bot.MovementMode = BotMovementMode.Escort;
-            bot.MovementModeUntilUtc = DateTime.UtcNow.AddMinutes(1);
+            bot.Movement.NextPathPlanAtUtc = DateTime.UtcNow.AddMinutes(1);
             bot.LoopWaitUntil = DateTime.MinValue;
-            bot.SetMovementTarget(BotMovementMode.Escort, AreaType.S2Library1, target);
+            bot.SetMovementTarget(AreaType.S2Library1, target);
             bot.Movement.Waypoints.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, target));
             bot.Player.Velocity = new Vector3f(5, 0, 0);
             var originalPosition = bot.Player.Position;
@@ -33,7 +32,7 @@ public sealed class BotMovementSafetyTests
 
             Assert.Empty(bot.Movement.Waypoints);
             Assert.Same(originalPosition, bot.Player.Position);
-            Assert.Equal(DateTime.MinValue, bot.MovementModeUntilUtc);
+            Assert.Equal(DateTime.MinValue, bot.Movement.NextPathPlanAtUtc);
             var movement = Assert.Single(result.Movements);
             Assert.Equal(0f, movement.Velocity.X);
             Assert.Equal(0f, movement.Velocity.Y);

@@ -635,6 +635,8 @@ public sealed class GameClientSessionPublicationTests
             playerId: 101,
             area: (AreaType)50);
 
+        session.Player.Cell = new Cell(113, 78);
+        session.Player.Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, session.Player.Cell);
         fixture.Store.GetOrThrow(70001).StartGameplay(); // 테스트에서만 카운트다운을 생략한다.
 
         await SendAsync(
@@ -1111,6 +1113,8 @@ public sealed class GameClientSessionPublicationTests
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
+        session.Player.Cell = new Cell(113, 78);
+        session.Player.Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, session.Player.Cell);
         fixture.Store.GetOrThrow(70001).StartGameplay();
         await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_FINISH,
             new C_TO_G_DOOR_OPEN_FINISH { InteractId = 702000101 });

@@ -5,24 +5,31 @@ using network.common.data.models;
 
 namespace game_server.players.bots;
 
-public enum BotMovementMode
-{
-    None,
-    Defend,
-    Escort,
-    Return
-}
-
 public class Bot
 {
-    public BotMovementMode DesiredMovementMode { get; private set; }
-
-    /// <summary>이번 판단만 갱신한다. 현재 이동 모드와 경로는 재계산 차례에 적용한다.</summary>
-    public void SetMovementTarget(BotMovementMode mode, AreaType area, Cell cell)
+    /// <summary>목적지만 갱신한다. 확정 경로는 재계획 차례에 교체한다.</summary>
+    public void SetMovementTarget(AreaType area, Cell cell)
     {
-        DesiredMovementMode = mode;
         Movement.DestinationArea = area;
         Movement.Destination = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
+    }
+
+    internal void UpdateWoundedState()
+    {
+        bool wounded = Wounded;
+        float ratio = Player.Health / (float)Config.MAX_HEALTH;
+        if (!wounded && ratio <= Config.SWARM_BOT_WOUNDED_ENTER_RATIO)
+        {
+            Wounded = true;
+            return;
+        }
+
+        if (wounded && ratio >= Config.SWARM_BOT_WOUNDED_EXIT_RATIO)
+        {
+            Wounded = false;
+            return;
+        }
+
     }
 
     public Player Player { get; } = new()
@@ -38,19 +45,14 @@ public class Bot
     public float SwarmDodgeDirectionX { get; set; }
     public float SwarmDodgeDirectionY { get; set; }
     public DateTime SwarmDodgeHoldUntilUtc { get; set; } = DateTime.MinValue;
-    public BotMovementMode MovementMode { get; set; } = BotMovementMode.None;
-    public DateTime MovementModeUntilUtc { get; set; } = DateTime.MinValue;
+    public bool WasAvoidingMonsterAtLastPathPlan { get; set; }
     public DateTime LastDamagedAtUtc { get; set; } = DateTime.MinValue;
-    public (AreaType Area, AreaType PreviousArea, DateTime LeftAtUtc)? AreaMemory { get; set; }
-    public bool FleeDirective { get; set; }
-    public (Vector3f Destination, DateTime CommittedAtUtc)? FleeCommitment { get; set; }
+    public (Vector3f Destination, DateTime SelectedAtUtc)? MonsterAvoidanceTarget { get; set; }
     public DateTime? LastTrailCutAtUtc { get; set; }
     public bool Wounded { get; set; }
     public Vector3f? IdleWatchLastPosition { get; set; }
     public DateTime IdleWatchLastMovedAtUtc { get; set; } = DateTime.MinValue;
-    public DateTime IdleWatchLastLoggedAtUtc { get; set; } = DateTime.MinValue;
     public DateTime NextIdleWanderAtUtc { get; set; } = DateTime.MinValue;
     public DateTime BootsSpeedUntilUtc { get; set; } = DateTime.MinValue;
-    public bool IsSwarmBareHanded { get; set; }
     public DateTime SwarmBareSpeedUntilUtc { get; set; } = DateTime.MinValue;
 }

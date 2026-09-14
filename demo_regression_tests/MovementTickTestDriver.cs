@@ -41,11 +41,24 @@ internal static class MovementTickTestDriver
         : BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance)
     {
         public long PlanningBotId { get; private set; }
-        public override void DecideMovement(MatchRuntime runtime, long botPlayerId) => decide(botPlayerId);
-        public override void PlanMovement(MatchRuntime runtime, Bot bot, DateTime now, bool canPlanThisTick)
+        private Action? _restoreTarget;
+        public override void SelectMovementTarget(MatchRuntime runtime, Bot bot)
         {
+            _restoreTarget?.Invoke();
+            decide(bot.PlayerId);
+        }
+        public override void PrepareMovement(MatchRuntime runtime, Bot bot, DateTime now, bool canPlanThisTick)
+        {
+            // 실행 검증용으로 미리 지정한 목표를 행동 선택 단계에서 다시 제공한다.
+            var destination = bot.Movement.Destination;
+            var area = bot.Movement.DestinationArea;
+            _restoreTarget = () =>
+            {
+                bot.Movement.Destination = destination;
+                bot.Movement.DestinationArea = area;
+            };
             if (canPlanThisTick) PlanningBotId = bot.PlayerId;
-            base.PlanMovement(runtime, bot, now, canPlanThisTick);
+            base.PrepareMovement(runtime, bot, now, canPlanThisTick);
         }
     }
 }

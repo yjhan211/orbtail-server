@@ -132,11 +132,11 @@ public sealed class PlayerInteractionServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984401);
         Assert.Throws<InvalidOperationException>(() =>
-            _interactions.CheckDoorGauge(runtime, AreaType.None, int.MaxValue));
+            _interactions.CheckDoorGauge(runtime, new Player { Profile = new PlayerInfo { PlayerId = 1 } }, int.MaxValue, int.MaxValue));
         using (MatchRuntimeStore.Enter(runtime))
         {
 
-            Assert.Equal(ErrorCode.INVALID_GAME_STATE, _interactions.CheckDoorGauge(runtime, AreaType.None, int.MaxValue));
+            Assert.Equal(ErrorCode.INVALID_GAME_STATE, _interactions.CheckDoorGauge(runtime, new Player { Profile = new PlayerInfo { PlayerId = 1 } }, int.MaxValue, int.MaxValue));
             runtime.TryMarkEnded();
         }
     }
@@ -151,25 +151,26 @@ public sealed class PlayerInteractionServiceTests
             directory = directory.Parent;
         network.common.data.helpers.GameDataHelper.SetBasePath(Path.Combine(directory!.FullName, "network"));
         network.common.data.helpers.GameDataHelper.Initialize();
-        var door = network.common.data.GameDoorData.GetAll().First();
+        var info = GameInteractableData.GetAll().First(item => item.DoorId > 0 && GameDoorData.Get(item.DoorId) != null);
+        var door = GameDoorData.Get(info.DoorId)!;
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(984405);
-        var player = new Player { Profile = new PlayerInfo { PlayerId = playerId }, CurrentArea = door.AreaType };
+        var player = new Player { Profile = new PlayerInfo { PlayerId = playerId }, CurrentArea = door.AreaType, Cell = new Cell(info.CellX, info.CellY) };
         long duration = (long)TimeSpan.FromSeconds(Config.GetSwarmDoorGaugeSeconds(door.DoorId)).TotalMilliseconds;
         using (match.Enter())
         {
-            Assert.False(_interactions.TryFinishDoor(match, player, 10, door.DoorId, duration, out _));
-            Assert.Equal(ErrorCode.SUCCESS, _interactions.StartDoor(match, player, 10, door.DoorId, 0));
+            Assert.False(_interactions.TryFinishDoor(match, player, info.Id, door.DoorId, duration, out _));
+            Assert.Equal(ErrorCode.SUCCESS, _interactions.StartDoor(match, player, info.Id, door.DoorId, 0));
             Assert.Null(player.InterruptDoor());
-            Assert.False(_interactions.TryFinishDoor(match, player, 10, door.DoorId, duration - 1, out var error));
+            Assert.False(_interactions.TryFinishDoor(match, player, info.Id, door.DoorId, duration - 1, out var error));
             Assert.Equal(ErrorCode.DOOR_OPEN_TOO_EARLY, error);
-            Assert.True(_interactions.TryFinishDoor(match, player, 10, door.DoorId, duration, out error));
+            Assert.True(_interactions.TryFinishDoor(match, player, info.Id, door.DoorId, duration, out error));
             Assert.True(match.Doors.IsDoorOpen(door.DoorId));
-            Assert.False(_interactions.TryFinishDoor(match, player, 10, door.DoorId, duration, out _));
+            Assert.False(_interactions.TryFinishDoor(match, player, info.Id, door.DoorId, duration, out _));
             match.Doors.CloseDoorsForAreas([door.AreaType]);
-            Assert.Equal(ErrorCode.SUCCESS, _interactions.StartDoor(match, player, 11, door.DoorId, duration));
-            Assert.Equal(11, player.InterruptDoor());
-            Assert.False(_interactions.TryFinishDoor(match, player, 11, door.DoorId, duration * 2, out _));
+            Assert.Equal(ErrorCode.SUCCESS, _interactions.StartDoor(match, player, info.Id, door.DoorId, duration));
+            Assert.Equal(info.Id, player.InterruptDoor());
+            Assert.False(_interactions.TryFinishDoor(match, player, info.Id, door.DoorId, duration * 2, out _));
             Assert.False(match.Doors.IsDoorOpen(door.DoorId));
         }
     }

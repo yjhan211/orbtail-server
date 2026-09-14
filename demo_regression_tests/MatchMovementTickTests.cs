@@ -46,15 +46,79 @@ public sealed class MatchMovementTickTests
         Assert.False(runtime.Monsters.IsInitialized);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-50)]
+    [InlineData(50)]
+    public void BotMovesOnlyForPositiveElapsedTime(int elapsedMilliseconds)
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(987633);
+        using var scope = runtime.Enter();
+        var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
+        runtime.Bots.RegisterBots(runtime.MatchingId, [-1L], new Dictionary<long, Cell> { [-1] = cell });
+        runtime.StartGameplay();
+        var bot = runtime.Bots.GetBot(-1)!;
+        var before = bot.Player.Position!;
+        var now = DateTime.UtcNow;
+        bot.Movement.LastProcessedAtUtc = now.AddMilliseconds(-elapsedMilliseconds);
+        bot.Movement.Waypoints.Add(new Vector3f(before.X + 0.1f, before.Y, 0f));
+        var service = new MatchMovementService(new MovingBotProbe(), null!, null!);
+
+        service.ProcessTick(runtime, now);
+
+        Assert.Equal(elapsedMilliseconds > 0, !before.Equals(bot.Player.Position));
+        Assert.Equal(now, bot.Movement.LastProcessedAtUtc);
+        Assert.Equal(0f, bot.Movement.Speed);
+        Assert.False(bot.Movement.FollowPath);
+        Assert.True(float.IsFinite(bot.Player.Velocity.X));
+    }
+
+    [Fact]
+    public void MissingBotPositionIsSkippedBeforeBehaviorPreparation()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(987634);
+        using var scope = runtime.Enter();
+        var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
+        runtime.Bots.RegisterBots(runtime.MatchingId, [-1L], new Dictionary<long, Cell> { [-1] = cell });
+        runtime.StartGameplay();
+        var bot = runtime.Bots.GetBot(-1)!;
+        bot.Player.Position = null;
+        bot.Movement.Speed = 3f;
+        bot.Movement.FollowPath = true;
+        var behavior = new BotProbe();
+        var service = new MatchMovementService(behavior, null!, null!);
+
+        service.ProcessTick(runtime, DateTime.UtcNow);
+
+        Assert.Equal(0, behavior.Calls);
+        Assert.Null(bot.Player.Position);
+        Assert.Equal(0f, bot.Movement.Speed);
+        Assert.False(bot.Movement.FollowPath);
+    }
+
+    private sealed class MovingBotProbe()
+        : BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance)
+    {
+        public override void PrepareMovement(MatchRuntime runtime, Bot bot, DateTime now, bool canPlanThisTick)
+        {
+            bot.Movement.ResetIntent();
+            bot.Movement.Speed = 1f;
+            bot.Movement.FollowPath = true;
+        }
+    }
+
     private sealed class BotProbe() : BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance)
     {
         public int Calls { get; private set; }
         public int Decisions { get; private set; }
-        public override void DecideMovement(MatchRuntime runtime, long botPlayerId) => Decisions++;
-        public override void PlanMovement(MatchRuntime runtime, Bot bot, DateTime now, bool canPlanThisTick)
+        public override void SelectMovementTarget(MatchRuntime runtime, Bot bot) => Decisions++;
+        public override void PrepareMovement(MatchRuntime runtime, Bot bot, DateTime now, bool canPlanThisTick)
         {
             Assert.True(Monitor.IsEntered(runtime.MatchLock));
             Calls++;
+            base.PrepareMovement(runtime, bot, now, canPlanThisTick);
         }
     }
 }

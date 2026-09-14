@@ -87,7 +87,7 @@ public partial class GameClientSession
                 doorId = info.DoorId;
                 error = info.ZoneId != (int)Player.CurrentArea
                     ? ErrorCode.AREA_MISMATCH
-                    : _interactions.CheckDoorGauge(match, Player.CurrentArea, doorId);
+                    : _interactions.CheckDoorGauge(match, Player, msg.InteractId, doorId);
             }
 
             bool completed = false;

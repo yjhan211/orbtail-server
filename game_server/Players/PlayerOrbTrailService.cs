@@ -145,6 +145,10 @@ internal sealed class PlayerOrbTrailService
                 destroyed.Add(destroyedItem);
             }
         }
+        if (destroyed.Count > 0 && !inventory.HasAnyOrb() && runtime.Bots.GetBot(player.PlayerId) is { } bot)
+        {
+            bot.SwarmBareSpeedUntilUtc = DateTime.UtcNow.AddSeconds(Config.SWARM_BARE_MOVE_SPEED_SECONDS);
+        }
         return destroyed;
     }
 

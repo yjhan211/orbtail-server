@@ -20,7 +20,7 @@ public sealed class BotMovementStopTests
         foreach (var bot in runtime.Bots.GetBots())
         {
             bot.Player.Velocity = new Vector3f(5, 0, 0);
-            bot.MovementMode = BotMovementMode.None;
+            bot.Movement.Destination = null;
         }
         int decisions = 0;
         MovementTickTestDriver.RunBotTick(runtime, _ =>
@@ -48,13 +48,12 @@ public sealed class BotMovementStopTests
             var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
             runtime.Bots.RegisterBots(runtime.MatchingId, [-1L], new Dictionary<long, Cell> { [-1] = cell });
             var bot = runtime.Bots.GetBot(-1)!;
-            bot.MovementMode = BotMovementMode.Escort;
-            bot.MovementModeUntilUtc = DateTime.UtcNow.AddMinutes(1);
+            bot.Movement.NextPathPlanAtUtc = DateTime.UtcNow.AddMinutes(1);
             bot.LoopWaitUntil = DateTime.MinValue;
             var originalPosition = bot.Player.Position!;
             bot.Player.Velocity = new Vector3f(5f, 1f, 0f);
             if (reason != "no_target")
-                bot.SetMovementTarget(BotMovementMode.Escort, bot.Player.CurrentArea, cell);
+                bot.SetMovementTarget(bot.Player.CurrentArea, cell);
             if (reason is "waiting" or "blocked_cell")
                 bot.Movement.Waypoints.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP,
                     reason == "blocked_cell" ? new Cell(-10000, -10000) : cell));

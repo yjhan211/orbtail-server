@@ -32,56 +32,20 @@ internal class MatchMovementService(
         bool isGameplayActive = runtime.IsGameplayActive(nowUtc);
         if (isGameplayActive && runtime.Bots.HasBots())
         {
-            var activeBots = new List<Bot>();
-            foreach (var bot in runtime.Bots.GetBots())
-            {
-                if (!bot.Player.IsEliminated)
-                {
-                    activeBots.Add(bot);
-                }
-            }
+            var activeBots = runtime.Bots.GetBots().FindAll((x) => !x.Player.IsEliminated);
             long planningBotId = activeBots.Count > 0 ? runtime.Bots.SelectMovementPlanningBot(activeBots) : 0;
-            var now = nowUtc;
             foreach (var bot in activeBots)
             {
-                if (!bot.Player.IsSleeping)
+                var movement = bot.Movement;
+                float botDeltaSeconds = Math.Max(0f, (float)(nowUtc - movement.LastProcessedAtUtc).TotalSeconds);
+                movement.LastProcessedAtUtc = nowUtc;
+                if (bot.Player.Position == null)
                 {
-                    botBehavior.DecideMovement(runtime, bot.PlayerId);
-                }
-                botBehavior.PlanMovement(runtime, bot, now, bot.PlayerId == planningBotId);
-                var intent = bot.Movement;
-                if (intent.PathRequest == MovementPathRequest.CellPath && intent.Destination != null)
-                {
-                    if (!TryPlanCellPath(runtime, bot.Player.GameInfo.ObjectInfo, intent, intent.DestinationArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, intent.Destination)))
-                    {
-                        intent.Clear();
-                    }
-                }
-                foreach (var targetCell in botBehavior.GetIdleWanderTargets(runtime, bot, now))
-                {
-                    if (TryPlanCellPath(runtime, bot.Player.GameInfo.ObjectInfo, intent, bot.Player.CurrentArea, targetCell))
-                    {
-                        break;
-                    }
-                }
-                botBehavior.ConfigureMovement(runtime, bot, now);
-                float botDeltaSeconds = (float)(now - intent.LastProcessedAtUtc).TotalSeconds;
-                intent.LastProcessedAtUtc = now;
-                if (botDeltaSeconds <= 0f)
-                {
-                    botDeltaSeconds = 0.25f;
-                }
-                if (bot.Player.Position == null || bot.Player.IsEliminated)
-                {
-                    intent.ResetIntent();
+                    movement.ResetIntent();
                     continue;
                 }
-
-                if (bot.Player.IsSleeping)
-                {
-                    intent.ResetIntent();
-                }
-                targets.Add(new MovementTarget(bot.Player.GameInfo.ObjectInfo, intent, botDeltaSeconds, false, bot, null, bot.Player.CurrentArea, intent.DodgeDirection != null, false));
+                botBehavior.PrepareMovement(runtime, bot, nowUtc, bot.PlayerId == planningBotId);
+                targets.Add(new MovementTarget(bot.Player.GameInfo.ObjectInfo, movement, botDeltaSeconds, false, bot, null, bot.Player.CurrentArea, movement.DodgeDirection != null, false));
             }
         }
 
@@ -227,10 +191,8 @@ internal class MatchMovementService(
                     path.Waypoints.Add(new Vector3f(previous.X + normalized.X * distance, previous.Y + normalized.Y * distance, 0f));
                     var candidate = AdvanceRoute(runtime, path, previous, distance, ignoreClosedDoors, now);
                     var candidateCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, candidate);
-                    var sourceArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP,
-                        MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, previous));
-                    if (candidate.Equals(previous) || !GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, candidateCell) ||
-                        GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, candidateCell) != sourceArea)
+                    var sourceArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, previous));
+                    if (candidate.Equals(previous) || !GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, candidateCell) || GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, candidateCell) != sourceArea)
                     {
                         continue;
                     }
@@ -407,32 +369,6 @@ internal class MatchMovementService(
         movement.ResetIntent();
     }
 
-    internal static bool TryPlanCellPath(MatchRuntime runtime, GameObjectInfo objectInfo, MovementState movement, AreaType destinationArea, Cell destinationCell)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Path planning requires the match lock.");
-        }
-
-        if (runtime.IsEnded)
-        {
-            return false;
-        }
-
-        var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, objectInfo.Area, objectInfo.Cell, destinationArea, destinationCell);
-        if (path == null || path.Count == 0)
-        {
-            return false;
-        }
-
-        movement.Clear();
-        foreach (var step in path)
-        {
-            movement.Waypoints.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, step.Cell));
-        }
-        return true;
-    }
-
     internal static bool TryPlanWorldPath(MatchRuntime runtime, GameObjectInfo objectInfo, MovementState movement,
         AreaType destinationArea, Vector3f destination)
     {
@@ -472,5 +408,4 @@ internal class MatchMovementService(
         var currentCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, position);
         return targetDistance > SwarmPressureField.GetDistance(currentCell);
     }
-
 }

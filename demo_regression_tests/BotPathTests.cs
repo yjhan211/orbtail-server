@@ -11,18 +11,18 @@ public sealed class BotPathTests
     {
         var bot = new Bot
         {
-            MovementMode = BotMovementMode.Return,
+            WasAvoidingMonsterAtLastPathPlan = true,
             Movement = { WaypointIndex = 2 }
         };
         var path = bot.Movement.Waypoints;
         var cell = new network.common.data.models.Cell(3, 4);
 
-        bot.SetMovementTarget(BotMovementMode.Escort, AreaType.S2Gym1, cell);
+        bot.SetMovementTarget(AreaType.S2Gym1, cell);
 
-        Assert.Equal(BotMovementMode.Escort, bot.DesiredMovementMode);
+        Assert.NotNull(bot.Movement.Destination);
         Assert.Equal(AreaType.S2Gym1, bot.Movement.DestinationArea);
         Assert.Equal(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell), bot.Movement.Destination);
-        Assert.Equal(BotMovementMode.Return, bot.MovementMode);
+        Assert.True(bot.WasAvoidingMonsterAtLastPathPlan);
         Assert.Same(path, bot.Movement.Waypoints);
         Assert.Equal(2, bot.Movement.WaypointIndex);
     }
@@ -30,8 +30,8 @@ public sealed class BotPathTests
     [Fact]
     public void ClearingPathPreservesDestinationAndDecisionButCancelsMovement()
     {
-        var bot = new Bot { MovementMode = BotMovementMode.Return };
-        bot.SetMovementTarget(BotMovementMode.Escort, AreaType.S2Ground,
+        var bot = new Bot { WasAvoidingMonsterAtLastPathPlan = true };
+        bot.SetMovementTarget(AreaType.S2Ground,
             new network.common.data.models.Cell(3, 4));
         var destination = bot.Movement.Destination;
         bot.Movement.Waypoints.Add(destination!);
@@ -45,8 +45,8 @@ public sealed class BotPathTests
         Assert.Equal(0, bot.Movement.WaypointIndex);
         Assert.Same(destination, bot.Movement.Destination);
         Assert.Equal(AreaType.S2Ground, bot.Movement.DestinationArea);
-        Assert.Equal(BotMovementMode.Escort, bot.DesiredMovementMode);
-        Assert.Equal(BotMovementMode.Return, bot.MovementMode);
+        Assert.NotNull(bot.Movement.Destination);
+        Assert.True(bot.WasAvoidingMonsterAtLastPathPlan);
         Assert.Equal(0f, bot.Movement.Speed);
         Assert.False(bot.Movement.FollowPath);
     }

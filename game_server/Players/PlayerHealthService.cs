@@ -23,6 +23,7 @@ internal sealed class PlayerHealthService(
         }
 
         var change = player.ApplyDamage(damage);
+        match.Bots.GetBot(player.PlayerId)?.UpdateWoundedState();
         if (change.Changed)
         {
             logger.LogInformation("Player {PlayerId} Health: {OldHealth}→{Health} ({Delta:+#;-#;0})", player.PlayerId, change.Before, change.After, change.RequestedDelta);
@@ -57,6 +58,7 @@ internal sealed class PlayerHealthService(
             return new(player.Health, player.Health, amount);
         }
         var change = player.Recover(amount);
+        match.Bots.GetBot(player.PlayerId)?.UpdateWoundedState();
         if (change.Changed)
         {
             logger.LogInformation("Player {PlayerId} Health: {OldHealth}→{Health} ({Delta:+#;-#;0})", player.PlayerId, change.Before, change.After, change.RequestedDelta);
