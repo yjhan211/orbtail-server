@@ -23,7 +23,7 @@ public sealed class BotEscapeTargetTests
         var position = MapCoordinateConverter.CellToWorld(mapId, cell);
         var threat = new Vector3f(position.X + offsetX, position.Y + offsetY, 0f);
 
-        var target = BotBehaviorService.FindMonsterEscapeCell(position, area, threat);
+        var target = SelectMonsterEscapeTarget(cell, area, MapCoordinateConverter.WorldToCell(mapId, threat));
 
         Assert.Equal(area, GameMapData.GetCurrentArea(mapId, target));
         Assert.True(GameMapData.IsMoveablePosition(mapId, target));
@@ -31,13 +31,9 @@ public sealed class BotEscapeTargetTests
         Assert.NotNull(path);
         Assert.NotEmpty(path!);
         Assert.All(path!, step => Assert.Equal(area, GameMapData.GetCurrentArea(mapId, step.Cell)));
-        var destination = MapCoordinateConverter.CellToWorld(mapId, target);
-        float dx = destination.X - threat.X;
-        float dy = destination.Y - threat.Y;
-        Assert.True(dx * dx + dy * dy > offsetX * offsetX + offsetY * offsetY);
-        float moveX = destination.X - position.X;
-        float moveY = destination.Y - position.Y;
-        Assert.True(moveX * moveX + moveY * moveY <= Config.SWARM_BOT_MONSTER_FLEE_DISTANCE * Config.SWARM_BOT_MONSTER_FLEE_DISTANCE);
+        var threatCell = MapCoordinateConverter.WorldToCell(mapId, threat);
+        Assert.True(target.GetDistance(threatCell) > cell.GetDistance(threatCell));
+        Assert.InRange(cell.GetDistance(target), Config.SWARM_BOT_MIN_THREAT_FLEE_DISTANCE_CELLS, Config.SWARM_BOT_MONSTER_FLEE_DISTANCE_CELLS);
     }
 
     [Fact]
@@ -46,9 +42,23 @@ public sealed class BotEscapeTargetTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
         var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
-        var target = BotBehaviorService.FindMonsterEscapeCell(position, AreaType.None, position);
+        var target = SelectMonsterEscapeTarget(cell, AreaType.None, cell);
         Assert.Equal(cell.X, target.X);
         Assert.Equal(cell.Y, target.Y);
+    }
+
+    private static Cell SelectMonsterEscapeTarget(Cell currentCell, AreaType area, Cell threatCell)
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(981231);
+        using var scope = runtime.Enter();
+        runtime.Bots.RegisterBots(runtime.MatchingId, [-1L], new Dictionary<long, Cell> { [-1L] = currentCell });
+        var bot = runtime.Bots.GetBot(-1)!;
+        bot.Player.CurrentArea = area;
+        BotBehaviorService.SelectThreatEscapeTarget(runtime, bot, threatCell, DateTime.UtcNow, stayInCurrentArea: true);
+        var destination = bot.Movement.DestinationCell!;
+        Assert.Equal(destination.GetDistance(currentCell) == 0, bot.Movement.HoldPosition);
+        return destination;
     }
 
     [Theory]
@@ -71,23 +81,36 @@ public sealed class BotEscapeTargetTests
             {
                 Profile = new PlayerInfo { PlayerId = 1 },
                 Position = threatPosition,
+                Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, threatPosition),
                 CurrentArea = bot.Player.CurrentArea,
                 Health = Config.MAX_HEALTH
             };
             rival.Orbs.TryAddItemWithCapacity(107000020, 8, out _);
             runtime.RegisterParticipant(rival);
-            var service = new BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance);
+            var service = new BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance);
 
-            bot.MonsterAvoidanceTarget = (position, DateTime.UtcNow);
+            bot.MonsterAvoidanceTarget = (cell, DateTime.UtcNow);
             service.SelectMovementTarget(runtime, bot);
 
             Assert.Null(bot.MonsterAvoidanceTarget);
-            var target = bot.Movement.Destination!;
-            float dx = target.X - threatPosition.X;
-            float dy = target.Y - threatPosition.Y;
-            Assert.True(dx * dx + dy * dy >= threatOffset * threatOffset);
+            var target = bot.Movement.DestinationCell!;
+            Assert.True(target.GetDistance(rival.Cell!) >= cell.GetDistance(rival.Cell!));
+            Assert.InRange(cell.GetDistance(target), 0, Config.SWARM_BOT_FLEE_PROBE_DISTANCE_CELLS);
             Assert.NotEqual(AreaType.None, bot.Movement.DestinationArea);
-            Assert.True(GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, bot.Movement.Destination!)));
+            Assert.True(GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, target));
+            if (target.GetDistance(cell) > 0)
+            {
+                var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.CurrentArea,
+                    cell, bot.Movement.DestinationArea, target);
+                Assert.NotNull(path);
+                Assert.NotEmpty(path!);
+                double safeDistance = runtime.Closures.GetSafeDistance(DateTime.UtcNow);
+                Assert.All(path!, step =>
+                {
+                    Assert.True(step.Cell.GetDistance(rival.Cell!) >= cell.GetDistance(rival.Cell!));
+                    Assert.True(SwarmPressureField.GetDistance(step.Cell) <= safeDistance);
+                });
+            }
         }
     }
 }

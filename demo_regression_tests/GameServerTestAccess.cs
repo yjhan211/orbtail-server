@@ -59,7 +59,7 @@ internal static class GameServerTestAccess
         var combatDamage = TestGameSessionServices.CreateCombatDamageService();
         var results = new MatchResultService(runtimes, logger);
         var interactions = new PlayerInteractionService();
-        var decisions = new BotBehaviorService(growth, orbTrails, interactions,
+        var decisions = new BotBehaviorService(growth, interactions,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotBehaviorService>.Instance);
         var field = new MatchFieldService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchFieldService>.Instance, orbTrails, health,
             cleanup, matchEliminations, results);

@@ -120,13 +120,13 @@ public class SwarmDamagePathTests
 
         // ② 도주 임계: 강자 판정과 피격 반응 둘 다 ×1.5를 쓴다.
         Assert.Contains("Config.SWARM_BOT_FLEE_POWER_RATIO", botSource);
-        Assert.Contains("rivalPower >= myPower * Config.SWARM_BOT_FLEE_POWER_RATIO", botSource);
-        Assert.Contains("wounded || attackerPower >= orbPower * Config.SWARM_BOT_FLEE_POWER_RATIO", botSource);
+        Assert.Contains("player.Orbs.GetOrbPower() < myPower * Config.SWARM_BOT_FLEE_POWER_RATIO", botSource);
+        Assert.Contains("bot.Wounded || attacker.Orbs.GetOrbPower() >= orbPower * Config.SWARM_BOT_FLEE_POWER_RATIO", botSource);
 
         // ③ 치명상 이탈: 히스테리시스 + 전력 0으로 스캔.
         Assert.Contains("Config.SWARM_BOT_WOUNDED_ENTER_RATIO", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Players", "Bots", "Bot.cs")));
         Assert.Contains("Config.SWARM_BOT_WOUNDED_EXIT_RATIO", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Players", "Bots", "Bot.cs")));
-        Assert.Contains("wounded ? 0f : orbPower", botSource);
+        Assert.Contains("bot.Wounded ? 0f : orbPower", botSource);
     }
 
     /// <summary>

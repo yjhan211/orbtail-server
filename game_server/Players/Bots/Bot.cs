@@ -11,7 +11,7 @@ public class Bot
     public void SetMovementTarget(AreaType area, Cell cell)
     {
         Movement.DestinationArea = area;
-        Movement.Destination = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
+        Movement.DestinationCell = cell.Clone();
     }
 
     internal void UpdateWoundedState()
@@ -41,13 +41,14 @@ public class Bot
     public long PlayerId { get => Player.PlayerId; set => Player.Profile.PlayerId = value; }
     public long LastProximityAttackerPlayerId { get; set; }
     public MovementState Movement { get; } = new();
+    public (AreaType Area, Cell Cell)? ExplorationTarget { get; set; }
     public DateTime LoopWaitUntil { get; set; } = DateTime.MinValue;
     public float SwarmDodgeDirectionX { get; set; }
     public float SwarmDodgeDirectionY { get; set; }
     public DateTime SwarmDodgeHoldUntilUtc { get; set; } = DateTime.MinValue;
     public bool WasAvoidingMonsterAtLastPathPlan { get; set; }
     public DateTime LastDamagedAtUtc { get; set; } = DateTime.MinValue;
-    public (Vector3f Destination, DateTime SelectedAtUtc)? MonsterAvoidanceTarget { get; set; }
+    public (Cell Destination, DateTime SelectedAtUtc)? MonsterAvoidanceTarget { get; set; }
     public DateTime? LastTrailCutAtUtc { get; set; }
     public bool Wounded { get; set; }
     public Vector3f? IdleWatchLastPosition { get; set; }

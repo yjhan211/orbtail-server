@@ -38,7 +38,7 @@ internal static class MovementTickTestDriver
     }
 
     private sealed class BehaviorProbe(Action<long> decide)
-        : BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance)
+        : BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance)
     {
         public long PlanningBotId { get; private set; }
         private Action? _restoreTarget;

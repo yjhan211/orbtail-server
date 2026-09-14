@@ -17,6 +17,8 @@ public sealed class MovementState
 {
     // 행동 판단의 목적지와 확정 경로는 별개다. ResetIntent는 둘 다 보존한다.
     public AreaType DestinationArea { get; set; }
+    // 셀 목표(봇)와 정밀 월드 목표(몬스터)는 서로 다른 입력이다.
+    public Cell? DestinationCell { get; set; }
     public Vector3f? Destination { get; set; }
 
     public List<Vector3f> Waypoints { get; } = [];
@@ -25,6 +27,8 @@ public sealed class MovementState
     public DateTime LastProcessedAtUtc { get; set; } = DateTime.UtcNow;
 
     // 아래 명령은 한 번 실행한 뒤 비운다. 목적지만 남아 있어도 이동하지 않는다.
+    // 도주 불가·공격 사거리 내 대기 등 행동 판단이 명시적으로 요청한 정지.
+    public bool HoldPosition { get; set; }
     public float Speed { get; set; }
     public bool FollowPath { get; set; }
     public Vector3f? DodgeDirection { get; set; }
@@ -35,6 +39,7 @@ public sealed class MovementState
 
     public void ResetIntent()
     {
+        HoldPosition = false;
         Speed = 0f;
         FollowPath = false;
         DodgeDirection = null;

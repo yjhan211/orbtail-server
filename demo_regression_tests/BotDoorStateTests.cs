@@ -31,7 +31,7 @@ public sealed class BotDoorStateTests
         }
         bot.Player.Cell = new Cell(cell.X + cellOffset, cell.Y);
         bot.Player.GameInfo.ObjectInfo.Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, bot.Player.Cell);
-        var service = new BotBehaviorService(null!, null!, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
+        var service = new BotBehaviorService(null!, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
 
         service.ProcessDoorInteractions(runtime, [bot], [], DateTime.UtcNow);
 
@@ -59,7 +59,7 @@ public sealed class BotDoorStateTests
 
             Assert.Equal(PlayerState.IDLE, bot.Player.State);
             Assert.Null(bot.Player.PendingDoorInteractionId);
-            var service = new BotBehaviorService(null!, null!, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
+            var service = new BotBehaviorService(null!, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
             service.ProcessDoorInteractions(runtime, [bot], [], now.AddMilliseconds(100));
             Assert.Equal(PlayerState.EXPLORE_1, bot.Player.State);
             Assert.Equal(702000113, bot.Player.PendingDoorInteractionId);
@@ -80,7 +80,7 @@ public sealed class BotDoorStateTests
             runtime.Bots.RegisterBots(runtime.MatchingId, [-1L], new Dictionary<long, Cell> { [-1] = cell });
             var bot = runtime.Bots.GetBot(-1)!;
             bot.Player.CurrentArea = door.AreaType;
-            var service = new BotBehaviorService(null!, null!, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
+            var service = new BotBehaviorService(null!, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
             var now = DateTime.UtcNow;
 
             service.ProcessDoorInteractions(runtime, [bot], [], now);

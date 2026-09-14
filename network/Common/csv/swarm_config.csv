@@ -3,19 +3,18 @@ SWARM_BOT_WALK_SPEED,5,봇 기본 이동 속도 - 월드 단위/초
 SWARM_BOT_WANDER_SCATTER_PROBABILITY,0.3,인원이 적은 구역을 배회 대상으로 고를 확률
 SWARM_BOT_ROOM_DWELL_MIN_SECONDS,1.25,같은 구역 체류 최소 시간(초)
 SWARM_BOT_ROOM_DWELL_MAX_SECONDS,2.25,같은 구역 체류 최대 시간(초)
-SWARM_BOT_SUMMON_STONE_REACTION_SECONDS,2.5,소환석 생성 후 봇 탐색과 획득 대기 시간(초)
 SWARM_BOT_AREA_RETURN_COOLDOWN_SECONDS,5,봇 판단 기준 - SwarmBotAreaReturnCooldownSeconds
 SWARM_BOT_POST_CUT_LOOT_SECONDS,5,봇 판단 기준 - SwarmBotPostCutLootSeconds
 SWARM_BOT_FIELD_EVACUATE_MARGIN_CELLS,5,봇 판단 기준 - SwarmBotFieldEvacuateMarginCells
-SWARM_BOT_MONSTER_DANGER_RADIUS,5,봇 판단 기준 - MonsterDangerRadius
-SWARM_BOT_MONSTER_FLEE_DISTANCE,5,봇 판단 기준 - MonsterFleeDistance
-SWARM_BOT_MONSTER_ROAM_DISTANCE,3,봇 판단 기준 - MonsterRoamDistance
-SWARM_BOT_MIN_THREAT_FLEE_DISTANCE,2,봇 판단 기준 - MinThreatFleeDistance
+SWARM_BOT_MONSTER_HUNT_STOP_DISTANCE_CELLS,5,봇 사냥 정지 거리 (8방향 셀 수 - 실제 공격 사거리와 별개)
+SWARM_BOT_MONSTER_DANGER_RADIUS_CELLS,10,봇 목표 선택 거리 (8방향 셀 수)
+SWARM_BOT_MONSTER_FLEE_DISTANCE_CELLS,10,봇 목표 선택 거리 (8방향 셀 수)
+SWARM_BOT_MONSTER_ROAM_DISTANCE_CELLS,6,봇 목표 선택 거리 (8방향 셀 수)
+SWARM_BOT_MIN_THREAT_FLEE_DISTANCE_CELLS,4,봇 목표 선택 거리 (8방향 셀 수)
 SWARM_BOT_FLEE_COMMIT_SECONDS,2,봇 판단 기준 - FleeCommitSeconds
-SWARM_BOT_RIVAL_SCAN_RADIUS,11,봇 판단 기준 - SwarmBotRivalScanRadius
-SWARM_BOT_FLEE_PROBE_DISTANCE,8,봇 판단 기준 - SwarmBotFleeProbeDistance
-SWARM_BOT_MIN_FLEE_TARGET_DISTANCE,3,봇 판단 기준 - SwarmBotMinFleeTargetDistance
-SWARM_BOT_CHASE_POWER_ADVANTAGE,1.25,봇 판단 기준 - SwarmBotChasePowerAdvantage
+SWARM_BOT_RIVAL_SCAN_RADIUS_CELLS,22,봇 목표 선택 거리 (8방향 셀 수)
+SWARM_BOT_FLEE_PROBE_DISTANCE_CELLS,16,봇 목표 선택 거리 (8방향 셀 수)
+SWARM_BOT_MIN_FLEE_TARGET_DISTANCE_CELLS,6,봇 목표 선택 거리 (8방향 셀 수)
 SWARM_BOT_FLEE_POWER_RATIO,1.5,봇 판단 기준 - SwarmBotFleePowerRatio
 SWARM_BOT_DAMAGED_FLEE_SECONDS,6,봇 판단 기준 - SwarmBotDamagedFleeSeconds
 SWARM_BOT_WOUNDED_ENTER_RATIO,0.4,봇 판단 기준 - SwarmBotWoundedEnterRatio

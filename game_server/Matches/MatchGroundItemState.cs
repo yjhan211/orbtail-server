@@ -43,6 +43,7 @@ public sealed class MatchGroundItemState(TimeProvider? timeProvider = null)
                 SpawnOriginX = originX,
                 SpawnOriginY = originY
             };
+            item.ObjectInfo.Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, item.ObjectInfo.Position);
             _items[item.GroundItemUid] = item;
             _spawnedAtUtc[item.GroundItemUid] = _timeProvider.GetUtcNow();
             spawned.Add(Clone(item));
@@ -58,11 +59,6 @@ public sealed class MatchGroundItemState(TimeProvider? timeProvider = null)
     public GroundItemInfo? GetItem(long groundItemUid)
     {
         return _items.TryGetValue(groundItemUid, out var item) ? Clone(item) : null;
-    }
-
-    public bool WasSpawnedWithin(long groundItemUid, TimeSpan age)
-    {
-        return _spawnedAtUtc.TryGetValue(groundItemUid, out var spawnedAt) && _timeProvider.GetUtcNow() - spawnedAt < age;
     }
 
     public bool IsLanding(long groundItemUid)
@@ -127,6 +123,7 @@ public sealed class MatchGroundItemState(TimeProvider? timeProvider = null)
         PositionY = source.PositionY,
         SpawnOriginX = source.SpawnOriginX,
         SpawnOriginY = source.SpawnOriginY,
-        SourcePlayerId = source.SourcePlayerId
+        SourcePlayerId = source.SourcePlayerId,
+        ObjectInfo = { Cell = source.ObjectInfo.Cell.Clone() }
     };
 }

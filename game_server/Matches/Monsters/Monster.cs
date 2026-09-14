@@ -33,7 +33,15 @@ public sealed class Monster
         }
     }
     public AreaType Area { get => Info.AreaType; set => Info.AreaType = value; }
-    public Vector3f Position { get => Info.ObjectInfo.Position; set => Info.ObjectInfo.Position = value; }
+    public Vector3f Position
+    {
+        get => Info.ObjectInfo.Position;
+        set
+        {
+            Info.ObjectInfo.Position = value;
+            Info.ObjectInfo.Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, value);
+        }
+    }
     public int Health { get => Info.CurrentHealth; set => Info.CurrentHealth = value; }
     public bool Alive { get => Info.IsAlive; set => Info.IsAlive = value; }
     public DateTime ActivatesAtUtc { get; set; }

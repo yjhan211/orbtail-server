@@ -20,7 +20,7 @@ public sealed class BotMovementStopTests
         foreach (var bot in runtime.Bots.GetBots())
         {
             bot.Player.Velocity = new Vector3f(5, 0, 0);
-            bot.Movement.Destination = null;
+            bot.Movement.DestinationCell = null;
         }
         int decisions = 0;
         MovementTickTestDriver.RunBotTick(runtime, _ =>

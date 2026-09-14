@@ -18,7 +18,7 @@ public sealed class BotGrowthTests
         var human = new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 1 } };
         match.RegisterParticipant(human);
         var growth = new PlayerOrbGrowthService(NullLogger<PlayerOrbGrowthService>.Instance);
-        var decisions = new BotBehaviorService(growth, new PlayerOrbTrailService(), new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
+        var decisions = new BotBehaviorService(growth, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
         var bot = new Bot { PlayerId = -1 };
         match.RegisterParticipant(bot.Player);
         using (match.Enter())
@@ -45,7 +45,7 @@ public sealed class BotGrowthTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(949102);
         var growth = new PlayerOrbGrowthService(NullLogger<PlayerOrbGrowthService>.Instance);
-        var decisions = new BotBehaviorService(growth, new PlayerOrbTrailService(), new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
+        var decisions = new BotBehaviorService(growth, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
         var bot = new Bot { PlayerId = -1 };
         match.RegisterParticipant(bot.Player);
         using (match.Enter())
@@ -68,7 +68,7 @@ public sealed class BotGrowthTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(949103);
         var growth = new PlayerOrbGrowthService(NullLogger<PlayerOrbGrowthService>.Instance);
-        var decisions = new BotBehaviorService(growth, new PlayerOrbTrailService(), new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
+        var decisions = new BotBehaviorService(growth, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
         var bot = new Bot { PlayerId = -1 };
         match.RegisterParticipant(bot.Player);
         using (match.Enter())

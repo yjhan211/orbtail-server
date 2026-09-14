@@ -166,12 +166,6 @@ internal sealed class PlayerPickupService(PlayerHealthService healthService, ILo
         {
             return false;
         }
-        if (player.PlayerId < 0 &&
-            item.ItemId is Config.SUMMON_STONE_GROUND_ITEM_ID or Config.BOOTS_GROUND_ITEM_ID &&
-            items.WasSpawnedWithin(item.GroundItemUid, TimeSpan.FromSeconds(Config.SWARM_BOT_SUMMON_STONE_REACTION_SECONDS)))
-        {
-            return false;
-        }
         if (item.AreaType != (int)reachable.Area)
         {
             return false;

@@ -171,11 +171,15 @@ public sealed class BotMovementIntentTests
         var bot = runtime.Bots.GetBot(-1)!;
         var now = DateTime.UtcNow;
         var deadline = now.AddSeconds(1);
-        bot.SetMovementTarget(bot.Player.CurrentArea, cell);
+        var destination = cell.GetAdjacentCells().First(candidate =>
+            GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, candidate) == bot.Player.CurrentArea &&
+            MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.CurrentArea, cell, bot.Player.CurrentArea, candidate) is { Count: > 0 });
+        bot.SetMovementTarget(bot.Player.CurrentArea, destination);
+        bot.Movement.Waypoints.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, destination));
         bot.Movement.NextPathPlanAtUtc = deadline;
         bot.WasAvoidingMonsterAtLastPathPlan = previouslyAvoiding;
         bot.LastDamagedAtUtc = underFire ? now : now.AddMinutes(-1);
-        bot.MonsterAvoidanceTarget = avoidingNow ? (bot.Player.Position!, now) : null;
+        bot.MonsterAvoidanceTarget = avoidingNow ? (bot.Player.Cell!, now) : null;
 
         new FixedTargetBehavior(bot).PrepareMovement(runtime, bot, now, planningTurn);
 
@@ -255,22 +259,22 @@ public sealed class BotMovementIntentTests
         trails.DestroyOrbsFromOrdinal(runtime, bot.Player, 0);
         Assert.Equal(speedUntil, bot.SwarmBareSpeedUntilUtc);
         bot.Player.State = PlayerState.IDLE;
-        bot.Movement.Destination = null;
+        bot.Movement.DestinationCell = null;
         new FixedTargetBehavior(bot).PrepareMovement(runtime, bot, DateTime.UtcNow, false);
         Assert.Equal(speedUntil, bot.SwarmBareSpeedUntilUtc);
     }
 
     private sealed class FixedTargetBehavior(Bot target)
-        : BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance)
+        : BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance)
     {
         public int Selections { get; private set; }
         private readonly AreaType _area = target.Movement.DestinationArea;
-        private readonly Vector3f? _destination = target.Movement.Destination;
+        private readonly Cell? _destination = target.Movement.DestinationCell;
         public override void SelectMovementTarget(MatchRuntime runtime, Bot bot)
         {
             Selections++;
             bot.Movement.DestinationArea = _area;
-            bot.Movement.Destination = _destination;
+            bot.Movement.DestinationCell = _destination;
         }
     }
 }

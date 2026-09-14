@@ -99,7 +99,7 @@ public sealed class MatchMovementTickTests
     }
 
     private sealed class MovingBotProbe()
-        : BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance)
+        : BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance)
     {
         public override void PrepareMovement(MatchRuntime runtime, Bot bot, DateTime now, bool canPlanThisTick)
         {
@@ -109,7 +109,7 @@ public sealed class MatchMovementTickTests
         }
     }
 
-    private sealed class BotProbe() : BotBehaviorService(null!, null!, null!, NullLogger<BotBehaviorService>.Instance)
+    private sealed class BotProbe() : BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance)
     {
         public int Calls { get; private set; }
         public int Decisions { get; private set; }
