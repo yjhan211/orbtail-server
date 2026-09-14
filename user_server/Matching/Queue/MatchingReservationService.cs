@@ -7,14 +7,13 @@ namespace user_server.matching.queue;
 
 /// <summary>
 ///     플레이어가 다른 매치에 중복 배정되지 않도록 Redis에 예약을 남긴다.
-///     매치 생성 시 대기 중인 요청을 임시로 확보하고, 매치 번호가 정해지면 예약 값으로 기록한다.
+///     매치 번호로 대기 중인 요청을 예약하고, 일부 참가자를 확보하지 못하면 이번 예약을 되돌린다.
 ///     취소도 같은 예약 키를 사용하므로 매치 생성과 취소 중 먼저 확보한 작업만 진행할 수 있다.
 ///     실패하거나 매치가 끝나면 해당 작업의 예약을 해제하고, 정리에 실패하면 TTL로 만료된다.
 /// </summary>
 internal sealed class MatchingReservationService(IRedisOperations redisOperations, ILogger<MatchingReservationService> logger)
 {
-    private static readonly TimeSpan ReservationLifetime = TimeSpan.FromMinutes(2);
-    private static readonly TimeSpan ActiveReservationLifetime = MatchingRedisKeys.EntryReservationLifetime;
+    private static readonly TimeSpan ReservationLifetime = MatchingRedisKeys.EntryReservationLifetime;
     private static string ReservationKey(long playerId) => MatchingRedisKeys.ReservationKey(playerId);
 
     public async Task<bool> HasReservationAsync(long playerId)
@@ -23,13 +22,14 @@ internal sealed class MatchingReservationService(IRedisOperations redisOperation
         return !reservation.IsNullOrEmpty;
     }
 
-    public async Task<MatchingReservationLease?> TryAcquireAsync(IEnumerable<MatchingQueueData> requests)
+    public async Task<MatchingReservationLease?> TryAcquireAsync(IEnumerable<MatchingQueueData> requests, long matchingId)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
         var reservedRequests = requests
             .Where(request => request.PlayerId > 0)
             .DistinctBy(request => request.PlayerId)
             .ToList();
-        string reservationId = Guid.NewGuid().ToString("N");
+        string reservationId = matchingId.ToString(CultureInfo.InvariantCulture);
         var acquiredPlayerIds = new List<long>(reservedRequests.Count);
 
         try
@@ -80,26 +80,6 @@ internal sealed class MatchingReservationService(IRedisOperations redisOperation
         return redisOperations.StringDeleteIfEqualsAsync(ReservationKey(playerId), reservationLease.ReservationId);
     }
 
-    public async Task CommitAsync(MatchingReservationLease reservationLease, long matchingId)
-    {
-        string matchingIdValue = matchingId.ToString(CultureInfo.InvariantCulture);
-        reservationLease.MatchingId = matchingId;
-
-        foreach (long playerId in reservationLease.PlayerIds)
-        {
-            bool committed = await redisOperations.StringSetIfEqualsAsync(
-                ReservationKey(playerId),
-                reservationLease.ReservationId,
-                matchingIdValue,
-                ActiveReservationLifetime);
-            if (!committed)
-            {
-                throw new InvalidOperationException(
-                    $"Matching reservation ownership changed before commit for player {playerId}.");
-            }
-        }
-    }
-
     public async Task RollbackAsync(MatchingReservationLease reservationLease)
     {
         foreach (long playerId in reservationLease.PlayerIds)
@@ -109,12 +89,6 @@ internal sealed class MatchingReservationService(IRedisOperations redisOperation
                 await redisOperations.StringDeleteIfEqualsAsync(
                     ReservationKey(playerId),
                     reservationLease.ReservationId);
-                if (reservationLease.MatchingId.HasValue)
-                {
-                    await redisOperations.StringDeleteIfEqualsAsync(
-                        ReservationKey(playerId),
-                        reservationLease.MatchingId.Value.ToString(CultureInfo.InvariantCulture));
-                }
             }
             catch (Exception ex)
             {

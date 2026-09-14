@@ -173,7 +173,7 @@ public sealed class MatchCreationServiceTests
     }
 
     [Fact]
-    public async Task CreateMatchAsync_ReservationContentionSkipsGroupWithoutIssuingMatchingId()
+    public async Task CreateMatchAsync_ReservationContentionSkipsGroupAndConsumesMatchingId()
     {
         MatchingQueueData[] humans = await EnqueueHumansAsync(2);
         await _cache.StringSetAsync(MatchingRedisKeys.ReservationKey(1_001), "other-worker");
@@ -181,7 +181,7 @@ public sealed class MatchCreationServiceTests
         bool committed = await CreatePass().CreateMatchAsync(humans, 6);
 
         Assert.False(committed);
-        Assert.Null(_cache.GetString(MatchingRedisKeys.MatchingIdKey));
+        Assert.Equal("1", _cache.GetString(MatchingRedisKeys.MatchingIdKey));
         Assert.Empty(_entryService.Events);
         Assert.Null(ReservationOf(1_000));
         Assert.Equal("other-worker", ReservationOf(1_001));

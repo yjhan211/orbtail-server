@@ -9,7 +9,7 @@ namespace user_server.matching.creation;
 /// <summary>
 ///     매칭 대기열에서 요청들을 모아 매치를 만든다.
 ///     5초 이상 기다린 요청을 정원 단위로 묶고, 부족한 인원은 봇 수로 지정한다.
-///     GameServer 배정 → 플레이어 예약 → 매치 번호 발급 → 구성 정보 저장 → 매칭 결과 전달 순으로 진행한다.
+///     GameServer 배정 → 매치 번호 발급 → 플레이어 예약 → 구성 정보 저장 → 매칭 결과 전달 순으로 진행한다.
 ///     사람 목록과 필요한 봇 수를 전달하며, 실제 봇 생성과 최종 참가자 구성은 GameServer가 담당한다.
 ///     결과 전달 후 입장 대기를 시작하고, 생성 과정이 실패하면 예약과 입장 관련 상태를 정리한다.
 /// </summary>
@@ -70,7 +70,8 @@ internal sealed class MatchCreationService(
             return false;
         }
 
-        var reservationLease = await matchingReservationService.TryAcquireAsync(groupRequests);
+        long matchingId = await redisOperations.StringIncrementAsync(MatchingRedisKeys.MatchingIdKey);
+        var reservationLease = await matchingReservationService.TryAcquireAsync(groupRequests, matchingId);
         if (reservationLease == null)
         {
             logger.LogInformation("Matching group skipped because another worker owns a player reservation");
@@ -78,7 +79,6 @@ internal sealed class MatchCreationService(
         }
 
         bool matchCommitted = false;
-        long matchingId = 0;
         int deliveredPlayerCount = 0;
         var batchPlayers = groupRequests
             .Where(request => request.PlayerId > 0)
@@ -86,9 +86,6 @@ internal sealed class MatchCreationService(
             .ToArray();
         try
         {
-            matchingId = await redisOperations.StringIncrementAsync(MatchingRedisKeys.MatchingIdKey);
-            await matchingReservationService.CommitAsync(reservationLease, matchingId);
-
             logger.LogInformation("Matching created: MatchingId={MatchingId}, Real={Real}, Bots={Bot}, GameServer={NodeId}",
                 matchingId, groupRequests.Length, botsNeeded, gameServer.NodeId);
 
@@ -152,11 +149,7 @@ internal sealed class MatchCreationService(
         {
             if (!matchCommitted)
             {
-                if (matchingId <= 0)
-                {
-                    await matchingReservationService.RollbackAsync(reservationLease);
-                }
-                else if (await matchEntryService.TryCancelEntryForRollbackAsync(matchingId))
+                if (await matchEntryService.TryCancelEntryForRollbackAsync(matchingId))
                 {
                     await matchEntryService.DeleteMatchEntryDataAsync(matchingId);
                     await matchEntryService.NotifyBatchFailedAsync(batchPlayers, matchingId);
