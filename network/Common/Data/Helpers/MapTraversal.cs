@@ -7,7 +7,7 @@ namespace network.common.data.helpers
     /// Validates every grid cell crossed by a movement segment. This prevents a
     /// destination-only passability check from tunnelling through a one-cell wall.
     /// </summary>
-    public static class GridMovementTraversal
+    public static class MapTraversal
     {
         public static bool IsTraversable(MapId mapId, Vector3f from, Vector3f to)
         {

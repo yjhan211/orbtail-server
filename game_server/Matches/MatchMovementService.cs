@@ -337,7 +337,7 @@ internal class MatchMovementService(
             {
                 break;
             }
-            if (!GridMovementTraversal.IsTraversable(mapId, current, target))
+            if (!MapTraversal.IsTraversable(mapId, current, target))
             {
                 break;
             }
@@ -393,7 +393,7 @@ internal class MatchMovementService(
         }
         movement.NextPathPlanAtUtc = nowUtc.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS);
         var target = movement.Destination;
-        if (GridMovementTraversal.IsTraversable(Config.SWARM_MATCH_MAP, objectInfo.Position, target))
+        if (MapTraversal.IsTraversable(Config.SWARM_MATCH_MAP, objectInfo.Position, target))
         {
             return;
         }

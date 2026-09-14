@@ -346,7 +346,7 @@ namespace network.common.data
                     }
 
                     if (!GameMapData.IsMoveablePosition(mapId, neighbor) ||
-                        !GridMovementTraversal.IsTraversable(current, neighbor, cell => GameMapData.IsMoveablePosition(mapId, cell)))
+                        !MapTraversal.IsTraversable(current, neighbor, cell => GameMapData.IsMoveablePosition(mapId, cell)))
                     {
                         continue;
                     }
@@ -441,7 +441,7 @@ namespace network.common.data
             }
             return IsWithinArea(areaRegions, from) && GameMapData.IsMoveablePosition(mapId, from) &&
                 IsWithinArea(areaRegions, to) && GameMapData.IsMoveablePosition(mapId, to) &&
-                GridMovementTraversal.IsTraversable(from, to,
+                MapTraversal.IsTraversable(from, to,
                     cell => IsWithinArea(areaRegions, cell) && GameMapData.IsMoveablePosition(mapId, cell));
         }
 
@@ -474,7 +474,7 @@ namespace network.common.data
         }
 
         public static bool IsSegmentWalkable(MapId mapId, Vector3f from, Vector3f to) =>
-            GridMovementTraversal.IsTraversable(mapId, from, to);
+            MapTraversal.IsTraversable(mapId, from, to);
 
         private static bool IsWalkableInArea(MapId mapId, Vector3f position, AreaType area)
         {

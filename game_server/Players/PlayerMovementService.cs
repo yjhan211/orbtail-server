@@ -80,7 +80,7 @@ internal sealed class PlayerMovementService(
 
         var clientCell = MapCoordinateConverter.WorldToCell(mapId, clientPos);
         bool destinationBlocked = !GameMapData.IsMoveablePosition(mapId, clientCell);
-        bool pathBlocked = !destinationBlocked && lastPosition != null && lastValidCell != null && !GridMovementTraversal.IsTraversable(lastValidCell, clientCell, candidate => GameMapData.IsMoveablePosition(mapId, candidate));
+        bool pathBlocked = !destinationBlocked && lastPosition != null && lastValidCell != null && !MapTraversal.IsTraversable(lastValidCell, clientCell, candidate => GameMapData.IsMoveablePosition(mapId, candidate));
         if (destinationBlocked || pathBlocked)
         {
             logger.LogWarning("Player {PlayerId} blocked movement: DestinationBlocked={DestinationBlocked}, PathBlocked={PathBlocked}", playerId, destinationBlocked, pathBlocked);

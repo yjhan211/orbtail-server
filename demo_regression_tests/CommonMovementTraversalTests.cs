@@ -35,10 +35,10 @@ public sealed class CommonMovementTraversalTests
                         {
                             var to = new Cell(x + dx, y + dy);
                             bool expected = GameMapData.IsMoveablePosition(map, to) &&
-                                GridMovementTraversal.IsTraversable(from, to, cell => GameMapData.IsMoveablePosition(map, cell));
+                                MapTraversal.IsTraversable(from, to, cell => GameMapData.IsMoveablePosition(map, cell));
                             var start = MapCoordinateConverter.CellToWorld(map, from);
                             var end = MapCoordinateConverter.CellToWorld(map, to);
-                            Assert.Equal(expected, GridMovementTraversal.IsTraversable(map, start, end));
+                            Assert.Equal(expected, MapTraversal.IsTraversable(map, start, end));
                             Assert.Equal(expected, MapPathfinder.IsSegmentWalkable(map, start, end));
                             if (expected) accepted++;
                             else rejected++;
@@ -117,7 +117,7 @@ public sealed class CommonMovementTraversalTests
                 foreach (var step in path)
                 {
                     var next = MapCoordinateConverter.CellToWorld(map, step.Cell);
-                    Assert.True(GridMovementTraversal.IsTraversable(map, previous, next),
+                    Assert.True(MapTraversal.IsTraversable(map, previous, next),
                         $"Blocked route {fromArea} -> {toArea} at {step.Cell}");
                     previous = next;
                 }
