@@ -3,6 +3,7 @@ using game_server.matches.monsters;
 using game_server.sessions;
 using network.common;
 using network.common.data;
+using network.common.data.helpers;
 using network.common.data.models;
 
 namespace game_server.matches;
@@ -325,8 +326,8 @@ internal class MatchMovementService(
             var targetCell = MapCoordinateConverter.WorldToCell(mapId, target);
             var fromArea = GameMapData.GetCurrentArea(mapId, fromCell);
             var targetArea = GameMapData.GetCurrentArea(mapId, targetCell);
-            var door = GameDoorData.GetDoorForTransition(fromArea, targetArea, fromCell, targetCell);
-            if (door != null && !ignoreClosedDoors && !runtime.Doors.IsDoorOpen(door.DoorId))
+            var door = runtime.Doors.GetBlockingDoor(fromArea, targetArea, fromCell, targetCell, ignoreClosedDoors);
+            if (door != null)
             {
                 break;
             }
@@ -336,7 +337,7 @@ internal class MatchMovementService(
             {
                 break;
             }
-            if (!MapPathfinder.IsSegmentWalkable(mapId, current, target))
+            if (!GridMovementTraversal.IsTraversable(mapId, current, target))
             {
                 break;
             }
@@ -392,7 +393,7 @@ internal class MatchMovementService(
         }
         movement.NextPathPlanAtUtc = nowUtc.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS);
         var target = movement.Destination;
-        if (MapPathfinder.IsSegmentWalkable(Config.SWARM_MATCH_MAP, objectInfo.Position, target))
+        if (GridMovementTraversal.IsTraversable(Config.SWARM_MATCH_MAP, objectInfo.Position, target))
         {
             return;
         }

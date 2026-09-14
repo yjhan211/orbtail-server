@@ -80,7 +80,7 @@ public sealed class MovementValidationServiceTests
     public void SessionCommitsCellOnlyAfterDoorRejectionPath()
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "game_server", "Players", "PlayerMovementService.cs"));
-        int check = source.IndexOf("GameDoorData.GetDoorForTransition(", StringComparison.Ordinal);
+        int check = source.IndexOf("match.Doors.GetBlockingDoor(", StringComparison.Ordinal);
         int reject = source.IndexOf("if (blockedCell != null)", check, StringComparison.Ordinal);
         int stop = source.IndexOf("return new MovementResult(", reject, StringComparison.Ordinal);
         int commit = source.IndexOf("player.ApplyValidatedMovement(validation, msg.Rotation);", StringComparison.Ordinal);

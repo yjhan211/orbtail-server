@@ -36,7 +36,6 @@ internal sealed class PlayerMovementService(
         return speed > MaximumSpeedUnitsPerSecond ? velocity.Normalized() * MaximumSpeedUnitsPerSecond : velocity;
     }
 
-
     public MovementResult ProcessMovement(MatchRuntime match, Player player, C_TO_G_MOVE msg, float deltaTime)
     {
         if (!Monitor.IsEntered(match.MatchLock))
@@ -114,8 +113,8 @@ internal sealed class PlayerMovementService(
         Cell? blockedCell = null;
         if (newArea != oldArea && newArea != AreaType.None)
         {
-            var transitionDoor = GameDoorData.GetDoorForTransition(oldArea, newArea, previousCell, currentCell);
-            if (transitionDoor != null && match.Doors.IsDoorOpen(transitionDoor.DoorId) != true)
+            var transitionDoor = match.Doors.GetBlockingDoor(oldArea, newArea, previousCell, currentCell);
+            if (transitionDoor != null)
             {
                 logger.LogWarning("Player {PlayerId} blocked crossing {CurrentArea}→{NewArea} (locked door: {DoorId})", playerId, oldArea, newArea, transitionDoor.DoorId);
                 blockedCell = transitionDoor.AreaType == oldArea

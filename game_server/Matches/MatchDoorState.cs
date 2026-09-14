@@ -1,5 +1,6 @@
 using network.common;
 using network.common.data;
+using network.common.data.models;
 
 namespace game_server.matches;
 
@@ -58,6 +59,16 @@ internal sealed class MatchDoorState
     public bool IsDoorOpen(int doorId)
     {
         return !_cleared && _openDoors.Contains(doorId);
+    }
+
+    public DoorInfoData? GetBlockingDoor(AreaType fromArea, AreaType toArea, Cell fromCell, Cell toCell, bool ignoreClosedDoors = false)
+    {
+        if (ignoreClosedDoors)
+        {
+            return null;
+        }
+        var door = GameDoorData.GetDoorForTransition(fromArea, toArea, fromCell, toCell);
+        return door != null && !IsDoorOpen(door.DoorId) ? door : null;
     }
 
     public List<int> GetOpenDoors()

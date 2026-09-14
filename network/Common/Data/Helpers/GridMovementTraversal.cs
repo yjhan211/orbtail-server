@@ -9,6 +9,14 @@ namespace network.common.data.helpers
     /// </summary>
     public static class GridMovementTraversal
     {
+        public static bool IsTraversable(MapId mapId, Vector3f from, Vector3f to)
+        {
+            var start = MapCoordinateConverter.WorldToCell(mapId, from);
+            var destination = MapCoordinateConverter.WorldToCell(mapId, to);
+            return GameMapData.IsMoveablePosition(mapId, destination) &&
+                IsTraversable(start, destination, cell => GameMapData.IsMoveablePosition(mapId, cell));
+        }
+
         public static bool IsTraversable(
             Cell start,
             Cell destination,

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using network.common;
+using network.common.data.helpers;
 using network.common.data.models;
 
 namespace network.common.data
@@ -344,7 +345,8 @@ namespace network.common.data
                         continue;
                     }
 
-                    if (!GameMapData.IsMoveablePosition(mapId, neighbor))
+                    if (!GameMapData.IsMoveablePosition(mapId, neighbor) ||
+                        !GridMovementTraversal.IsTraversable(current, neighbor, cell => GameMapData.IsMoveablePosition(mapId, cell)))
                     {
                         continue;
                     }
@@ -433,35 +435,15 @@ namespace network.common.data
 
         private static bool HasClearLine(MapId mapId, IReadOnlyList<GameMapData.AreaRegion> areaRegions, Cell from, Cell to)
         {
-            float deltaX = to.X - from.X;
-            float deltaY = to.Y - from.Y;
-            int samples = Math.Max(1, (int)MathF.Ceiling(MathF.Max(MathF.Abs(deltaX), MathF.Abs(deltaY)) * 4f));
-            if (samples > 400)
+            if (Math.Max(Math.Abs(to.X - from.X), Math.Abs(to.Y - from.Y)) > 100)
             {
                 return false;
             }
-
-            for (int sample = 0; sample <= samples; sample++)
-            {
-                float t = sample / (float)samples;
-                var cell = new Cell((int)MathF.Round(from.X + deltaX * t),
-                    (int)MathF.Round(from.Y + deltaY * t));
-                if (!IsWithinArea(areaRegions, cell))
-                {
-                    return false;
-                }
-
-                if (!GameMapData.IsMoveablePosition(mapId, cell))
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            return IsWithinArea(areaRegions, from) && GameMapData.IsMoveablePosition(mapId, from) &&
+                IsWithinArea(areaRegions, to) && GameMapData.IsMoveablePosition(mapId, to) &&
+                GridMovementTraversal.IsTraversable(from, to,
+                    cell => IsWithinArea(areaRegions, cell) && GameMapData.IsMoveablePosition(mapId, cell));
         }
-
-        private const float RouteSampleStep = 0.35f;
-        private const int DoorwayBlockedSampleTolerance = 10;
 
         public static bool TryPlanRoute(MapId mapId, AreaType fromArea, Vector3f from, AreaType toArea, Vector3f to, Func<AreaType, bool>? isAreaBlocked, out List<Vector3f> route)
         {
@@ -491,31 +473,8 @@ namespace network.common.data
             return true;
         }
 
-        public static bool IsSegmentWalkable(MapId mapId, Vector3f from, Vector3f to)
-        {
-            float dx = to.X - from.X;
-            float dy = to.Y - from.Y;
-            float distance = MathF.Sqrt(dx * dx + dy * dy);
-            int samples = Math.Max(1, (int)MathF.Ceiling(distance / RouteSampleStep));
-            int blockedRun = 0;
-            for (int index = 1; index <= samples; index++)
-            {
-                float t = index / (float)samples;
-                var point = new Vector3f(from.X + dx * t, from.Y + dy * t, 0f);
-                if (GameMapData.IsMoveablePosition(mapId, MapCoordinateConverter.WorldToCell(mapId, point)))
-                {
-                    blockedRun = 0;
-                    continue;
-                }
-
-                if (++blockedRun > DoorwayBlockedSampleTolerance)
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
+        public static bool IsSegmentWalkable(MapId mapId, Vector3f from, Vector3f to) =>
+            GridMovementTraversal.IsTraversable(mapId, from, to);
 
         private static bool IsWalkableInArea(MapId mapId, Vector3f position, AreaType area)
         {
