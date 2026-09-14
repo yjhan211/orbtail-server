@@ -58,6 +58,16 @@ public sealed class MatchAreaClosureState(Func<DateTime>? utcNow = null)
 
     public bool IsAreaClosed(AreaType area) => _closedAreas.Contains(area);
 
+    /// <summary>폐쇄됐거나 구역 전체가 자기장 밖인지 확인한다. 개별 셀의 안전 여부와는 다르다.</summary>
+    public bool IsAreaUnsafe(AreaType area)
+    {
+        if (IsAreaClosed(area))
+        {
+            return true;
+        }
+        return SwarmPressureField.GetAreaMinDistance(area) > GetSafeDistance(_utcNow());
+    }
+
     public double GetSafeDistance(DateTime nowUtc)
     {
         if (GameStartTime is not { } gameStartTime)

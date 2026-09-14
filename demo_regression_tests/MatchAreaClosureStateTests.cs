@@ -50,6 +50,27 @@ public sealed class MatchAreaClosureStateTests
         Assert.Null(closures.GameStartTime);
     }
 
+    [Fact]
+    public void UnsafeAreaUsesClosureStateAndInjectedClock()
+    {
+        var now = new DateTime(2030, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        var closures = new MatchAreaClosureState(() => now);
+        var area = GameMapData.GetAreas(Config.SWARM_MATCH_MAP)
+            .Select(region => region.AreaType)
+            .First(candidate => candidate != AreaType.None && SwarmPressureField.GetAreaMinDistance(candidate) > 0);
+        Assert.False(closures.IsAreaUnsafe(area));
+        closures.InitializeMatching([]);
+        Assert.False(closures.IsAreaUnsafe(area));
+        now = now.AddHours(1);
+        Assert.False(closures.IsAreaClosed(area));
+        Assert.True(closures.IsAreaUnsafe(area));
+        closures.Release();
+        Assert.False(closures.IsAreaUnsafe(area));
+        closures.InitializeMatching([(area, 0)]);
+        closures.CloseDueAreas();
+        Assert.True(closures.IsAreaUnsafe(area));
+    }
+
     private static string FindNetworkBasePath()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

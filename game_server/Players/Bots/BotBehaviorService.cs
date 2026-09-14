@@ -223,6 +223,7 @@ internal class BotBehaviorService(
         {
             return;
         }
+        // 안전하게 이동할 수 있는 주변 셀 배회
         SelectWanderTarget(runtime, bot, nowUtc);
     }
 
@@ -553,7 +554,7 @@ internal class BotBehaviorService(
         int nearestDistance = int.MaxValue;
         foreach (var monster in runtime.Monsters.Entities.Values)
         {
-            if (!monster.Alive || IsAreaUnsafe(runtime, monster.Area))
+            if (!monster.Alive || runtime.Closures.IsAreaUnsafe(monster.Area))
             {
                 continue;
             }
@@ -625,12 +626,12 @@ internal class BotBehaviorService(
                     continue;
                 }
             }
-            else if (IsAreaUnsafe(runtime, area) || SwarmPressureField.GetDistance(cell) > safeDistance)
+            else if (runtime.Closures.IsAreaUnsafe(area) || SwarmPressureField.GetDistance(cell) > safeDistance)
             {
                 continue;
             }
 
-            var path = MapPathfinder.FindPath(mapId, currentArea, currentCell, area, cell, stayInCurrentArea ? null : blockedArea => IsAreaUnsafe(runtime, blockedArea));
+            var path = MapPathfinder.FindPath(mapId, currentArea, currentCell, area, cell, stayInCurrentArea ? null : blockedArea => runtime.Closures.IsAreaUnsafe(blockedArea));
             if (path is not { Count: > 0 })
             {
                 continue;
@@ -762,64 +763,14 @@ internal class BotBehaviorService(
         return false;
     }
 
-    private static bool IsAreaUnsafe(MatchRuntime runtime, AreaType area) => runtime.Closures.IsAreaClosed(area) || SwarmPressureField.GetAreaMinDistance(area) > runtime.Closures.GetSafeDistance(DateTime.UtcNow);
-
-    private static float DistanceSquared(Vector3f position, float x, float y)
-    {
-        float dx = position.X - x;
-        float dy = position.Y - y;
-        return dx * dx + dy * dy;
-    }
-
     internal static float GetBotMovementSpeedMultiplier(Bot bot, DateTime? nowUtc = null)
     {
         var now = nowUtc ?? DateTime.UtcNow;
-        float wind = OrbData.GetWindMoveSpeedMultiplier(bot.Player.Orbs.GetAllItems());
-        float boots = now < bot.BootsSpeedUntilUtc ? Config.BOOTS_MOVE_SPEED_MULTIPLIER : 1f;
-        float bare = !bot.Player.Orbs.HasAnyOrb() && now < bot.SwarmBareSpeedUntilUtc ? Config.SWARM_BARE_MOVE_SPEED_MULTIPLIER : 1f;
-        float waveSlow = now < bot.Player.WaveSlowUntilUtc ? OrbData.WaveSlowMoveSpeedMultiplier : 1f;
-        return wind * boots * bare * waveSlow;
-    }
-
-    private void TrackIdleTime(Bot bot, DateTime nowUtc)
-    {
-        const float movedThresholdSquared = 0.01f;
-        if (bot.IdleWatchLastPosition == null || DistanceSquared(bot.IdleWatchLastPosition, bot.Player.Position!.X, bot.Player.Position!.Y) > movedThresholdSquared)
-        {
-            bot.IdleWatchLastPosition = new Vector3f(bot.Player.Position!.X, bot.Player.Position!.Y, 0f);
-            bot.IdleWatchLastMovedAtUtc = nowUtc;
-        }
-    }
-
-    private IEnumerable<Cell> GetIdleWanderTargets(Bot bot, DateTime nowUtc)
-    {
-        TrackIdleTime(bot, nowUtc);
-        if (bot.Movement.WaypointIndex < bot.Movement.Waypoints.Count)
-        {
-            yield break;
-        }
-        if ((nowUtc - bot.IdleWatchLastMovedAtUtc).TotalSeconds < 4d || nowUtc < bot.NextIdleWanderAtUtc)
-        {
-            yield break;
-        }
-
-        bot.NextIdleWanderAtUtc = nowUtc.AddSeconds(3d);
-        var mapId = Config.SWARM_MATCH_MAP;
-        for (int attempt = 0; attempt < 6; attempt++)
-        {
-            var candidate = new Cell(bot.Player.Cell!.X + Random.Shared.Next(-3, 4), bot.Player.Cell!.Y + Random.Shared.Next(-3, 4));
-            if (candidate.X == bot.Player.Cell!.X && candidate.Y == bot.Player.Cell!.Y)
-            {
-                continue;
-            }
-
-            if (!GameMapData.IsMoveablePosition(mapId, candidate) || GameMapData.GetCurrentArea(mapId, candidate) != bot.Player.CurrentArea)
-            {
-                continue;
-            }
-
-            yield return candidate;
-        }
+        var orbs = bot.Player.Orbs.GetAllItems();
+        bool bootsActive = now < bot.BootsSpeedUntilUtc;
+        bool bareSpeedActive = !bot.Player.Orbs.HasAnyOrb() && now < bot.SwarmBareSpeedUntilUtc;
+        bool waveSlowActive = now < bot.Player.WaveSlowUntilUtc;
+        return MovementSpeed.GetMultiplier(orbs, bootsActive, bareSpeedActive, waveSlowActive);
     }
 
     public virtual void PrepareMovement(MatchRuntime runtime, Bot bot, DateTime now, bool canPlanThisTick)
@@ -866,16 +817,39 @@ internal class BotBehaviorService(
                 bool canKeepPath = !pathFinished;
                 var previousCell = bot.Player.Cell!;
                 double safeDistance = runtime.Closures.GetSafeDistance(now);
-                for (int i = movement.WaypointIndex; canKeepPath && i < movement.Waypoints.Count; i++)
+                for (int i = movement.WaypointIndex; i < movement.Waypoints.Count; i++)
                 {
                     var nextCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, movement.Waypoints[i]);
-                    canKeepPath = MapTraversal.IsTraversable(previousCell, nextCell,
-                        cell => GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell) &&
-                            !runtime.Closures.IsAreaClosed(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell)) &&
-                            SwarmPressureField.GetDistance(cell) <= safeDistance,
-                        (from, to) => runtime.Doors.GetBlockingDoor(
-                            GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, from),
-                            GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, to), from, to) == null);
+                    bool canTraverseSegment = MapTraversal.IsTraversable(previousCell, nextCell,
+                        cell =>
+                        {
+                            if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell))
+                            {
+                                return false;
+                            }
+                            var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
+                            if (runtime.Closures.IsAreaClosed(area))
+                            {
+                                return false;
+                            }
+                            if (SwarmPressureField.GetDistance(cell) > safeDistance)
+                            {
+                                return false;
+                            }
+                            return true;
+                        },
+                        (from, to) =>
+                        {
+                            var fromArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, from);
+                            var toArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, to);
+                            var blockingDoor = runtime.Doors.GetBlockingDoor(fromArea, toArea, from, to);
+                            return blockingDoor == null;
+                        });
+                    if (!canTraverseSegment)
+                    {
+                        canKeepPath = false;
+                        break;
+                    }
                     previousCell = nextCell;
                 }
                 if (!canKeepPath)
@@ -883,14 +857,6 @@ internal class BotBehaviorService(
                     movement.Clear();
                 }
                 movement.NextPathPlanAtUtc = DateTime.MinValue;
-            }
-        }
-
-        foreach (var targetCell in GetIdleWanderTargets(bot, now))
-        {
-            if (TryPlanPath(runtime, bot, bot.Player.CurrentArea, targetCell))
-            {
-                break;
             }
         }
 

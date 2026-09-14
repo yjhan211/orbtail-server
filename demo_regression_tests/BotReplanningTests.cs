@@ -59,18 +59,15 @@ public sealed class BotReplanningTests
     }
 
     [Fact]
-    public void ExplicitHoldStopsOldPathAndDoesNotTriggerIdleWander()
+    public void ExplicitHoldStopsOldPath()
     {
         var (runtime, bot, destination) = CreateBot();
         using var scope = runtime.Enter();
         bot.Movement.Waypoints.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, destination));
-        bot.IdleWatchLastPosition = bot.Player.Position;
-        bot.IdleWatchLastMovedAtUtc = DateTime.UtcNow.AddMinutes(-1);
         new TargetBehavior(bot.Player.CurrentArea, bot.Player.Cell!, true).PrepareMovement(runtime, bot, DateTime.UtcNow, true);
         Assert.Empty(bot.Movement.Waypoints);
         Assert.False(bot.Movement.FollowPath);
         Assert.Equal(0f, bot.Movement.Speed);
-        Assert.Equal(DateTime.MinValue, bot.NextIdleWanderAtUtc);
     }
 
     [Fact]

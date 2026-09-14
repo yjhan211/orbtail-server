@@ -29,6 +29,25 @@ public sealed class MatchOwnedBotsTests
             BotBehaviorService.GetBotMovementSpeedMultiplier(bot));
     }
 
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    public void CommonMovementMultiplierCombinesActiveEffects(bool boots, bool bare, bool waveSlow)
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        float expected = (boots ? Config.BOOTS_MOVE_SPEED_MULTIPLIER : 1f) *
+            (bare ? Config.SWARM_BARE_MOVE_SPEED_MULTIPLIER : 1f) *
+            (waveSlow ? network.common.data.OrbData.WaveSlowMoveSpeedMultiplier : 1f);
+        Assert.Equal(expected, network.common.data.helpers.MovementSpeed.GetMultiplier(
+            Array.Empty<InGameItemInfo>(), boots, bare, waveSlow));
+    }
+
     [Fact]
     public void ProfileLookupDoesNotReinitializeBotProfile()
     {

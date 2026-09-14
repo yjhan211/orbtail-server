@@ -51,9 +51,6 @@ public class Bot
     public (Cell Destination, DateTime SelectedAtUtc)? MonsterAvoidanceTarget { get; set; }
     public DateTime? LastTrailCutAtUtc { get; set; }
     public bool Wounded { get; set; }
-    public Vector3f? IdleWatchLastPosition { get; set; }
-    public DateTime IdleWatchLastMovedAtUtc { get; set; } = DateTime.MinValue;
-    public DateTime NextIdleWanderAtUtc { get; set; } = DateTime.MinValue;
     public DateTime BootsSpeedUntilUtc { get; set; } = DateTime.MinValue;
     public DateTime SwarmBareSpeedUntilUtc { get; set; } = DateTime.MinValue;
 }
