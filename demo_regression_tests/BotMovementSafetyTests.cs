@@ -23,7 +23,7 @@ public sealed class BotMovementSafetyTests
             bot.Movement.NextPathPlanAtUtc = DateTime.UtcNow.AddMinutes(1);
             bot.LoopWaitUntil = DateTime.MinValue;
             bot.SetMovementTarget(AreaType.S2Library1, target);
-            bot.Movement.Waypoints.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, target));
+            bot.Movement.Waypoints.Add(target);
             bot.Player.Velocity = new Vector3f(5, 0, 0);
             var originalPosition = bot.Player.Position;
             runtime.Closures.InitializeMatching([(AreaType.S2Library1, 0)]);

@@ -93,7 +93,7 @@ public sealed class CommonMovementTraversalTests
         foreach (bool ignoreDoors in new[] { false, true })
         {
             var path = new MovementState();
-            path.Waypoints.Add(end);
+            path.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, end));
             Assert.Equal(start, MatchMoveService.AdvanceRoute(runtime, path, start, 10f, ignoreDoors));
             Assert.Equal(0, path.WaypointIndex);
         }

@@ -41,12 +41,12 @@ public sealed class SharedMovementPlanningTests
         var monster = new MovementState();
         Assert.True(MatchMoveService.TryPlanPath(runtime, info, bot, AreaType.S2Corridor9, destination));
         Assert.True(MatchMoveService.TryPlanPath(runtime, info, monster, AreaType.S2Corridor9, destination, true));
-        var botEnd = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, bot.Waypoints[^1]);
+        var botEnd = bot.Waypoints[^1];
         Assert.NotEqual(destination, botEnd);
         Assert.Contains(GameInteractableData.GetAll(), item =>
             item.DoorId > 0 &&
             item.CellX == botEnd.X && item.CellY == botEnd.Y);
-        Assert.Equal(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, destination), monster.Waypoints[^1]);
+        Assert.Equal(destination, monster.Waypoints[^1]);
 
         foreach (var door in GameDoorData.GetAll()) runtime.Doors.OpenDoor(door.DoorId);
         Assert.True(MatchMoveService.TryPlanPath(runtime, info, bot, AreaType.S2Corridor9, destination));
@@ -61,14 +61,13 @@ public sealed class SharedMovementPlanningTests
         var runtime = CreateRuntime();
         using var scope = runtime.Enter();
         var info = CreateObject();
-        var state = new MovementState { WaypointIndex = 1, FollowPath = true };
-        state.Waypoints.Add(info.Position);
-        state.Waypoints.Add(new Vector3f(info.Position.X + 0.1f, info.Position.Y, 0f));
+        var state = new MovementState { WaypointIndex = 1 };
+        state.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, info.Position));
+        state.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, new Vector3f(info.Position.X + 0.1f, info.Position.Y, 0f)));
         var before = state.Waypoints.ToArray();
         Assert.False(MatchMoveService.TryPlanPath(runtime, info, state, AreaType.None, new Cell(-10000, -10000), ignoreDoors));
         Assert.Equal(before, state.Waypoints);
         Assert.Equal(1, state.WaypointIndex);
-        Assert.True(state.FollowPath);
     }
 
     [Fact]
@@ -94,7 +93,7 @@ public sealed class SharedMovementPlanningTests
         var runtime = CreateRuntime();
         var info = CreateObject();
         var state = new MovementState();
-        state.Waypoints.Add(info.Position);
+        state.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, info.Position));
         Assert.Throws<InvalidOperationException>(() =>
             MatchMoveService.TryPlanPath(runtime, info, state, info.Area, info.Cell));
         using var scope = runtime.Enter();
@@ -121,14 +120,12 @@ public sealed class SharedMovementPlanningTests
         var before = info.Position;
         MatchMoveService.PrepareMovement(runtime, info, state, request, now, ignoreDoors);
         Assert.Same(before, info.Position);
-        Assert.True(state.FollowPath);
         Assert.NotEmpty(state.Waypoints);
         var result = MovementPreparationTestSteps.Advance(runtime, info, state, request, 1f, ignoreDoors, now);
         Assert.True(result.ReachedDestination);
         Assert.Equal(destination, info.Cell);
         Assert.Empty(state.Waypoints);
         MatchMoveService.PrepareMovement(runtime, info, state, request, now, ignoreDoors);
-        Assert.False(state.FollowPath);
         var repeated = MovementPreparationTestSteps.Advance(runtime, info, state, request, 1f, ignoreDoors, now);
         Assert.False(repeated.ReachedDestination);
         Assert.True(state.ReachedDestination);
@@ -149,7 +146,6 @@ public sealed class SharedMovementPlanningTests
         var retryAt = state.NextPathPlanAtUtc;
         Assert.True(retryAt > now);
         Assert.Empty(state.Waypoints);
-        Assert.False(state.FollowPath);
         MatchMoveService.PrepareMovement(runtime, info, state, request, now.AddTicks(1), ignoreDoors);
         Assert.Equal(retryAt, state.NextPathPlanAtUtc);
         MatchMoveService.PrepareMovement(runtime, info, state, request, retryAt, ignoreDoors);
@@ -164,12 +160,11 @@ public sealed class SharedMovementPlanningTests
         var runtime = CreateRuntime();
         using var scope = runtime.Enter();
         var info = CreateObject();
-        var state = new MovementState { FollowPath = true };
-        state.Waypoints.Add(info.Position);
+        var state = new MovementState();
+        state.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, info.Position));
         MatchMoveService.PrepareMovement(runtime, info, state,
             new MovementRequest(null, 10f, HoldPosition: true), DateTime.UtcNow, ignoreDoors);
         Assert.Single(state.Waypoints);
-        Assert.False(state.FollowPath);
         var before = info.Position;
         var result = MovementPreparationTestSteps.Advance(runtime, info, state,
             new MovementRequest(null, 10f, HoldPosition: true), 1f, ignoreDoors);

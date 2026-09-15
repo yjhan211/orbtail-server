@@ -36,7 +36,7 @@ public sealed class DoorInteractionCellTests
             }
             var movement = new MovementState();
             foreach (var step in path)
-                movement.Waypoints.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, step.Cell));
+                movement.Waypoints.Add(step.Cell);
             var reached = MatchMoveService.AdvanceRoute(runtime, movement,
                 MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, start), 10000f);
             var reachedCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, reached);

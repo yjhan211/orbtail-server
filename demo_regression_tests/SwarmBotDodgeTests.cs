@@ -57,9 +57,8 @@ public class SwarmBotDodgeTests
             destination, bot.Player.CurrentArea, Now));
         var request = new MovementRequest(target, 1f, IsSafeCell: safe);
         MatchMoveService.PrepareMovement(runtime, bot.Player.GameInfo.ObjectInfo, bot.Movement, request, Now);
-        Assert.True(bot.Movement.FollowPath);
         Assert.All(bot.Movement.Waypoints, point => Assert.True(safe(
-            network.common.data.MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, point))));
+            point)));
         var result = MovementPreparationTestSteps.Advance(runtime, bot.Player.GameInfo.ObjectInfo,
             bot.Movement, request, 0.05f, nowUtc: Now);
         Assert.True(result.Changed);

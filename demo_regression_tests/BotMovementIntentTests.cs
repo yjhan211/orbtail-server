@@ -12,7 +12,7 @@ public sealed class BotMovementIntentTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void PlanningDoesNotMoveAndResetBeforeExecutionCancelsMovement(bool sleepBeforeExecution)
+    public void PlanningDoesNotMoveAndHoldRequestCancelsMovement(bool sleepBeforeExecution)
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(987651);
@@ -21,20 +21,19 @@ public sealed class BotMovementIntentTests
         runtime.Bots.RegisterBots(runtime.MatchingId, [-1], new Dictionary<long, Cell> { [-1] = cell });
         var bot = runtime.Bots.GetBot(-1)!;
         var before = bot.Player.Position!;
-        var target = new Vector3f(before.X + 0.1f, before.Y, 0f);
+        var target = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, new Vector3f(before.X + 1f, before.Y, 0f));
         var now = DateTime.UtcNow;
         bot.Movement.Waypoints.Add(target);
         bot.Movement.LastProcessedAtUtc = now.AddSeconds(-0.05);
         bot.LoopWaitUntil = DateTime.MinValue;
-        bot.SetMovementTarget(bot.Player.CurrentArea, cell);
+        bot.SetMovementTarget(bot.Player.CurrentArea, target);
         var behavior = new FixedTargetBehavior(bot);
         var movement = new MatchMoveService(behavior, null!);
 
         var request = MovementPreparationTestSteps.Bot(behavior, runtime, bot, now);
         Assert.Same(before, bot.Player.Position);
         Assert.True(request.Speed > 0f);
-        Assert.True(bot.Movement.FollowPath);
-        if (sleepBeforeExecution) bot.Movement.ResetIntent();
+        if (sleepBeforeExecution) request = request with { HoldPosition = true };
         var result = MovementPreparationTestSteps.Advance(runtime, bot.Player.GameInfo.ObjectInfo, bot.Movement, request, 0.05f);
         if (sleepBeforeExecution)
         {
@@ -45,8 +44,8 @@ public sealed class BotMovementIntentTests
             Assert.True(result.Changed);
             Assert.True(bot.Player.Position!.X > before.X);
         }
-        Assert.False(bot.Movement.FollowPath);
         var after = bot.Player.Position;
+        request = request with { HoldPosition = true };
         MovementPreparationTestSteps.Advance(runtime, bot.Player.GameInfo.ObjectInfo, bot.Movement, request, 0.05f);
         Assert.Equal(after, bot.Player.Position);
     }
@@ -62,7 +61,7 @@ public sealed class BotMovementIntentTests
         var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
         runtime.Bots.RegisterBots(runtime.MatchingId, [-1], new Dictionary<long, Cell> { [-1] = cell });
         var bot = runtime.Bots.GetBot(-1)!;
-        var oldTarget = new Vector3f(-100f, -100f, 0f);
+        var oldTarget = new Cell(-100, -100);
         bot.Movement.NextPathPlanAtUtc = canPlanThisTick ? DateTime.MinValue : DateTime.MaxValue;
         bot.Movement.Waypoints.Add(oldTarget);
         Cell? destination = null;
@@ -88,7 +87,6 @@ public sealed class BotMovementIntentTests
 
         Assert.Same(before, bot.Player.Position);
         Assert.True(request.Speed > 0f);
-        Assert.True(bot.Movement.FollowPath);
         if (canPlanThisTick)
         {
             Assert.DoesNotContain(oldTarget, bot.Movement.Waypoints);
@@ -98,7 +96,6 @@ public sealed class BotMovementIntentTests
         {
             Assert.Same(oldTarget, Assert.Single(bot.Movement.Waypoints));
         }
-        bot.Movement.ResetIntent();
     }
     [Fact]
     public void SleepingBotClearsIntentWithoutChoosingTargetOrDiscardingPath()
@@ -110,16 +107,14 @@ public sealed class BotMovementIntentTests
         runtime.Bots.RegisterBots(runtime.MatchingId, [-1], new Dictionary<long, Cell> { [-1] = cell });
         var bot = runtime.Bots.GetBot(-1)!;
         bot.Player.State = PlayerState.SLEEP;
-        var target = new Vector3f(bot.Player.Position.X + 1f, bot.Player.Position.Y, 0f);
+        var target = new Cell(cell.X + 1, cell.Y);
         bot.Movement.Waypoints.Add(target);
-        bot.Movement.FollowPath = true;
         var behavior = new FixedTargetBehavior(bot);
 
         var request = MovementPreparationTestSteps.Bot(behavior, runtime, bot, DateTime.UtcNow);
 
         Assert.Equal(0, behavior.Selections);
         Assert.Same(target, Assert.Single(bot.Movement.Waypoints));
-        Assert.False(bot.Movement.FollowPath);
         Assert.Null(request.IsSafeCell);
     }
 
@@ -142,7 +137,7 @@ public sealed class BotMovementIntentTests
             GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, candidate) == bot.Player.CurrentArea &&
             MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.CurrentArea, cell, bot.Player.CurrentArea, candidate) is { Count: > 0 });
         bot.SetMovementTarget(bot.Player.CurrentArea, destination);
-        bot.Movement.Waypoints.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, destination));
+        bot.Movement.Waypoints.Add(destination);
         bot.Movement.NextPathPlanAtUtc = deadline;
         bot.LastDamagedAtUtc = underFire ? now : now.AddMinutes(-1);
         bot.MonsterAvoidanceTarget = avoidingNow ? (bot.Player.Cell!, now) : null;
@@ -165,8 +160,9 @@ public sealed class BotMovementIntentTests
         var bot = runtime.Bots.GetBot(-1)!;
         var before = bot.Player.Position!;
         var now = DateTime.UtcNow;
-        bot.SetMovementTarget(bot.Player.CurrentArea, cell);
-        bot.Movement.Waypoints.Add(new Vector3f(before.X + 0.1f, before.Y, 0f));
+        var destination = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, new Vector3f(before.X + 1f, before.Y, 0f));
+        bot.SetMovementTarget(bot.Player.CurrentArea, destination);
+        bot.Movement.Waypoints.Add(destination);
         bot.LoopWaitUntil = DateTime.MinValue;
         bot.DodgeTargetCell = cell.Clone();
         bot.SwarmDodgeHoldUntilUtc = holding ? now.AddSeconds(1) : now;
@@ -174,7 +170,6 @@ public sealed class BotMovementIntentTests
         var request = MovementPreparationTestSteps.Bot(new FixedTargetBehavior(bot), runtime, bot, now);
 
         Assert.True(request.Speed > 0f);
-        Assert.True(bot.Movement.FollowPath);
         if (holding)
         {
             Assert.NotNull(request.IsSafeCell);

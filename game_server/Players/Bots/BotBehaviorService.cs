@@ -504,10 +504,8 @@ internal class BotBehaviorService(
         {
             bot.ExplorationTarget = (currentArea, targetCell.Clone());
             bot.SetMovementTarget(currentArea, targetCell);
-            bot.Movement.HoldPosition = false;
             return;
         }
-        bot.Movement.HoldPosition = true;
         bot.SetMovementTarget(currentArea, currentCell);
     }
 
@@ -528,7 +526,6 @@ internal class BotBehaviorService(
             {
                 continue;
             }
-            bot.Movement.HoldPosition = true;
             bot.SetMovementTarget(bot.Player.CurrentArea, bot.Player.Cell!);
             return true;
         }
@@ -627,11 +624,9 @@ internal class BotBehaviorService(
         if (found)
         {
             var targetArea = GameMapData.GetCurrentArea(mapId, targetCell);
-            bot.Movement.HoldPosition = false;
             bot.SetMovementTarget(targetArea, targetCell);
             return;
         }
-        bot.Movement.HoldPosition = true;
         bot.SetMovementTarget(currentArea, currentCell);
     }
 
@@ -755,7 +750,6 @@ internal class BotBehaviorService(
             throw new InvalidOperationException("Bot decisions require the match lock.");
         }
         var movement = bot.Movement;
-        movement.ResetIntent();
         if (runtime.IsEnded || bot.Player.IsEliminated || bot.Player.IsSleeping)
         {
             return new MovementRequest(null, 0f, HoldPosition: true);
@@ -788,7 +782,7 @@ internal class BotBehaviorService(
             return new MovementRequest(null, 0f, HoldPosition: true);
         }
         bot.DodgeTargetCell = null;
-        if (movement.HoldPosition || requestedCell == null)
+        if (requestedCell == null || requestedCell.Equals(bot.Player.Cell))
         {
             return new MovementRequest(requestedCell, 0f, HoldPosition: true);
         }

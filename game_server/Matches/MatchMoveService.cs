@@ -89,7 +89,6 @@ internal class MatchMoveService(
         {
             throw new InvalidOperationException("Movement preparation requires the match lock.");
         }
-        movement.ResetIntent();
         if (runtime.IsEnded)
         {
             return;
@@ -108,7 +107,7 @@ internal class MatchMoveService(
         var destination = request.DestinationCell;
         if (destination == null && movement.Waypoints.Count > 0)
         {
-            destination = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, movement.Waypoints[^1]);
+            destination = movement.Waypoints[^1];
         }
         destination ??= movement.DestinationCell;
         if (destination == null)
@@ -116,26 +115,25 @@ internal class MatchMoveService(
             return;
         }
         bool firstRequest = movement.DestinationCell == null;
-        bool changed = firstRequest ||
-            !movement.DestinationCell!.Equals(destination);
+        bool changed = firstRequest || !movement.DestinationCell!.Equals(destination);
         if (changed)
         {
             movement.ReachedDestination = false;
+            movement.DestinationCell = destination.Clone();
+            movement.DestinationArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, destination);
         }
-        movement.DestinationCell = destination.Clone();
-        movement.DestinationArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, destination);
         bool hasPath = movement.WaypointIndex < movement.Waypoints.Count;
 
-        if (!hasPath && movement.ReachedDestination && !changed && objectInfo.Cell.Equals(destination))
+        if (!hasPath && movement.ReachedDestination && objectInfo.Cell.Equals(destination))
         {
             return;
         }
         bool needsPlan = (request.IsSafeCell != null && changed) || (firstRequest && !hasPath) || movement.PathBlocked || nowUtc >= movement.NextPathPlanAtUtc;
-        // 공급 등 이미 주어진 경로를 이어 가라는 요청은 완료 또는 차단 전까지 유지한다.
         if (request.DestinationCell == null && hasPath && !movement.PathBlocked)
         {
             needsPlan = false;
         }
+        bool validatePath = request.IsSafeCell != null;
         if (needsPlan)
         {
             bool planned = TryPlanPath(runtime, objectInfo, movement,
@@ -147,18 +145,13 @@ internal class MatchMoveService(
             }
             movement.NextPathPlanAtUtc = nowUtc.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS);
             movement.PathBlocked = false;
-            if (!planned && !CanKeepPath(runtime, objectInfo, movement, nowUtc, ignoreClosedDoors, request.IsSafeCell))
-            {
-                movement.Waypoints.Clear();
-                movement.WaypointIndex = 0;
-            }
+            validatePath |= !planned;
         }
-        if (request.IsSafeCell != null && !CanKeepPath(runtime, objectInfo, movement, nowUtc, ignoreClosedDoors, request.IsSafeCell))
+        if (validatePath && !CanKeepPath(runtime, objectInfo, movement, nowUtc, ignoreClosedDoors, request.IsSafeCell))
         {
             movement.Waypoints.Clear();
             movement.WaypointIndex = 0;
         }
-        movement.FollowPath = movement.WaypointIndex < movement.Waypoints.Count;
     }
 
     internal void CompleteMovements(MatchRuntime runtime, IReadOnlyList<(GameObjectInfo Info, AreaType FromArea)> movements)
@@ -279,79 +272,72 @@ internal class MatchMoveService(
         {
             throw new InvalidOperationException("Cannot move after the match has ended.");
         }
-        try
+        var previous = objectInfo.Position;
+        var now = nowUtc ?? DateTime.UtcNow;
+        // 시작 전 대기 시간은 첫 이동량에 포함하지 않는다.
+        var lastProcessedAtUtc = intent.LastProcessedAtUtc;
+        if (runtime.StartsAtUtc is { } startedAtUtc && lastProcessedAtUtc < startedAtUtc)
         {
-            var previous = objectInfo.Position;
-            var now = nowUtc ?? DateTime.UtcNow;
-            // 시작 전 대기 시간은 첫 이동량에 포함하지 않는다.
-            var lastProcessedAtUtc = intent.LastProcessedAtUtc;
-            if (runtime.StartsAtUtc is { } startedAtUtc && lastProcessedAtUtc < startedAtUtc)
-            {
-                lastProcessedAtUtc = startedAtUtc;
-            }
-            double elapsedSeconds = (now - lastProcessedAtUtc).TotalSeconds;
-            float deltaSeconds = (float)Math.Clamp(elapsedSeconds, 0d, MaxMovementDeltaSeconds);
-            intent.LastProcessedAtUtc = now;
-            Vector3f? next = null;
-            bool pathBlocked = false;
-            bool reachedDestination = false;
-            float distance = intent.FollowPath && !request.HoldPosition ? request.Speed * deltaSeconds : 0f;
-            if (next == null && distance > 0f && intent.FollowPath)
-            {
-                var path = intent;
-                next = AdvanceRoute(runtime, path, previous, distance, ignoreClosedDoors, now, request.StopBeforeArea);
-                pathBlocked = next.Equals(previous);
-                reachedDestination = path.WaypointIndex >= path.Waypoints.Count;
-            }
-            next ??= previous;
-            bool corrected = false;
-            var nextCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, next);
-            if (intent.WaypointIndex >= intent.Waypoints.Count && !GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, nextCell))
-            {
-                var areaCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, objectInfo.Area));
-                var rescued = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, next, areaCenter, objectInfo.Area);
-                if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, rescued)))
-                {
-                    rescued = MapPathfinder.ClampToWalkable(Config.SWARM_MATCH_MAP, next, areaCenter);
-                }
-                corrected = !rescued.Equals(next);
-                next = rescued;
-            }
-            bool moved = !next.Equals(previous);
-            var velocity = moved && !reachedDestination && !corrected ? new Vector3f((next.X - previous.X) / deltaSeconds, (next.Y - previous.Y) / deltaSeconds, 0f) : new Vector3f();
-            bool changed = !next.Equals(objectInfo.Position) || !velocity.Equals(objectInfo.Velocity);
-            if (!next.Equals(objectInfo.Position))
-            {
-                objectInfo.Position = next;
-            }
-            objectInfo.Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, objectInfo.Position);
-            var resolvedArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, objectInfo.Cell);
-            if (resolvedArea != AreaType.None)
-            {
-                objectInfo.Area = resolvedArea;
-            }
-            objectInfo.Velocity = velocity;
-            if (velocity.X > 0.1f)
-            {
-                objectInfo.Rotation = 180f;
-            }
-            else if (velocity.X < -0.1f)
-            {
-                objectInfo.Rotation = 0f;
-            }
-            intent.PathBlocked = pathBlocked && !reachedDestination;
-            intent.ReachedDestination |= reachedDestination;
-            if (reachedDestination)
-            {
-                intent.Waypoints.Clear();
-                intent.WaypointIndex = 0;
-            }
-            return new MovementResult(changed, reachedDestination);
+            lastProcessedAtUtc = startedAtUtc;
         }
-        finally
+        double elapsedSeconds = (now - lastProcessedAtUtc).TotalSeconds;
+        float deltaSeconds = (float)Math.Clamp(elapsedSeconds, 0d, MaxMovementDeltaSeconds);
+        intent.LastProcessedAtUtc = now;
+        Vector3f? next = null;
+        bool pathBlocked = false;
+        bool reachedDestination = false;
+        float distance = !request.HoldPosition ? Math.Max(0f, request.Speed) * deltaSeconds : 0f;
+        if (distance > 0f && intent.WaypointIndex < intent.Waypoints.Count)
         {
-            intent.ResetIntent();
+            var path = intent;
+            next = AdvanceRoute(runtime, path, previous, distance, ignoreClosedDoors, now, request.StopBeforeArea);
+            pathBlocked = next.Equals(previous);
+            reachedDestination = path.WaypointIndex >= path.Waypoints.Count;
         }
+        next ??= previous;
+        bool corrected = false;
+        var nextCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, next);
+        if (intent.WaypointIndex >= intent.Waypoints.Count && !GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, nextCell))
+        {
+            var areaCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, objectInfo.Area));
+            var rescued = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, next, areaCenter, objectInfo.Area);
+            if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, rescued)))
+            {
+                rescued = MapPathfinder.ClampToWalkable(Config.SWARM_MATCH_MAP, next, areaCenter);
+            }
+            corrected = !rescued.Equals(next);
+            next = rescued;
+        }
+        bool moved = !next.Equals(previous);
+        var velocity = moved && !reachedDestination && !corrected ? new Vector3f((next.X - previous.X) / deltaSeconds, (next.Y - previous.Y) / deltaSeconds, 0f) : new Vector3f();
+        bool changed = !next.Equals(objectInfo.Position) || !velocity.Equals(objectInfo.Velocity);
+        if (!next.Equals(objectInfo.Position))
+        {
+            objectInfo.Position = next;
+        }
+        objectInfo.Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, objectInfo.Position);
+        var resolvedArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, objectInfo.Cell);
+        if (resolvedArea != AreaType.None)
+        {
+            objectInfo.Area = resolvedArea;
+        }
+        objectInfo.Velocity = velocity;
+        if (velocity.X > 0.1f)
+        {
+            objectInfo.Rotation = 180f;
+        }
+        else if (velocity.X < -0.1f)
+        {
+            objectInfo.Rotation = 0f;
+        }
+        intent.PathBlocked = pathBlocked && !reachedDestination;
+        intent.ReachedDestination |= reachedDestination;
+        if (reachedDestination)
+        {
+            intent.Waypoints.Clear();
+            intent.WaypointIndex = 0;
+        }
+        return new MovementResult(changed, reachedDestination);
     }
 
     internal static Vector3f AdvanceRoute(MatchRuntime runtime, MovementState movement, Vector3f position, float distanceBudget, bool ignoreClosedDoors = false, DateTime? nowUtc = null, AreaType? stopBeforeArea = null)
@@ -371,7 +357,8 @@ internal class MatchMoveService(
         var current = new Vector3f(position.X, position.Y, 0f);
         while (distanceBudget > 0f && index < route.Count)
         {
-            var target = route[index];
+            var targetCell = route[index];
+            var target = MapCoordinateConverter.CellToWorld(mapId, targetCell);
             float dx = target.X - current.X;
             float dy = target.Y - current.Y;
             float distance = MathF.Sqrt(dx * dx + dy * dy);
@@ -382,7 +369,6 @@ internal class MatchMoveService(
             }
 
             var fromCell = MapCoordinateConverter.WorldToCell(mapId, current);
-            var targetCell = MapCoordinateConverter.WorldToCell(mapId, target);
             var fromArea = GameMapData.GetCurrentArea(mapId, fromCell);
             var targetArea = GameMapData.GetCurrentArea(mapId, targetCell);
             var door = runtime.Doors.GetBlockingDoor(fromArea, targetArea, fromCell, targetCell, ignoreClosedDoors);
@@ -433,7 +419,7 @@ internal class MatchMoveService(
         double safeDistance = runtime.Closures.GetSafeDistance(nowUtc);
         for (int i = movement.WaypointIndex; i < movement.Waypoints.Count; i++)
         {
-            var next = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, movement.Waypoints[i]);
+            var next = movement.Waypoints[i];
             bool valid = MapTraversal.IsTraversable(previous, next,
                 cell => (isSafeCell == null || isSafeCell(cell)) && GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell) &&
                     !runtime.Closures.IsAreaClosed(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell)) &&
@@ -494,7 +480,7 @@ internal class MatchMoveService(
             previousCell = step.Cell;
             previousArea = nextArea;
         }
-        var planned = new List<Vector3f>(path.Count);
+        var planned = new List<Cell>(path.Count);
         var previousPosition = objectInfo.Position;
         foreach (var step in path)
         {
@@ -507,7 +493,7 @@ internal class MatchMoveService(
             {
                 return false;
             }
-            planned.Add(position);
+            planned.Add(step.Cell.Clone());
             previousPosition = position;
         }
         movement.Waypoints.Clear();

@@ -67,11 +67,11 @@ public sealed class BotCellTargetTests
     }
 
     [Fact]
-    public void TargetCellIsCopiedWithoutChangingWorldPath()
+    public void TargetCellIsCopiedWithoutChangingCellPath()
     {
         var bot = new Bot();
         var cell = new Cell(10, 12);
-        var waypoint = new Vector3f(1, 2, 0);
+        var waypoint = new Cell(1, 2);
         bot.Movement.Waypoints.Add(waypoint);
         bot.SetMovementTarget(AreaType.S2Corridor9, cell);
         cell.X = 999;

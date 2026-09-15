@@ -17,7 +17,7 @@ public sealed class RouteMovementTests
     private static MovementState CreatePath(IEnumerable<Vector3f> points)
     {
         var state = new MovementState();
-        state.Waypoints.AddRange(points);
+        state.Waypoints.AddRange(points.Select(point => MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, point)));
         return state;
     }
 
@@ -85,7 +85,7 @@ public sealed class RouteMovementTests
         Assert.NotEqual(AreaType.S2Library1, GameMapData.GetCurrentArea(map,
             MapCoordinateConverter.WorldToCell(map, result)));
         Assert.Equal(AreaType.S2Library1, GameMapData.GetCurrentArea(map,
-            MapCoordinateConverter.WorldToCell(map, path.Waypoints[path.WaypointIndex])));
+            path.Waypoints[path.WaypointIndex]));
     }
     [Theory]
     [InlineData(false)]

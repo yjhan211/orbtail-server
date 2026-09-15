@@ -89,7 +89,7 @@ public sealed class MatchMovementTickTests
             Area = AreaType.S2Corridor9, Health = 10
         };
         monster.Movement.LastProcessedAtUtc = start.AddSeconds(-10);
-        monster.Movement.Waypoints.Add(new Vector3f(position.X + 0.4f, position.Y, 0f));
+        monster.Movement.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, new Vector3f(position.X + 1f, position.Y, 0f)));
         runtime.Monsters.Entities[1] = monster;
         var service = new MatchMoveService(null!, new MonsterBehaviorService());
 
@@ -135,7 +135,7 @@ public sealed class MatchMovementTickTests
         var now = DateTime.UtcNow;
         runtime.StartGameplay(now.AddSeconds(-10));
         bot.Movement.LastProcessedAtUtc = now.AddMilliseconds(-elapsedMilliseconds);
-        bot.Movement.Waypoints.Add(new Vector3f(before.X + 0.4f, before.Y, 0f));
+        bot.Movement.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, new Vector3f(before.X + 1f, before.Y, 0f)));
         var service = new MatchMoveService(new MovingBotProbe(), null!);
 
         service.ProcessTick(runtime, now);
@@ -144,7 +144,6 @@ public sealed class MatchMovementTickTests
         float expectedDistance = Math.Clamp(elapsedMilliseconds / 1000f, 0f, 0.25f);
         Assert.Equal(expectedDistance, bot.Player.Position!.X - before.X, 4);
         Assert.Equal(now, bot.Movement.LastProcessedAtUtc);
-        Assert.False(bot.Movement.FollowPath);
         Assert.True(float.IsFinite(bot.Player.Velocity.X));
     }
 
@@ -159,7 +158,6 @@ public sealed class MatchMovementTickTests
         runtime.StartGameplay();
         var bot = runtime.Bots.GetBot(-1)!;
         Assert.Equal(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell), bot.Player.Position);
-        bot.Movement.FollowPath = true;
         var behavior = new BotProbe();
         var service = new MatchMoveService(behavior, null!);
 
@@ -169,7 +167,6 @@ public sealed class MatchMovementTickTests
         Assert.Equal(1, behavior.Calls);
         Assert.NotNull(bot.Player.Position);
         Assert.Equal(now, bot.Movement.LastProcessedAtUtc);
-        Assert.False(bot.Movement.FollowPath);
     }
 
     [Fact]

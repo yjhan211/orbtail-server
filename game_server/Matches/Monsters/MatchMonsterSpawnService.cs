@@ -398,7 +398,14 @@ internal sealed class MatchMonsterSpawnService
             {
                 monster.Movement.DestinationCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, destination);
                 monster.Movement.DestinationArea = monster.HomeArea;
-                monster.Movement.Waypoints.AddRange(route);
+                foreach (var point in route)
+                {
+                    var cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, point);
+                    if (monster.Movement.Waypoints.Count == 0 || !monster.Movement.Waypoints[^1].Equals(cell))
+                    {
+                        monster.Movement.Waypoints.Add(cell);
+                    }
+                }
             }
 
             monster.Movement.LastProcessedAtUtc = now;

@@ -32,9 +32,8 @@ public sealed class BotPathTests
         bot.SetMovementTarget(AreaType.S2Ground,
             new network.common.data.models.Cell(3, 4));
         var destination = bot.Movement.DestinationCell;
-        bot.Movement.Waypoints.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, destination!));
+        bot.Movement.Waypoints.Add(destination!);
         bot.Movement.WaypointIndex = 1;
-        bot.Movement.FollowPath = true;
 
         bot.Movement.Clear();
 
@@ -43,6 +42,5 @@ public sealed class BotPathTests
         Assert.Same(destination, bot.Movement.DestinationCell);
         Assert.Equal(AreaType.S2Ground, bot.Movement.DestinationArea);
         Assert.NotNull(bot.Movement.DestinationCell);
-        Assert.False(bot.Movement.FollowPath);
     }
 }

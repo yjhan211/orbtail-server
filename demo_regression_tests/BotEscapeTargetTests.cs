@@ -57,7 +57,7 @@ public sealed class BotEscapeTargetTests
         bot.Player.CurrentArea = area;
         BotBehaviorService.SelectThreatEscapeTarget(runtime, bot, threatCell, DateTime.UtcNow, stayInCurrentArea: true);
         var destination = bot.Movement.DestinationCell!;
-        Assert.Equal(destination.GetDistance(currentCell) == 0, bot.Movement.HoldPosition);
+        Assert.Equal(destination.GetDistance(currentCell) == 0, bot.Movement.DestinationCell!.Equals(bot.Player.Cell));
         return destination;
     }
 
