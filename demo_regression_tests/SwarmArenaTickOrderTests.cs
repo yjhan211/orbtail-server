@@ -23,7 +23,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(composition,
             "services.AddSingleton<Func<MatchRuntime, TimeProvider, MatchTickLoop>>",
             "return (runtime, clock) =>",
-            "entryFailureHandler, combat, field, movement, monsterSpawns, clock);",
+            "entryFailureHandler, combat, field, movement, monsterSpawns, synchronization, clock);",
 
             "services.AddSingleton<MatchTickService>");
         AssertInOrder(runner,
@@ -277,7 +277,7 @@ public sealed class SwarmArenaTickOrderTests
         string root = FindRepositoryRoot();
         string composition = ReadNormalizedSource(root, "game_server", "Program.cs");
         string field = ReadNormalizedSource(root, "game_server", "Matches", "MatchFieldService.cs");
-        Assert.Contains("combat, field, movement, monsterSpawns, clock)", composition);
+        Assert.Contains("combat, field, movement, monsterSpawns, synchronization, clock)", composition);
         string tick = ReadMethodSlice(
             field,
             "public void ProcessClosureTick(",

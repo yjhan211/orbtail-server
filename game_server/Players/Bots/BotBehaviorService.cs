@@ -20,6 +20,19 @@ internal class BotBehaviorService(
     PlayerInteractionService interactions,
     ILogger<BotBehaviorService> logger)
 {
+    public void CompleteMovement(MatchRuntime runtime, Bot bot)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+            throw new InvalidOperationException("Bot movement completion requires the match lock.");
+        var player = bot.Player;
+        var velocity = player.GameInfo.ObjectInfo.Velocity;
+        if (player.State == PlayerState.EXPLORE_1 && (velocity.X != 0f || velocity.Y != 0f))
+        {
+            player.ClearPendingInteractions();
+            player.State = PlayerState.IDLE;
+        }
+    }
+
     public void ProcessOrbGrowth(MatchRuntime runtime, IReadOnlyList<Bot> aliveBots)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))

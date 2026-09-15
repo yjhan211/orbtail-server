@@ -175,7 +175,7 @@ internal sealed class MatchMonsterSpawnService
             }
 
             want = Math.Max(0, want);
-            int spawned = SpawnSupplyMonsters(runtime, participants, zone, want, includeCore, phaseIndex, now, roster, preMatch);
+            int spawned = SpawnSupplyMonsters(runtime, participants, zone, want, includeCore, phaseIndex, now, roster);
             if (spawned == 0)
             {
                 zoneState.NextTopUpAtUtc = now.AddSeconds(Config.SWARM_MONSTER_SUPPLY_BLOCKED_RETRY_SECONDS);
@@ -288,7 +288,7 @@ internal sealed class MatchMonsterSpawnService
         return count;
     }
 
-    private int SpawnSupplyMonsters(MatchRuntime runtime, IReadOnlyList<PlayerPositionSnapshot> participants, AreaType area, int normals, bool includeCore, int phaseIndex, DateTime now, IReadOnlyList<long> roster, bool preMatch)
+    private int SpawnSupplyMonsters(MatchRuntime runtime, IReadOnlyList<PlayerPositionSnapshot> participants, AreaType area, int normals, bool includeCore, int phaseIndex, DateTime now, IReadOnlyList<long> roster)
     {
         var state = runtime.Monsters;
         var phase = SwarmSupplyPhaseData.GetAll()[phaseIndex];
@@ -422,7 +422,7 @@ internal sealed class MatchMonsterSpawnService
         {
             foreach (var session in runtime.GetSessions())
             {
-                session.SendMonsterSnapshot(spawnedStates, preMatch, fullSnapshot: false);
+                session.SendMonsterSnapshot(spawnedStates, fullSnapshot: false);
             }
         }
         return spawnPlan.Count;

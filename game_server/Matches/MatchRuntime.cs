@@ -38,9 +38,12 @@ internal sealed class MatchRuntime
         };
         foreach (var session in GetSessions())
         {
-            session.SendMonsterSnapshot(states, preMatch: !IsGameplayActive(), fullSnapshot: false);
+            session.SendMonsterSnapshot(states, fullSnapshot: false);
         }
     }
+    internal Dictionary<(ObjectType, long), GameObjectInfo> SynchronizedObjects { get; } = new();
+    internal Dictionary<long, PlayerState> SynchronizedBotStates { get; } = new();
+
     public bool IsEnded => Volatile.Read(ref _ended) != 0;
     public object MatchLock { get; } = new();
 
@@ -405,6 +408,8 @@ internal sealed class MatchRuntime
                 Closures.Release();
                 Bots.Release();
                 Monsters.Release();
+                SynchronizedObjects.Clear();
+                SynchronizedBotStates.Clear();
                 _runtimeStore.RemoveCompleted(this);
                 startRedisCleanup = true;
             }

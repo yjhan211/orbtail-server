@@ -129,6 +129,7 @@ internal static class Program
         services.AddSingleton<PlayerOrbTrailService>();
         services.AddSingleton<MatchOrbAttackService>();
         services.AddSingleton<MatchMoveService>();
+        services.AddSingleton<MatchSynchronizationService>();
         services.AddSingleton<BotBehaviorService>();
         services.AddSingleton<MatchTrailCutService>();
         services.AddSingleton<MatchAutoAttackService>();
@@ -139,6 +140,7 @@ internal static class Program
             var field = sp.GetRequiredService<MatchFieldService>();
             var combat = sp.GetRequiredService<MatchCombatService>();
             var movement = sp.GetRequiredService<MatchMoveService>();
+            var synchronization = sp.GetRequiredService<MatchSynchronizationService>();
             var monsterSpawns = sp.GetRequiredService<MatchMonsterSpawnService>();
             var runtimes = sp.GetRequiredService<MatchRuntimeStore>();
             var loopLogger = sp.GetRequiredService<ILogger<MatchTickLoop>>();
@@ -149,7 +151,7 @@ internal static class Program
                 return new MatchTickLoop(
                     runtime,
                     runtimes, loopLogger, pickup,
-                    entryFailureHandler, combat, field, movement, monsterSpawns, clock);
+                    entryFailureHandler, combat, field, movement, monsterSpawns, synchronization, clock);
             };
         });
         services.AddSingleton<MatchTickService>();

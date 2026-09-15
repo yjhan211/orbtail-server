@@ -75,7 +75,7 @@ internal static class GameServerTestAccess
                 new MatchOrbAttackService(health, combatDamage), decisions, new MonsterCombatService(new MatchMonsterSpawnService()));
 
             return new MatchTickLoop(runtime, runtimes, logger, groundPickup,
-            entryFailure, combat, field, new MatchMoveService(decisions, new MonsterBehaviorService()), new MatchMonsterSpawnService(), clock);
+            entryFailure, combat, field, new MatchMoveService(decisions, new MonsterBehaviorService()), new MatchMonsterSpawnService(), new MatchSynchronizationService(), clock);
         };
         return new GameServer(
             configuration: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),

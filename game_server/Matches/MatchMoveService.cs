@@ -1,7 +1,5 @@
 using game_server.players.bots;
 using game_server.matches.monsters;
-using MessagePack;
-using network.packets;
 using network.common;
 using network.common.data;
 using network.common.data.helpers;
@@ -65,22 +63,14 @@ internal class MatchMoveService(
             target.Result = Move(runtime, target.ObjectInfo, target.Movement, target.Request, target.IgnoreClosedDoors, nowUtc);
         }
 
-        var movements = new List<(GameObjectInfo Info, AreaType FromArea)>();
         foreach (var target in movementTargets)
         {
-            if (target.Bot is { } bot)
+            if (target.Bot is { } bot && target.Result.Changed)
             {
-                if (!target.Result.Changed)
-                {
-                    continue;
-                }
                 bot.Player.AdvanceOrbOrbit(target.ObjectInfo.Position);
+                botBehavior.CompleteMovement(runtime, bot);
             }
-            movements.Add((target.ObjectInfo, target.FromArea));
         }
-
-        // 이동 후 결과 브로드캐스트
-        CompleteMovements(runtime, movements);
     }
 
     internal static void PrepareMovement(MatchRuntime runtime, GameObjectInfo objectInfo, MovementState movement, MovementRequest request, DateTime nowUtc, bool ignoreClosedDoors = false)
@@ -301,106 +291,6 @@ internal class MatchMoveService(
         }
         movement.WaypointIndex = 0;
         return true;
-    }
-
-    internal void CompleteMovements(MatchRuntime runtime, IReadOnlyList<(GameObjectInfo Info, AreaType FromArea)> movements)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Object movement publication requires the match lock.");
-        }
-        if (runtime.IsEnded)
-        {
-            throw new InvalidOperationException("Cannot publish object movement after the match has ended.");
-        }
-
-        var sessions = runtime.GetSessions();
-        var snapshots = runtime.Monsters.GetVisualStatesByArea();
-        foreach (var session in sessions)
-        {
-            session.SendMonsterSnapshot(snapshots, preMatch: false);
-        }
-
-        foreach (var movement in movements)
-        {
-            var info = movement.Info;
-            if (info.ObjectType != ObjectType.PLAYER)
-            {
-                continue;
-            }
-
-            var player = runtime.Bots.GetBot(info.ObjectId)?.Player;
-            if (player != null && player.State == PlayerState.EXPLORE_1 && (info.Velocity.X != 0f || info.Velocity.Y != 0f))
-            {
-                player.ClearPendingInteractions();
-                player.State = PlayerState.IDLE;
-                using var statePacket = PacketMaker.G_TO_C_PLAYER_STATE(player.PlayerId, player.State);
-                foreach (var session in sessions)
-                {
-                    if (session.Player.CurrentArea == movement.FromArea || session.Player.CurrentArea == info.Area)
-                    {
-                        session.TrySend(statePacket);
-                    }
-                }
-            }
-
-            if (movement.FromArea != info.Area)
-            {
-                using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(info.ObjectId);
-                foreach (var session in sessions)
-                {
-                    if (session.Player.CurrentArea == movement.FromArea)
-                    {
-                        session.TrySend(leavePacket);
-                    }
-                }
-
-                var enteringBot = runtime.Bots.GetPlayerObjectInfo(info.ObjectId);
-                if (enteringBot != null)
-                {
-                    using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(enteringBot);
-                    foreach (var session in sessions)
-                    {
-                        if (session.Player.CurrentArea == info.Area)
-                        {
-                            session.TrySend(enterPacket);
-                        }
-                    }
-                }
-            }
-        }
-
-        foreach (var session in sessions)
-        {
-            var message = new G_TO_C_MOVE
-            {
-                ServerTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-            };
-            foreach (var movement in movements)
-            {
-                var info = movement.Info;
-                bool inArea = session.Player.CurrentArea == info.Area;
-                bool departingMonster = info.ObjectType == ObjectType.MONSTER && session.Player.CurrentArea == movement.FromArea;
-                if (!inArea && !departingMonster)
-                {
-                    continue;
-                }
-                message.Objects.Add(info.Clone());
-                if (info.ObjectType == ObjectType.PLAYER)
-                {
-                    var player = runtime.Bots.GetBot(info.ObjectId)?.Player;
-                    message.OrbPhases[info.ObjectId] = player?.OrbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(info.ObjectId);
-                }
-            }
-
-            if (message.Objects.Count == 0)
-            {
-                continue;
-            }
-            using var packet = Packet.Create((int)Protocol.G_TO_C_MOVE);
-            packet.SetBody(MessagePackSerializer.Serialize(message));
-            session.TrySend(packet);
-        }
     }
 
     internal static Vector3f MoveAlongPath(MatchRuntime runtime, MovementState movement, Vector3f position, float remainingDistance, DateTime nowUtc, bool ignoreClosedDoors = false, AreaType? stopBeforeArea = null)

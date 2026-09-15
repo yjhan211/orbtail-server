@@ -105,14 +105,14 @@ public partial class GameClientSession
 
     private readonly Dictionary<int, MonsterInfo> _publishedMonsterStates = new();
 
-    internal void SendMonsterSnapshot(IReadOnlyDictionary<AreaType, List<MonsterInfo>> snapshotsByArea, bool preMatch, bool fullSnapshot = true)
+    internal void SendMonsterSnapshot(IReadOnlyDictionary<AreaType, List<MonsterInfo>> snapshotsByArea, bool fullSnapshot = true)
     {
         if (fullSnapshot)
         {
             var visibleIds = new HashSet<int>();
             foreach (var pair in snapshotsByArea)
             {
-                if (!preMatch && pair.Key != Player.CurrentArea) continue;
+                if (pair.Key != Player.CurrentArea) continue;
                 foreach (var monster in pair.Value) visibleIds.Add(monster.MonsterId);
             }
             foreach (int id in _publishedMonsterStates.Keys.ToArray())
@@ -122,7 +122,7 @@ public partial class GameClientSession
         }
         foreach (var (area, monsters) in snapshotsByArea)
         {
-            if (!preMatch && Player.CurrentArea != area)
+            if (Player.CurrentArea != area)
             {
                 continue;
             }
@@ -130,7 +130,7 @@ public partial class GameClientSession
             var changed = new List<MonsterInfo>();
             foreach (var monster in monsters)
             {
-                if (!preMatch && _publishedMonsterStates.TryGetValue(monster.MonsterId, out var previous) &&
+                if (_publishedMonsterStates.TryGetValue(monster.MonsterId, out var previous) &&
                     previous.AreaType == monster.AreaType && previous.CurrentHealth == monster.CurrentHealth &&
                     previous.MaxHealth == monster.MaxHealth && previous.IsAlive == monster.IsAlive &&
                     previous.ChaseTargetPlayerId == monster.ChaseTargetPlayerId &&
@@ -250,6 +250,7 @@ public partial class GameClientSession
 
                 SendInteractableList();
                 SendGroundItemSnapshot(newArea);
+                SendMonsterSnapshot(Match.Monsters.GetVisualStatesByArea());
             }
         }
         catch (Exception ex)
