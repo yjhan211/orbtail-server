@@ -61,7 +61,7 @@ public sealed class BotMovementIntentTests
         var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
         runtime.Bots.RegisterBots(runtime.MatchingId, [-1], new Dictionary<long, Cell> { [-1] = cell });
         var bot = runtime.Bots.GetBot(-1)!;
-        var oldTarget = new Cell(-100, -100);
+        var oldTarget = cell.Clone();
         bot.Movement.NextPathPlanAtUtc = canPlanThisTick ? DateTime.MinValue : DateTime.MaxValue;
         bot.Movement.Waypoints.Add(oldTarget);
         Cell? destination = null;
@@ -89,7 +89,7 @@ public sealed class BotMovementIntentTests
         Assert.True(request.Speed > 0f);
         if (canPlanThisTick)
         {
-            Assert.DoesNotContain(oldTarget, bot.Movement.Waypoints);
+            Assert.All(bot.Movement.Waypoints, waypoint => Assert.NotSame(oldTarget, waypoint));
             Assert.NotEmpty(bot.Movement.Waypoints);
         }
         else
@@ -115,7 +115,6 @@ public sealed class BotMovementIntentTests
 
         Assert.Equal(0, behavior.Selections);
         Assert.Same(target, Assert.Single(bot.Movement.Waypoints));
-        Assert.Null(request.IsSafeCell);
     }
 
     [Theory]
@@ -172,12 +171,7 @@ public sealed class BotMovementIntentTests
         Assert.True(request.Speed > 0f);
         if (holding)
         {
-            Assert.NotNull(request.IsSafeCell);
             Assert.Equal(cell, request.DestinationCell);
-        }
-        else
-        {
-            Assert.Null(request.IsSafeCell);
         }
         var result = MovementPreparationTestSteps.Advance(runtime, bot.Player.GameInfo.ObjectInfo, bot.Movement, request, 0.01f);
         if (!holding) Assert.True(result.Changed);

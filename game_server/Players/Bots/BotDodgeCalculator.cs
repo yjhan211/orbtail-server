@@ -13,9 +13,9 @@ public static class BotDodgeCalculator
     private const float SwarmBotDodgeMargin = 0.2f;
     private const float SwarmBotDodgeHoldSlackSeconds = 0.15f;
 
-    // 후보는 공격 띠 밖에서 고르고 경유 셀은 현재보다 위험한 띠 안쪽으로 들어가지 않게 한다.
+    // 목적지는 공격 띠 밖에서 고르고, 이동 경로에는 일반 통행 규칙을 적용한다.
     internal static bool TrySelectDodgeCell(MatchRuntime runtime, Bot bot, DateTime now,
-        out Cell target, out Func<Cell, bool> isSafeCell)
+        out Cell target)
     {
         var map = Config.SWARM_MATCH_MAP;
         var area = bot.Player.CurrentArea;
@@ -23,32 +23,15 @@ public static class BotDodgeCalculator
         var shapes = runtime.SunCrossfireShapes
             .Where(shape => shape.Area == area && shape.OwnerId != bot.PlayerId && now < shape.ExpiresAtUtc)
             .ToArray();
-        var origin = MapCoordinateConverter.CellToWorld(map, current);
-        var initialDepths = shapes.Select(shape => Math.Max(
-            GetBandDepth(shape, origin), GetBandDepth(shape, bot.Player.Position!))).ToArray();
         double safeDistance = runtime.Closures.GetSafeDistance(now);
-        bool Safe(Cell cell)
-        {
-            if (GameMapData.GetCurrentArea(map, cell) != area ||
-                runtime.Closures.IsAreaClosed(area) || SwarmPressureField.GetDistance(cell) > safeDistance)
-                return false;
-            var position = MapCoordinateConverter.CellToWorld(map, cell);
-            for (int i = 0; i < shapes.Length; i++)
-            {
-                if (GetBandDepth(shapes[i], position) > initialDepths[i] + 0.001f)
-                    return false;
-            }
-            return true;
-        }
         bool Outside(Cell cell)
         {
             var position = MapCoordinateConverter.CellToWorld(map, cell);
             return shapes.All(shape => GetBandDepth(shape, position) <= 0f);
         }
-        if (now < bot.SwarmDodgeHoldUntilUtc && bot.DodgeTargetCell == current && Safe(current) && Outside(current))
+        if (now < bot.SwarmDodgeHoldUntilUtc && bot.DodgeTargetCell == current && !runtime.Closures.IsAreaClosed(area) && SwarmPressureField.GetDistance(current) <= safeDistance && Outside(current))
         {
             target = current.Clone();
-            isSafeCell = Safe;
             return true;
         }
         var candidates = new List<Cell>();
@@ -68,9 +51,8 @@ public static class BotDodgeCalculator
                 }
             }
         }
-        isSafeCell = Safe;
         return MatchMoveService.TrySelectReachableCell(runtime, bot.Player.GameInfo.ObjectInfo,
-            candidates, Safe, candidateArea => candidateArea != area || runtime.Closures.IsAreaClosed(candidateArea),
+            candidates, cell => GameMapData.GetCurrentArea(map, cell) == area && SwarmPressureField.GetDistance(cell) <= safeDistance, candidateArea => candidateArea != area || runtime.Closures.IsAreaClosed(candidateArea),
             out target);
     }
 

@@ -11,7 +11,6 @@ namespace game_server.matches.monsters;
 /// </summary>
 internal sealed class MonsterBehaviorService
 {
-
     internal bool TryAcquireNearbyTarget(Monster monster, IReadOnlyList<Player> participants)
     {
         for (int index = 0; index < participants.Count; index++)
@@ -226,9 +225,7 @@ internal sealed class MonsterBehaviorService
         if (!found && TrySelectCrossAreaTarget(monster, participants, out target))
         {
             var destination = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target.Position!);
-            var fallback = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP,
-                new Vector3f(monster.AnchorX, monster.AnchorY, 0f));
-            return new MovementRequest(destination, speed, FallbackCell: fallback);
+            return new MovementRequest(destination, speed);
         }
         if (found)
         {
@@ -242,8 +239,8 @@ internal sealed class MonsterBehaviorService
             return new MovementRequest(
                 MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target.Position!), speed, hold);
         }
-        // 진행 중인 공급 경로는 유지한다. 도착 결과를 받은 뒤 순찰 목표를 고른다.
-        if (!monster.Movement.ReachedDestination && monster.Movement.Waypoints.Count > 0)
+        // 남은 공급 경로는 유지하고, 경로가 끝나면 순찰 목표를 고른다.
+        if (monster.Movement.WaypointIndex < monster.Movement.Waypoints.Count)
         {
             return new MovementRequest(null, speed);
         }

@@ -14,16 +14,12 @@ public sealed class MovementState
     public List<Cell> Waypoints { get; } = [];
     public int WaypointIndex { get; set; }
     public DateTime NextPathPlanAtUtc { get; set; }
-    public bool PathBlocked { get; set; }
-    public bool ReachedDestination { get; set; }
     public DateTime LastProcessedAtUtc { get; set; } = DateTime.UtcNow;
 
     public void Clear()
     {
         Waypoints.Clear();
         WaypointIndex = 0;
-        PathBlocked = false;
-        ReachedDestination = false;
     }
 }
 
@@ -32,6 +28,4 @@ public readonly record struct MovementRequest(
     Cell? DestinationCell,
     float Speed,
     bool HoldPosition = false,
-    AreaType? StopBeforeArea = null,
-    Cell? FallbackCell = null,
-    Func<Cell, bool>? IsSafeCell = null);
+    AreaType? StopBeforeArea = null);

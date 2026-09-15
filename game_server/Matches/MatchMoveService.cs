@@ -56,13 +56,13 @@ internal class MatchMoveService(
         // 이동 준비
         foreach (var target in movementTargets)
         {
-            PrepareMovement(runtime, target.ObjectInfo, target.Intent, target.Request, nowUtc, target.IgnoreClosedDoors);
+            PrepareMovement(runtime, target.ObjectInfo, target.Movement, target.Request, nowUtc, target.IgnoreClosedDoors);
         }
 
         // 이동
         foreach (var target in movementTargets)
         {
-            target.Result = Move(runtime, target.ObjectInfo, target.Intent, target.Request, target.IgnoreClosedDoors, nowUtc);
+            target.Result = Move(runtime, target.ObjectInfo, target.Movement, target.Request, target.IgnoreClosedDoors, nowUtc);
         }
 
         var movements = new List<(GameObjectInfo Info, AreaType FromArea)>();
@@ -95,63 +95,212 @@ internal class MatchMoveService(
         }
         if (request.HoldPosition || request.Speed <= 0f)
         {
-            if (movement.WaypointIndex < movement.Waypoints.Count && !CanKeepPath(runtime, objectInfo, movement, nowUtc, ignoreClosedDoors, request.IsSafeCell))
-            {
-                movement.Waypoints.Clear();
-                movement.WaypointIndex = 0;
-                movement.NextPathPlanAtUtc = DateTime.MinValue;
-            }
             return;
         }
 
+        // 이번에 요청한 목적지
         var destination = request.DestinationCell;
         if (destination == null && movement.Waypoints.Count > 0)
         {
+            // 요청 목적지가 없으면 기존 경로의 마지막 셀
             destination = movement.Waypoints[^1];
         }
+        // 아직 목적지가 없으면 저장된 목적지 사용
         destination ??= movement.DestinationCell;
         if (destination == null)
         {
+            // 사용할 목적지가 없으므로 이동 준비 종료
             return;
         }
+
         bool firstRequest = movement.DestinationCell == null;
         bool changed = firstRequest || !movement.DestinationCell!.Equals(destination);
         if (changed)
         {
-            movement.ReachedDestination = false;
+            // 목적지 갱신
             movement.DestinationCell = destination.Clone();
             movement.DestinationArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, destination);
         }
-        bool hasPath = movement.WaypointIndex < movement.Waypoints.Count;
+        if (movement.WaypointIndex < movement.Waypoints.Count && !CanKeepPath(runtime, objectInfo, movement, ignoreClosedDoors, request.StopBeforeArea))
+        {
+            movement.Waypoints.Clear();
+            movement.WaypointIndex = 0;
+            movement.NextPathPlanAtUtc = DateTime.MinValue;
+        }
 
-        if (!hasPath && movement.ReachedDestination && objectInfo.Cell.Equals(destination))
+        bool hasPath = movement.WaypointIndex < movement.Waypoints.Count;
+        if (!hasPath && objectInfo.Cell.Equals(destination))
+        {
+            // 목적지 도착
+            return;
+        }
+
+        // 목적지가 갱신 or 새 경로를 갱신해야 할 시점이 됐는지
+        bool needsPlan = (firstRequest && !hasPath) || nowUtc >= movement.NextPathPlanAtUtc;
+        if (!needsPlan)
         {
             return;
         }
-        bool needsPlan = (request.IsSafeCell != null && changed) || (firstRequest && !hasPath) || movement.PathBlocked || nowUtc >= movement.NextPathPlanAtUtc;
-        if (request.DestinationCell == null && hasPath && !movement.PathBlocked)
+
+        bool planned = TrySetMovementPath(runtime, objectInfo, movement, movement.DestinationArea, destination, nowUtc, ignoreClosedDoors);
+        if (planned)
         {
-            needsPlan = false;
+            return;
         }
-        bool validatePath = request.IsSafeCell != null;
-        if (needsPlan)
-        {
-            bool planned = TryPlanPath(runtime, objectInfo, movement,
-                movement.DestinationArea, destination, ignoreClosedDoors, request.IsSafeCell);
-            if (!planned && request.FallbackCell is { } fallback)
-            {
-                var fallbackArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, fallback);
-                planned = TryPlanPath(runtime, objectInfo, movement, fallbackArea, fallback, ignoreClosedDoors, request.IsSafeCell);
-            }
-            movement.NextPathPlanAtUtc = nowUtc.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS);
-            movement.PathBlocked = false;
-            validatePath |= !planned;
-        }
-        if (validatePath && !CanKeepPath(runtime, objectInfo, movement, nowUtc, ignoreClosedDoors, request.IsSafeCell))
+        if (!CanKeepPath(runtime, objectInfo, movement, ignoreClosedDoors, request.StopBeforeArea))
         {
             movement.Waypoints.Clear();
             movement.WaypointIndex = 0;
         }
+    }
+
+    internal static MovementResult Move(MatchRuntime runtime, GameObjectInfo objectInfo, MovementState movement, MovementRequest request, bool ignoreClosedDoors = false, DateTime? nowUtc = null)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Movement requires the match lock.");
+        }
+        if (runtime.IsEnded)
+        {
+            throw new InvalidOperationException("Cannot move after the match has ended.");
+        }
+
+        var previous = objectInfo.Position;
+        var now = nowUtc ?? DateTime.UtcNow;
+        var lastProcessedAtUtc = movement.LastProcessedAtUtc;
+        if (runtime.StartsAtUtc != null)
+        {
+            var startedAtUtc = runtime.StartsAtUtc.Value;
+            if (lastProcessedAtUtc < startedAtUtc)
+            {
+                lastProcessedAtUtc = startedAtUtc;
+            }
+        }
+
+        double elapsedSeconds = (now - lastProcessedAtUtc).TotalSeconds;
+        float deltaSeconds = (float)Math.Clamp(elapsedSeconds, 0d, MaxMovementDeltaSeconds);
+        movement.LastProcessedAtUtc = now;
+
+        var next = previous;
+        bool reachedPathEnd = false;
+        float distance = 0f;
+        if (!request.HoldPosition)
+        {
+            // 정지 요청
+            distance = Math.Max(0f, request.Speed) * deltaSeconds;
+        }
+        if (distance > 0f && movement.WaypointIndex < movement.Waypoints.Count)
+        {
+            next = MoveAlongPath(runtime, movement, previous, distance, now, ignoreClosedDoors, request.StopBeforeArea);
+            reachedPathEnd = movement.WaypointIndex >= movement.Waypoints.Count;
+            if (!reachedPathEnd && next.Equals(previous))
+            {
+                // 경로 끝 도달
+                movement.Waypoints.Clear();
+                movement.WaypointIndex = 0;
+                movement.NextPathPlanAtUtc = DateTime.MinValue;
+            }
+        }
+
+        bool positionChanged = !next.Equals(previous);
+
+        // 이동을 계속할 때만 속도 유지
+        var velocity = new Vector3f();
+        if (positionChanged && !reachedPathEnd)
+        {
+            float velocityX = (next.X - previous.X) / deltaSeconds;
+            float velocityY = (next.Y - previous.Y) / deltaSeconds;
+            velocity = new Vector3f(velocityX, velocityY, 0f);
+        }
+
+        // 위치가 그대로여도 이동에서 정지로 전환될 수 있음
+        bool velocityChanged = !velocity.Equals(objectInfo.Velocity);
+        bool changed = positionChanged || velocityChanged;
+        if (positionChanged)
+        {
+            objectInfo.Position = next;
+        }
+
+        // 변경된 포지션에 따른 결과 반영
+        objectInfo.Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, objectInfo.Position);
+        var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, objectInfo.Cell);
+        if (area != AreaType.None)
+        {
+            objectInfo.Area = area;
+        }
+
+        // 속도·방향 반영
+        objectInfo.Velocity = velocity;
+        if (velocity.X > 0.1f)
+        {
+            objectInfo.Rotation = 180f;
+        }
+        else if (velocity.X < -0.1f)
+        {
+            objectInfo.Rotation = 0f;
+        }
+
+        // 완료한 경로 정리
+        if (reachedPathEnd)
+        {
+            movement.Waypoints.Clear();
+            movement.WaypointIndex = 0;
+        }
+        return new MovementResult(changed, reachedPathEnd);
+    }
+
+    internal static bool TrySetMovementPath(MatchRuntime runtime, GameObjectInfo objectInfo, MovementState movement, AreaType destinationArea, Cell destinationCell, DateTime nowUtc, bool ignoreClosedDoors = false)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Path planning requires the match lock.");
+        }
+        if (runtime.IsEnded)
+        {
+            return false;
+        }
+
+        // 경로 탐색을 매 틱 수행하지 않도록 다음 탐색 가능 시간 지정
+        movement.NextPathPlanAtUtc = nowUtc.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS);
+        var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, objectInfo.Area, objectInfo.Cell, destinationArea, destinationCell);
+        if (path == null || path.Count == 0)
+        {
+            return false;
+        }
+
+        var previousCell = objectInfo.Cell;
+        var previousArea = objectInfo.Area;
+
+        // 계산된 경로를 순회하며 닫힌 문이 있다면 문으로 목표 변경
+        foreach (var step in path)
+        {
+            var nextArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, step.Cell);
+            var door = ignoreClosedDoors ? null : runtime.Doors.GetBlockingDoor(previousArea, nextArea, previousCell, step.Cell);
+            if (door != null)
+            {
+                var interaction = GameInteractableData.GetAll().FirstOrDefault(info => info.DoorId == door.DoorId && info.ZoneId == (int)previousArea);
+                if (interaction == null)
+                {
+                    return false;
+                }
+                path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, objectInfo.Area, objectInfo.Cell, (AreaType)interaction.ZoneId, new Cell(interaction.CellX, interaction.CellY));
+                if (path == null || path.Count == 0)
+                {
+                    return false;
+                }
+                break;
+            }
+            previousCell = step.Cell;
+            previousArea = nextArea;
+        }
+
+        movement.Waypoints.Clear();
+        foreach (var step in path)
+        {
+            movement.Waypoints.Add(step.Cell.Clone());
+        }
+        movement.WaypointIndex = 0;
+        return true;
     }
 
     internal void CompleteMovements(MatchRuntime runtime, IReadOnlyList<(GameObjectInfo Info, AreaType FromArea)> movements)
@@ -254,93 +403,7 @@ internal class MatchMoveService(
         }
     }
 
-    private sealed record MovementTarget(GameObjectInfo ObjectInfo, MovementState Intent, bool IgnoreClosedDoors, Bot? Bot, Monster? Monster, AreaType FromArea, MovementRequest Request)
-    {
-        public MovementResult Result { get; set; }
-    }
-
-    internal readonly record struct MovementResult(bool Changed, bool ReachedDestination);
-
-    internal static MovementResult Move(MatchRuntime runtime, GameObjectInfo objectInfo, MovementState intent, MovementRequest request, bool ignoreClosedDoors = false, DateTime? nowUtc = null)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Movement requires the match lock.");
-        }
-
-        if (runtime.IsEnded)
-        {
-            throw new InvalidOperationException("Cannot move after the match has ended.");
-        }
-        var previous = objectInfo.Position;
-        var now = nowUtc ?? DateTime.UtcNow;
-        // 시작 전 대기 시간은 첫 이동량에 포함하지 않는다.
-        var lastProcessedAtUtc = intent.LastProcessedAtUtc;
-        if (runtime.StartsAtUtc is { } startedAtUtc && lastProcessedAtUtc < startedAtUtc)
-        {
-            lastProcessedAtUtc = startedAtUtc;
-        }
-        double elapsedSeconds = (now - lastProcessedAtUtc).TotalSeconds;
-        float deltaSeconds = (float)Math.Clamp(elapsedSeconds, 0d, MaxMovementDeltaSeconds);
-        intent.LastProcessedAtUtc = now;
-        Vector3f? next = null;
-        bool pathBlocked = false;
-        bool reachedDestination = false;
-        float distance = !request.HoldPosition ? Math.Max(0f, request.Speed) * deltaSeconds : 0f;
-        if (distance > 0f && intent.WaypointIndex < intent.Waypoints.Count)
-        {
-            var path = intent;
-            next = AdvanceRoute(runtime, path, previous, distance, ignoreClosedDoors, now, request.StopBeforeArea);
-            pathBlocked = next.Equals(previous);
-            reachedDestination = path.WaypointIndex >= path.Waypoints.Count;
-        }
-        next ??= previous;
-        bool corrected = false;
-        var nextCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, next);
-        if (intent.WaypointIndex >= intent.Waypoints.Count && !GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, nextCell))
-        {
-            var areaCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, objectInfo.Area));
-            var rescued = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, next, areaCenter, objectInfo.Area);
-            if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, rescued)))
-            {
-                rescued = MapPathfinder.ClampToWalkable(Config.SWARM_MATCH_MAP, next, areaCenter);
-            }
-            corrected = !rescued.Equals(next);
-            next = rescued;
-        }
-        bool moved = !next.Equals(previous);
-        var velocity = moved && !reachedDestination && !corrected ? new Vector3f((next.X - previous.X) / deltaSeconds, (next.Y - previous.Y) / deltaSeconds, 0f) : new Vector3f();
-        bool changed = !next.Equals(objectInfo.Position) || !velocity.Equals(objectInfo.Velocity);
-        if (!next.Equals(objectInfo.Position))
-        {
-            objectInfo.Position = next;
-        }
-        objectInfo.Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, objectInfo.Position);
-        var resolvedArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, objectInfo.Cell);
-        if (resolvedArea != AreaType.None)
-        {
-            objectInfo.Area = resolvedArea;
-        }
-        objectInfo.Velocity = velocity;
-        if (velocity.X > 0.1f)
-        {
-            objectInfo.Rotation = 180f;
-        }
-        else if (velocity.X < -0.1f)
-        {
-            objectInfo.Rotation = 0f;
-        }
-        intent.PathBlocked = pathBlocked && !reachedDestination;
-        intent.ReachedDestination |= reachedDestination;
-        if (reachedDestination)
-        {
-            intent.Waypoints.Clear();
-            intent.WaypointIndex = 0;
-        }
-        return new MovementResult(changed, reachedDestination);
-    }
-
-    internal static Vector3f AdvanceRoute(MatchRuntime runtime, MovementState movement, Vector3f position, float distanceBudget, bool ignoreClosedDoors = false, DateTime? nowUtc = null, AreaType? stopBeforeArea = null)
+    internal static Vector3f MoveAlongPath(MatchRuntime runtime, MovementState movement, Vector3f position, float remainingDistance, DateTime nowUtc, bool ignoreClosedDoors = false, AreaType? stopBeforeArea = null)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -350,58 +413,51 @@ internal class MatchMoveService(
         {
             throw new InvalidOperationException("Cannot move after the match has ended.");
         }
+
         var mapId = Config.SWARM_MATCH_MAP;
-        var now = nowUtc ?? DateTime.UtcNow;
-        var route = movement.Waypoints;
+        var originCell = MapCoordinateConverter.WorldToCell(mapId, position);
+        var originArea = GameMapData.GetCurrentArea(mapId, originCell);
         int index = movement.WaypointIndex;
-        var current = new Vector3f(position.X, position.Y, 0f);
-        while (distanceBudget > 0f && index < route.Count)
+        var current = position;
+        while (remainingDistance > 0f && index < movement.Waypoints.Count)
         {
-            var targetCell = route[index];
-            var target = MapCoordinateConverter.CellToWorld(mapId, targetCell);
+            var target = MapCoordinateConverter.CellToWorld(mapId, movement.Waypoints[index]);
+            // 다음 경로까지 거리 계산
             float dx = target.X - current.X;
             float dy = target.Y - current.Y;
-            float distance = MathF.Sqrt(dx * dx + dy * dy);
-            if (distance == 0f)
+            float distanceToWaypoint = MathF.Sqrt(dx * dx + dy * dy);
+            if (distanceToWaypoint == 0f)
             {
+                // 이동 불필요
                 index++;
                 continue;
             }
-
-            var fromCell = MapCoordinateConverter.WorldToCell(mapId, current);
-            var fromArea = GameMapData.GetCurrentArea(mapId, fromCell);
-            var targetArea = GameMapData.GetCurrentArea(mapId, targetCell);
-            var door = runtime.Doors.GetBlockingDoor(fromArea, targetArea, fromCell, targetCell, ignoreClosedDoors);
-            if (door != null)
+            // 현재 셀
+            var currentCell = MapCoordinateConverter.WorldToCell(mapId, current);
+            // 다음 이동할 거리
+            float moveDistance = Math.Min(remainingDistance, distanceToWaypoint);
+            float directionX = dx / distanceToWaypoint;
+            float directionY = dy / distanceToWaypoint;
+            float moveX = directionX * moveDistance;
+            float moveY = directionY * moveDistance;
+            // 다음 이동 좌표
+            var next = new Vector3f(current.X + moveX, current.Y + moveY, 0f);
+            // 남은 이동 거리
+            bool reachesWaypoint = remainingDistance >= distanceToWaypoint;
+            if (reachesWaypoint)
             {
-                break;
+                next = new Vector3f(target.X, target.Y, 0f);
             }
-            if ((stopBeforeArea.HasValue && targetArea == stopBeforeArea.Value) ||
-                IsUnsafeStep(runtime, position, GameMapData.GetCurrentArea(mapId,
-                    MapCoordinateConverter.WorldToCell(mapId, position)), targetCell, targetArea, now))
-            {
-                break;
-            }
-            if (!MapTraversal.IsTraversable(mapId, current, target))
-            {
-                break;
-            }
-
-            float step = Math.Min(distanceBudget, distance);
-            var next = Vector3f.MoveTowardsXY(current, target, step);
             var nextCell = MapCoordinateConverter.WorldToCell(mapId, next);
-            var nextArea = GameMapData.GetCurrentArea(mapId, nextCell);
-            if ((stopBeforeArea.HasValue && nextArea == stopBeforeArea.Value) ||
-                IsUnsafeStep(runtime, position, GameMapData.GetCurrentArea(mapId,
-                    MapCoordinateConverter.WorldToCell(mapId, position)), nextCell, nextArea, now))
+            if (!CanTraverse(runtime, currentCell, nextCell, ignoreClosedDoors, originArea, stopBeforeArea))
             {
+                // 다음 셀이 막혀있으므로 정지
                 break;
             }
             current = next;
-            distanceBudget -= step;
-            if (step == distance)
+            remainingDistance -= moveDistance;
+            if (reachesWaypoint)
             {
-                current = new Vector3f(target.X, target.Y, 0f);
                 index++;
             }
         }
@@ -409,24 +465,18 @@ internal class MatchMoveService(
         return current;
     }
 
-    private static bool CanKeepPath(MatchRuntime runtime, GameObjectInfo objectInfo, MovementState movement, DateTime nowUtc, bool ignoreClosedDoors, Func<Cell, bool>? isSafeCell = null)
+    private static bool CanKeepPath(MatchRuntime runtime, GameObjectInfo objectInfo, MovementState movement, bool ignoreClosedDoors, AreaType? stopBeforeArea)
     {
         if (movement.WaypointIndex >= movement.Waypoints.Count)
         {
             return false;
         }
-        var previous = objectInfo.Cell;
-        double safeDistance = runtime.Closures.GetSafeDistance(nowUtc);
+        var previous = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, objectInfo.Position);
+        var originArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, previous);
         for (int i = movement.WaypointIndex; i < movement.Waypoints.Count; i++)
         {
             var next = movement.Waypoints[i];
-            bool valid = MapTraversal.IsTraversable(previous, next,
-                cell => (isSafeCell == null || isSafeCell(cell)) && GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell) &&
-                    !runtime.Closures.IsAreaClosed(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell)) &&
-                    SwarmPressureField.GetDistance(cell) <= safeDistance,
-                (from, to) => runtime.Doors.GetBlockingDoor(
-                    GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, from),
-                    GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, to), from, to, ignoreClosedDoors) == null);
+            bool valid = CanTraverse(runtime, previous, next, ignoreClosedDoors, originArea, stopBeforeArea);
             if (!valid)
             {
                 return false;
@@ -436,77 +486,57 @@ internal class MatchMoveService(
         return true;
     }
 
-    internal static bool TryPlanPath(MatchRuntime runtime, GameObjectInfo objectInfo, MovementState movement,
-        AreaType destinationArea, Cell destinationCell, bool ignoreClosedDoors = false, Func<Cell, bool>? isSafeCell = null)
+    internal static bool CanTraverse(MatchRuntime runtime, Cell from, Cell to, bool ignoreClosedDoors, AreaType? allowedClosedArea = null, AreaType? stopBeforeArea = null)
     {
-        if (!Monitor.IsEntered(runtime.MatchLock))
+        foreach (var step in MapTraversal.GetSteps(from, to))
         {
-            throw new InvalidOperationException("Path planning requires the match lock.");
-        }
-        if (runtime.IsEnded)
-        {
-            return false;
-        }
-        var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, objectInfo.Area, objectInfo.Cell, destinationArea, destinationCell);
-        if (path == null || path.Count == 0)
-        {
-            return false;
-        }
-
-        // 닫힌 문을 건너기 전에는 해당 구역의 등록된 상호작용 셀에 먼저 도착한다.
-        var previousCell = objectInfo.Cell;
-        var previousArea = objectInfo.Area;
-        foreach (var step in path)
-        {
-            var nextArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, step.Cell);
-            var door = ignoreClosedDoors ? null : runtime.Doors.GetBlockingDoor(previousArea, nextArea, previousCell, step.Cell);
-            if (door != null)
+            if (step.Horizontal != null && step.Vertical != null)
             {
-                InteractableInfoData? interaction = null;
-                foreach (var info in GameInteractableData.GetAll())
+                // 대각선 통과 가능 여부
+                bool horizontalOpen = CanEnterCell(runtime, step.Horizontal, allowedClosedArea, stopBeforeArea) && CanCrossDoor(runtime, step.From, step.Horizontal, ignoreClosedDoors);
+                bool verticalOpen = CanEnterCell(runtime, step.Vertical, allowedClosedArea, stopBeforeArea) && CanCrossDoor(runtime, step.From, step.Vertical, ignoreClosedDoors);
+                if (!horizontalOpen && !verticalOpen)
                 {
-                    if (info.DoorId == door.DoorId && info.ZoneId == (int)previousArea)
-                    {
-                        interaction = info;
-                        break;
-                    }
+                    return false;
                 }
-                if (interaction == null) return false;
-                path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, objectInfo.Area, objectInfo.Cell,
-                    (AreaType)interaction.ZoneId, new Cell(interaction.CellX, interaction.CellY));
-                if (path == null || path.Count == 0) return false;
-                break;
             }
-            previousCell = step.Cell;
-            previousArea = nextArea;
-        }
-        var planned = new List<Cell>(path.Count);
-        var previousPosition = objectInfo.Position;
-        foreach (var step in path)
-        {
-            if (isSafeCell != null && !isSafeCell(step.Cell))
+            if (!CanEnterCell(runtime, step.To, allowedClosedArea, stopBeforeArea))
             {
                 return false;
             }
-            var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, step.Cell);
-            if (!MapPathfinder.IsSegmentWalkable(Config.SWARM_MATCH_MAP, previousPosition, position))
+            if (!CanCrossDoor(runtime, step.From, step.To, ignoreClosedDoors))
             {
                 return false;
             }
-            planned.Add(step.Cell.Clone());
-            previousPosition = position;
         }
-        movement.Waypoints.Clear();
-        movement.Waypoints.AddRange(planned);
-        movement.WaypointIndex = 0;
         return true;
+    }
+
+    private static bool CanEnterCell(MatchRuntime runtime, Cell cell, AreaType? allowedClosedArea, AreaType? stopBeforeArea)
+    {
+        if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell))
+        {
+            return false;
+        }
+        var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
+        if (area == stopBeforeArea || (area != allowedClosedArea && runtime.Closures.IsAreaClosed(area)))
+        {
+            return false;
+        }
+        return true;
+    }
+
+    private static bool CanCrossDoor(MatchRuntime runtime, Cell from, Cell to, bool ignoreClosedDoors)
+    {
+        var fromArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, from);
+        var toArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, to);
+        var blockingDoor = runtime.Doors.GetBlockingDoor(fromArea, toArea, from, to, ignoreClosedDoors);
+        return blockingDoor == null;
     }
 
     // 행동 서비스가 정렬한 후보 중 실제로 도달 가능한 첫 셀을 선택한다.
     // 목적지만 안전한 경로가 아니라 모든 경유 셀이 행동의 안전 조건을 만족해야 한다.
-    internal static bool TrySelectReachableCell(
-        MatchRuntime runtime, GameObjectInfo objectInfo, IReadOnlyList<Cell> candidates,
-        Func<Cell, bool> isSafeCell, Func<AreaType, bool> isBlockedArea, out Cell targetCell)
+    internal static bool TrySelectReachableCell(MatchRuntime runtime, GameObjectInfo objectInfo, IReadOnlyList<Cell> candidates, Func<Cell, bool> isSafeCell, Func<AreaType, bool> isBlockedArea, out Cell targetCell)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -566,4 +596,11 @@ internal class MatchMoveService(
         var currentCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, position);
         return targetDistance > SwarmPressureField.GetDistance(currentCell);
     }
+
+    private sealed record MovementTarget(GameObjectInfo ObjectInfo, MovementState Movement, bool IgnoreClosedDoors, Bot? Bot, Monster? Monster, AreaType FromArea, MovementRequest Request)
+    {
+        public MovementResult Result { get; set; }
+    }
+
+    internal readonly record struct MovementResult(bool Changed, bool ReachedPathEnd);
 }

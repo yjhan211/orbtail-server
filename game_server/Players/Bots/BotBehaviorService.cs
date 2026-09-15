@@ -767,14 +767,14 @@ internal class BotBehaviorService(
             bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now);
         if (advice != null || now < bot.SwarmDodgeHoldUntilUtc)
         {
-            if (BotDodgeCalculator.TrySelectDodgeCell(runtime, bot, now, out var dodgeCell, out var isSafeCell))
+            if (BotDodgeCalculator.TrySelectDodgeCell(runtime, bot, now, out var dodgeCell))
             {
                 bot.DodgeTargetCell = dodgeCell.Clone();
                 if (advice != null)
                 {
                     bot.SwarmDodgeHoldUntilUtc = now.AddSeconds(advice.Value.HoldSeconds);
                 }
-                return new MovementRequest(dodgeCell, speed, IsSafeCell: isSafeCell);
+                return new MovementRequest(dodgeCell, speed);
             }
             bot.DodgeTargetCell = null;
             bot.SwarmDodgeHoldUntilUtc = DateTime.MinValue;

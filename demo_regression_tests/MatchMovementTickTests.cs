@@ -135,6 +135,8 @@ public sealed class MatchMovementTickTests
         var now = DateTime.UtcNow;
         runtime.StartGameplay(now.AddSeconds(-10));
         bot.Movement.LastProcessedAtUtc = now.AddMilliseconds(-elapsedMilliseconds);
+        // 이동 시간 상한만 검증하도록 기존 경로의 재계획을 미룬다.
+        bot.Movement.NextPathPlanAtUtc = now.AddSeconds(1);
         bot.Movement.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, new Vector3f(before.X + 1f, before.Y, 0f)));
         var service = new MatchMoveService(new MovingBotProbe(), null!);
 

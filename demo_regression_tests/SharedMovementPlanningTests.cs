@@ -24,6 +24,109 @@ public sealed class SharedMovementPlanningTests
         };
     }
 
+    [Theory]
+    [InlineData(1000000f, 0.05f, false, true)]
+    [InlineData(0f, 0.05f, false, false)]
+    [InlineData(1f, 0f, false, false)]
+    [InlineData(1f, 0.05f, true, false)]
+    public void FailedMovementDiscardsPathButStationaryRequestsPreserveIt(float speed, float elapsed, bool hold, bool shouldDiscard)
+    {
+        var runtime = CreateRuntime();
+        using var scope = runtime.Enter();
+        var info = CreateObject();
+        var now = DateTime.UtcNow;
+        var deadline = now.AddMinutes(1);
+        var destination = info.Cell.GetAdjacentCells().First(cell =>
+            GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == info.Area &&
+            MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, info.Area, info.Cell, info.Area, cell) is { Count: > 0 });
+        var state = new MovementState
+        {
+            DestinationCell = destination,
+            DestinationArea = info.Area,
+            NextPathPlanAtUtc = deadline
+        };
+        var blocked = new Cell(-10000, -10000);
+        state.Waypoints.Add(blocked);
+        var position = info.Position;
+        var request = new MovementRequest(destination, speed, HoldPosition: hold);
+
+        var result = MovementPreparationTestSteps.Advance(runtime, info, state, request, elapsed, nowUtc: now);
+
+        Assert.Equal(position, info.Position);
+        Assert.False(result.ReachedPathEnd);
+        if (!shouldDiscard)
+        {
+            Assert.Same(blocked, Assert.Single(state.Waypoints));
+            Assert.Equal(deadline, state.NextPathPlanAtUtc);
+            return;
+        }
+
+        Assert.Empty(state.Waypoints);
+        Assert.Equal(0, state.WaypointIndex);
+        Assert.Equal(DateTime.MinValue, state.NextPathPlanAtUtc);
+        MatchMoveService.PrepareMovement(runtime, info, state, request, now);
+        Assert.NotEmpty(state.Waypoints);
+        Assert.DoesNotContain(blocked, state.Waypoints);
+        Assert.True(state.NextPathPlanAtUtc < deadline);
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SameCellWithoutPathDoesNotPlanOrMoveToCellCenter(bool ignoreDoors)
+    {
+        var runtime = CreateRuntime();
+        using var scope = runtime.Enter();
+        var info = CreateObject();
+        info.Position = new Vector3f(info.Position.X + 0.01f, info.Position.Y, 0f);
+        Assert.Equal(info.Cell, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, info.Position));
+        var position = info.Position;
+        var state = new MovementState();
+        var now = DateTime.UtcNow;
+        var request = new MovementRequest(info.Cell.Clone(), 1f);
+
+        MatchMoveService.PrepareMovement(runtime, info, state, request, now, ignoreDoors);
+
+        Assert.Empty(state.Waypoints);
+        Assert.Equal(DateTime.MinValue, state.NextPathPlanAtUtc);
+        MovementPreparationTestSteps.Advance(runtime, info, state, request, 0.05f, ignoreDoors, now);
+        Assert.Same(position, info.Position);
+    }
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public void StoppedPathIsPreservedAndValidatedOnResume(bool holdPosition, bool ignoreDoors)
+    {
+        var runtime = CreateRuntime();
+        using var scope = runtime.Enter();
+        var info = CreateObject();
+        var now = DateTime.UtcNow;
+        var deadline = now.AddMinutes(1);
+        var state = new MovementState { NextPathPlanAtUtc = deadline };
+        var invalidCell = new Cell(-10000, -10000);
+        state.Waypoints.Add(invalidCell);
+        var destination = info.Cell.GetAdjacentCells().First(cell =>
+            GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == info.Area &&
+            MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, info.Area, info.Cell, info.Area, cell) is { Count: > 0 });
+        var request = new MovementRequest(destination, holdPosition ? 1f : 0f, HoldPosition: holdPosition);
+
+        MatchMoveService.PrepareMovement(runtime, info, state, request, now, ignoreDoors);
+
+        Assert.Same(invalidCell, Assert.Single(state.Waypoints));
+        Assert.Equal(deadline, state.NextPathPlanAtUtc);
+        Assert.Equal(0, state.WaypointIndex);
+        var position = info.Position;
+        MovementPreparationTestSteps.Advance(runtime, info, state, request, 0.05f, ignoreDoors, now);
+        Assert.Equal(position, info.Position);
+
+        request = request with { HoldPosition = false, Speed = 1f };
+        MatchMoveService.PrepareMovement(runtime, info, state, request, now, ignoreDoors);
+
+        Assert.DoesNotContain(invalidCell, state.Waypoints);
+        Assert.NotEmpty(state.Waypoints);
+        Assert.True(state.NextPathPlanAtUtc < deadline);
+    }
     [Fact]
     public void SamePlannerStopsBotAtDoorButLetsMonsterReachDestination()
     {
@@ -39,8 +142,10 @@ public sealed class SharedMovementPlanningTests
         var destination = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
         var bot = new MovementState();
         var monster = new MovementState();
-        Assert.True(MatchMoveService.TryPlanPath(runtime, info, bot, AreaType.S2Corridor9, destination));
-        Assert.True(MatchMoveService.TryPlanPath(runtime, info, monster, AreaType.S2Corridor9, destination, true));
+        var now = DateTime.UtcNow;
+        Assert.True(MatchMoveService.TrySetMovementPath(runtime, info, bot, AreaType.S2Corridor9, destination, now));
+        Assert.True(MatchMoveService.TrySetMovementPath(runtime, info, monster, AreaType.S2Corridor9, destination, now, true));
+        Assert.Equal(now.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS), bot.NextPathPlanAtUtc);
         var botEnd = bot.Waypoints[^1];
         Assert.NotEqual(destination, botEnd);
         Assert.Contains(GameInteractableData.GetAll(), item =>
@@ -49,7 +154,7 @@ public sealed class SharedMovementPlanningTests
         Assert.Equal(destination, monster.Waypoints[^1]);
 
         foreach (var door in GameDoorData.GetAll()) runtime.Doors.OpenDoor(door.DoorId);
-        Assert.True(MatchMoveService.TryPlanPath(runtime, info, bot, AreaType.S2Corridor9, destination));
+        Assert.True(MatchMoveService.TrySetMovementPath(runtime, info, bot, AreaType.S2Corridor9, destination, now));
         Assert.Equal(monster.Waypoints, bot.Waypoints);
     }
 
@@ -65,7 +170,9 @@ public sealed class SharedMovementPlanningTests
         state.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, info.Position));
         state.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, new Vector3f(info.Position.X + 0.1f, info.Position.Y, 0f)));
         var before = state.Waypoints.ToArray();
-        Assert.False(MatchMoveService.TryPlanPath(runtime, info, state, AreaType.None, new Cell(-10000, -10000), ignoreDoors));
+        var now = DateTime.UtcNow;
+        Assert.False(MatchMoveService.TrySetMovementPath(runtime, info, state, AreaType.None, new Cell(-10000, -10000), now, ignoreDoors));
+        Assert.Equal(now.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS), state.NextPathPlanAtUtc);
         Assert.Equal(before, state.Waypoints);
         Assert.Equal(1, state.WaypointIndex);
     }
@@ -95,10 +202,11 @@ public sealed class SharedMovementPlanningTests
         var state = new MovementState();
         state.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, info.Position));
         Assert.Throws<InvalidOperationException>(() =>
-            MatchMoveService.TryPlanPath(runtime, info, state, info.Area, info.Cell));
+            MatchMoveService.TrySetMovementPath(runtime, info, state, info.Area, info.Cell, DateTime.UtcNow));
         using var scope = runtime.Enter();
         runtime.TryMarkEnded();
-        Assert.False(MatchMoveService.TryPlanPath(runtime, info, state, info.Area, info.Cell));
+        Assert.False(MatchMoveService.TrySetMovementPath(runtime, info, state, info.Area, info.Cell, DateTime.UtcNow));
+        Assert.Equal(DateTime.MinValue, state.NextPathPlanAtUtc);
         Assert.Single(state.Waypoints);
         Assert.False(MatchMoveService.TrySelectReachableCell(runtime, info, [info.Cell],
             _ => true, _ => false, out _));
@@ -122,13 +230,13 @@ public sealed class SharedMovementPlanningTests
         Assert.Same(before, info.Position);
         Assert.NotEmpty(state.Waypoints);
         var result = MovementPreparationTestSteps.Advance(runtime, info, state, request, 1f, ignoreDoors, now);
-        Assert.True(result.ReachedDestination);
+        Assert.True(result.ReachedPathEnd);
         Assert.Equal(destination, info.Cell);
         Assert.Empty(state.Waypoints);
         MatchMoveService.PrepareMovement(runtime, info, state, request, now, ignoreDoors);
         var repeated = MovementPreparationTestSteps.Advance(runtime, info, state, request, 1f, ignoreDoors, now);
-        Assert.False(repeated.ReachedDestination);
-        Assert.True(state.ReachedDestination);
+        Assert.False(repeated.ReachedPathEnd);
+        Assert.Empty(state.Waypoints);
     }
 
     [Theory]
@@ -169,7 +277,7 @@ public sealed class SharedMovementPlanningTests
         var result = MovementPreparationTestSteps.Advance(runtime, info, state,
             new MovementRequest(null, 10f, HoldPosition: true), 1f, ignoreDoors);
         Assert.Equal(before, info.Position);
-        Assert.False(result.ReachedDestination);
+        Assert.False(result.ReachedPathEnd);
         Assert.Single(state.Waypoints);
     }
 }

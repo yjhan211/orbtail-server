@@ -46,7 +46,7 @@ public class SwarmBotDodgeTests
             GroundLength = 4, HalfWidth = halfWidth, SweepSpeed = 4.5f,
             ArmedAtUtc = Now.AddSeconds(0.1), ExpiresAtUtc = Now.AddSeconds(2)
         });
-        bool found = BotDodgeCalculator.TrySelectDodgeCell(runtime, bot, Now, out var target, out var safe);
+        bool found = BotDodgeCalculator.TrySelectDodgeCell(runtime, bot, Now, out var target);
         Assert.Equal(expected, found);
         if (!found) return;
 
@@ -55,10 +55,8 @@ public class SwarmBotDodgeTests
         var destination = network.common.data.MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, target);
         Assert.Null(BotDodgeCalculator.CalculateDodge(runtime.SunCrossfireShapes, bot.PlayerId,
             destination, bot.Player.CurrentArea, Now));
-        var request = new MovementRequest(target, 1f, IsSafeCell: safe);
+        var request = new MovementRequest(target, 1f);
         MatchMoveService.PrepareMovement(runtime, bot.Player.GameInfo.ObjectInfo, bot.Movement, request, Now);
-        Assert.All(bot.Movement.Waypoints, point => Assert.True(safe(
-            point)));
         var result = MovementPreparationTestSteps.Advance(runtime, bot.Player.GameInfo.ObjectInfo,
             bot.Movement, request, 0.05f, nowUtc: Now);
         Assert.True(result.Changed);

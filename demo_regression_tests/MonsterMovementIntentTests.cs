@@ -63,7 +63,7 @@ public sealed class MonsterMovementIntentTests
 
         new MatchMoveService(null!, new MonsterBehaviorService()).ProcessTick(runtime, now);
 
-        Assert.True(monster.Movement.ReachedDestination);
+        Assert.Empty(monster.Movement.Waypoints);
         Assert.Equal(destination, monster.Position);
         Assert.Equal(position.X - 1, monster.AnchorX);
         Assert.Equal(position.Y, monster.AnchorY);
