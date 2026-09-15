@@ -36,7 +36,7 @@ internal class MatchMoveService(
         {
             return;
         }
-        var movementTargets = new List<MovementTarget>();
+        var movementActors = new List<MovementActor>();
         var activeBots = runtime.Bots.GetBots().FindAll((x) => !x.Player.IsEliminated);
         var participants = runtime.GetAlivePlayers().FindAll(player => player.Position != null);
 
@@ -44,33 +44,33 @@ internal class MatchMoveService(
         foreach (var bot in activeBots)
         {
             var request = botBehavior.CreateMovementRequest(runtime, bot, nowUtc);
-            movementTargets.Add(new MovementTarget(bot.Player.GameInfo.ObjectInfo, bot.Movement, false, request));
+            movementActors.Add(new MovementActor(bot.Player.GameInfo.ObjectInfo, bot.Movement, false, request));
         }
         foreach (var monster in runtime.Monsters.Entities.Values)
         {
             var request = monsterBehavior.CreateMovementRequest(runtime, monster, participants, nowUtc);
-            movementTargets.Add(new MovementTarget(monster.Info.ObjectInfo, monster.Movement, true, request));
+            movementActors.Add(new MovementActor(monster.Info.ObjectInfo, monster.Movement, true, request));
         }
 
         // 이동 준비
-        foreach (var target in movementTargets)
+        foreach (var actor in movementActors)
         {
-            PrepareMovement(runtime, target.ObjectInfo, target.Movement, target.Request, nowUtc, target.IgnoreClosedDoors);
+            PrepareMovement(runtime, actor.ObjectInfo, actor.Movement, actor.Request, nowUtc, actor.IgnoreClosedDoors);
         }
 
         // 이동
-        foreach (var target in movementTargets)
+        foreach (var actor in movementActors)
         {
-            target.Result = Move(runtime, target.ObjectInfo, target.Movement, target.Request, target.IgnoreClosedDoors, nowUtc);
+            actor.Result = Move(runtime, actor.ObjectInfo, actor.Movement, actor.Request, actor.IgnoreClosedDoors, nowUtc);
         }
 
-        foreach (var target in movementTargets)
+        foreach (var actor in movementActors)
         {
-            if (!target.Result.Changed || target.ObjectInfo.ObjectType != ObjectType.PLAYER)
+            if (!actor.Result.Changed || actor.ObjectInfo.ObjectType != ObjectType.PLAYER)
             {
                 continue;
             }
-            var player = runtime.GetParticipant(target.ObjectInfo.ObjectId);
+            var player = runtime.GetParticipant(actor.ObjectInfo.ObjectId);
             if (player != null)
             {
                 PlayerMovementService.CompleteMovement(runtime, player);

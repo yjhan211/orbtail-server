@@ -28,7 +28,7 @@ public readonly record struct MovementRequest(
     AreaType? StopBeforeArea = null);
 
 /// <summary>이번 틱에 공통 이동 처리를 수행할 공간 정보·경로 상태·요청과 실행 결과.</summary>
-internal sealed record MovementTarget(GameObjectInfo ObjectInfo, MovementState Movement, bool IgnoreClosedDoors, MovementRequest Request)
+internal sealed record MovementActor(GameObjectInfo ObjectInfo, MovementState Movement, bool IgnoreClosedDoors, MovementRequest Request)
 {
     public MovementResult Result { get; set; }
 }
