@@ -8,21 +8,6 @@ namespace demo_regression_tests;
 public sealed class MatchMonstersTests
 {
     [Fact]
-    public void SnapshotSlot_IsIndependentPerMatchAndAllowsBoundary()
-    {
-        var first = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947101);
-        var second = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947102);
-        var now = new DateTime(2026, 9, 7, 0, 0, 0, DateTimeKind.Utc);
-        using (first.Enter())
-        {
-            Assert.True(game_server.matches.MatchCombatService.TryClaimSnapshotSlot(first, now));
-            Assert.False(game_server.matches.MatchCombatService.TryClaimSnapshotSlot(first, now.AddMilliseconds(99)));
-            Assert.True(game_server.matches.MatchCombatService.TryClaimSnapshotSlot(first, now.AddMilliseconds(100)));
-        }
-        using (second.Enter()) Assert.True(game_server.matches.MatchCombatService.TryClaimSnapshotSlot(second, now));
-    }
-
-    [Fact]
     public void VisualStatesByArea_GroupPerAreaSortedByMonsterId()
     {
         var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947103);

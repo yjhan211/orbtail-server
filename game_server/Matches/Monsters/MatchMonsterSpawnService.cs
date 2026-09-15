@@ -8,7 +8,7 @@ namespace game_server.matches.monsters;
 ///     매치의 몬스터 공급·스폰과 공급 보상 예산을 처리한다.
 ///     상태는 MatchMonsters에 보관하며, 호출자는 매치 잠금을 보유해야 한다.
 /// </summary>
-internal sealed class MatchMonsterSpawnService(MonsterBehaviorService movement)
+internal sealed class MatchMonsterSpawnService
 {
     private const int CampsPerArea = 3;
     private const int FirstMonsterId = 7_000_000;
@@ -175,7 +175,7 @@ internal sealed class MatchMonsterSpawnService(MonsterBehaviorService movement)
             }
 
             want = Math.Max(0, want);
-            int spawned = SpawnSupplyMonsters(runtime, participants, zone, want, includeCore, phaseIndex, now, roster);
+            int spawned = SpawnSupplyMonsters(runtime, participants, zone, want, includeCore, phaseIndex, now, roster, preMatch);
             if (spawned == 0)
             {
                 zoneState.NextTopUpAtUtc = now.AddSeconds(Config.SWARM_MONSTER_SUPPLY_BLOCKED_RETRY_SECONDS);
@@ -197,14 +197,24 @@ internal sealed class MatchMonsterSpawnService(MonsterBehaviorService movement)
             state.ZoneVacatedAtUtc.Remove(zone);
         }
 
-        foreach (var monster in state.Entities.Values)
+        foreach (var monster in state.Entities.Values.ToArray())
         {
             if (!monster.Alive || occupied.ContainsKey(monster.HomeArea))
             {
                 continue;
             }
 
-            if (monster.Movement.Waypoints.Count > 0 && monster.ChaseTargetPlayerId != 0)
+            // 배정 구역이 비어도 살아 있는 참가자를 추적하는 개체는 회수하지 않는다.
+            bool hasChaseTarget = false;
+            foreach (var playerIds in occupied.Values)
+            {
+                if (playerIds.Contains(monster.ChaseTargetPlayerId))
+                {
+                    hasChaseTarget = true;
+                    break;
+                }
+            }
+            if (hasChaseTarget)
             {
                 continue;
             }
@@ -222,8 +232,7 @@ internal sealed class MatchMonsterSpawnService(MonsterBehaviorService movement)
                     continue;
                 }
             }
-            monster.Alive = false;
-            monster.DiedAtUtc = now;
+            runtime.RemoveMonster(monster);
         }
     }
 
@@ -279,7 +288,7 @@ internal sealed class MatchMonsterSpawnService(MonsterBehaviorService movement)
         return count;
     }
 
-    private int SpawnSupplyMonsters(MatchRuntime runtime, IReadOnlyList<PlayerPositionSnapshot> participants, AreaType area, int normals, bool includeCore, int phaseIndex, DateTime now, IReadOnlyList<long> roster)
+    private int SpawnSupplyMonsters(MatchRuntime runtime, IReadOnlyList<PlayerPositionSnapshot> participants, AreaType area, int normals, bool includeCore, int phaseIndex, DateTime now, IReadOnlyList<long> roster, bool preMatch)
     {
         var state = runtime.Monsters;
         var phase = SwarmSupplyPhaseData.GetAll()[phaseIndex];
@@ -322,6 +331,7 @@ internal sealed class MatchMonsterSpawnService(MonsterBehaviorService movement)
             spawnPlan.Add((MonsterKind.RunawayGoblin, freeAnchors[^1]));
         }
 
+        var spawnedStates = new Dictionary<AreaType, List<MonsterInfo>>();
         var insignia = (MonsterInsignia)(state.NextSupplyPackOrdinal++ % InsigniaCount);
         for (int index = 0; index < spawnPlan.Count; index++)
         {
@@ -342,7 +352,7 @@ internal sealed class MatchMonsterSpawnService(MonsterBehaviorService movement)
                 var fieldAnchorWorld = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Anchor);
                 destination = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(fieldAnchorWorld.X + MathF.Cos(angle) * Config.SWARM_MONSTER_SUPPLY_SCATTER_RADIUS, fieldAnchorWorld.Y + MathF.Sin(angle) * Config.SWARM_MONSTER_SUPPLY_SCATTER_RADIUS, 0f), fieldAnchorWorld, area);
             }
-            else if (infiltrate && movement.TryPlanSpawnRoute(runtime, area, destination, out var origin, out var planned))
+            else if (infiltrate && TryPlanSpawnRoute(runtime, area, destination, out var origin, out var planned))
             {
                 position = origin;
                 spawnArea = AreaType.S2Corridor9;
@@ -369,7 +379,6 @@ internal sealed class MatchMonsterSpawnService(MonsterBehaviorService movement)
                 Alive = true,
                 Aggro = true,
                 PhaseTier = phaseIndex,
-                ActivatesAtUtc = now.AddSeconds(Config.SWARM_MONSTER_SUPPLY_TELEGRAPH_SECONDS + state.Rng.NextDouble() * Config.SWARM_MONSTER_INFILTRATION_DEPARTURE_JITTER_SECONDS),
                 SpawnedAtUtc = now,
                 NextContactAtUtc = now,
                 ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
@@ -387,14 +396,28 @@ internal sealed class MatchMonsterSpawnService(MonsterBehaviorService movement)
 
             if (route != null)
             {
-                monster.Movement.Destination = destination;
+                monster.Movement.DestinationCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, destination);
                 monster.Movement.DestinationArea = monster.HomeArea;
                 monster.Movement.Waypoints.AddRange(route);
             }
 
+            monster.Movement.LastProcessedAtUtc = now;
             state.Entities[monster.MonsterId] = monster;
+            if (!spawnedStates.TryGetValue(monster.Area, out var states))
+            {
+                states = [];
+                spawnedStates[monster.Area] = states;
+            }
+            states.Add(monster.ToMonsterInfo());
         }
 
+        if (spawnedStates.Count > 0)
+        {
+            foreach (var session in runtime.GetSessions())
+            {
+                session.SendMonsterSnapshot(spawnedStates, preMatch, fullSnapshot: false);
+            }
+        }
         return spawnPlan.Count;
     }
 
@@ -557,4 +580,108 @@ internal sealed class MatchMonsterSpawnService(MonsterBehaviorService movement)
         }
         return fieldSpawn;
     }
+    private const double InfiltrationGoldenAngle = 0.6180339887498949d;
+
+    public static bool TryPlanSpawnRoute(MatchRuntime runtime, AreaType destinationArea, Vector3f destination, out Vector3f origin, out List<Vector3f> route)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Monster movement requires the match lock.");
+        }
+        route = null!;
+        var originCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9));
+        var state = runtime.Monsters;
+        float baseAngle = ResolveInfiltrationExitBearing(runtime, destinationArea, destination, originCenter);
+        double golden = (state.NextInfiltrationOriginOrdinal++ * InfiltrationGoldenAngle) % 1d;
+        float angle = baseAngle + (float)((golden - 0.5d) * 2d) * Config.SWARM_MONSTER_INFILTRATION_ORIGIN_JITTER_RADIANS;
+        origin = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(originCenter.X + MathF.Cos(angle) * Config.SWARM_MONSTER_INFILTRATION_ORIGIN_RADIUS, originCenter.Y + MathF.Sin(angle) * Config.SWARM_MONSTER_INFILTRATION_ORIGIN_RADIUS, 0f), originCenter, AreaType.S2Corridor9);
+
+        float burstDistance = Config.SWARM_MONSTER_INFILTRATION_BURST_DISTANCE;
+        var burstPosition = new Vector3f(
+            origin.X + MathF.Cos(angle) * burstDistance,
+            origin.Y + MathF.Sin(angle) * burstDistance,
+            0f);
+        var burst = MapPathfinder.ClampToAreaWalkable(
+            Config.SWARM_MATCH_MAP,
+            burstPosition,
+            originCenter,
+            AreaType.S2Corridor9);
+
+        bool canReachBurst = MapPathfinder.IsSegmentWalkable(Config.SWARM_MATCH_MAP, origin, burst);
+        if (canReachBurst)
+        {
+            bool routeFound = MapPathfinder.TryPlanRoute(
+                Config.SWARM_MATCH_MAP,
+                AreaType.S2Corridor9,
+                burst,
+                destinationArea,
+                destination,
+                candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea),
+                out route);
+            if (routeFound)
+            {
+                route.Insert(0, burst);
+                return true;
+            }
+        }
+
+        return MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9, origin, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out route);
+    }
+
+    private static float ResolveInfiltrationExitBearing(MatchRuntime runtime, AreaType destinationArea, Vector3f destination, Vector3f originCenter)
+    {
+        var bearings = runtime.Monsters.InfiltrationExitBearings;
+        if (bearings.TryGetValue(destinationArea, out float cached))
+        {
+            return cached;
+        }
+
+        float fallback = MathF.Atan2(destination.Y - originCenter.Y, destination.X - originCenter.X);
+        if (!MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9, originCenter, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out var probe))
+        {
+            return fallback;
+        }
+
+        float exitRadius = Config.SWARM_MONSTER_INFILTRATION_ORIGIN_RADIUS + Config.SWARM_MONSTER_INFILTRATION_BURST_DISTANCE;
+        foreach (var point in probe)
+        {
+            float dx = point.X - originCenter.X;
+            float dy = point.Y - originCenter.Y;
+            if (dx * dx + dy * dy < exitRadius * exitRadius)
+            {
+                continue;
+            }
+            float bearing = MathF.Atan2(dy, dx);
+            bearings[destinationArea] = bearing;
+            return bearing;
+        }
+
+        bearings[destinationArea] = fallback;
+        return fallback;
+    }
+
+    private static bool IsInfiltrationRouteBlocked(MatchRuntime runtime, AreaType candidate, AreaType destinationArea)
+    {
+        if (runtime.Closures.IsAreaClosed(candidate))
+        {
+            return true;
+        }
+
+        if (candidate == destinationArea)
+        {
+            return false;
+        }
+
+        var rooms = MatchSpawnData.GetPhaseRoomCandidates();
+        foreach (var t in rooms)
+        {
+            if (t == candidate)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
 }

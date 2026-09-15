@@ -19,8 +19,7 @@ internal static class TestGameSessionServices
     // 몬스터 단계는 운영 조율자를 그대로 실행하고 다른 전투 단계 의존성은 사용하지 않는다.
     internal static MatchCombatService CreateMonsterTickService()
     {
-        var movement = new MonsterBehaviorService();
-        var spawns = new MatchMonsterSpawnService(movement);
+        var spawns = new MatchMonsterSpawnService();
         return new MatchCombatService(null!, null!, null!, null!, null!,
             null!, null!, null!, null!, null!, new MonsterCombatService(spawns));
     }
@@ -87,7 +86,7 @@ internal static class TestGameSessionServices
         return new MatchRuntimeStore(logger.For<MatchRuntime>(), lifecycle, redis);
     }
     public static MatchCombatDamageService CreateCombatDamageService() =>
-        new(new MonsterCombatService(new MatchMonsterSpawnService(new MonsterBehaviorService())));
+        new(new MonsterCombatService(new MatchMonsterSpawnService()));
 
     public static PlayerMovementService CreateMovementService() =>
         new(NullLogger<PlayerMovementService>.Instance);

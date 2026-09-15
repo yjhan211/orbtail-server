@@ -126,6 +126,7 @@ internal sealed class MonsterCombatService(MatchMonsterSpawnService spawns)
         if (killed)
         {
             summonStoneReward = spawns.ConsumeSupplyStoneBudget(runtime, monster, nowUtc);
+            runtime.RemoveMonster(monster);
         }
 
         return new MonsterDamageResult(true, killed, monster, summonStoneReward);

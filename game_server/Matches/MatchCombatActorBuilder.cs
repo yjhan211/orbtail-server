@@ -129,7 +129,7 @@ internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails)
             }
         }
 
-        foreach (var target in runtime.Monsters.GetCombatTargets(nowUtc))
+        foreach (var target in runtime.Monsters.GetCombatTargets())
         {
             actors.Add(new ProximityCombatActor(
                 target.CombatTargetId,

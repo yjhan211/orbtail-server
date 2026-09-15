@@ -274,6 +274,7 @@ public partial class GameClientSession : SessionBase
                 SendInteractableList();
 
                 SendGroundItemSnapshot(Player.CurrentArea);
+                SendMonsterSnapshot(runtime.Monsters.GetVisualStatesByArea(), preMatch: !runtime.IsGameplayActive());
                 SendOrbList();
                 SendOrbUpgradeInfo(_orbGrowth.GetOrbUpgradeInfo(runtime, Player));
                 SendSummonStoneState();

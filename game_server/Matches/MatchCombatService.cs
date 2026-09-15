@@ -50,7 +50,7 @@ internal class MatchCombatService(
 
         foreach (var monster in state.Entities.Values)
         {
-            if (!monster.Alive || now < monster.ActivatesAtUtc)
+            if (!monster.Alive)
             {
                 continue;
             }
@@ -58,21 +58,6 @@ internal class MatchCombatService(
             monsterCombat.CollectContactDamage(runtime, monster, snapshot, now, contacts);
         }
         return contacts;
-    }
-
-    internal static bool TryClaimSnapshotSlot(MatchRuntime runtime, DateTime nowUtc)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Match monster service requires the match lock.");
-        }
-        var state = runtime.Monsters;
-        if (nowUtc < state.NextSnapshotAtUtc)
-        {
-            return false;
-        }
-        state.NextSnapshotAtUtc = nowUtc + TimeSpan.FromMilliseconds(100);
-        return true;
     }
 
     public virtual void ProcessTick(MatchRuntime runtime)
@@ -116,7 +101,6 @@ internal class MatchCombatService(
 
         if (!runtime.IsGameplayActive())
         {
-            SendMonsterSnapshots(runtime, sessions, preMatch: true);
             return;
         }
 
@@ -151,10 +135,6 @@ internal class MatchCombatService(
         players.RemoveAll(player => player.IsEliminated);
         healthService.ApplySleepRecovery(runtime, players, nowUtc);
         botBehavior.ProcessDoorInteractions(runtime, aliveBots, sessions, nowUtc);
-        if (TryClaimSnapshotSlot(runtime, nowUtc))
-        {
-            SendMonsterSnapshots(runtime, sessions, preMatch: false);
-        }
 
         var actors = actorBuilder.Build(runtime, players, nowUtc);
         playerOrbs.ProcessOrbRecovery(runtime, actors, nowUtc);
@@ -306,14 +286,6 @@ internal class MatchCombatService(
         }
     }
 
-    private void SendMonsterSnapshots(MatchRuntime runtime, List<GameClientSession> sessions, bool preMatch)
-    {
-        var snapshots = runtime.Monsters.GetVisualStatesByArea();
-        foreach (var session in sessions)
-        {
-            session.SendMonsterSnapshot(snapshots, preMatch);
-        }
-    }
     internal void ApplySwarmParticipantDamage(MatchRuntime runtime, MonsterContactDamage damage, List<GameClientSession> allSessions)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))

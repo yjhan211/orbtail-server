@@ -72,10 +72,10 @@ internal static class GameServerTestAccess
                 health, combatDamage, results,
                 new PlayerOrbService(health, combatDamage, orbTrails),
                 orbTrails, trailCuts, new MatchCombatActorBuilder(orbTrails), new MatchAutoAttackService(),
-                new MatchOrbAttackService(health, combatDamage), decisions, new MonsterCombatService(new MatchMonsterSpawnService(new MonsterBehaviorService())));
+                new MatchOrbAttackService(health, combatDamage), decisions, new MonsterCombatService(new MatchMonsterSpawnService()));
 
             return new MatchTickLoop(runtime, runtimes, logger, groundPickup,
-            entryFailure, combat, field, new MatchMovementService(decisions, new MonsterBehaviorService(), new MatchMonsterSpawnService(new MonsterBehaviorService())), clock);
+            entryFailure, combat, field, new MatchMoveService(decisions, new MonsterBehaviorService()), new MatchMonsterSpawnService(), clock);
         };
         return new GameServer(
             configuration: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),

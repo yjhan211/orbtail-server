@@ -55,7 +55,6 @@ public sealed class BotCellTargetTests
         service.SelectMovementTarget(runtime, bot);
 
         Assert.NotNull(bot.Movement.DestinationCell);
-        Assert.Null(bot.Movement.Destination);
         if (stronger || wounded)
         {
             Assert.NotEqual(targetCell, bot.Movement.DestinationCell);
@@ -77,7 +76,6 @@ public sealed class BotCellTargetTests
         bot.SetMovementTarget(AreaType.S2Corridor9, cell);
         cell.X = 999;
         Assert.Equal(new Cell(10, 12), bot.Movement.DestinationCell);
-        Assert.Null(bot.Movement.Destination);
         Assert.Same(waypoint, Assert.Single(bot.Movement.Waypoints));
     }
 

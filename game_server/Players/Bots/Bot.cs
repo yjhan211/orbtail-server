@@ -43,10 +43,8 @@ public class Bot
     public MovementState Movement { get; } = new();
     public (AreaType Area, Cell Cell)? ExplorationTarget { get; set; }
     public DateTime LoopWaitUntil { get; set; } = DateTime.MinValue;
-    public float SwarmDodgeDirectionX { get; set; }
-    public float SwarmDodgeDirectionY { get; set; }
+    public Cell? DodgeTargetCell { get; set; }
     public DateTime SwarmDodgeHoldUntilUtc { get; set; } = DateTime.MinValue;
-    public bool WasAvoidingMonsterAtLastPathPlan { get; set; }
     public DateTime LastDamagedAtUtc { get; set; } = DateTime.MinValue;
     public (Cell Destination, DateTime SelectedAtUtc)? MonsterAvoidanceTarget { get; set; }
     public DateTime? LastTrailCutAtUtc { get; set; }

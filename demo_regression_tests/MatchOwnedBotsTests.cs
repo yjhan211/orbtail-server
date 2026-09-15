@@ -96,7 +96,7 @@ public sealed class MatchOwnedBotsTests
     }
 
     [Fact]
-    public void SharedMovementServiceKeepsPlanningOrderPerMatch()
+    public void SharedMovementServiceRequestsAllActorsWithinEachMatch()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(101);
@@ -110,20 +110,20 @@ public sealed class MatchOwnedBotsTests
             }
         }
 
-        long SelectNext(MatchRuntime match)
+        IReadOnlyList<long> SelectNext(MatchRuntime match)
         {
             using (match.Enter())
             {
                 return MovementTickTestDriver.RunBotTick(match,
-                    _ => { }).PlanningBotId;
+                    _ => { }).RequestedBotIds;
             }
         }
 
         Assert.Throws<InvalidOperationException>(() => MovementTickTestDriver.RunBotTick(first, _ => { }));
-        Assert.Equal(-2L, SelectNext(first));
-        Assert.Equal(-2L, SelectNext(second));
-        Assert.Equal(-1L, SelectNext(first));
-        Assert.Equal(-1L, SelectNext(second));
+        Assert.Equal(new long[] { -1, -2 }, SelectNext(first));
+        Assert.Equal(new long[] { -1, -2 }, SelectNext(second));
+        Assert.Equal(new long[] { -1, -2 }, SelectNext(first));
+        Assert.Equal(new long[] { -1, -2 }, SelectNext(second));
     }
     [Fact]
     public void MonstersAreIsolatedAndReleasedWithTheirMatch()

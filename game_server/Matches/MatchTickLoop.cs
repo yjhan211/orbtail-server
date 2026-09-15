@@ -1,3 +1,5 @@
+using game_server.matches.monsters;
+using network.common.data.models;
 using game_server.players;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -6,10 +8,10 @@ namespace game_server.matches;
 
 /// <summary>
 ///     매치 하나의 게임 로직을 50ms 주기로 순서대로 실행한다.
-///     매치 잠금 안에서 입장 마감 확인, 아이템 획득, 공통 이동, 전투,
+///     매치 잠금 안에서 입장 마감 확인, 아이템 획득, 몬스터 공급, 공통 이동, 전투,
 ///     환경 정산, 구역 폐쇄 확인을 처리한다.
 ///
-///     카운트다운 중에는 입장 확인, 몬스터 이동과 전투 준비만 수행한다.
+///     카운트다운 중에는 입장 확인, 몬스터 공급·등장 알림과 전투 준비만 수행한다.
 ///     환경 정산은 시작 후 5초마다, 구역 폐쇄 확인은 1초마다 수행하며,
 ///     처리가 늦어져도 밀린 횟수를 몰아서 실행하지 않는다.
 ///
@@ -25,7 +27,8 @@ internal sealed class MatchTickLoop(
     MatchEntryFailureHandler entryFailureHandler,
     MatchCombatService combat,
     MatchFieldService field,
-    MatchMovementService movement,
+    MatchMoveService movement,
+    MatchMonsterSpawnService monsterSpawns,
     TimeProvider? timeProvider = null)
 {
     private readonly PeriodicTimer _timer = new(TimeSpan.FromMilliseconds(50), timeProvider ?? TimeProvider.System);
@@ -99,6 +102,22 @@ internal sealed class MatchTickLoop(
             }
         }
 
+        if (runtime.Mode != MatchMode.SoloMapValidation)
+        {
+            var participants = new List<PlayerPositionSnapshot>();
+            foreach (var player in runtime.GetAlivePlayers())
+            {
+                if (player.Position != null)
+                {
+                    participants.Add(new PlayerPositionSnapshot(player.PlayerId, player.CurrentArea, player.Position));
+                }
+            }
+            if (participants.Count > 0)
+            {
+                monsterSpawns.ProcessSupply(runtime, participants, utcNow, !isGameplayActive);
+            }
+        }
+
         movement.ProcessTick(runtime, utcNow);
         if (runtime.IsEnded)
         {
@@ -131,6 +150,5 @@ internal sealed class MatchTickLoop(
                 field.ProcessClosureTick(runtime);
             }
         }
-
     }
 }

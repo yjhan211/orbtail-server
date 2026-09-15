@@ -14,7 +14,6 @@ public class MatchBots
     private readonly ILogger _logger;
 
     private List<Bot> _bots = [];
-    private int _movementPlanningCursor;
     public List<Bot> GetBots() => _bots;
     public Bot? GetBot(long playerId) => _bots.FirstOrDefault(b => b.PlayerId == playerId);
     internal MatchBots(ILogger logger)
@@ -65,7 +64,6 @@ public class MatchBots
         }).ToList();
 
         _bots = bots;
-        _movementPlanningCursor = 0;
 
         _logger.LogInformation("Bots registered: Count={Count}, MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]", bots.Count, matchingId, Config.SWARM_MATCH_MAP, string.Join(",", bots.Select(b => $"{b.PlayerId}@{b.Player.CurrentArea}")));
     }
@@ -94,12 +92,6 @@ public class MatchBots
     internal void Release()
     {
         _bots.Clear();
-        _movementPlanningCursor = 0;
     }
 
-    internal long SelectMovementPlanningBot(IReadOnlyList<Bot> activeBots)
-    {
-        _movementPlanningCursor = (_movementPlanningCursor + 1) % activeBots.Count;
-        return activeBots[_movementPlanningCursor].PlayerId;
-    }
 }

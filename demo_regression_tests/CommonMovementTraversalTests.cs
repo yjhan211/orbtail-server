@@ -94,7 +94,7 @@ public sealed class CommonMovementTraversalTests
         {
             var path = new MovementState();
             path.Waypoints.Add(end);
-            Assert.Equal(start, MatchMovementService.AdvanceRoute(runtime, path, start, 10f, ignoreDoors));
+            Assert.Equal(start, MatchMoveService.AdvanceRoute(runtime, path, start, 10f, ignoreDoors));
             Assert.Equal(0, path.WaypointIndex);
         }
     }

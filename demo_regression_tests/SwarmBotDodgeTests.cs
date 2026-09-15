@@ -25,6 +25,45 @@ public class SwarmBotDodgeTests
             ArmedAtUtc = Now.AddSeconds(armedInSeconds), ExpiresAtUtc = Now.AddSeconds(armedInSeconds + 1.5)
         };
 
+    [Theory]
+    [InlineData(0.35f, true)]
+    [InlineData(100f, false)]
+    public void DodgeSelectsSafeReachableCellAndUsesCommonMovement(float halfWidth, bool expected)
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var runtime = TestGameSessionServices.CreateMatchRuntimeStore(
+            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance).GetOrCreate(987659);
+        using var scope = runtime.Enter();
+        var cell = network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
+        runtime.Bots.RegisterBots(runtime.MatchingId, [-1], new Dictionary<long, Cell> { [-1] = cell });
+        var bot = runtime.Bots.GetBot(-1)!;
+        var position = bot.Player.Position!;
+        runtime.SunCrossfireShapes.Add(new SwarmCrossfireShape
+        {
+            Area = bot.Player.CurrentArea, OwnerId = 7,
+            Origin = new Vector3f(position.X - 1, position.Y, 0),
+            End = new Vector3f(position.X + 3, position.Y, 0),
+            GroundLength = 4, HalfWidth = halfWidth, SweepSpeed = 4.5f,
+            ArmedAtUtc = Now.AddSeconds(0.1), ExpiresAtUtc = Now.AddSeconds(2)
+        });
+        bool found = BotDodgeCalculator.TrySelectDodgeCell(runtime, bot, Now, out var target, out var safe);
+        Assert.Equal(expected, found);
+        if (!found) return;
+
+        Assert.NotEqual(cell, target);
+        Assert.Equal(bot.Player.CurrentArea, network.common.data.GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, target));
+        var destination = network.common.data.MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, target);
+        Assert.Null(BotDodgeCalculator.CalculateDodge(runtime.SunCrossfireShapes, bot.PlayerId,
+            destination, bot.Player.CurrentArea, Now));
+        var request = new MovementRequest(target, 1f, IsSafeCell: safe);
+        MatchMoveService.PrepareMovement(runtime, bot.Player.GameInfo.ObjectInfo, bot.Movement, request, Now);
+        Assert.True(bot.Movement.FollowPath);
+        Assert.All(bot.Movement.Waypoints, point => Assert.True(safe(
+            network.common.data.MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, point))));
+        var result = MovementPreparationTestSteps.Advance(runtime, bot.Player.GameInfo.ObjectInfo,
+            bot.Movement, request, 0.05f, nowUtc: Now);
+        Assert.True(result.Changed);
+    }
     [Fact]
     public void BotOnTheLine_StepsPerpendicularToTheAxis()
     {

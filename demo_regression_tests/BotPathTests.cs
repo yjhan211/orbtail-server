@@ -11,7 +11,6 @@ public sealed class BotPathTests
     {
         var bot = new Bot
         {
-            WasAvoidingMonsterAtLastPathPlan = true,
             Movement = { WaypointIndex = 2 }
         };
         var path = bot.Movement.Waypoints;
@@ -22,7 +21,6 @@ public sealed class BotPathTests
         Assert.NotNull(bot.Movement.DestinationCell);
         Assert.Equal(AreaType.S2Gym1, bot.Movement.DestinationArea);
         Assert.Equal(cell, bot.Movement.DestinationCell);
-        Assert.True(bot.WasAvoidingMonsterAtLastPathPlan);
         Assert.Same(path, bot.Movement.Waypoints);
         Assert.Equal(2, bot.Movement.WaypointIndex);
     }
@@ -30,13 +28,12 @@ public sealed class BotPathTests
     [Fact]
     public void ClearingPathPreservesDestinationAndDecisionButCancelsMovement()
     {
-        var bot = new Bot { WasAvoidingMonsterAtLastPathPlan = true };
+        var bot = new Bot();
         bot.SetMovementTarget(AreaType.S2Ground,
             new network.common.data.models.Cell(3, 4));
         var destination = bot.Movement.DestinationCell;
         bot.Movement.Waypoints.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, destination!));
         bot.Movement.WaypointIndex = 1;
-        bot.Movement.Speed = 1f;
         bot.Movement.FollowPath = true;
 
         bot.Movement.Clear();
@@ -46,8 +43,6 @@ public sealed class BotPathTests
         Assert.Same(destination, bot.Movement.DestinationCell);
         Assert.Equal(AreaType.S2Ground, bot.Movement.DestinationArea);
         Assert.NotNull(bot.Movement.DestinationCell);
-        Assert.True(bot.WasAvoidingMonsterAtLastPathPlan);
-        Assert.Equal(0f, bot.Movement.Speed);
         Assert.False(bot.Movement.FollowPath);
     }
 }

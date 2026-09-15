@@ -17,6 +17,30 @@ namespace game_server.matches;
 /// </summary>
 internal sealed class MatchRuntime
 {
+    // 사망·회수 상태는 기존 스냅샷으로 즉시 알리고, 실행 목록에는 남기지 않는다.
+    internal void RemoveMonster(Monster monster)
+    {
+        if (!Monitor.IsEntered(MatchLock))
+        {
+            throw new InvalidOperationException("Monster removal requires the match lock.");
+        }
+        if (!Monsters.Entities.TryGetValue(monster.MonsterId, out var current) ||
+            !ReferenceEquals(current, monster))
+        {
+            return;
+        }
+
+        monster.Alive = false;
+        Monsters.Entities.Remove(monster.MonsterId);
+        var states = new Dictionary<AreaType, List<MonsterInfo>>
+        {
+            [monster.Area] = [monster.ToMonsterInfo()]
+        };
+        foreach (var session in GetSessions())
+        {
+            session.SendMonsterSnapshot(states, preMatch: !IsGameplayActive(), fullSnapshot: false);
+        }
+    }
     public bool IsEnded => Volatile.Read(ref _ended) != 0;
     public object MatchLock { get; } = new();
 
@@ -108,9 +132,11 @@ internal sealed class MatchRuntime
             PlayerOrbGrowthService.GrantStartingSummonStones(this, participant);
         }
 
+        var initializedAtUtc = DateTime.UtcNow;
+        Monsters.Initialize(initializedAtUtc);
         if (playerRoster.Count > 0 && playerRoster.All(player => player.PlayerId < 0))
         {
-            _startsAtUtc = DateTime.UtcNow;
+            _startsAtUtc = initializedAtUtc;
         }
         Volatile.Write(ref _isSetupComplete, true);
     }

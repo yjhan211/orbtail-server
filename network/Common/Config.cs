@@ -215,7 +215,6 @@ namespace network.common
         public static int SWARM_MONSTER_SUPPLY_CROWD_LINEAR_PLAYERS => SwarmConfigData.GetInt("SWARM_MONSTER_SUPPLY_CROWD_LINEAR_PLAYERS", 2);
 
         /// <summary>스폰 예고(초) — 이 시간 뒤 활성화</summary>
-        public static float SWARM_MONSTER_SUPPLY_TELEGRAPH_SECONDS => SwarmConfigData.GetFloat("SWARM_MONSTER_SUPPLY_TELEGRAPH_SECONDS", 0.4f);
 
         /// <summary>무리 산개 반경</summary>
         public static float SWARM_MONSTER_SUPPLY_SCATTER_RADIUS => SwarmConfigData.GetFloat("SWARM_MONSTER_SUPPLY_SCATTER_RADIUS", 1.6f);
@@ -242,7 +241,6 @@ namespace network.common
         public static float SWARM_MONSTER_MARCH_SPEED_JITTER => SwarmConfigData.GetFloat("SWARM_MONSTER_MARCH_SPEED_JITTER", 0.1f);
 
         /// <summary>출발 시각 지터(초)</summary>
-        public static double SWARM_MONSTER_INFILTRATION_DEPARTURE_JITTER_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_INFILTRATION_DEPARTURE_JITTER_SECONDS", 0.4d);
 
         /// <summary>파도 문양 일반 몹 접촉 쿨다운(초) — 스플래시라 길다</summary>
         public static float SWARM_MONSTER_WAVE_INSIGNIA_ATTACK_COOLDOWN_SECONDS => SwarmConfigData.GetFloat("SWARM_MONSTER_WAVE_INSIGNIA_ATTACK_COOLDOWN_SECONDS", 2.2f);
@@ -278,7 +276,7 @@ namespace network.common
         public static double SWARM_MONSTER_MARCH_BUDGET_MINIMUM_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_MARCH_BUDGET_MINIMUM_SECONDS", 8d);
 
         /// <summary>기본 접촉 반경(해골 몸통 반폭) — 종별 contact_radius_scale의 기준</summary>
-        public static float SWARM_MONSTER_BASE_CONTACT_RADIUS => SwarmConfigData.GetFloat("SWARM_MONSTER_BASE_CONTACT_RADIUS", 0.32f);
+        public static float SWARM_MONSTER_BASE_CONTACT_RADIUS => SwarmConfigData.GetFloat("SWARM_MONSTER_BASE_CONTACT_RADIUS", 0.5f);
 
         /// <summary>잔상 접촉 후 참가자 피격 무적창(초) — 플레이어당 전역</summary>
         public static float SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS => SwarmConfigData.GetFloat("SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS", 0.6f);

@@ -13,6 +13,21 @@ namespace demo_regression_tests;
 
 public sealed class BotMovementDeliveryTests
 {
+    private static void SendMovements(MatchRuntime runtime, IReadOnlyList<BotMovementResult> movements)
+    {
+        var objects = new List<(GameObjectInfo Info, AreaType FromArea)>();
+        foreach (var movement in movements)
+        {
+            objects.Add((new GameObjectInfo
+            {
+                ObjectType = ObjectType.PLAYER, ObjectId = movement.BotPlayerId,
+                Area = movement.ToArea, Cell = movement.ToCell, Position = movement.Position,
+                Velocity = movement.Velocity, Rotation = movement.Rotation
+            }, movement.FromArea));
+        }
+        new MatchMoveService(null!, null!).CompleteMovements(runtime, objects);
+    }
+
     [Fact]
     public void MovingBotCancelsDoorAndPublishesIdleBeforeMovement()
     {
@@ -26,7 +41,7 @@ public sealed class BotMovementDeliveryTests
         using (match.Enter())
         {
             match.Bots.GetBots().Add(bot);
-            BotMovementPublisher.SendMovements(match, [new BotMovementResult
+            SendMovements(match, [new BotMovementResult
             {
                 BotPlayerId = -20, FromArea = AreaType.S2Ground, ToArea = AreaType.S2Ground,
                 Position = new Vector3f(1, 1, 0), Velocity = new Vector3f(1, 0, 0), ToCell = new Cell(1, 1)
@@ -70,7 +85,7 @@ public sealed class BotMovementDeliveryTests
         {
             match.Bots.GetBots().Add(bot);
             float phase = bot.Player.OrbOrbitPhaseDegrees;
-            BotMovementPublisher.SendMovements(match, [movement]);
+            SendMovements(match, [movement]);
             Assert.Equal(phase, bot.Player.OrbOrbitPhaseDegrees);
         }
 
@@ -93,7 +108,7 @@ public sealed class BotMovementDeliveryTests
         // 전송 후 원본을 바꿔도 큐에 전달한 직렬화 결과는 바뀌지 않는다.
         movement.Position.X = 999;
         movement.ToCell.Y = 999;
-        var sent = destination.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE);
+        var sent = Assert.Single(destination.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE).Objects);
         Assert.Equal(10f, sent.Position.X);
         Assert.Equal(4, sent.Cell.Y);
         Assert.Equal(3f, sent.Velocity.X);
@@ -106,12 +121,186 @@ public sealed class BotMovementDeliveryTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(44003);
         var movement = new BotMovementResult();
-        Assert.Throws<InvalidOperationException>(() => BotMovementPublisher.SendMovements(match, [movement]));
+        Assert.Throws<InvalidOperationException>(() => SendMovements(match, [movement]));
         using (match.Enter())
         {
             match.TryMarkEnded();
-            Assert.Throws<InvalidOperationException>(() => BotMovementPublisher.SendMovements(match, [movement]));
+            Assert.Throws<InvalidOperationException>(() => SendMovements(match, [movement]));
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MovementTickSendsMonsterStatesOnlyAfterGameplayStarts(bool started)
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(44005);
+        var timeline = new List<(long PlayerId, Protocol Protocol)>();
+        var recipient = AddRecipient(store, 44005, 101, AreaType.S2Corridor9, timeline);
+        var elsewhere = AddRecipient(store, 44005, 102, AreaType.S2Library1, timeline);
+        var otherMatch = AddRecipient(store, 44006, 103, AreaType.S2Corridor9, timeline);
+        using var scope = runtime.Enter();
+        var now = DateTime.UtcNow;
+        if (started) runtime.StartGameplay(now);
+        var monster = new game_server.matches.monsters.Monster
+        {
+            MonsterId = 1, Alive = true, Health = 10, Area = AreaType.S2Corridor9,
+            Position = network.common.data.MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP,
+                network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9))
+        };
+        runtime.Monsters.Entities[1] = monster;
+        var movement = new MatchMoveService(null!, new game_server.matches.monsters.MonsterBehaviorService());
+        movement.ProcessTick(runtime, now);
+        if (!started)
+        {
+            movement.ProcessTick(runtime, now.AddMilliseconds(50));
+            Assert.Empty(recipient.Packets);
+            Assert.Empty(elsewhere.Packets);
+            Assert.Empty(otherMatch.Packets);
+            return;
+        }
+        Assert.True(Assert.Single(recipient.Read<G_TO_C_MONSTER_SNAPSHOT>(Protocol.G_TO_C_MONSTER_SNAPSHOT).Monsters).IsAlive);
+        recipient.Packets.Clear();
+
+        monster.Health = 5;
+        movement.ProcessTick(runtime, now.AddMilliseconds(50));
+        Assert.Equal(5, Assert.Single(recipient.Read<G_TO_C_MONSTER_SNAPSHOT>(Protocol.G_TO_C_MONSTER_SNAPSHOT).Monsters).CurrentHealth);
+        Assert.Empty(elsewhere.Packets);
+        Assert.Empty(otherMatch.Packets);
+
+        recipient.Packets.Clear();
+        runtime.RemoveMonster(monster);
+        Assert.False(Assert.Single(recipient.Read<G_TO_C_MONSTER_SNAPSHOT>(Protocol.G_TO_C_MONSTER_SNAPSHOT).Monsters).IsAlive);
+        Assert.Empty(runtime.Monsters.Entities);
+    }
+    [Fact]
+    public void BotAndMonsterSharePacketAndUnchangedMonsterMetadataIsNotResent()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(44100);
+        var timeline = new List<(long PlayerId, Protocol Protocol)>();
+        var recipient = AddRecipient(store, 44100, 1, AreaType.S2Ground, timeline);
+        using var scope = runtime.Enter();
+        var bot = new Bot { PlayerId = -20 };
+        bot.Player.CurrentArea = AreaType.S2Ground;
+        runtime.Bots.GetBots().Add(bot);
+        var monster = new game_server.matches.monsters.Monster
+        {
+            MonsterId = 1, Alive = true, Health = 10, Area = AreaType.S2Ground
+        };
+        runtime.Monsters.Entities[1] = monster;
+        var objects = new List<(GameObjectInfo Info, AreaType FromArea)>
+        {
+            (bot.Player.GameInfo.ObjectInfo, AreaType.S2Ground),
+            (monster.Info.ObjectInfo, AreaType.S2Ground)
+        };
+        new MatchMoveService(null!, null!).CompleteMovements(runtime, objects);
+        var packet = recipient.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE);
+        Assert.Equal(2, packet.Objects.Count);
+        Assert.Equal(ObjectType.PLAYER, packet.Objects[0].ObjectType);
+        Assert.Equal(ObjectType.MONSTER, packet.Objects[1].ObjectType);
+        Assert.Equal(bot.Player.OrbOrbitPhaseDegrees, packet.OrbPhases[-20]);
+        Assert.True(packet.ServerTimestamp > 0);
+        Assert.Equal(Protocol.G_TO_C_MONSTER_SNAPSHOT, recipient.Packets[0].Protocol);
+        recipient.Packets.Clear();
+        new MatchMoveService(null!, null!).CompleteMovements(runtime, objects);
+        Assert.Single(recipient.Packets);
+        Assert.Equal(Protocol.G_TO_C_MOVE, recipient.Packets[0].Protocol);
+        monster.Health = 4;
+        recipient.Packets.Clear();
+        new MatchMoveService(null!, null!).CompleteMovements(runtime, objects);
+        Assert.Equal(4, Assert.Single(recipient.Read<G_TO_C_MONSTER_SNAPSHOT>(Protocol.G_TO_C_MONSTER_SNAPSHOT).Monsters).CurrentHealth);
+    }
+
+    [Fact]
+    public void MonsterDepartureReachesOldAreaAndReentryRestoresAppearance()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(44101);
+        var timeline = new List<(long PlayerId, Protocol Protocol)>();
+        var oldArea = AddRecipient(store, 44101, 1, AreaType.S2Ground, timeline);
+        var newArea = AddRecipient(store, 44101, 2, AreaType.S2Library1, timeline);
+        using var scope = runtime.Enter();
+        var monster = new game_server.matches.monsters.Monster
+        {
+            MonsterId = 1, Alive = true, Health = 10, Area = AreaType.S2Ground
+        };
+        runtime.Monsters.Entities[1] = monster;
+        new MatchMoveService(null!, null!).CompleteMovements(runtime, [(monster.Info.ObjectInfo, AreaType.S2Ground)]);
+        oldArea.Packets.Clear();
+        newArea.Packets.Clear();
+        monster.Area = AreaType.S2Library1;
+        new MatchMoveService(null!, null!).CompleteMovements(runtime, [(monster.Info.ObjectInfo, AreaType.S2Ground)]);
+        Assert.Equal(AreaType.S2Library1, Assert.Single(oldArea.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE).Objects).Area);
+        Assert.Equal(Protocol.G_TO_C_MONSTER_SNAPSHOT, newArea.Packets[0].Protocol);
+        oldArea.Packets.Clear();
+        monster.Area = AreaType.S2Ground;
+        new MatchMoveService(null!, null!).CompleteMovements(runtime, [(monster.Info.ObjectInfo, AreaType.S2Library1)]);
+        Assert.Equal(Protocol.G_TO_C_MONSTER_SNAPSHOT, oldArea.Packets[0].Protocol);
+    }
+
+    [Fact]
+    public void HumanMovementPacketUsesSameObjectListAndPreservesCorrectionData()
+    {
+        var info = new GameObjectInfo
+        {
+            ObjectType = ObjectType.PLAYER, ObjectId = 42, MapId = Config.SWARM_MATCH_MAP,
+            Area = AreaType.S2Ground, Cell = new Cell(3, 4), Position = new Vector3f(10, 20, 0),
+            Velocity = new Vector3f(1, 2, 0), Rotation = 30
+        };
+        using var packet = PacketMaker.G_TO_C_MOVE(info, 123456, 45f);
+        info.Position.X = 999;
+        info.Cell.Y = 999;
+        var connection = new RecordingConnection(42, []);
+        connection.TrySend(packet);
+        var message = connection.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE);
+        var sent = Assert.Single(message.Objects);
+        Assert.Equal(42, sent.ObjectId);
+        Assert.Equal(ObjectType.PLAYER, sent.ObjectType);
+        Assert.Equal(10f, sent.Position.X);
+        Assert.Equal(4, sent.Cell.Y);
+        Assert.Equal(30f, sent.Rotation);
+        Assert.Equal(2f, sent.Velocity.Y);
+        Assert.Equal(AreaType.S2Ground, sent.Area);
+        Assert.Equal(123456, message.ServerTimestamp);
+        Assert.Equal(45f, message.OrbPhases[42]);
+    }
+
+    [Fact]
+    public void CountdownSupplyPublishesNewMonstersWithoutMovementTick()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(44200);
+        var timeline = new List<(long PlayerId, Protocol Protocol)>();
+        var recipient = AddRecipient(store, 44200, 101, AreaType.S2Ground, timeline);
+        var otherMatch = AddRecipient(store, 44201, 102, AreaType.S2Ground, timeline);
+        using var scope = runtime.Enter();
+        var now = DateTime.UtcNow;
+        var participants = new List<PlayerPositionSnapshot>
+        {
+            new(101, AreaType.S2Ground, new Vector3f())
+        };
+        var supply = new game_server.matches.monsters.MatchMonsterSpawnService();
+        supply.ProcessSupply(runtime, participants, now, preMatch: true);
+        Assert.NotEmpty(runtime.Monsters.Entities);
+        Assert.NotEmpty(recipient.Packets);
+        Assert.All(recipient.Packets, p => Assert.Equal(Protocol.G_TO_C_MONSTER_SNAPSHOT, p.Protocol));
+        Assert.Empty(otherMatch.Packets);
+        recipient.Packets.Clear();
+        new MatchMoveService(null!, null!).ProcessTick(runtime, now.AddMilliseconds(50));
+        Assert.Empty(recipient.Packets);
+        supply.ProcessSupply(runtime, participants, now.AddMilliseconds(50), preMatch: true);
+        Assert.Empty(recipient.Packets);
+
+        // 생성 후 늦게 입장한 세션은 기존 상태 전체를 한 번 받는다.
+        var late = AddRecipient(store, 44200, 103, AreaType.S2Ground, timeline);
+        var session = runtime.GetSessions().Single(s => s.PlayerId == 103);
+        session.SendMonsterSnapshot(runtime.Monsters.GetVisualStatesByArea(), preMatch: true);
+        Assert.NotEmpty(late.Packets);
+        Assert.All(late.Packets, p => Assert.Equal(Protocol.G_TO_C_MONSTER_SNAPSHOT, p.Protocol));
     }
 
     private static RecordingConnection AddRecipient(

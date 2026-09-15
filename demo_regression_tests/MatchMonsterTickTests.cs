@@ -38,8 +38,8 @@ public class MatchMonsterTickTests
         Assert.DoesNotContain(firstTick.SpawnedMonsters, monster => monster.Kind == MonsterKind.RunawayGoblin);
         Assert.All(firstTick.SpawnedMonsters, monster =>
         {
-            // 공급 몹은 잠든 채 등장한다 — 개전은 근접·피격·접촉의 몫.
-            Assert.Equal(0, monster.ChaseTargetPlayerId);
+            // 생성된 틱에도 주변 참가자를 감지해 추격을 시작할 수 있다.
+            Assert.True(monster.ChaseTargetPlayerId is 0 or 1);
             // 페이즈 0 일반 HP — 상향분 원복 (2026-08-16 유저 결정: 잘 죽되 맞으면 치명적)
             Assert.Equal(16, monster.MaxHealthValue);
             Assert.Equal(1, monster.SummonStoneReward);
@@ -230,8 +230,8 @@ public class MatchMonsterTickTests
         Assert.Equal(Monster.BaseContactRadius * 1.8f,
             Monster.GetContactRadius(MonsterKind.Bowler), 3);
 
-        // 해골 반경은 몸통 반폭(0.31, 클라 실측)을 넘지 않는다.
-        Assert.True(Monster.GetContactRadius(MonsterKind.Skeleton) <= 0.32f);
+        // 셀 중심에 도착하면 같은 셀 내부의 플레이어까지 접촉 반경이 닿는다.
+        Assert.Equal(0.5f, Monster.GetContactRadius(MonsterKind.Skeleton));
     }
 
     [Fact]
@@ -400,9 +400,9 @@ public class MatchMonsterTickTests
     /// <summary>운영 전투 조율자의 몬스터 단계를 매치 잠금 안에서 실행한다. 마지막 틱 시각을 피해 정산·표적 조회에 쓴다.</summary>
     private sealed class Arena
     {
-        private readonly MatchMovementService _movement = new(null!, new MonsterBehaviorService(), new MatchMonsterSpawnService(new MonsterBehaviorService()));
+        private readonly MatchMoveService _movement = new(null!, new MonsterBehaviorService());
         private readonly MatchCombatService _combat = TestGameSessionServices.CreateMonsterTickService();
-        private readonly MonsterCombatService _monsterCombat = new(new MatchMonsterSpawnService(new MonsterBehaviorService()));
+        private readonly MonsterCombatService _monsterCombat = new(new MatchMonsterSpawnService());
         private DateTime _lastNow = StartUtc;
 
         public Arena(long matchingId)
@@ -439,14 +439,12 @@ public class MatchMonsterTickTests
                     player.CurrentArea = participant.Area;
                 }
                 if (isGameplayActive) Runtime.StartGameplay(StartUtc);
-                if (participants.Count == 0)
+                // 운영 틱과 같은 공급 → 이동 → 접촉 순서. 빈 참가자 공급 정책도 직접 검증한다.
+                new MatchMonsterSpawnService().ProcessSupply(Runtime, participants.ToList(), nowUtc, !isGameplayActive);
+                if (participants.Count > 0)
                 {
-                    // 빈 참가자 공급 정책은 공급 서비스를 직접 검증한다. 운영 이동 틱은 이 경우 조기 반환한다.
-                    new MatchMonsterSpawnService(new MonsterBehaviorService())
-                        .ProcessSupply(Runtime, [], nowUtc, !isGameplayActive);
-                }
-                else
                     _movement.ProcessTick(Runtime, nowUtc);
+                }
                 var contacts = _combat.CollectMonsterContacts(Runtime, participants, nowUtc);
                 var spawned = Runtime.Monsters.Entities.Values.Where(monster => !known.Contains(monster.MonsterId)).ToList();
                 return new TickResult(contacts, spawned);
@@ -467,7 +465,7 @@ public class MatchMonsterTickTests
         {
             using (Runtime.Enter())
             {
-                return Runtime.Monsters.GetCombatTargets(_lastNow);
+                return Runtime.Monsters.GetCombatTargets();
             }
         }
     }

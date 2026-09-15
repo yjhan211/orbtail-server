@@ -62,13 +62,10 @@ public partial class GameClientSession
                     SendAreaChange(result.OldArea, result.NewArea);
 
                 var validation = result.Movement;
-                var currentCell = result.Cell;
                 long serverTimestamp = result.ServerTimestamp;
-                var validatedPosition = validation.Position;
-                var validatedVelocity = validation.Velocity;
                 bool requiresClientCorrection = validation.RequiresCorrection;
 
-                using var packet = PacketMaker.G_TO_C_MOVE(PlayerId.Value, validatedPosition, validatedVelocity, msg.Rotation, currentCell, serverTimestamp, Player.OrbOrbitPhaseDegrees);
+                using var packet = PacketMaker.G_TO_C_MOVE(Player.GameInfo.ObjectInfo, serverTimestamp, Player.OrbOrbitPhaseDegrees);
                 BroadcastMovement(packet);
 
                 if (requiresClientCorrection || Player.ShouldSendMoveResponse(timestamp))
@@ -106,8 +103,23 @@ public partial class GameClientSession
         TrySend(packet);
     }
 
-    internal void SendMonsterSnapshot(IReadOnlyDictionary<AreaType, List<MonsterInfo>> snapshotsByArea, bool preMatch)
+    private readonly Dictionary<int, MonsterInfo> _publishedMonsterStates = new();
+
+    internal void SendMonsterSnapshot(IReadOnlyDictionary<AreaType, List<MonsterInfo>> snapshotsByArea, bool preMatch, bool fullSnapshot = true)
     {
+        if (fullSnapshot)
+        {
+            var visibleIds = new HashSet<int>();
+            foreach (var pair in snapshotsByArea)
+            {
+                if (!preMatch && pair.Key != Player.CurrentArea) continue;
+                foreach (var monster in pair.Value) visibleIds.Add(monster.MonsterId);
+            }
+            foreach (int id in _publishedMonsterStates.Keys.ToArray())
+            {
+                if (!visibleIds.Contains(id)) _publishedMonsterStates.Remove(id);
+            }
+        }
         foreach (var (area, monsters) in snapshotsByArea)
         {
             if (!preMatch && Player.CurrentArea != area)
@@ -115,17 +127,41 @@ public partial class GameClientSession
                 continue;
             }
 
+            var changed = new List<MonsterInfo>();
+            foreach (var monster in monsters)
+            {
+                if (!preMatch && _publishedMonsterStates.TryGetValue(monster.MonsterId, out var previous) &&
+                    previous.AreaType == monster.AreaType && previous.CurrentHealth == monster.CurrentHealth &&
+                    previous.MaxHealth == monster.MaxHealth && previous.IsAlive == monster.IsAlive &&
+                    previous.ChaseTargetPlayerId == monster.ChaseTargetPlayerId &&
+                    previous.RewardItemId == monster.RewardItemId && previous.IsCore == monster.IsCore &&
+                    previous.SummonStoneReward == monster.SummonStoneReward &&
+                    previous.Kind == monster.Kind && previous.Phase == monster.Phase)
+                {
+                    continue;
+                }
+                changed.Add(monster);
+            }
+            if (changed.Count == 0) continue;
             using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_SNAPSHOT);
             packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_SNAPSHOT
             {
-                Monsters = monsters
+                Monsters = changed
             }));
-            TrySend(packet);
+            if (TrySend(packet))
+            {
+                foreach (var monster in changed)
+                {
+                    if (monster.IsAlive) _publishedMonsterStates[monster.MonsterId] = monster;
+                    else _publishedMonsterStates.Remove(monster.MonsterId);
+                }
+            }
         }
     }
 
     private void SendAreaChange(AreaType oldArea, AreaType newArea)
     {
+        _publishedMonsterStates.Clear();
         try
         {
             if (!PlayerId.HasValue) return;

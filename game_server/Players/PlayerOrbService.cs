@@ -172,7 +172,7 @@ internal sealed class PlayerOrbService(
 
             orbTiers ??= orbTrails.GetOrbTiersInOrder(runtime, owner);
             var orbPosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, owner.Position!, orbTiers);
-            monsterTargets ??= runtime.Monsters.GetCombatTargets(nowUtc);
+            monsterTargets ??= runtime.Monsters.GetCombatTargets();
             bool hasTargetInRange = false;
             foreach (var monsterTarget in monsterTargets)
             {
@@ -268,7 +268,7 @@ internal sealed class PlayerOrbService(
             return false;
         }
 
-        var monsterTargets = runtime.Monsters.GetCombatTargets(nowUtc);
+        var monsterTargets = runtime.Monsters.GetCombatTargets();
         var origin = attack.Origin ?? owner.Position;
         var anchor = attack.AnchorPosition;
         int anchorMonsterId = (runtime.Monsters.FindAliveByCombatTarget(attack.TargetPlayerId)?.MonsterId ?? 0);
@@ -521,7 +521,7 @@ internal sealed class PlayerOrbService(
             orbTiers ??= orbTrails.GetOrbTiersInOrder(runtime, owner);
             var orbPosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, owner.Position!, orbTiers);
             float radius = Config.SWARM_WIND_BLADE_RADIUS_BY_TIER[Math.Clamp(tier, 1, 3) - 1];
-            monsterTargets ??= runtime.Monsters.GetCombatTargets(nowUtc);
+            monsterTargets ??= runtime.Monsters.GetCombatTargets();
             List<Monster>? monstersInRadius = null;
             foreach (var monster in monsterTargets)
             {

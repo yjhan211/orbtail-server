@@ -23,7 +23,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(composition,
             "services.AddSingleton<Func<MatchRuntime, TimeProvider, MatchTickLoop>>",
             "return (runtime, clock) =>",
-            "entryFailureHandler, combat, field, movement, clock);",
+            "entryFailureHandler, combat, field, movement, monsterSpawns, clock);",
 
             "services.AddSingleton<MatchTickService>");
         AssertInOrder(runner,
@@ -51,6 +51,8 @@ public sealed class SwarmArenaTickOrderTests
             proximityTick,
             "using var scope = runtime.Enter();",
             "runtime.IsEntryTimedOut(utcNow)",
+            "monsterSpawns.ProcessSupply(runtime, participants, utcNow, !isGameplayActive);",
+            "movement.ProcessTick(runtime, utcNow);",
             "combat.ProcessTick(runtime);");
         Assert.DoesNotContain("catch (", proximityTick);
         string loopSource = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs");
@@ -112,7 +114,6 @@ public sealed class SwarmArenaTickOrderTests
                 "if (!runtime.IsGameplayActive())"));
         AssertInOrder(
             inactiveGameplayBranch,
-            "SendMonsterSnapshots(",
             "return;");
     }
 
@@ -134,7 +135,6 @@ public sealed class SwarmArenaTickOrderTests
                 "if (!runtime.IsGameplayActive())"));
         AssertInOrder(
             inactiveGameplayBranch,
-            "SendMonsterSnapshots(",
             "return;");
 
         AssertInOrder(
@@ -151,7 +151,6 @@ public sealed class SwarmArenaTickOrderTests
             "botBehavior.UpdateSleep(",
             "ApplySleepRecovery(",
             "ProcessDoorInteractions(",
-            "SendMonsterSnapshots(",
             "actorBuilder.Build(",
             "playerOrbs.ProcessOrbRecovery(",
             "MatchOrbVisual.Build(",
@@ -278,7 +277,7 @@ public sealed class SwarmArenaTickOrderTests
         string root = FindRepositoryRoot();
         string composition = ReadNormalizedSource(root, "game_server", "Program.cs");
         string field = ReadNormalizedSource(root, "game_server", "Matches", "MatchFieldService.cs");
-        Assert.Contains("combat, field, movement, clock)", composition);
+        Assert.Contains("combat, field, movement, monsterSpawns, clock)", composition);
         string tick = ReadMethodSlice(
             field,
             "public void ProcessClosureTick(",

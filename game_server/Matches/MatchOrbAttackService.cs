@@ -114,7 +114,7 @@ internal sealed class MatchOrbAttackService(
             front = MathF.Min(front, sweepEnd);
             float lastFront = shape.LastFront;
             shape.LastFront = front;
-            monsterTargets ??= runtime.Monsters.GetCombatTargets(nowUtc);
+            monsterTargets ??= runtime.Monsters.GetCombatTargets();
 
             foreach (var monster in monsterTargets)
             {
@@ -307,7 +307,7 @@ internal sealed class MatchOrbAttackService(
             var owner = runtime.GetParticipant(vortex.OwnerId);
             int hitCount = 0;
             int notifiedCount = 0;
-            foreach (var target in runtime.Monsters.GetCombatTargets(nowUtc))
+            foreach (var target in runtime.Monsters.GetCombatTargets())
             {
                 if (target.Area != vortex.Area)
                 {

@@ -73,7 +73,7 @@ public sealed class SessionPacketProcessingTests
         string request = MessagePackSerializer.ConvertToJson(MessagePackSerializer.Serialize(
             new C_TO_G_MOVE { Position = new Vector3f(), Velocity = new Vector3f() }));
         string response = MessagePackSerializer.ConvertToJson(MessagePackSerializer.Serialize(
-            new G_TO_C_MOVE { Position = new Vector3f(), Velocity = new Vector3f(), Cell = new Cell(0, 0) }));
+            new G_TO_C_MOVE { Objects = [new GameObjectInfo()] }));
         Assert.DoesNotContain("inputSeq", request);
         Assert.DoesNotContain("lastProcessedInput", response);
         Assert.Contains("serverTime", response);

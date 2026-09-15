@@ -37,7 +37,7 @@ public sealed class DoorInteractionCellTests
             var movement = new MovementState();
             foreach (var step in path)
                 movement.Waypoints.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, step.Cell));
-            var reached = MatchMovementService.AdvanceRoute(runtime, movement,
+            var reached = MatchMoveService.AdvanceRoute(runtime, movement,
                 MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, start), 10000f);
             var reachedCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, reached);
             if (reachedCell.X != cell.X || reachedCell.Y != cell.Y)
@@ -54,8 +54,11 @@ public sealed class DoorInteractionCellTests
         var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(982015);
         using var scope = runtime.Enter();
         var info = GameInteractableData.Get(702000113)!;
-        var player = new Player { Profile = new PlayerInfo { PlayerId = playerId }, CurrentArea = (AreaType)info.ZoneId,
-            Cell = new Cell(info.CellX + 1, info.CellY) };
+        var player = new Player
+        {
+            Profile = new PlayerInfo { PlayerId = playerId }, CurrentArea = (AreaType)info.ZoneId,
+            Cell = new Cell(info.CellX + 1, info.CellY)
+        };
         var service = new PlayerInteractionService();
         Assert.Equal(ErrorCode.DOOR_TOO_FAR, service.StartDoor(runtime, player, info.Id, info.DoorId, 0));
         Assert.Null(player.PendingDoorInteractionId);

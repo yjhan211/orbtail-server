@@ -1208,7 +1208,8 @@ public sealed class GameClientSessionPublicationTests
         var loop = CreatePickupTickLoop(fixture, session.Match);
         loop.ProcessTick();
         Assert.NotNull(session.Match.GroundItems.GetItem(item.GroundItemUid));
-        Assert.Empty(fixture.ConnectionFor(session).DeliveredProtocols);
+        Assert.All(fixture.ConnectionFor(session).DeliveredProtocols,
+            protocol => Assert.Equal(Protocol.G_TO_C_MONSTER_SNAPSHOT, protocol));
 
         // 테스트에서 대기 없이 활성 게이트를 연다.
         fixture.Store.GetOrThrow(session.MatchingId).StartGameplay();

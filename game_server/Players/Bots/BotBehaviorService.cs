@@ -12,8 +12,8 @@ namespace game_server.players.bots;
 /// <summary>
 ///     봇의 대피·반격·사냥·아이템 회수 방향을 결정하고, 문 열기·수면·오브 성장을 공통 Player 규칙으로 실행한다.
 ///     기억과 재사용 대기 시간은 매치가 소유하며 호출자는 매치 잠금을 보유한다.
-///     이동 경로·속도·회피 방향만 설정하며 위치는 변경하지 않는다.
-///     MatchMovementService가 이동 명령을 실행하고 BotMovementPublisher가 결과를 전송한다.
+///     이동 목표만 선택하며 경로 계획과 위치 갱신은 MatchMoveService가 담당한다.
+///     MatchMoveService가 이동 명령을 실행하고 결과를 전송한다.
 /// </summary>
 internal class BotBehaviorService(
     PlayerOrbGrowthService growth,
@@ -300,7 +300,7 @@ internal class BotBehaviorService(
         int threatCount = 0;
         foreach (var monster in runtime.Monsters.Entities.Values)
         {
-            if (!monster.Alive || nowUtc < monster.ActivatesAtUtc || monster.Area != area || !monster.Aggro)
+            if (!monster.Alive || monster.Area != area || !monster.Aggro)
             {
                 continue;
             }
@@ -491,36 +491,19 @@ internal class BotBehaviorService(
             nearbyCells.RemoveAt(index);
         }
 
+        var targetCells = new List<Cell>();
         foreach (var candidate in candidates)
         {
-            if (runtime.Closures.IsAreaClosed(candidate.Area))
-            {
-                continue;
-            }
-            if (SwarmPressureField.GetDistance(candidate.Cell) > safeDistance)
-            {
-                continue;
-            }
-            var path = MapPathfinder.FindPath(mapId, currentArea, currentCell, currentArea, candidate.Cell);
-            if (path is not { Count: > 0 })
-            {
-                continue;
-            }
-            bool safe = true;
-            foreach (var step in path)
-            {
-                if (SwarmPressureField.GetDistance(step.Cell) > safeDistance)
-                {
-                    safe = false;
-                    break;
-                }
-            }
-            if (!safe)
-            {
-                continue;
-            }
-            bot.ExplorationTarget = (candidate.Area, candidate.Cell.Clone());
-            bot.SetMovementTarget(candidate.Area, candidate.Cell);
+            targetCells.Add(candidate.Cell);
+        }
+        bool found = MatchMoveService.TrySelectReachableCell(
+            runtime, bot.Player.GameInfo.ObjectInfo, targetCells,
+            cell => SwarmPressureField.GetDistance(cell) <= safeDistance,
+            area => runtime.Closures.IsAreaClosed(area), out var targetCell);
+        if (found)
+        {
+            bot.ExplorationTarget = (currentArea, targetCell.Clone());
+            bot.SetMovementTarget(currentArea, targetCell);
             bot.Movement.HoldPosition = false;
             return;
         }
@@ -535,7 +518,7 @@ internal class BotBehaviorService(
             return false;
         }
         int distanceCells = Config.SWARM_BOT_MONSTER_HUNT_STOP_DISTANCE_CELLS;
-        foreach (var monster in runtime.Monsters.GetCombatTargets(DateTime.UtcNow))
+        foreach (var monster in runtime.Monsters.GetCombatTargets())
         {
             if (monster.Area != bot.Player.CurrentArea)
             {
@@ -599,6 +582,7 @@ internal class BotBehaviorService(
         {
             safeDistance = runtime.Closures.GetSafeDistance(nowUtc);
         }
+        var targetCells = new List<Cell>();
         foreach (var cell in candidates)
         {
             var area = GameMapData.GetCurrentArea(mapId, cell);
@@ -631,29 +615,20 @@ internal class BotBehaviorService(
                 continue;
             }
 
-            var path = MapPathfinder.FindPath(mapId, currentArea, currentCell, area, cell, stayInCurrentArea ? null : blockedArea => runtime.Closures.IsAreaUnsafe(blockedArea));
-            if (path is not { Count: > 0 })
-            {
-                continue;
-            }
-            if (!stayInCurrentArea)
-            {
-                bool pathIsSafe = true;
-                foreach (var step in path)
-                {
-                    if (SwarmPressureField.GetDistance(step.Cell) > safeDistance || step.Cell.GetDistance(threatCell) < currentThreatDistance)
-                    {
-                        pathIsSafe = false;
-                        break;
-                    }
-                }
-                if (!pathIsSafe)
-                {
-                    continue;
-                }
-            }
+            targetCells.Add(cell);
+        }
+        bool found = MatchMoveService.TrySelectReachableCell(
+            runtime, bot.Player.GameInfo.ObjectInfo, targetCells,
+            cell => stayInCurrentArea ||
+                (SwarmPressureField.GetDistance(cell) <= safeDistance &&
+                 cell.GetDistance(threatCell) >= currentThreatDistance),
+            area => !stayInCurrentArea && runtime.Closures.IsAreaUnsafe(area),
+            out var targetCell);
+        if (found)
+        {
+            var targetArea = GameMapData.GetCurrentArea(mapId, targetCell);
             bot.Movement.HoldPosition = false;
-            bot.SetMovementTarget(area, cell);
+            bot.SetMovementTarget(targetArea, targetCell);
             return;
         }
         bot.Movement.HoldPosition = true;
@@ -677,7 +652,7 @@ internal class BotBehaviorService(
         }
         var sessions = runtime.GetSessions();
         var players = runtime.GetAlivePlayers();
-        var monsterTargets = runtime.Monsters.GetCombatTargets(nowUtc);
+        var monsterTargets = runtime.Monsters.GetCombatTargets();
         float safeRadiusSquared = Config.SWARM_ORB_ATTACK_RANGE * Config.SWARM_ORB_ATTACK_RANGE;
         foreach (var bot in bots)
         {
@@ -773,192 +748,50 @@ internal class BotBehaviorService(
         return MovementSpeed.GetMultiplier(orbs, bootsActive, bareSpeedActive, waveSlowActive);
     }
 
-    public virtual void PrepareMovement(MatchRuntime runtime, Bot bot, DateTime now, bool canPlanThisTick)
+    public virtual MovementRequest CreateMovementRequest(MatchRuntime runtime, Bot bot, DateTime now)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
-            throw new InvalidOperationException("Bot movement planning requires the match lock.");
+            throw new InvalidOperationException("Bot decisions require the match lock.");
         }
-
         var movement = bot.Movement;
         movement.ResetIntent();
         if (runtime.IsEnded || bot.Player.IsEliminated || bot.Player.IsSleeping)
         {
-            return;
+            return new MovementRequest(null, 0f, HoldPosition: true);
         }
-
+        var previousDestination = movement.DestinationCell;
+        var previousArea = movement.DestinationArea;
         movement.DestinationCell = null;
         movement.DestinationArea = AreaType.None;
         SelectMovementTarget(runtime, bot);
-        if (movement.HoldPosition || movement.DestinationCell == null)
+        var requestedCell = movement.DestinationCell;
+        movement.DestinationCell = previousDestination;
+        movement.DestinationArea = previousArea;
+        float speed = Config.SWARM_BOT_WALK_SPEED * GetBotMovementSpeedMultiplier(bot, now);
+        var advice = BotDodgeCalculator.CalculateDodge(runtime.SunCrossfireShapes,
+            bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now);
+        if (advice != null || now < bot.SwarmDodgeHoldUntilUtc)
         {
-            movement.NextPathPlanAtUtc = DateTime.MinValue;
-            bot.WasAvoidingMonsterAtLastPathPlan = false;
-            bot.Movement.Clear();
-            return;
-        }
-
-        bool underFire = (now - bot.LastDamagedAtUtc).TotalSeconds <= 6d;
-        bool pathFinished = movement.WaypointIndex >= movement.Waypoints.Count;
-        if (canPlanThisTick && (pathFinished || now >= movement.NextPathPlanAtUtc || underFire))
-        {
-            bool avoidingMonster = bot.MonsterAvoidanceTarget.HasValue;
-            bool extendDeadline = pathFinished || avoidingMonster != bot.WasAvoidingMonsterAtLastPathPlan || now >= movement.NextPathPlanAtUtc;
-            bot.WasAvoidingMonsterAtLastPathPlan = avoidingMonster;
-            if (TryPlanPath(runtime, bot, movement.DestinationArea, movement.DestinationCell))
+            if (BotDodgeCalculator.TrySelectDodgeCell(runtime, bot, now, out var dodgeCell, out var isSafeCell))
             {
-                if (extendDeadline)
+                bot.DodgeTargetCell = dodgeCell.Clone();
+                if (advice != null)
                 {
-                    movement.NextPathPlanAtUtc = now.AddSeconds(1.5);
+                    bot.SwarmDodgeHoldUntilUtc = now.AddSeconds(advice.Value.HoldSeconds);
                 }
+                return new MovementRequest(dodgeCell, speed, IsSafeCell: isSafeCell);
             }
-            else
-            {
-                bool canKeepPath = !pathFinished;
-                var previousCell = bot.Player.Cell!;
-                double safeDistance = runtime.Closures.GetSafeDistance(now);
-                for (int i = movement.WaypointIndex; i < movement.Waypoints.Count; i++)
-                {
-                    var nextCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, movement.Waypoints[i]);
-                    bool canTraverseSegment = MapTraversal.IsTraversable(previousCell, nextCell,
-                        cell =>
-                        {
-                            if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell))
-                            {
-                                return false;
-                            }
-                            var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
-                            if (runtime.Closures.IsAreaClosed(area))
-                            {
-                                return false;
-                            }
-                            if (SwarmPressureField.GetDistance(cell) > safeDistance)
-                            {
-                                return false;
-                            }
-                            return true;
-                        },
-                        (from, to) =>
-                        {
-                            var fromArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, from);
-                            var toArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, to);
-                            var blockingDoor = runtime.Doors.GetBlockingDoor(fromArea, toArea, from, to);
-                            return blockingDoor == null;
-                        });
-                    if (!canTraverseSegment)
-                    {
-                        canKeepPath = false;
-                        break;
-                    }
-                    previousCell = nextCell;
-                }
-                if (!canKeepPath)
-                {
-                    movement.Clear();
-                }
-                movement.NextPathPlanAtUtc = DateTime.MinValue;
-            }
-        }
-
-        if (bot.Player.Position == null || movement.WaypointIndex >= movement.Waypoints.Count)
-        {
-            return;
-        }
-
-        if (bot.Player.CurrentArea != AreaType.None)
-        {
-            bool committed = now < bot.SwarmDodgeHoldUntilUtc;
-            var advice = BotDodgeCalculator.CalculateDodge(runtime.SunCrossfireShapes, bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now);
-            if (advice == null && committed)
-            {
-                movement.DodgeDirection = new Vector3f(bot.SwarmDodgeDirectionX, bot.SwarmDodgeDirectionY, 0f);
-            }
-            if (advice != null)
-            {
-                float directionX = advice.Value.DirectionX;
-                float directionY = advice.Value.DirectionY;
-                if (committed && bot.SwarmDodgeDirectionX * directionX + bot.SwarmDodgeDirectionY * directionY > 0f)
-                {
-                    directionX = bot.SwarmDodgeDirectionX;
-                    directionY = bot.SwarmDodgeDirectionY;
-                }
-                else
-                {
-                    bot.SwarmDodgeDirectionX = directionX;
-                    bot.SwarmDodgeDirectionY = directionY;
-                }
-                var holdUntil = now.AddSeconds(advice.Value.HoldSeconds);
-                if (holdUntil > bot.SwarmDodgeHoldUntilUtc)
-                {
-                    bot.SwarmDodgeHoldUntilUtc = holdUntil;
-                }
-                movement.DodgeDirection = new Vector3f(directionX, directionY, 0f);
-            }
-        }
-        movement.Speed = Config.SWARM_BOT_WALK_SPEED * GetBotMovementSpeedMultiplier(bot, now);
-        movement.FollowPath = now >= bot.LoopWaitUntil;
-    }
-
-    private bool TryPlanPath(MatchRuntime runtime, Bot bot, AreaType destinationArea, Cell destinationCell)
-    {
-        var player = bot.Player;
-        var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, player.CurrentArea, player.Cell, destinationArea, destinationCell);
-        if (path == null || path.Count == 0)
-        {
-            return false;
-        }
-
-        // 닫힌 문을 건너기 전에는 해당 구역의 등록된 상호작용 셀에 먼저 도착한다.
-        var previousCell = player.Cell;
-        var previousArea = player.CurrentArea;
-        foreach (var step in path)
-        {
-            var nextArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, step.Cell);
-            var door = runtime.Doors.GetBlockingDoor(previousArea, nextArea, previousCell, step.Cell);
-            if (door != null)
-            {
-                InteractableInfoData? interaction = null;
-                foreach (var info in GameInteractableData.GetAll())
-                {
-                    if (info.DoorId == door.DoorId && info.ZoneId == (int)player.CurrentArea)
-                    {
-                        interaction = info;
-                        break;
-                    }
-                }
-                if (interaction == null) return false;
-                path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, player.CurrentArea, player.Cell,
-                    player.CurrentArea, new Cell(interaction.CellX, interaction.CellY));
-                if (path == null || path.Count == 0) return false;
-                break;
-            }
-            previousCell = step.Cell;
-            previousArea = nextArea;
-        }
-        var movement = bot.Movement;
-        movement.Clear();
-        foreach (var step in path)
-        {
-            movement.Waypoints.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, step.Cell));
-        }
-        return true;
-    }
-
-    internal void CompleteDodge(Bot bot, Vector3f? direction)
-    {
-        if (direction == null)
-        {
+            bot.DodgeTargetCell = null;
             bot.SwarmDodgeHoldUntilUtc = DateTime.MinValue;
-            return;
+            // 안전한 경로를 찾지 못하면 검증되지 않은 방향으로 움직이지 않는다.
+            return new MovementRequest(null, 0f, HoldPosition: true);
         }
-        bot.SwarmDodgeDirectionX = direction.X;
-        bot.SwarmDodgeDirectionY = direction.Y;
-    }
-
-    internal void HandleBlockedPath(Bot bot, DateTime now)
-    {
-        bot.Movement.Clear();
-        bot.Movement.NextPathPlanAtUtc = DateTime.MinValue;
-        bot.LoopWaitUntil = now.AddSeconds(0.4 + Random.Shared.NextDouble() * 0.5);
+        bot.DodgeTargetCell = null;
+        if (movement.HoldPosition || requestedCell == null)
+        {
+            return new MovementRequest(requestedCell, 0f, HoldPosition: true);
+        }
+        return new MovementRequest(requestedCell.Clone(), speed, HoldPosition: now < bot.LoopWaitUntil);
     }
 }

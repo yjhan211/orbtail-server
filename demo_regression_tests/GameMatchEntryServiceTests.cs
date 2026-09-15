@@ -38,7 +38,11 @@ public sealed class GameMatchEntryServiceTests
             MessagePackSerializer.Serialize(new MatchManifest { HumanPlayerIds = [1001, 1002], BotCount = 1, Mode = MatchMode.Normal }));
         await redis.StringSetAsync(MatchingRedisKeys.ReservationKey(1002), runtime.MatchingId, TimeSpan.FromMinutes(2));
 
+        var beforeSetup = DateTime.UtcNow;
         runtime = await service.PrepareMatchAsync(runtime.MatchingId);
+        Assert.True(runtime.Monsters.IsInitialized);
+        Assert.InRange(runtime.Monsters.StartsAtUtc, beforeSetup, DateTime.UtcNow);
+        var monsterStartedAt = runtime.Monsters.StartsAtUtc;
 
         Assert.Empty(runtime.GetSessions());
         int humanStones = Config.SWARM_STARTING_STONE_GRANT;
@@ -58,6 +62,7 @@ public sealed class GameMatchEntryServiceTests
                 runtime.InitializeMatch(runtime.Mode, runtime.SpawnCells, runtime.GetPlayerProfiles()));
         }
         runtime = await service.PrepareMatchAsync(runtime.MatchingId);
+        Assert.Equal(monsterStartedAt, runtime.Monsters.StartsAtUtc);
         Assert.Equal(humanStones, TestGameSessionServices.SummonStones(runtime, botId).StoneCount);
         Assert.Equal(humanStones - 1, TestGameSessionServices.SummonStones(runtime, 1001).StoneCount);
         Assert.Equal(humanStones, TestGameSessionServices.SummonStones(runtime, 1002).StoneCount);

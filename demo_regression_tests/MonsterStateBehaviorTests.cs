@@ -7,6 +7,26 @@ public sealed class MonsterStateBehaviorTests
     private static readonly DateTime Now = new(2026, 9, 12, 0, 0, 0, DateTimeKind.Utc);
 
     [Fact]
+    public void LethalCombatRemovesTargetAndLateHitsCannotSettleAgain()
+    {
+        var runtime = TestGameSessionServices.CreateMatchRuntimeStore(
+            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance).GetOrCreate(987637);
+        using var scope = runtime.Enter();
+        runtime.Monsters.Initialize(Now);
+        var monster = new Monster { MonsterId = 1, CombatTargetId = -11, Alive = true, Health = 10 };
+        runtime.Monsters.Entities[1] = monster;
+        var combat = new MonsterCombatService(new MatchMonsterSpawnService());
+
+        var result = combat.ApplyMonsterDamage(runtime, -11, 1, 10, Now);
+
+        Assert.True(result.Killed);
+        Assert.Same(monster, result.Monster);
+        Assert.Empty(runtime.Monsters.Entities);
+        Assert.Empty(runtime.Monsters.GetVisualStatesByArea());
+        Assert.False(monster.ToMonsterInfo().IsAlive);
+        Assert.False(combat.ApplyMonsterDamage(runtime, -11, 1, 10, Now).Applied);
+    }
+    [Fact]
     public void LethalDamage_RecordsDeathOnce()
     {
         var monster = new Monster { Alive = true, Health = 10 };
@@ -40,15 +60,17 @@ public sealed class MonsterStateBehaviorTests
     }
 
     [Fact]
-    public void CombatTargets_ExcludeInactiveDeadAndFullyReservedMonsters()
+    public void CombatTargets_IncludeNewMonstersAndExcludeDeadAndFullyReservedMonsters()
     {
         var state = new MatchMonsters();
-        var ready = new Monster { MonsterId = 1, CombatTargetId = -11, Alive = true, Health = 10, ActivatesAtUtc = Now };
+        var ready = new Monster { MonsterId = 1, CombatTargetId = -11, Alive = true, Health = 10 };
         state.Entities[1] = ready;
-        state.Entities[2] = new Monster { Alive = true, Health = 10, ActivatesAtUtc = Now.AddSeconds(1) };
+        state.Entities[2] = new Monster { Alive = true, Health = 10 };
         state.Entities[3] = new Monster { Alive = false, Health = 10 };
         state.Entities[4] = new Monster { Alive = true, Health = 10, PendingDamage = 10 };
-        Assert.Same(ready, Assert.Single(state.GetCombatTargets(Now)));
+        Assert.Equal(2, state.GetCombatTargets().Count);
+        Assert.Contains(ready, state.GetCombatTargets());
+        Assert.Contains(state.Entities[2], state.GetCombatTargets());
         Assert.Same(ready, state.FindAliveByCombatTarget(-11));
         ready.ApplyDamage(10, Now);
         Assert.Null(state.FindAliveByCombatTarget(-11));
@@ -56,15 +78,21 @@ public sealed class MonsterStateBehaviorTests
     }
 
     [Fact]
-    public void DeadPruning_PreservesThreeSecondBoundaryAndLivingEntities()
+    public void RemovalImmediatelyExcludesMonsterAndIsIdempotent()
     {
-        var state = new MatchMonsters();
-        state.Entities[1] = new Monster { MonsterId = 1, Alive = false, DiedAtUtc = Now };
-        state.Entities[2] = new Monster { MonsterId = 2, Alive = true };
-        state.RemoveExpiredDead(Now.AddSeconds(3));
-        Assert.Equal(2, state.Entities.Count);
-        state.RemoveExpiredDead(Now.AddSeconds(3).AddTicks(1));
-        Assert.Single(state.Entities);
-        Assert.True(state.Entities.ContainsKey(2));
+        var runtime = TestGameSessionServices.CreateMatchRuntimeStore(
+            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance).GetOrCreate(987636);
+        using var scope = runtime.Enter();
+        var removed = new Monster { MonsterId = 1, CombatTargetId = -11, Alive = true, Health = 10 };
+        runtime.Monsters.Entities[1] = removed;
+        runtime.Monsters.Entities[2] = new Monster { MonsterId = 2, Alive = true };
+
+        runtime.RemoveMonster(removed);
+        runtime.RemoveMonster(removed);
+
+        Assert.False(removed.Alive);
+        Assert.Single(runtime.Monsters.Entities);
+        Assert.Null(runtime.Monsters.FindByCombatTarget(-11));
+        Assert.False(removed.ApplyDamage(10, Now));
     }
 }

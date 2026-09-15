@@ -44,7 +44,6 @@ public sealed class Monster
     }
     public int Health { get => Info.CurrentHealth; set => Info.CurrentHealth = value; }
     public bool Alive { get => Info.IsAlive; set => Info.IsAlive = value; }
-    public DateTime ActivatesAtUtc { get; set; }
     public DateTime NextContactAtUtc { get; set; }
     public DateTime DiedAtUtc { get; set; }
     public DateTime SpawnedAtUtc { get; set; }

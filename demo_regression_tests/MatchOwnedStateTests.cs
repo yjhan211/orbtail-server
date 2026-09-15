@@ -96,21 +96,6 @@ public sealed class MatchOwnedStateTests
     }
 
     [Fact]
-    public void OrbRecoveryAndMonsterState_BelongToOneMatch()
-    {
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
-        var first = store.GetOrCreate(941006);
-        var second = store.GetOrCreate(941007);
-        var now = DateTime.UtcNow;
-        using (MatchRuntimeStore.Enter(first))
-        {
-            Assert.True(game_server.matches.MatchCombatService.TryClaimSnapshotSlot(first, now));
-            Assert.False(game_server.matches.MatchCombatService.TryClaimSnapshotSlot(first, now));
-        }
-        using (MatchRuntimeStore.Enter(second)) Assert.True(game_server.matches.MatchCombatService.TryClaimSnapshotSlot(second, now));
-    }
-
-    [Fact]
     public void ServerAndSession_DoNotRetainMatchComponentFieldsOrConstructorArguments()
     {
         Type[] components = [typeof(MatchGroundItemState),

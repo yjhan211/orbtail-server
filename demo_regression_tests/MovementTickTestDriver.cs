@@ -8,7 +8,7 @@ namespace demo_regression_tests;
 // 행동 선택만 대체하고 운영 ProcessTick의 계획·이동·정지 처리를 검증한다.
 internal static class MovementTickTestDriver
 {
-    internal static (List<BotMovementResult> Movements, long PlanningBotId) RunBotTick(
+    internal static (List<BotMovementResult> Movements, IReadOnlyList<long> RequestedBotIds) RunBotTick(
         MatchRuntime runtime, Action<long> decide)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -17,7 +17,7 @@ internal static class MovementTickTestDriver
             bot => (bot.Player.Position, bot.Player.Velocity, bot.Player.CurrentArea));
         var behavior = new BehaviorProbe(decide);
         var monsters = new MonsterBehaviorService();
-        var service = new MatchMovementService(behavior, monsters, new MatchMonsterSpawnService(monsters));
+        var service = new MatchMoveService(behavior, monsters);
         if (!runtime.IsEnded) runtime.StartGameplay();
         service.ProcessTick(runtime, DateTime.UtcNow);
         var movements = new List<BotMovementResult>();
@@ -34,31 +34,18 @@ internal static class MovementTickTestDriver
                 Rotation = player.Rotation, IsAreaTransition = previous.CurrentArea != player.CurrentArea
             });
         }
-        return (movements, behavior.PlanningBotId);
+        return (movements, behavior.RequestedBotIds);
     }
 
     private sealed class BehaviorProbe(Action<long> decide)
         : BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance)
     {
-        public long PlanningBotId { get; private set; }
-        private Action? _restoreTarget;
+        public List<long> RequestedBotIds { get; } = [];
         public override void SelectMovementTarget(MatchRuntime runtime, Bot bot)
         {
-            _restoreTarget?.Invoke();
+            RequestedBotIds.Add(bot.PlayerId);
             decide(bot.PlayerId);
         }
-        public override void PrepareMovement(MatchRuntime runtime, Bot bot, DateTime now, bool canPlanThisTick)
-        {
-            // 실행 검증용으로 미리 지정한 목표를 행동 선택 단계에서 다시 제공한다.
-            var destination = bot.Movement.Destination;
-            var area = bot.Movement.DestinationArea;
-            _restoreTarget = () =>
-            {
-                bot.Movement.Destination = destination;
-                bot.Movement.DestinationArea = area;
-            };
-            if (canPlanThisTick) PlanningBotId = bot.PlayerId;
-            base.PrepareMovement(runtime, bot, now, canPlanThisTick);
-        }
     }
+
 }

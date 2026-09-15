@@ -9,29 +9,18 @@ namespace demo_regression_tests;
 
 public sealed class BotReplanningTests
 {
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void FinishedPathDoesNotWaitForDeadlineButStillWaitsForPlanningTurn(bool planningTurn)
+    [Fact]
+    public void FinishedPathIsPlannedWithoutWaitingForAnotherActor()
     {
         var (runtime, bot, destination) = CreateBot();
         using var scope = runtime.Enter();
         var now = DateTime.UtcNow;
         var deadline = now.AddSeconds(1);
         bot.Movement.NextPathPlanAtUtc = deadline;
-        new TargetBehavior(bot.Player.CurrentArea, destination).PrepareMovement(runtime, bot, now, planningTurn);
-        if (planningTurn)
-        {
-            Assert.NotEmpty(bot.Movement.Waypoints);
-            Assert.True(bot.Movement.FollowPath);
-            Assert.Equal(now.AddSeconds(1.5), bot.Movement.NextPathPlanAtUtc);
-        }
-        else
-        {
-            Assert.Empty(bot.Movement.Waypoints);
-            Assert.False(bot.Movement.FollowPath);
-            Assert.Equal(deadline, bot.Movement.NextPathPlanAtUtc);
-        }
+        MovementPreparationTestSteps.Bot(new TargetBehavior(bot.Player.CurrentArea, destination), runtime, bot, now);
+        Assert.NotEmpty(bot.Movement.Waypoints);
+        Assert.True(bot.Movement.FollowPath);
+        Assert.Equal(now.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS), bot.Movement.NextPathPlanAtUtc);
     }
 
     [Theory]
@@ -45,8 +34,8 @@ public sealed class BotReplanningTests
             ? MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, destination)
             : new Vector3f(-10000f, -10000f, 0f);
         bot.Movement.Waypoints.Add(waypoint);
-        new TargetBehavior(AreaType.None, new Cell(-10000, -10000)).PrepareMovement(runtime, bot, DateTime.UtcNow, true);
-        Assert.Equal(DateTime.MinValue, bot.Movement.NextPathPlanAtUtc);
+        MovementPreparationTestSteps.Bot(new TargetBehavior(AreaType.None, new Cell(-10000, -10000)), runtime, bot, DateTime.UtcNow);
+        Assert.True(bot.Movement.NextPathPlanAtUtc > DateTime.UtcNow);
         Assert.Equal(validPath, bot.Movement.FollowPath);
         if (validPath)
         {
@@ -64,10 +53,10 @@ public sealed class BotReplanningTests
         var (runtime, bot, destination) = CreateBot();
         using var scope = runtime.Enter();
         bot.Movement.Waypoints.Add(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, destination));
-        new TargetBehavior(bot.Player.CurrentArea, bot.Player.Cell!, true).PrepareMovement(runtime, bot, DateTime.UtcNow, true);
-        Assert.Empty(bot.Movement.Waypoints);
+        MovementPreparationTestSteps.Bot(new TargetBehavior(bot.Player.CurrentArea, bot.Player.Cell!, true), runtime, bot, DateTime.UtcNow);
+        Assert.Single(bot.Movement.Waypoints);
         Assert.False(bot.Movement.FollowPath);
-        Assert.Equal(0f, bot.Movement.Speed);
+        Assert.False(bot.Movement.FollowPath);
     }
 
     [Fact]
