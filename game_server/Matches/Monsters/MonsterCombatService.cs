@@ -9,7 +9,7 @@ internal readonly record struct MonsterDamageResult(bool Applied, bool Killed, M
 }
 
 /// <summary>
-///     몬스터의 접촉 공격·플레이어 면역과 피격 시 주변 어그로·처치 보상을 조율한다.
+///     몬스터의 접촉 공격·플레이어 면역과 피격 시 주변 표적 지정·처치 보상을 조율한다.
 ///     개체 상태는 Monster가 보관하며, 모든 호출은 매치 잠금 안에서 수행한다.
 /// </summary>
 internal sealed class MonsterCombatService(MatchMonsterSpawnService spawns)
@@ -25,7 +25,7 @@ internal sealed class MonsterCombatService(MatchMonsterSpawnService spawns)
             return;
         }
 
-        float attackRange = monster.Aggro && monster.AttackRangeValue > Monster.BaseContactRadius ? monster.AttackRangeValue : Monster.GetContactRadius(monster.Kind);
+        float attackRange = monster.AttackRangeValue > Monster.BaseContactRadius ? monster.AttackRangeValue : Monster.GetContactRadius(monster.Kind);
         const float verticalScale = 2f;
         foreach (var participant in snapshot)
         {
@@ -48,7 +48,6 @@ internal sealed class MonsterCombatService(MatchMonsterSpawnService spawns)
 
             monster.NextContactAtUtc = now.AddSeconds(monster.AttackCooldownValue);
             player.MonsterContactImmuneUntilUtc = now.AddSeconds(Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS);
-            monster.Aggro = true;
             monster.ChaseTargetPlayerId = participant.PlayerId;
             contacts.Add(new MonsterContactDamage(monster.MonsterId, participant.PlayerId, monster.Area, monster.ContactDamageValue));
             bool waveInsignia = monster.Insignia == MonsterInsignia.Wave;
@@ -103,23 +102,14 @@ internal sealed class MonsterCombatService(MatchMonsterSpawnService spawns)
         {
             return MonsterDamageResult.None;
         }
-
-        monster.Aggro = true;
-        if (monster.OwnerPlayerId == 0)
-        {
-            monster.ChaseTargetPlayerId = attackerPlayerId;
-        }
+        monster.ChaseTargetPlayerId = attackerPlayerId;
         foreach (var mate in state.Entities.Values)
         {
-            if (!mate.Alive || mate.Aggro || mate.Area != monster.Area)
+            if (!mate.Alive || mate.ChaseTargetPlayerId != 0 || mate.Area != monster.Area)
             {
                 continue;
             }
-            mate.Aggro = true;
-            if (mate.OwnerPlayerId == 0)
-            {
-                mate.ChaseTargetPlayerId = attackerPlayerId;
-            }
+            mate.ChaseTargetPlayerId = attackerPlayerId;
         }
         bool killed = monster.ApplyDamage(damage, nowUtc);
         int summonStoneReward = 0;

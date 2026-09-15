@@ -16,13 +16,11 @@ public sealed class MatchMonsters
     public Dictionary<int, Monster> Entities { get; } = new();
     public Random Rng { get; set; } = new();
     public int NextSerial { get; set; }
-    public Dictionary<AreaType, float> InfiltrationExitBearings { get; } = new();
     public Dictionary<AreaType, MonsterSupplyZoneState> SupplyZones { get; } = new();
     public Dictionary<AreaType, DateTime> ZoneVacatedAtUtc { get; } = new();
     public Dictionary<(AreaType Area, int PhaseIndex), (double Available, DateTime RefilledAtUtc)> SupplyStoneBucket { get; } = new();
     public HashSet<(AreaType Area, int PhaseIndex)> SupplyCoreRewarded { get; } = new();
     public int NextSupplyPackOrdinal { get; set; }
-    public int NextInfiltrationOriginOrdinal { get; set; }
     public int MaxParticipantCount { get; set; }
 
     public bool Initialize(DateTime startsAtUtc)
@@ -97,7 +95,6 @@ public sealed class MatchMonsters
     {
         IsInitialized = false;
         Entities.Clear();
-        InfiltrationExitBearings.Clear();
         SupplyZones.Clear();
         ZoneVacatedAtUtc.Clear();
         SupplyStoneBucket.Clear();

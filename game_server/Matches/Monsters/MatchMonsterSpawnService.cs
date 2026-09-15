@@ -175,7 +175,7 @@ internal sealed class MatchMonsterSpawnService
             }
 
             want = Math.Max(0, want);
-            int spawned = SpawnSupplyMonsters(runtime, participants, zone, want, includeCore, phaseIndex, now, roster);
+            int spawned = SpawnSupplyMonsters(runtime, participants, zone, want, includeCore, phaseIndex, now);
             if (spawned == 0)
             {
                 zoneState.NextTopUpAtUtc = now.AddSeconds(Config.SWARM_MONSTER_SUPPLY_BLOCKED_RETRY_SECONDS);
@@ -288,34 +288,12 @@ internal sealed class MatchMonsterSpawnService
         return count;
     }
 
-    private int SpawnSupplyMonsters(MatchRuntime runtime, IReadOnlyList<PlayerPositionSnapshot> participants, AreaType area, int normals, bool includeCore, int phaseIndex, DateTime now, IReadOnlyList<long> roster)
+    private int SpawnSupplyMonsters(MatchRuntime runtime, IReadOnlyList<PlayerPositionSnapshot> participants, AreaType area, int normals, bool includeCore, int phaseIndex, DateTime now)
     {
         var state = runtime.Monsters;
         var phase = SwarmSupplyPhaseData.GetAll()[phaseIndex];
-        var ownerLoad = new Dictionary<long, int>();
-        if (roster is { Count: > 0 })
-        {
-            foreach (long playerId in roster)
-            {
-                ownerLoad[playerId] = 0;
-            }
-            foreach (var candidate in state.Entities.Values)
-            {
-                if (!candidate.Alive || candidate.OwnerPlayerId == 0)
-                {
-                    continue;
-                }
-
-                if (ownerLoad.ContainsKey(candidate.OwnerPlayerId))
-                {
-                    ownerLoad[candidate.OwnerPlayerId]++;
-                }
-            }
-        }
-
-        bool infiltrate = area != AreaType.S2Corridor9;
         var inward = MapCoordinateConverter.GetAreaDirection(Config.SWARM_MATCH_MAP, area, AreaType.S2Corridor9);
-        var freeAnchors = SelectSpawnAnchors(area, participants, infiltrate, inward);
+        var freeAnchors = SelectSpawnAnchors(area, participants, inward);
         if (freeAnchors.Count == 0)
         {
             return 0;
@@ -344,7 +322,6 @@ internal sealed class MatchMonsterSpawnService
 
             var position = destination;
             var spawnArea = area;
-            List<Vector3f>? route = null;
             var fieldSpawn = ResolveFieldSpawn(runtime, area, now);
             if (fieldSpawn != null)
             {
@@ -352,13 +329,6 @@ internal sealed class MatchMonsterSpawnService
                 var fieldAnchorWorld = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Anchor);
                 destination = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(fieldAnchorWorld.X + MathF.Cos(angle) * Config.SWARM_MONSTER_SUPPLY_SCATTER_RADIUS, fieldAnchorWorld.Y + MathF.Sin(angle) * Config.SWARM_MONSTER_SUPPLY_SCATTER_RADIUS, 0f), fieldAnchorWorld, area);
             }
-            else if (infiltrate && TryPlanSpawnRoute(runtime, area, destination, out var origin, out var planned))
-            {
-                position = origin;
-                spawnArea = AreaType.S2Corridor9;
-                route = planned;
-            }
-
             var kind = spawnPlan[index].Kind;
             var definition = SwarmMonsterData.Get((int)kind) ?? SwarmMonsterData.Get((int)MonsterKind.Skeleton) ?? throw new InvalidOperationException("swarm_monster.csv must define the skeleton fallback row.");
             bool isCore = kind == MonsterKind.RunawayGoblin;
@@ -377,7 +347,6 @@ internal sealed class MatchMonsterSpawnService
                 Position = position,
                 Health = maxHp,
                 Alive = true,
-                Aggro = true,
                 PhaseTier = phaseIndex,
                 SpawnedAtUtc = now,
                 NextContactAtUtc = now,
@@ -391,22 +360,7 @@ internal sealed class MatchMonsterSpawnService
                 AttackCooldownValue = insignia == MonsterInsignia.Wave && !isCore ? Config.SWARM_MONSTER_WAVE_INSIGNIA_ATTACK_COOLDOWN_SECONDS : definition.AttackCooldownSeconds,
                 AnchorX = fieldSpawn != null ? destination.X : position.X,
                 AnchorY = fieldSpawn != null ? destination.Y : position.Y,
-                OwnerPlayerId = SelectMonsterOwner(runtime, ownerLoad)
             };
-
-            if (route != null)
-            {
-                monster.Movement.DestinationCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, destination);
-                monster.Movement.DestinationArea = monster.HomeArea;
-                foreach (var point in route)
-                {
-                    var cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, point);
-                    if (monster.Movement.Waypoints.Count == 0 || !monster.Movement.Waypoints[^1].Equals(cell))
-                    {
-                        monster.Movement.Waypoints.Add(cell);
-                    }
-                }
-            }
 
             monster.Movement.LastProcessedAtUtc = now;
             state.Entities[monster.MonsterId] = monster;
@@ -428,46 +382,7 @@ internal sealed class MatchMonsterSpawnService
         return spawnPlan.Count;
     }
 
-    private long SelectMonsterOwner(MatchRuntime runtime, Dictionary<long, int> ownerLoad)
-    {
-        if (ownerLoad.Count == 0)
-        {
-            return 0;
-        }
-
-        long chosen = 0;
-        int least = int.MaxValue;
-        bool chosenOrbless = false;
-        foreach ((long playerId, int load) in ownerLoad)
-        {
-            bool orbless = !runtime.GetOrbs(playerId).HasAnyOrb();
-            if (chosenOrbless && !orbless)
-            {
-                continue;
-            }
-            if (orbless && !chosenOrbless)
-            {
-                chosenOrbless = true;
-                least = load;
-                chosen = playerId;
-                continue;
-            }
-            if (load >= least)
-            {
-                continue;
-            }
-            least = load;
-            chosen = playerId;
-        }
-
-        if (chosen != 0)
-        {
-            ownerLoad[chosen] = least + 1;
-        }
-        return chosen;
-    }
-
-    private List<Vector3f> SelectSpawnAnchors(AreaType area, IReadOnlyList<PlayerPositionSnapshot> participants, bool infiltrate, Vector3f inward)
+    private List<Vector3f> SelectSpawnAnchors(AreaType area, IReadOnlyList<PlayerPositionSnapshot> participants, Vector3f inward)
     {
         var center = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
         var anchors = new List<Vector3f>(CampsPerArea);
@@ -499,7 +414,7 @@ internal sealed class MatchMonsterSpawnService
                 nearestSquared = Math.Min(nearestSquared, dx * dx + dy * dy);
             }
             float distance = nearestSquared == float.MaxValue ? float.MaxValue : MathF.Sqrt(nearestSquared);
-            if (!infiltrate && distance < Config.SWARM_MONSTER_SUPPLY_SAFE_SPAWN_DISTANCE)
+            if (distance < Config.SWARM_MONSTER_SUPPLY_SAFE_SPAWN_DISTANCE)
             {
                 continue;
             }
@@ -587,99 +502,4 @@ internal sealed class MatchMonsterSpawnService
         }
         return fieldSpawn;
     }
-    private const double InfiltrationGoldenAngle = 0.6180339887498949d;
-
-    public static bool TryPlanSpawnRoute(MatchRuntime runtime, AreaType destinationArea, Vector3f destination, out Vector3f origin, out List<Vector3f> route)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Monster movement requires the match lock.");
-        }
-        route = null!;
-        var originCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9));
-        var state = runtime.Monsters;
-        var blockedAreas = new HashSet<AreaType>();
-        foreach (var region in GameMapData.GetAreas(Config.SWARM_MATCH_MAP))
-        {
-            if (runtime.Closures.IsAreaClosed(region.AreaType))
-            {
-                blockedAreas.Add(region.AreaType);
-            }
-        }
-        foreach (var room in MatchSpawnData.GetPhaseRoomCandidates())
-        {
-            blockedAreas.Add(room);
-        }
-        // 기존 공급 경로의 출발·도착 구역 예외를 유지한다.
-        blockedAreas.Remove(AreaType.S2Corridor9);
-        blockedAreas.Remove(destinationArea);
-        float baseAngle = ResolveInfiltrationExitBearing(runtime, destinationArea, destination, originCenter, blockedAreas);
-        double golden = (state.NextInfiltrationOriginOrdinal++ * InfiltrationGoldenAngle) % 1d;
-        float angle = baseAngle + (float)((golden - 0.5d) * 2d) * Config.SWARM_MONSTER_INFILTRATION_ORIGIN_JITTER_RADIANS;
-        origin = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(originCenter.X + MathF.Cos(angle) * Config.SWARM_MONSTER_INFILTRATION_ORIGIN_RADIUS, originCenter.Y + MathF.Sin(angle) * Config.SWARM_MONSTER_INFILTRATION_ORIGIN_RADIUS, 0f), originCenter, AreaType.S2Corridor9);
-
-        float burstDistance = Config.SWARM_MONSTER_INFILTRATION_BURST_DISTANCE;
-        var burstPosition = new Vector3f(
-            origin.X + MathF.Cos(angle) * burstDistance,
-            origin.Y + MathF.Sin(angle) * burstDistance,
-            0f);
-        var burst = MapPathfinder.ClampToAreaWalkable(
-            Config.SWARM_MATCH_MAP,
-            burstPosition,
-            originCenter,
-            AreaType.S2Corridor9);
-
-        bool canReachBurst = MapPathfinder.IsSegmentWalkable(Config.SWARM_MATCH_MAP, origin, burst);
-        if (canReachBurst)
-        {
-            bool routeFound = MapPathfinder.TryPlanRoute(
-                Config.SWARM_MATCH_MAP,
-                AreaType.S2Corridor9,
-                burst,
-                destinationArea,
-                destination,
-                blockedAreas,
-                out route);
-            if (routeFound)
-            {
-                route.Insert(0, burst);
-                return true;
-            }
-        }
-
-        return MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9, origin, destinationArea, destination, blockedAreas, out route);
-    }
-
-    private static float ResolveInfiltrationExitBearing(MatchRuntime runtime, AreaType destinationArea, Vector3f destination, Vector3f originCenter, IReadOnlyCollection<AreaType> blockedAreas)
-    {
-        var bearings = runtime.Monsters.InfiltrationExitBearings;
-        if (bearings.TryGetValue(destinationArea, out float cached))
-        {
-            return cached;
-        }
-
-        float fallback = MathF.Atan2(destination.Y - originCenter.Y, destination.X - originCenter.X);
-        if (!MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9, originCenter, destinationArea, destination, blockedAreas, out var probe))
-        {
-            return fallback;
-        }
-
-        float exitRadius = Config.SWARM_MONSTER_INFILTRATION_ORIGIN_RADIUS + Config.SWARM_MONSTER_INFILTRATION_BURST_DISTANCE;
-        foreach (var point in probe)
-        {
-            float dx = point.X - originCenter.X;
-            float dy = point.Y - originCenter.Y;
-            if (dx * dx + dy * dy < exitRadius * exitRadius)
-            {
-                continue;
-            }
-            float bearing = MathF.Atan2(dy, dx);
-            bearings[destinationArea] = bearing;
-            return bearing;
-        }
-
-        bearings[destinationArea] = fallback;
-        return fallback;
-    }
-
 }

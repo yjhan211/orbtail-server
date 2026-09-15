@@ -91,6 +91,11 @@ public sealed class MatchMovementTickTests
         monster.Movement.LastProcessedAtUtc = start.AddSeconds(-10);
         monster.Movement.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, new Vector3f(position.X + 1f, position.Y, 0f)));
         runtime.Monsters.Entities[1] = monster;
+        runtime.RegisterParticipant(new game_server.players.Player
+        {
+            Profile = new PlayerInfo { PlayerId = 1 }, Health = 100,
+            CurrentArea = monster.Area, Position = new Vector3f(position.X + 1f, position.Y, 0f)
+        });
         var service = new MatchMoveService(null!, new MonsterBehaviorService());
 
         service.ProcessTick(runtime, start.AddMilliseconds(-50));
@@ -191,7 +196,7 @@ public sealed class MatchMovementTickTests
             Alive = true, Health = 100
         };
         var behavior = new MonsterBehaviorService();
-        var request = behavior.CreateMovementRequest(runtime, monster, [], now);
+        var request = behavior.CreateMovementRequest(runtime, monster, runtime.GetAlivePlayers().ToList(), now);
 
         Assert.False(request.HoldPosition);
         Assert.True(request.Speed > 0f);

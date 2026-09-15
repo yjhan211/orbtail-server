@@ -645,11 +645,18 @@ public sealed class BotMovementDeliveryTests
         var now = DateTime.UtcNow;
         var participants = new List<PlayerPositionSnapshot>
         {
-            new(101, AreaType.S2Ground, new Vector3f())
+            // 전송 테스트에서는 참가자 안전거리로 스폰 후보가 제외되지 않도록 한다.
+            new(101, AreaType.S2Ground, new Vector3f(10000, 10000, 0))
         };
         var supply = new game_server.matches.monsters.MatchMonsterSpawnService();
         supply.ProcessSupply(runtime, participants, now, preMatch: true);
         Assert.NotEmpty(runtime.Monsters.Entities);
+        Assert.All(runtime.Monsters.Entities.Values, monster =>
+        {
+            Assert.Equal(monster.HomeArea, monster.Area);
+            Assert.Empty(monster.Movement.Waypoints);
+            Assert.Null(monster.Movement.DestinationCell);
+        });
         Assert.NotEmpty(recipient.Packets);
         Assert.All(recipient.Packets, p => Assert.Equal(Protocol.G_TO_C_MONSTER_SNAPSHOT, p.Protocol));
         Assert.Empty(otherMatch.Packets);

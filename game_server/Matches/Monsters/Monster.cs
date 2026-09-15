@@ -57,13 +57,10 @@ public sealed class Monster
     public int MaxHealthValue { get => Info.MaxHealth; init => Info.MaxHealth = value; }
     public float AttackRangeValue { get; init; }
     public float AttackCooldownValue { get; init; }
-    public DateTime NextTargetScanAtUtc { get; set; }
     public float AnchorX { get; set; }
     public float AnchorY { get; set; }
-    public bool Aggro { get; set; }
     public AreaType HomeArea { get; set; }
     public int PhaseTier { get => Info.Phase; set => Info.Phase = value; }
-    public long OwnerPlayerId { get; set; }
     public int PendingDamage { get; set; }
     public MovementState Movement { get; } = new();
 

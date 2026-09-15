@@ -165,8 +165,6 @@ internal class BotBehaviorService(
             {
                 player.State = PlayerState.EXPLORE_1;
             }
-
-
         }
     }
 
@@ -322,7 +320,7 @@ internal class BotBehaviorService(
         int threatCount = 0;
         foreach (var monster in runtime.Monsters.Entities.Values)
         {
-            if (!monster.Alive || monster.Area != area || !monster.Aggro)
+            if (!monster.Alive || monster.Area != area)
             {
                 continue;
             }
