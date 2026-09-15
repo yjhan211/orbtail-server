@@ -1,4 +1,5 @@
 using game_server.players.bots;
+using game_server.players;
 using game_server.matches.monsters;
 using network.common;
 using network.common.data;
@@ -43,12 +44,12 @@ internal class MatchMoveService(
         foreach (var bot in activeBots)
         {
             var request = botBehavior.CreateMovementRequest(runtime, bot, nowUtc);
-            movementTargets.Add(new MovementTarget(bot.Player.GameInfo.ObjectInfo, bot.Movement, false, bot, null, bot.Player.CurrentArea, request));
+            movementTargets.Add(new MovementTarget(bot.Player.GameInfo.ObjectInfo, bot.Movement, false, request));
         }
         foreach (var monster in runtime.Monsters.Entities.Values)
         {
             var request = monsterBehavior.CreateMovementRequest(runtime, monster, participants, nowUtc);
-            movementTargets.Add(new MovementTarget(monster.Info.ObjectInfo, monster.Movement, true, null, monster, monster.Area, request));
+            movementTargets.Add(new MovementTarget(monster.Info.ObjectInfo, monster.Movement, true, request));
         }
 
         // 이동 준비
@@ -65,10 +66,14 @@ internal class MatchMoveService(
 
         foreach (var target in movementTargets)
         {
-            if (target.Bot is { } bot && target.Result.Changed)
+            if (!target.Result.Changed || target.ObjectInfo.ObjectType != ObjectType.PLAYER)
             {
-                bot.Player.AdvanceOrbOrbit(target.ObjectInfo.Position);
-                botBehavior.CompleteMovement(runtime, bot);
+                continue;
+            }
+            var player = runtime.GetParticipant(target.ObjectInfo.ObjectId);
+            if (player != null)
+            {
+                PlayerMovementService.CompleteMovement(runtime, player);
             }
         }
     }
@@ -472,10 +477,4 @@ internal class MatchMoveService(
         return true;
     }
 
-    private sealed record MovementTarget(GameObjectInfo ObjectInfo, MovementState Movement, bool IgnoreClosedDoors, Bot? Bot, Monster? Monster, AreaType FromArea, MovementRequest Request)
-    {
-        public MovementResult Result { get; set; }
-    }
-
-    internal readonly record struct MovementResult(bool Changed, bool ReachedPathEnd);
 }

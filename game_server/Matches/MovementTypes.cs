@@ -6,11 +6,8 @@ namespace game_server.matches;
 /// <summary>개체의 목적지·확정 경로. 매치 잠금 안에서 변경하며 목적지 갱신만으로 기존 경로를 교체하지 않는다.</summary>
 public sealed class MovementState
 {
-    // 행동 판단의 목적지와 확정 경로는 별개다.
     public AreaType DestinationArea { get; set; }
-    // 목적지와 경로는 셀로 보관하고, 이동 실행 시 다음 셀만 월드 좌표로 변환한다.
     public Cell? DestinationCell { get; set; }
-
     public List<Cell> Waypoints { get; } = [];
     public int WaypointIndex { get; set; }
     public DateTime NextPathPlanAtUtc { get; set; }
@@ -29,3 +26,12 @@ public readonly record struct MovementRequest(
     float Speed,
     bool HoldPosition = false,
     AreaType? StopBeforeArea = null);
+
+/// <summary>이번 틱에 공통 이동 처리를 수행할 공간 정보·경로 상태·요청과 실행 결과.</summary>
+internal sealed record MovementTarget(GameObjectInfo ObjectInfo, MovementState Movement, bool IgnoreClosedDoors, MovementRequest Request)
+{
+    public MovementResult Result { get; set; }
+}
+
+/// <summary>공통 이동 실행으로 공간 정보가 변경되었는지와 경로 끝에 도달했는지 나타낸다.</summary>
+internal readonly record struct MovementResult(bool Changed, bool ReachedPathEnd);

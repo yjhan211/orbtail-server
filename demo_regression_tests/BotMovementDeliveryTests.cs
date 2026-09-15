@@ -647,7 +647,7 @@ public sealed class BotMovementDeliveryTests
             if (bot == null) continue;
             runtime.SynchronizedPlayerStates[bot.PlayerId] = bot.Player.State;
             bot.Player.GameInfo.ObjectInfo.Velocity = movement.Info.Velocity;
-            new BotBehaviorService(null!, null!, null!).CompleteMovement(runtime, bot);
+            game_server.players.PlayerMovementService.CompleteMovement(runtime, bot.Player);
         }
         var batch = new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, runtime.GetSessions());
         var areaSnapshots = batch.InteractableUpdates;

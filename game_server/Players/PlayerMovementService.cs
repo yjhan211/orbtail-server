@@ -11,8 +11,7 @@ namespace game_server.players;
 ///     수신 간격에 따른 이동 한계와 지형·문 통과를 검증하고, 승인된 이동을 플레이어와 매치에 반영한다.
 ///     전송할 공간 정보를 생성하며 패킷 전송은 세션이 담당한다.
 /// </summary>
-internal sealed class PlayerMovementService(
-    ILogger<PlayerMovementService> logger)
+internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logger)
 {
     private const float MinimumReceiptDeltaSeconds = 0f;
     private const float MaximumReceiptDeltaSeconds = 0.25f;
@@ -128,7 +127,6 @@ internal sealed class PlayerMovementService(
         }
 
         bool sleepStopped = player.TryStopSleep();
-        player.AdvanceOrbOrbit(validatedPosition);
         var pickupArea = newArea == AreaType.None ? oldArea : newArea;
         PlayerPickupService.AddReachableItemsForMovement(match, player, player.Position ?? validatedPosition, validatedPosition, pickupArea);
         player.ApplyValidatedMovement(validation, msg.Rotation);
@@ -139,13 +137,25 @@ internal sealed class PlayerMovementService(
             player.CurrentArea = newArea;
         }
 
+        CompleteMovement(match, player);
         return new MovementResult(validation, currentCell, serverTimestamp, oldArea, player.CurrentArea, null, sleepStopped);
     }
 
-    internal readonly record struct MovementResult(
-        ValidatedMovement Movement, Cell Cell, long ServerTimestamp,
-        AreaType OldArea, AreaType NewArea, Cell? BlockedCell, bool SleepStopped);
+    public static void CompleteMovement(MatchRuntime runtime, Player player)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Player movement completion requires the match lock.");
+        }
+        player.AdvanceOrbOrbit(player.GameInfo.ObjectInfo.Position);
+        var velocity = player.GameInfo.ObjectInfo.Velocity;
+        if (player.State == PlayerState.EXPLORE_1 && (velocity.X != 0f || velocity.Y != 0f))
+        {
+            player.ClearPendingInteractions();
+            player.State = PlayerState.IDLE;
+        }
+    }
 
-    internal readonly record struct ValidatedMovement(
-        Vector3f Position, Vector3f Velocity, Cell? ValidCell, bool RequiresCorrection);
+    internal readonly record struct MovementResult(ValidatedMovement Movement, Cell Cell, long ServerTimestamp, AreaType OldArea, AreaType NewArea, Cell? BlockedCell, bool SleepStopped);
+    internal readonly record struct ValidatedMovement(Vector3f Position, Vector3f Velocity, Cell? ValidCell, bool RequiresCorrection);
 }

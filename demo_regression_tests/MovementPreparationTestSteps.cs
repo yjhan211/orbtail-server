@@ -9,7 +9,7 @@ namespace demo_regression_tests;
 internal static class MovementPreparationTestSteps
 {
     // 테스트가 요구한 시간 간격을 이전·현재 시각으로 구성한다.
-    internal static MatchMoveService.MovementResult Advance(MatchRuntime runtime,
+    internal static MovementResult Advance(MatchRuntime runtime,
         network.common.data.models.GameObjectInfo info, MovementState state, MovementRequest request,
         float elapsedSeconds, bool ignoreClosedDoors = false, DateTime? nowUtc = null)
     {

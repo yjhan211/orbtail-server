@@ -58,13 +58,11 @@ public partial class GameClientSession
                     return Task.CompletedTask;
                 }
 
-
                 var validation = result.Movement;
                 long serverTimestamp = result.ServerTimestamp;
                 bool requiresClientCorrection = validation.RequiresCorrection;
 
                 using var packet = PacketMaker.G_TO_C_MOVE(Player.GameInfo.ObjectInfo, serverTimestamp, Player.OrbOrbitPhaseDegrees);
-
                 // 본인 보정·주기 응답은 틱 동기화를 기다리지 않고 요청 처리에서 직접 보낸다.
                 if (requiresClientCorrection || Player.ShouldSendMoveResponse(timestamp))
                 {
