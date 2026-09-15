@@ -20,167 +20,130 @@ public class MatchMonsterTickTests
         GameDataHelper.Initialize();
     }
 
-    [Fact]
-    public void RegionSupply_HoldsZoneTargetWithTopUpsAndWipeRest()
+    [Theory]
+    [InlineData(0.049, true)]
+    [InlineData(0.05, false)]
+    public void CoreSpawnRollUsesFivePercentPerMonsterWithoutAliveCoreLimit(double roll, bool expectCore)
     {
-        // #229 4단계: 점유한 열린 구역마다 목표 수를 유지한다. 0초부터 1.5초마다 2마리씩
-        // 보충하고, 목표에 닿으면 멈춘다. 전멸시키면 4초 휴지 뒤 보충이 재개된다.
-        DateTime now = StartUtc.AddSeconds(0.25);
-        var manager = CreateManager();
-        var startRoom = MatchSpawnData.GetPhaseRoomCandidates()[0];
-        Vector3f startCenter = AreaCenter(startRoom);
+        var runtime = CreateManager().Runtime;
+        using var scope = runtime.Enter();
+        runtime.Monsters.Rng = new FixedRollRandom(roll);
+        var supply = new MatchMonsterSpawnService();
+        Assert.Equal(0.05d, Config.SWARM_MONSTER_SUPPLY_CORE_SPAWN_CHANCE);
 
-        // 첫 틱부터 보충이 돈다 — 시작 선물 15초 침묵(#226 E)은 퇴역했다.
-        var firstTick = manager.Tick(Participants(startCenter, startRoom), true, now);
-        // 초반(페이즈 0)은 작은 몹만 나온다 (#229): 시작 오브 하나로는 핵이 벽처럼 서서
-        // 파밍이 막힌다. 웨이브 보충(30마리/12초)은 구역 목표에 잘리므로 첫 웨이브는 목표치 8.
-        Assert.Equal(8, firstTick.SpawnedMonsters.Count);
-        Assert.DoesNotContain(firstTick.SpawnedMonsters, monster => monster.Kind == MonsterKind.RunawayGoblin);
-        Assert.All(firstTick.SpawnedMonsters, monster =>
+        supply.ProcessSupply(runtime, StartUtc);
+        Assert.NotEmpty(runtime.Monsters.Entities);
+        Assert.All(runtime.Monsters.Entities.Values, monster => Assert.Equal(MonsterKind.Skeleton, monster.Kind));
+        foreach (var monster in runtime.Monsters.Entities.Values.ToArray()) runtime.RemoveMonster(monster);
+
+        int firstPhase = Config.SWARM_MONSTER_SUPPLY_CORE_FIRST_PHASE_INDEX;
+        var now = StartUtc.AddSeconds(SwarmSupplyPhaseData.GetAll()[firstPhase - 1].UntilSeconds);
+        supply.ProcessSupply(runtime, now);
+        int firstWaveCount = runtime.Monsters.Entities.Count;
+        Assert.True(firstWaveCount > 1);
+        supply.ProcessSupply(runtime, now.AddSeconds(Config.SWARM_MONSTER_SUPPLY_TOP_UP_INTERVAL_SECONDS));
+        Assert.Equal(firstWaveCount * 2, runtime.Monsters.Entities.Count);
+        var expectedKind = expectCore ? MonsterKind.RunawayGoblin : MonsterKind.Skeleton;
+        Assert.All(runtime.Monsters.Entities.Values, monster => Assert.Equal(expectedKind, monster.Kind));
+    }
+
+    private sealed class FixedRollRandom(double roll) : Random(42)
+    {
+        public override double NextDouble() => roll;
+    }
+
+    [Fact]
+    public void BoundarySupplyRepeatsWithoutParticipantsOrWipeRest()
+    {
+        var runtime = CreateManager().Runtime;
+        using var scope = runtime.Enter();
+        var supply = new MatchMonsterSpawnService();
+        double interval = Config.SWARM_MONSTER_SUPPLY_TOP_UP_INTERVAL_SECONDS;
+        supply.ProcessSupply(runtime, StartUtc);
+        int waveCount = runtime.Monsters.Entities.Count;
+        Assert.Equal(Config.SWARM_MONSTER_SUPPLY_TOP_UP_COUNT, waveCount);
+        Assert.All(runtime.Monsters.Entities.Values, monster =>
         {
-            // 생성된 틱에도 주변 참가자를 감지해 추격을 시작할 수 있다.
-            Assert.True(monster.ChaseTargetPlayerId is 0 or 1);
-            // 페이즈 0 일반 HP — 상향분 원복 (2026-08-16 유저 결정: 잘 죽되 맞으면 치명적)
-            Assert.Equal(16, monster.MaxHealthValue);
-            Assert.Equal(1, monster.SummonStoneReward);
+            int distance = SwarmPressureField.GetDistance(monster.Info.ObjectInfo.Cell);
+            Assert.InRange(distance, SwarmPressureField.MaxDistance - Config.SWARM_MONSTER_FIELD_SPAWN_BAND_CELLS, SwarmPressureField.MaxDistance);
+            Assert.True(GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, monster.Info.ObjectInfo.Cell));
+            Assert.Empty(monster.Movement.Waypoints);
         });
-
-        // 웨이브 간격(12초) 안에서는 조용하다 — 웨이브 사이가 곧 정리하는 창이다.
-        now = StartUtc.AddSeconds(1.5);
-        Assert.Empty(manager.Tick(Participants(startCenter, startRoom), true, now).SpawnedMonsters);
-
-        // 목표 8을 유지한다 — 2초마다 부족분만큼 한 번에 붓고 쉰다.
-        // 창은 60초다 (2026-08-16): 공급이 운동장 발원 침투로 바뀐 뒤로 "구역에 서 있는 수"는
-        // 행군 시간만큼 뒤따라온다. 방을 통로로 쓰지 않게 되면서(도서관 관통 금지) 경로가
-        // 통로를 도는 만큼 길어져 20초 창에는 절반만 도착했다 — 목표 유지 자체는 성립하므로
-        // 도착까지 재는 창으로 넓힌다.
-        for (double elapsed = 2d; elapsed <= 60d; elapsed += 0.25d)
-        {
-            now = StartUtc.AddSeconds(elapsed);
-            manager.Tick(Participants(startCenter, startRoom), true, now);
-        }
-
-        int aliveInZone = manager.GetVisualStates()
-            .Count(state => state.IsAlive && state.AreaType == startRoom);
-        Assert.Equal(8, aliveInZone);
-
-        // 전멸 → 2초 휴지 뒤 보충 재개 (2026-08-16: 웨이브 간격이 12초라 전멸 휴지는 짧게).
-        foreach (var target in manager.GetCombatTargets().ToList())
-            manager.ApplyMonsterDamage(target.CombatTargetId, attackerPlayerId: 1, damage: 999);
-        Assert.DoesNotContain(manager.GetVisualStates(), state => state.IsAlive);
-
-        now = StartUtc.AddSeconds(60.25);
-        manager.Tick(Participants(startCenter, startRoom), true, now); // 휴지 시작
-        now = StartUtc.AddSeconds(61.5d);
-        Assert.Empty(manager.Tick(Participants(startCenter, startRoom), true, now).SpawnedMonsters);
-        now = StartUtc.AddSeconds(63d);
-        Assert.NotEmpty(manager.Tick(Participants(startCenter, startRoom), true, now).SpawnedMonsters);
+        supply.ProcessSupply(runtime, StartUtc.AddSeconds(interval).AddTicks(-1));
+        Assert.Equal(waveCount, runtime.Monsters.Entities.Count);
+        supply.ProcessSupply(runtime, StartUtc.AddSeconds(interval));
+        Assert.Equal(waveCount * 2, runtime.Monsters.Entities.Count);
+        foreach (var monster in runtime.Monsters.Entities.Values.ToArray()) runtime.RemoveMonster(monster);
+        supply.ProcessSupply(runtime, StartUtc.AddSeconds(interval * 2));
+        Assert.Equal(waveCount, runtime.Monsters.Entities.Count);
     }
 
     [Fact]
-    public void RegionSupply_ScalesHealthByPhase_AndCapsGlobalAlive()
+    public void BoundarySupplyUsesCurrentFieldAndPhaseAndRespectsGlobalCap()
     {
-        // 곡선 (2026-08-16 유저 결정: 잘 죽되 맞으면 치명적): 최종 페이즈(4:10~)는
-        // 일반 22 · 핵 120 · 접촉 40. 단단하게 만드는 방향은 되돌리고 위협은 접촉이 진다.
-        // 전역 상한은 구역 목표(= 인당 목표 × 구역 인원)의 합이되 서버 천장 420을 넘지 않는다.
-        DateTime now = StartUtc.AddSeconds(255);
-        var manager = CreateManager(217002);
-
-        var lateTick = manager.Tick(ManyParticipants(8, AreaCenter(AreaType.S2Corridor9)), true, now);
-        Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == MonsterKind.Skeleton),
-            normal => Assert.Equal(22, normal.MaxHealthValue));
-        Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == MonsterKind.RunawayGoblin),
-            core => Assert.Equal(120, core.MaxHealthValue));
-
-        // 10인이 서로 다른 구역에 흩어져도 전역 상한 48을 넘지 않는다.
-        var rooms = MatchSpawnData.GetPhaseRoomCandidates().Take(5).ToList();
-        for (double elapsed = 255.25d; elapsed <= 300d; elapsed += 0.25d)
+        var runtime = CreateManager(217002).Runtime;
+        using var scope = runtime.Enter();
+        runtime.Closures.GameStartTime = StartUtc;
+        var supply = new MatchMonsterSpawnService();
+        var now = StartUtc.AddSeconds(255);
+        supply.ProcessSupply(runtime, now);
+        Assert.NotEmpty(runtime.Monsters.Entities);
+        double radius = runtime.Closures.GetSafeDistance(now);
+        Assert.All(runtime.Monsters.Entities.Values, monster =>
         {
-            now = StartUtc.AddSeconds(elapsed);
-            var spread = rooms
-                .SelectMany((room, roomIndex) => Enumerable.Range(0, 2).Select(seat =>
-                    new PlayerPositionSnapshot(roomIndex * 2 + seat + 1, room, AreaCenter(room))))
-                .ToList();
-            manager.Tick(spread, true, now);
-            int alive = manager.GetVisualStates().Count(state => state.IsAlive);
-            // 점유 5구역 × 2명 × 인당 목표 28 = 280, 서버 천장 420 이하.
-            Assert.True(alive <= 300, $"구역 목표 합 상한 300을 초과했다: {alive}");
-        }
-    }
-
-    // #229 4단계-보정: 전역 상한은 하나뿐이라 아무도 없는 구역의 잔상이 살아 있는 전장의
-    // 몫을 영구히 먹는다. 폐쇄 구역은 도달조차 못 하므로 순수 낭비다 — 폐쇄가 누적되면
-    // 최악에는 전 구역 스폰이 0으로 굳었다. 걷어내는 규칙을 잠근다.
-    [Fact]
-    public void RegionSupply_ReclaimsStrandedMonstersAfterZoneIsVacated()
-    {
-        DateTime now = StartUtc;
-        var manager = CreateManager(217004);
-        var room = MatchSpawnData.GetPhaseRoomCandidates()[0];
-        Vector3f roomCenter = AreaCenter(room);
-        Vector3f elsewhere = AreaCenter(AreaType.S2Corridor9);
-
-        // 방을 채운다 — #272 School2: 운동장 발원 침투의 행군 거리가 길어져(외곽 시작방)
-        // 도착까지 재는 창을 40초로 넓힌다 (RegionSupply_Holds의 60초 창과 같은 이유).
-        for (double elapsed = 0.25d; elapsed <= 40d; elapsed += 0.25d)
-        {
-            now = StartUtc.AddSeconds(elapsed);
-            manager.Tick(Participants(roomCenter, room), true, now);
-        }
-
-        int filled = manager.GetVisualStates()
-            .Count(state => state.IsAlive && state.AreaType == room);
-        Assert.True(filled > 0, "방이 채워지지 않았다");
-
-        // 방을 비운다 — 유예(6초) 안에는 남아 있어야 한다. 나서자마자 뒤에서 사라지면 눈에 띈다.
-        now = StartUtc.AddSeconds(42d);
-        manager.Tick(Participants(elsewhere), true, now);
-        now = StartUtc.AddSeconds(45d);
-        manager.Tick(Participants(elsewhere), true, now);
-        Assert.True(
-            manager.GetVisualStates().Any(state => state.IsAlive && state.AreaType == room),
-            "유예 안에 잔상이 사라졌다");
-
-        // 유예가 지나면 걷힌다.
-        for (double elapsed = 49d; elapsed <= 52d; elapsed += 0.25d)
-        {
-            now = StartUtc.AddSeconds(elapsed);
-            manager.Tick(Participants(elsewhere), true, now);
-        }
-
-        Assert.DoesNotContain(
-            manager.GetVisualStates(),
-            state => state.IsAlive && state.AreaType == room);
+            Assert.InRange((double)SwarmPressureField.GetDistance(monster.Info.ObjectInfo.Cell),
+                Math.Max(0d, radius - Config.SWARM_MONSTER_FIELD_SPAWN_BAND_CELLS), radius);
+            Assert.Equal(monster.Kind == MonsterKind.RunawayGoblin ? 120 : 22, monster.MaxHealthValue);
+        });
+        int cap = Config.SWARM_MONSTER_SUPPLY_GLOBAL_ALIVE_HARD_CAP;
+        for (int id = 1; runtime.Monsters.Entities.Count < cap - 1; id++)
+            runtime.Monsters.Entities[id] = new Monster { MonsterId = id, Alive = true };
+        supply.ProcessSupply(runtime, runtime.Monsters.NextSpawnAtUtc);
+        Assert.Equal(cap, runtime.Monsters.Entities.Count);
+        supply.ProcessSupply(runtime, runtime.Monsters.NextSpawnAtUtc);
+        Assert.Equal(cap, runtime.Monsters.Entities.Count);
     }
 
     [Fact]
-    public void RegionSupply_StoneBudgetSurvivesZoneReentry()
+    public void BoundarySupplyDoesNotReclaimMonstersWhenPlayersLeave()
     {
-        // #229 4단계: 소환석 예산은 구역·페이즈 단위다. 봇처럼 구역을 들락날락해도
-        // 예산이 리셋되면 안 된다 — 실측(매치 9687066)에서 한 구역이 페이즈 1 예산 11석 대신
-        // 56석을 받았다. 보충 타이머는 버리되 예산 원장은 남긴다.
-        DateTime now = StartUtc;
-        var manager = CreateManager(217003);
-        var room = MatchSpawnData.GetPhaseRoomCandidates()[0];
-        Vector3f roomCenter = AreaCenter(room);
-        Vector3f elsewhere = AreaCenter(AreaType.S2Corridor9);
+        var runtime = CreateManager(217004).Runtime;
+        using var scope = runtime.Enter();
+        var supply = new MatchMonsterSpawnService();
+        supply.ProcessSupply(runtime, StartUtc);
+        var initial = runtime.Monsters.Entities.Keys.ToArray();
+        supply.ProcessSupply(runtime, StartUtc.AddSeconds(60));
+        Assert.All(initial, id => Assert.True(runtime.Monsters.Entities.ContainsKey(id)));
+        Assert.True(runtime.Monsters.Entities.Count > initial.Length);
+    }
 
-        int stones = 0;
-        // 이 구역에 머물다 나갔다를 반복한다 — 페이즈 0(0:00~1:40) 안에서만 논다.
-        for (double elapsed = 0.25d; elapsed <= 95d; elapsed += 0.25d)
+    [Theory]
+    [InlineData(MonsterKind.Skeleton, 1)]
+    [InlineData(MonsterKind.RunawayGoblin, 3)]
+    public void EveryMonsterKillGrantsConfiguredReward(MonsterKind kind, int reward)
+    {
+        var runtime = CreateManager(217003).Runtime;
+        using var scope = runtime.Enter();
+        var combat = new MonsterCombatService();
+        for (int index = 0; index < 20; index++)
         {
-            now = StartUtc.AddSeconds(elapsed);
-            bool inRoom = (int)(elapsed / 5d) % 2 == 0;
-            var tick = manager.Tick(inRoom ? Participants(roomCenter, room) : Participants(elsewhere),
-                true,
-                now);
-            stones += tick.SpawnedMonsters.Where(monster => monster.HomeArea == room)
-                .Sum(monster => monster.SummonStoneReward);
+            var monster = new Monster
+            {
+                MonsterId = 7000000 + index, CombatTargetId = -4000000000000000000L - index,
+                Area = AreaType.S2Corridor9, Kind = kind, Health = 10, Alive = true,
+                SummonStoneReward = reward
+            };
+            runtime.Monsters.Entities.Add(monster.MonsterId, monster);
+            var hit = combat.ApplyMonsterDamage(runtime, monster.CombatTargetId, 1, 1, StartUtc);
+            Assert.False(hit.Killed);
+            Assert.Equal(0, hit.SummonStoneReward);
+            var kill = combat.ApplyMonsterDamage(runtime, monster.CombatTargetId, 1, 9, StartUtc);
+            Assert.True(kill.Killed);
+            Assert.Equal(reward, kill.SummonStoneReward);
+            var duplicate = combat.ApplyMonsterDamage(runtime, monster.CombatTargetId, 1, 10, StartUtc);
+            Assert.False(duplicate.Killed);
+            Assert.Equal(0, duplicate.SummonStoneReward);
         }
-
-        // 페이즈 0 예산 90 + 핵 1기 3 = 93이 상한이다.
-        Assert.True(stones <= 93, $"페이즈 0 구역 석 예산 93을 초과했다: {stones}");
-        Assert.True(stones > 0, "예산이 아예 지급되지 않았다");
     }
 
     [Fact]
@@ -202,7 +165,7 @@ public class MatchMonsterTickTests
         for (double elapsed = 0.5d; elapsed <= 9d; elapsed += 0.25d)
         {
             now = StartUtc.AddSeconds(elapsed);
-            damageEvents.AddRange(manager.Tick(Participants(onMonster), true, now).PlayerDamage);
+            damageEvents.AddRange(manager.Tick(Participants(onMonster, monster.AreaType), true, now).PlayerDamage);
         }
 
         Assert.NotEmpty(damageEvents);
@@ -263,7 +226,7 @@ public class MatchMonsterTickTests
     }
 
     [Fact]
-    public void Monsters_OnlyChaseAndBiteSameAreaParticipants()
+    public void MonstersOnlyBiteParticipantsInTheirCurrentArea()
     {
         DateTime now = StartUtc.AddSeconds(0.25);
         var manager = CreateManager();
@@ -280,7 +243,7 @@ public class MatchMonsterTickTests
             now = StartUtc.AddSeconds(elapsed);
             var participants = new[]
             {
-                new PlayerPositionSnapshot(1, AreaType.S2Corridor9, onMonster),
+                new PlayerPositionSnapshot(1, monster.AreaType, onMonster),
                 new PlayerPositionSnapshot(2, AreaType.S2Library1, corridor)
             };
             damageEvents.AddRange(manager.Tick(participants, true, now).PlayerDamage);
@@ -291,7 +254,7 @@ public class MatchMonsterTickTests
         Assert.NotEmpty(damageEvents);
         Assert.Contains(damageEvents, damage => damage.TargetPlayerId == 1);
         Assert.All(damageEvents, damage => Assert.Equal(
-            damage.TargetPlayerId == 1 ? AreaType.S2Corridor9 : AreaType.S2Library1,
+            damage.TargetPlayerId == 1 ? monster.AreaType : AreaType.S2Library1,
             damage.Area));
     }
 
@@ -313,27 +276,23 @@ public class MatchMonsterTickTests
         area == AreaType.None ? AreaType.S2Corridor9 : area;
 
     [Fact]
-    public void RegionSupply_MonsterPursuesOwnerAcrossDoor()
+    public void MonsterPursuesPlayerAcrossDoor()
     {
-        // 문 너머 추격 (2026-08-16 유저 결정, 2026-08-28 플레이 제보 "몹이 문 너머로 안 따라온다"):
-        // 방에서 나를 담당하던(주인) 몹은 내가 복도로 나가면 문을 넘어 따라와야 한다.
-        DateTime now = StartUtc.AddSeconds(0.25);
+        DateTime now = StartUtc;
         var manager = CreateManager();
         var startRoom = MatchSpawnData.GetPhaseRoomCandidates()[0];
         Vector3f roomCenter = AreaCenter(startRoom);
-
-        for (double elapsed = 0.25d; elapsed <= 40d; elapsed += 0.25d)
+        using (manager.Runtime.Enter())
         {
-            now = StartUtc.AddSeconds(elapsed);
-            manager.Tick(Participants(roomCenter, startRoom), true, now);
+            // 공급 위치와 무관하게 기존 몬스터의 문 통과만 검증한다.
+            manager.Runtime.Monsters.NextSpawnAtUtc = DateTime.MaxValue;
+            manager.Runtime.Monsters.Entities[1] = new Monster
+            {
+                MonsterId = 1, Alive = true, Health = 100, Position = roomCenter,
+                Area = startRoom, ChaseTargetPlayerId = 1
+            };
         }
-
-        var roomMonsterIds = manager.GetVisualStates()
-            .Where(state => state.IsAlive && state.AreaType == startRoom)
-            .Select(state => state.MonsterId)
-            .ToHashSet();
-        Assert.True(roomMonsterIds.Count > 0, "40초 안에 방에 몹이 도착해야 한다");
-
+        var roomMonsterIds = new HashSet<int> { 1 };
         // 방을 나가 복도로 — 새 공급분과 섞이지 않게 "방에 있던 몹"의 ID로만 판정한다.
         var corridor = AreaType.S2Corridor1;
         Vector3f corridorCenter = AreaCenter(corridor);
@@ -367,9 +326,9 @@ public class MatchMonsterTickTests
         var preGame = CreateManager();
         var active = CreateManager(217005);
 
-        // 시작 전에는 사람이 아직 없는 방에도 미리 공급하고, 시작 후에는 점유한 방만 공급한다.
+        // 시작 전후 모두 참가자 유무와 무관하게 경계에서 공급한다.
         Assert.NotEmpty(preGame.Tick([], false, StartUtc.AddSeconds(0.25)).SpawnedMonsters);
-        Assert.Empty(active.Tick([], true, StartUtc.AddSeconds(0.25)).SpawnedMonsters);
+        Assert.NotEmpty(active.Tick([], true, StartUtc.AddSeconds(0.25)).SpawnedMonsters);
     }
 
     [Fact]
@@ -402,7 +361,7 @@ public class MatchMonsterTickTests
     {
         private readonly MatchMoveService _movement = new(null!, new MonsterBehaviorService());
         private readonly MatchCombatService _combat = TestGameSessionServices.CreateMonsterTickService();
-        private readonly MonsterCombatService _monsterCombat = new(new MatchMonsterSpawnService());
+        private readonly MonsterCombatService _monsterCombat = new();
         private DateTime _lastNow = StartUtc;
 
         public Arena(long matchingId)
@@ -440,7 +399,7 @@ public class MatchMonsterTickTests
                 }
                 if (isGameplayActive) Runtime.StartGameplay(StartUtc);
                 // 운영 틱과 같은 공급 → 이동 → 접촉 순서. 빈 참가자 공급 정책도 직접 검증한다.
-                new MatchMonsterSpawnService().ProcessSupply(Runtime, participants.ToList(), nowUtc, !isGameplayActive);
+                new MatchMonsterSpawnService().ProcessSupply(Runtime, nowUtc);
                 if (participants.Count > 0)
                 {
                     _movement.ProcessTick(Runtime, nowUtc);

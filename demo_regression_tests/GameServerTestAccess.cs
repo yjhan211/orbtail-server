@@ -72,7 +72,7 @@ internal static class GameServerTestAccess
                 health, combatDamage, results,
                 new PlayerOrbService(health, combatDamage, orbTrails),
                 orbTrails, trailCuts, new MatchCombatActorBuilder(orbTrails), new MatchAutoAttackService(),
-                new MatchOrbAttackService(health, combatDamage), decisions, new MonsterCombatService(new MatchMonsterSpawnService()));
+                new MatchOrbAttackService(health, combatDamage), decisions, new MonsterCombatService());
 
             return new MatchTickLoop(runtime, runtimes, logger, groundPickup,
             entryFailure, combat, field, new MatchMoveService(decisions, new MonsterBehaviorService()), new MatchMonsterSpawnService(), new MatchSynchronizationService(), clock);

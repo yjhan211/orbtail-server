@@ -10,7 +10,7 @@ using network.common.data.helpers;
 namespace network.common.data
 {
     /// <summary>
-    ///     잔상 공급 페이즈 곡선 (swarm_supply_phase.csv, #335). 폐쇄 단계별 인당 목표·HP·접촉 피해·석 예산을
+    ///     잔상 공급 페이즈 곡선 (swarm_supply_phase.csv, #335). 폐쇄 단계별 인당 목표·HP·접촉 피해을
     ///     phase_index 오름차순으로 든다. 필수 데이터이며 빈 목록이나 잘못된 곡선은 초기화 시 거부한다.
     ///     until_seconds가 0 이하면 매치 끝까지(최종 페이즈)로 읽는다.
     /// </summary>
@@ -78,13 +78,12 @@ namespace network.common.data
         public int NormalHp { get; private set; }
         public int ContactDamage { get; private set; }
         public int CoreHp { get; private set; }
-        public int StoneBudget { get; private set; }
 
         public bool IsFinal => UntilSeconds >= double.MaxValue;
 
         public SwarmSupplyPhaseDefinition(
             int phaseIndex, double untilSeconds, int perPlayerTarget, int normalHp, int contactDamage,
-            int coreHp, int stoneBudget)
+            int coreHp)
         {
             PhaseIndex = phaseIndex;
             UntilSeconds = untilSeconds;
@@ -92,7 +91,6 @@ namespace network.common.data
             NormalHp = normalHp;
             ContactDamage = contactDamage;
             CoreHp = coreHp;
-            StoneBudget = stoneBudget;
         }
 
         public static SwarmSupplyPhaseDefinition CreateFromData(CsvRow row)
@@ -106,11 +104,10 @@ namespace network.common.data
                 int.Parse(row["per_player_target"], CultureInfo.InvariantCulture),
                 int.Parse(row["normal_hp"], CultureInfo.InvariantCulture),
                 int.Parse(row["contact_damage"], CultureInfo.InvariantCulture),
-                int.Parse(row["core_hp"], CultureInfo.InvariantCulture),
-                int.Parse(row["stone_budget"], CultureInfo.InvariantCulture));
+                int.Parse(row["core_hp"], CultureInfo.InvariantCulture));
 
             if (definition.PhaseIndex < 0 || definition.PerPlayerTarget <= 0 || definition.NormalHp <= 0 ||
-                definition.ContactDamage <= 0 || definition.CoreHp <= 0 || definition.StoneBudget < 0)
+                definition.ContactDamage <= 0 || definition.CoreHp <= 0)
             {
                 throw new ArgumentException($"Invalid swarm supply phase data: phase_index={definition.PhaseIndex}");
             }

@@ -129,7 +129,6 @@ public sealed class MonsterMovementIntentTests
         var monster = new Monster
         {
             MonsterId = 1, Position = position, Area = AreaType.S2Corridor9,
-            HomeArea = AreaType.S2Library1, AnchorX = position.X - 1, AnchorY = position.Y,
             Alive = true, Health = 10
         };
         monster.Movement.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, destination));
@@ -141,9 +140,6 @@ public sealed class MonsterMovementIntentTests
         Assert.NotEmpty(monster.Movement.Waypoints);
         Assert.Equal(position, monster.Position);
         Assert.Equal(new Vector3f(), monster.Info.ObjectInfo.Velocity);
-        Assert.Equal(position.X - 1, monster.AnchorX);
-        Assert.Equal(position.Y, monster.AnchorY);
-        Assert.Equal(AreaType.S2Library1, monster.HomeArea);
     }
     [Fact]
     public void PlanningDoesNotMoveAndHoldRequestStopsExecution()
@@ -155,7 +151,7 @@ public sealed class MonsterMovementIntentTests
             GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9));
         var monster = new Monster
         {
-            Position = position, Area = AreaType.S2Corridor9, HomeArea = AreaType.S2Corridor9,
+            Position = position, Area = AreaType.S2Corridor9,
             Alive = true, Health = 100
         };
         monster.Movement.NextPathPlanAtUtc = DateTime.MaxValue;
@@ -190,7 +186,7 @@ public sealed class MonsterMovementIntentTests
         position = new Vector3f(target.X - 0.1f, target.Y, 0f);
         var monster = new Monster
         {
-            Position = position, Area = AreaType.S2Corridor9, HomeArea = AreaType.S2Corridor9,
+            Position = position, Area = AreaType.S2Corridor9,
             Alive = true
         };
         monster.Movement.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target));
@@ -204,8 +200,6 @@ public sealed class MonsterMovementIntentTests
         Assert.Equal(target, monster.Position);
         Assert.Empty(monster.Movement.Waypoints);
         Assert.True(monster.Alive);
-        Assert.Equal(0f, monster.AnchorX);
-        Assert.Equal(AreaType.S2Corridor9, monster.HomeArea);
     }
     [Fact]
     public void ClearRemovesRouteAndPreservesDestination()
@@ -261,8 +255,7 @@ public sealed class MonsterMovementIntentTests
         var monster = new Monster
         {
             MonsterId = 1, Position = position, Area = AreaType.S2Corridor9,
-            HomeArea = AreaType.S2Corridor9, AnchorX = position.X, AnchorY = position.Y,
-            Alive = true, Health = 100, ChaseTargetPlayerId = 77, SpawnedAtUtc = now
+            Alive = true, Health = 100, ChaseTargetPlayerId = 77
         };
         monster.Movement.LastProcessedAtUtc = now.AddSeconds(-0.05);
         runtime.Monsters.Entities.Add(monster.MonsterId, monster);

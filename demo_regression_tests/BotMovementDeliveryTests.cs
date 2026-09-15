@@ -1,3 +1,4 @@
+using network.common.data;
 using System.Reflection;
 using game_server.matches;
 using game_server.players.bots;
@@ -525,7 +526,7 @@ public sealed class BotMovementDeliveryTests
         recipient.Packets.Clear();
 
         runtime.Monsters.Initialize(now);
-        var combat = new game_server.matches.monsters.MonsterCombatService(null!);
+        var combat = new game_server.matches.monsters.MonsterCombatService();
         combat.ApplyMonsterDamage(runtime, monster.CombatTargetId, 101, 5, now);
         Assert.Empty(recipient.Packets);
         new MatchSynchronizationService().ProcessTick(runtime, now.AddMilliseconds(50));
@@ -638,22 +639,20 @@ public sealed class BotMovementDeliveryTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44200);
+        var spawnArea = SwarmPressureField.GetKnownAreas().First(area =>
+            SwarmPressureField.GetAreaCellsByDistance(area).Any(entry => entry.Distance == SwarmPressureField.MaxDistance));
         var timeline = new List<(long PlayerId, Protocol Protocol)>();
-        var recipient = AddRecipient(store, 44200, 101, AreaType.S2Ground, timeline);
-        var otherMatch = AddRecipient(store, 44201, 102, AreaType.S2Ground, timeline);
+        var recipient = AddRecipient(store, 44200, 101, spawnArea, timeline);
+        var otherMatch = AddRecipient(store, 44201, 102, spawnArea, timeline);
         using var scope = runtime.Enter();
         var now = DateTime.UtcNow;
-        var participants = new List<PlayerPositionSnapshot>
-        {
-            // 전송 테스트에서는 참가자 안전거리로 스폰 후보가 제외되지 않도록 한다.
-            new(101, AreaType.S2Ground, new Vector3f(10000, 10000, 0))
-        };
+        runtime.Monsters.Initialize(now);
+        runtime.Monsters.Rng = new Random(42);
         var supply = new game_server.matches.monsters.MatchMonsterSpawnService();
-        supply.ProcessSupply(runtime, participants, now, preMatch: true);
+        supply.ProcessSupply(runtime, now);
         Assert.NotEmpty(runtime.Monsters.Entities);
         Assert.All(runtime.Monsters.Entities.Values, monster =>
         {
-            Assert.Equal(monster.HomeArea, monster.Area);
             Assert.Empty(monster.Movement.Waypoints);
             Assert.Null(monster.Movement.DestinationCell);
         });
@@ -663,11 +662,11 @@ public sealed class BotMovementDeliveryTests
         recipient.Packets.Clear();
         new MatchMoveService(null!, null!).ProcessTick(runtime, now.AddMilliseconds(50));
         Assert.Empty(recipient.Packets);
-        supply.ProcessSupply(runtime, participants, now.AddMilliseconds(50), preMatch: true);
+        supply.ProcessSupply(runtime, now.AddMilliseconds(50));
         Assert.Empty(recipient.Packets);
 
         // 생성 후 늦게 입장한 세션은 기존 상태 전체를 한 번 받는다.
-        var late = AddRecipient(store, 44200, 103, AreaType.S2Ground, timeline);
+        var late = AddRecipient(store, 44200, 103, spawnArea, timeline);
         var session = runtime.GetSessions().Single(s => s.PlayerId == 103);
         session.SendMonsterSnapshot(runtime.Monsters.GetVisualStatesByArea());
         Assert.NotEmpty(late.Packets);

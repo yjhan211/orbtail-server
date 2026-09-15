@@ -46,8 +46,6 @@ public sealed class Monster
     public bool Alive { get => Info.IsAlive; set => Info.IsAlive = value; }
     public DateTime NextContactAtUtc { get; set; }
     public DateTime DiedAtUtc { get; set; }
-    public DateTime SpawnedAtUtc { get; set; }
-    public float ScatterAngle { get; init; }
     public DateTime WaveSlowUntilUtc { get; set; }
     public int SummonStoneReward { get => Info.SummonStoneReward; init => Info.SummonStoneReward = value; }
     public int HeartReward { get; init; }
@@ -57,9 +55,6 @@ public sealed class Monster
     public int MaxHealthValue { get => Info.MaxHealth; init => Info.MaxHealth = value; }
     public float AttackRangeValue { get; init; }
     public float AttackCooldownValue { get; init; }
-    public float AnchorX { get; set; }
-    public float AnchorY { get; set; }
-    public AreaType HomeArea { get; set; }
     public int PhaseTier { get => Info.Phase; set => Info.Phase = value; }
     public int PendingDamage { get; set; }
     public MovementState Movement { get; } = new();

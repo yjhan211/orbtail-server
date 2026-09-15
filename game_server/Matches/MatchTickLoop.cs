@@ -103,22 +103,7 @@ internal sealed class MatchTickLoop(
             }
         }
 
-        if (runtime.Mode != MatchMode.SoloMapValidation)
-        {
-            var participants = new List<PlayerPositionSnapshot>();
-            foreach (var player in runtime.GetAlivePlayers())
-            {
-                if (player.Position != null)
-                {
-                    participants.Add(new PlayerPositionSnapshot(player.PlayerId, player.CurrentArea, player.Position));
-                }
-            }
-            if (participants.Count > 0)
-            {
-                monsterSpawns.ProcessSupply(runtime, participants, utcNow, !isGameplayActive);
-            }
-        }
-
+        monsterSpawns.ProcessSupply(runtime, utcNow);
         synchronization.TrackNewObjects(runtime);
         movement.ProcessTick(runtime, utcNow);
         if (runtime.IsEnded)

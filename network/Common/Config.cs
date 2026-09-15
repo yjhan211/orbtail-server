@@ -194,11 +194,14 @@ namespace network.common
         /// <summary>침투 경로가 막혔을 때 재시도 간격(초)</summary>
         public static double SWARM_MONSTER_SUPPLY_BLOCKED_RETRY_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_SUPPLY_BLOCKED_RETRY_SECONDS", 1d);
 
-        /// <summary>핵(탈주 고블린) 소환석 보상 — 구역·페이즈당 첫 핵만</summary>
+        /// <summary>핵(탈주 고블린) 한 마리 처치 시 소환석 보상</summary>
         public static int SWARM_MONSTER_SUPPLY_CORE_STONE_REWARD => SwarmConfigData.GetInt("SWARM_MONSTER_SUPPLY_CORE_STONE_REWARD", 3);
 
         /// <summary>핵이 등장하는 첫 공급 페이즈 인덱스</summary>
         public static int SWARM_MONSTER_SUPPLY_CORE_FIRST_PHASE_INDEX => SwarmConfigData.GetInt("SWARM_MONSTER_SUPPLY_CORE_FIRST_PHASE_INDEX", 2);
+
+        /// <summary>등장 가능 페이즈에서 몬스터 한 마리당 핵 생성 확률</summary>
+        public static double SWARM_MONSTER_SUPPLY_CORE_SPAWN_CHANCE => SwarmConfigData.GetDouble("SWARM_MONSTER_SUPPLY_CORE_SPAWN_CHANCE", 0.05d);
 
         /// <summary>매치 전체 생존 몹 상한 — 서버 천장</summary>
         public static int SWARM_MONSTER_SUPPLY_GLOBAL_ALIVE_HARD_CAP => SwarmConfigData.GetInt("SWARM_MONSTER_SUPPLY_GLOBAL_ALIVE_HARD_CAP", 420);
@@ -245,9 +248,6 @@ namespace network.common
 
         /// <summary>비점유 구역 잔상 회수 유예(초)</summary>
         public static double SWARM_MONSTER_STRANDED_GRACE_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_STRANDED_GRACE_SECONDS", 6d);
-
-        /// <summary>구역·페이즈 소환석 토큰 버킷 상한</summary>
-        public static double SWARM_MONSTER_SUPPLY_STONE_BUCKET_BURST => SwarmConfigData.GetDouble("SWARM_MONSTER_SUPPLY_STONE_BUCKET_BURST", 5d);
 
         /// <summary>표적 재탐색 간격(초)</summary>
         public static double SWARM_MONSTER_TARGET_HOLD_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_TARGET_HOLD_SECONDS", 1d);

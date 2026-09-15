@@ -2,7 +2,7 @@ using network.common;
 
 namespace game_server.matches.monsters;
 
-/// <summary>피해 적용 결과. 처치했으면 Monster가 죽은 개체이고 SummonStoneReward는 예산에서 떼어낸 드롭 수다.</summary>
+/// <summary>피해 적용 결과. 처치했으면 Monster가 죽은 개체이고 SummonStoneReward는 해당 개체에 설정된 드롭 수다.</summary>
 internal readonly record struct MonsterDamageResult(bool Applied, bool Killed, Monster? Monster, int SummonStoneReward)
 {
     public static MonsterDamageResult None => new(false, false, null, 0);
@@ -12,7 +12,7 @@ internal readonly record struct MonsterDamageResult(bool Applied, bool Killed, M
 ///     몬스터의 접촉 공격·플레이어 면역과 피격 시 주변 표적 지정·처치 보상을 조율한다.
 ///     개체 상태는 Monster가 보관하며, 모든 호출은 매치 잠금 안에서 수행한다.
 /// </summary>
-internal sealed class MonsterCombatService(MatchMonsterSpawnService spawns)
+internal sealed class MonsterCombatService
 {
     public void CollectContactDamage(MatchRuntime runtime, Monster monster, IReadOnlyList<PlayerPositionSnapshot> snapshot, DateTime now, List<MonsterContactDamage> contacts)
     {
@@ -115,7 +115,7 @@ internal sealed class MonsterCombatService(MatchMonsterSpawnService spawns)
         int summonStoneReward = 0;
         if (killed)
         {
-            summonStoneReward = spawns.ConsumeSupplyStoneBudget(runtime, monster, nowUtc);
+            summonStoneReward = monster.SummonStoneReward;
             runtime.RemoveMonster(monster);
         }
 

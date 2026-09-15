@@ -74,7 +74,6 @@ public class SwarmConfigFallbackTests
             Assert.Equal(expected.NormalHp, actual.NormalHp);
             Assert.Equal(expected.ContactDamage, actual.ContactDamage);
             Assert.Equal(expected.CoreHp, actual.CoreHp);
-            Assert.Equal(expected.StoneBudget, actual.StoneBudget);
         }
 
         // 마지막 페이즈만 무한 — 선형 탐색(GetSupplyPhaseIndex)의 전제.
@@ -103,8 +102,8 @@ public class SwarmConfigFallbackTests
     public void SupplyPhaseCsv_RejectsNonFiniteTime(string time)
     {
         var row = new CsvRow(
-            ["phase_index", "until_seconds", "per_player_target", "normal_hp", "contact_damage", "core_hp", "stone_budget"],
-            ["0", time, "8", "16", "10", "48", "90"]);
+            ["phase_index", "until_seconds", "per_player_target", "normal_hp", "contact_damage", "core_hp"],
+            ["0", time, "8", "16", "10", "48"]);
         Assert.Throws<ArgumentException>(() => SwarmSupplyPhaseDefinition.CreateFromData(row));
     }
 

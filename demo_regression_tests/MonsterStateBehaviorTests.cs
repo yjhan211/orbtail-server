@@ -15,7 +15,7 @@ public sealed class MonsterStateBehaviorTests
         runtime.Monsters.Initialize(Now);
         var monster = new Monster { MonsterId = 1, CombatTargetId = -11, Alive = true, Health = 10 };
         runtime.Monsters.Entities[1] = monster;
-        var combat = new MonsterCombatService(new MatchMonsterSpawnService());
+        var combat = new MonsterCombatService();
 
         var result = combat.ApplyMonsterDamage(runtime, -11, 1, 10, Now);
 

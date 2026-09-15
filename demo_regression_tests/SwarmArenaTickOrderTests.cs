@@ -51,7 +51,7 @@ public sealed class SwarmArenaTickOrderTests
             proximityTick,
             "using var scope = runtime.Enter();",
             "runtime.IsEntryTimedOut(utcNow)",
-            "monsterSpawns.ProcessSupply(runtime, participants, utcNow, !isGameplayActive);",
+            "monsterSpawns.ProcessSupply(runtime, utcNow);",
             "movement.ProcessTick(runtime, utcNow);",
             "combat.ProcessTick(runtime);");
         Assert.DoesNotContain("catch (", proximityTick);

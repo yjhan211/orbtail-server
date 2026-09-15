@@ -33,7 +33,7 @@ public sealed class MatchMovementTickTests
                 NullLogger<game_server.players.PlayerPickupService>.Instance),
             (_, _) => { }, (_, _) => { }, match =>
             {
-                Assert.Equal(solo ? 0 : 1, match.Monsters.MaxParticipantCount);
+                Assert.Equal(!solo, match.Monsters.Entities.Count > 0);
                 moved = true;
             }, _ => { });
         try

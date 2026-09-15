@@ -5,15 +5,13 @@ using network.common.data.models;
 namespace game_server.matches.monsters;
 
 /// <summary>
-///     매치의 몬스터 공급·스폰과 공급 보상 예산을 처리한다.
+///     자기장 경계에서 주기적으로 몬스터를 생성한다.
 ///     상태는 MatchMonsters에 보관하며, 호출자는 매치 잠금을 보유해야 한다.
 /// </summary>
 internal sealed class MatchMonsterSpawnService
 {
-    private const int CampsPerArea = 3;
     private const int FirstMonsterId = 7_000_000;
     private const long FirstCombatTargetId = -4_000_000_000_000_000_000L;
-    private const int AnchorAreaEdgeMargin = 3;
     private static readonly int InsigniaCount = Enum.GetValues<MonsterInsignia>().Length;
 
     private static int GetSupplyPhaseIndex(double elapsedSeconds)
@@ -29,328 +27,116 @@ internal sealed class MatchMonsterSpawnService
         return phases.Count - 1;
     }
 
-    private static int GetSupplyZoneTarget(int perPlayerTarget, int playersInZone)
-    {
-        int players = Math.Clamp(playersInZone, 1, Config.SWARM_MONSTER_SUPPLY_ZONE_CROWD_CAP);
-        int linearPlayers = Math.Min(players, Config.SWARM_MONSTER_SUPPLY_CROWD_LINEAR_PLAYERS);
-        int crowdPlayers = players - linearPlayers;
-
-        return perPlayerTarget * linearPlayers + (int)Math.Round(perPlayerTarget * Config.SWARM_MONSTER_SUPPLY_CROWD_EXTRA_RATIO * crowdPlayers);
-    }
-
-    public void ProcessSupply(MatchRuntime runtime, IReadOnlyList<PlayerPositionSnapshot> participants, DateTime now, bool preMatch)
+    public void ProcessSupply(MatchRuntime runtime, DateTime now)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Monster supply requires the match lock.");
         }
         var state = runtime.Monsters;
-        double elapsed = (now - state.StartsAtUtc).TotalSeconds;
-        state.MaxParticipantCount = Math.Max(state.MaxParticipantCount, participants.Count);
-        int phaseIndex = GetSupplyPhaseIndex(elapsed);
-        var phase = SwarmSupplyPhaseData.GetAll()[phaseIndex];
-        var occupied = new Dictionary<AreaType, List<long>>();
-        foreach (var participant in participants)
+        if (runtime.IsEnded || runtime.Mode == MatchMode.SoloMapValidation || !state.IsInitialized || now < state.NextSpawnAtUtc)
         {
-            if (participant.Area == AreaType.None || runtime.Closures.IsAreaClosed(participant.Area))
-            {
-                continue;
-            }
-            if (!occupied.TryGetValue(participant.Area, out var roster))
-            {
-                roster = [];
-                occupied[participant.Area] = roster;
-            }
-            roster.Add(participant.PlayerId);
+            return;
         }
 
-        if (preMatch)
-        {
-            foreach (var room in MatchSpawnData.GetPhaseRoomCandidates())
-            {
-                if (runtime.Closures.IsAreaClosed(room))
-                {
-                    continue;
-                }
-                occupied.TryAdd(room, new List<long>());
-            }
-        }
+        // 매 틱 재검사하지 않고 다음 공급 주기까지 대기
+        state.NextSpawnAtUtc = now.AddSeconds(Config.SWARM_MONSTER_SUPPLY_TOP_UP_INTERVAL_SECONDS);
 
-        var vacatedZones = new List<AreaType>();
-        foreach (var zone in state.SupplyZones.Keys)
-        {
-            if (!occupied.ContainsKey(zone))
-            {
-                vacatedZones.Add(zone);
-            }
-        }
-        foreach (var zone in vacatedZones)
-        {
-            state.SupplyZones.Remove(zone);
-        }
-
-        ReclaimStrandedMonsters(runtime, occupied, now);
-        int aliveGlobal = 0;
+        // 정리 대기 중인 사망한 몬스터는 몬스터 수에서 제외
+        int aliveCount = 0;
         foreach (var monster in state.Entities.Values)
         {
-            if (monster.Alive)
-            {
-                aliveGlobal++;
-            }
-        }
-        int zoneTargetSum = 0;
-        foreach (var roster in occupied.Values)
-        {
-            zoneTargetSum += GetSupplyZoneTarget(phase.PerPlayerTarget, roster.Count);
-        }
-        int globalCap = Math.Min(Config.SWARM_MONSTER_SUPPLY_GLOBAL_ALIVE_HARD_CAP, zoneTargetSum);
-        var zonesByAlive = new List<(AreaType Zone, List<long> Roster, int Alive, int Order)>(occupied.Count);
-        foreach (var (zone, roster) in occupied)
-        {
-            zonesByAlive.Add((zone, roster, CountAliveInArea(state, zone), zonesByAlive.Count));
-        }
-        zonesByAlive.Sort(static (left, right) => left.Alive != right.Alive ? left.Alive.CompareTo(right.Alive) : left.Order.CompareTo(right.Order));
-
-        foreach (var (zone, roster, _, _) in zonesByAlive)
-        {
-            int zoneTarget = GetSupplyZoneTarget(phase.PerPlayerTarget, roster.Count);
-            if (aliveGlobal >= globalCap)
-            {
-                break;
-            }
-
-            if (!state.SupplyZones.TryGetValue(zone, out var zoneState))
-            {
-                zoneState = new MonsterSupplyZoneState();
-                state.SupplyZones[zone] = zoneState;
-            }
-
-            int aliveInZone = CountAliveInArea(state, zone);
-            if (aliveInZone >= zoneTarget)
-            {
-                zoneState.NextTopUpAtUtc = null;
-                continue;
-            }
-
-            if (aliveInZone == 0 && zoneState.HasSpawned)
-            {
-                if (zoneState.WipeRestUntilUtc == null)
-                {
-                    bool finalPhase = phaseIndex == SwarmSupplyPhaseData.GetAll().Count - 1;
-                    zoneState.WipeRestUntilUtc = now.AddSeconds(finalPhase ? Config.SWARM_MONSTER_SUPPLY_WIPE_REST_SECONDS_FINAL_PHASE : Config.SWARM_MONSTER_SUPPLY_WIPE_REST_SECONDS);
-                    zoneState.NextTopUpAtUtc = null;
-                }
-
-                if (now < zoneState.WipeRestUntilUtc)
-                {
-                    continue;
-                }
-            }
-            else if (aliveInZone > 0)
-            {
-                zoneState.WipeRestUntilUtc = null;
-            }
-            zoneState.NextTopUpAtUtc ??= now;
-            if (now < zoneState.NextTopUpAtUtc)
+            if (!monster.Alive)
             {
                 continue;
             }
+            aliveCount++;
+        }
+        int spawnCount = Math.Min(Config.SWARM_MONSTER_SUPPLY_TOP_UP_COUNT, Config.SWARM_MONSTER_SUPPLY_GLOBAL_ALIVE_HARD_CAP - aliveCount);
+        if (spawnCount <= 0)
+        {
+            return;
+        }
 
-            bool hasAliveCore = false;
-            foreach (var monster in state.Entities.Values)
+        // 현재 자기장 경계
+        double outerSpawnDistance = Math.Min(runtime.Closures.GetSafeDistance(now), SwarmPressureField.MaxDistance);
+        // 자기장 경계에서 조금 안쪽 - 생성 구간
+        double innerSpawnDistance = Math.Max(0d, outerSpawnDistance - Config.SWARM_MONSTER_FIELD_SPAWN_BAND_CELLS);
+        var spawnCells = new List<(AreaType Area, Cell Cell)>();
+        foreach (var area in SwarmPressureField.GetKnownAreas())
+        {
+            // 폐쇄구역에는 생성하지 않음
+            if (area == AreaType.None || runtime.Closures.IsAreaClosed(area))
             {
-                if (monster.Alive && monster.HomeArea == zone && monster.Kind == MonsterKind.RunawayGoblin)
+                continue;
+            }
+            // 중심에서 가까운 순으로 정렬
+            foreach (var entry in SwarmPressureField.GetAreaCellsByDistance(area))
+            {
+                // 자기장 경계를 넘은 셀
+                if (entry.Distance > outerSpawnDistance)
                 {
-                    hasAliveCore = true;
                     break;
                 }
-            }
-            bool includeCore = phaseIndex >= Config.SWARM_MONSTER_SUPPLY_CORE_FIRST_PHASE_INDEX && !hasAliveCore && aliveInZone < zoneTarget && aliveGlobal < globalCap;
-            int room = zoneTarget - aliveInZone - (includeCore ? 1 : 0);
-            int want = Math.Min(Config.SWARM_MONSTER_SUPPLY_TOP_UP_COUNT, room);
-            want = Math.Min(want, globalCap - aliveGlobal - (includeCore ? 1 : 0));
-            if (want <= 0 && !includeCore)
-            {
-                continue;
-            }
-
-            want = Math.Max(0, want);
-            int spawned = SpawnSupplyMonsters(runtime, participants, zone, want, includeCore, phaseIndex, now);
-            if (spawned == 0)
-            {
-                zoneState.NextTopUpAtUtc = now.AddSeconds(Config.SWARM_MONSTER_SUPPLY_BLOCKED_RETRY_SECONDS);
-                continue;
-            }
-
-            aliveGlobal += spawned;
-            zoneState.HasSpawned = true;
-            zoneState.WipeRestUntilUtc = null;
-            zoneState.NextTopUpAtUtc = now.AddSeconds(Config.SWARM_MONSTER_SUPPLY_TOP_UP_INTERVAL_SECONDS);
-        }
-    }
-
-    private void ReclaimStrandedMonsters(MatchRuntime runtime, Dictionary<AreaType, List<long>> occupied, DateTime now)
-    {
-        var state = runtime.Monsters;
-        foreach (var zone in occupied.Keys)
-        {
-            state.ZoneVacatedAtUtc.Remove(zone);
-        }
-
-        foreach (var monster in state.Entities.Values.ToArray())
-        {
-            if (!monster.Alive || occupied.ContainsKey(monster.HomeArea))
-            {
-                continue;
-            }
-
-            // 배정 구역이 비어도 살아 있는 참가자를 추적하는 개체는 회수하지 않는다.
-            bool hasChaseTarget = false;
-            foreach (var playerIds in occupied.Values)
-            {
-                if (playerIds.Contains(monster.ChaseTargetPlayerId))
-                {
-                    hasChaseTarget = true;
-                    break;
-                }
-            }
-            if (hasChaseTarget)
-            {
-                continue;
-            }
-
-            if (!runtime.Closures.IsAreaClosed(monster.HomeArea))
-            {
-                if (!state.ZoneVacatedAtUtc.TryGetValue(monster.HomeArea, out var vacatedAtUtc))
-                {
-                    state.ZoneVacatedAtUtc[monster.HomeArea] = now;
-                    continue;
-                }
-
-                if ((now - vacatedAtUtc).TotalSeconds < Config.SWARM_MONSTER_STRANDED_GRACE_SECONDS)
+                // 너무 안쪽 셀
+                if (entry.Distance < innerSpawnDistance)
                 {
                     continue;
                 }
+                spawnCells.Add((area, entry.Cell));
             }
-            runtime.RemoveMonster(monster);
         }
-    }
-
-    public int ConsumeSupplyStoneBudget(MatchRuntime runtime, Monster monster, DateTime now)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
+        if (spawnCells.Count == 0)
         {
-            throw new InvalidOperationException("Monster supply requires the match lock.");
-        }
-        var state = runtime.Monsters;
-        int reward = monster.SummonStoneReward;
-        if (reward <= 0)
-        {
-            return reward;
+            // 경계에 생성할 셀이 없으면 잠시 후 다시 시도
+            state.NextSpawnAtUtc = now.AddSeconds(Config.SWARM_MONSTER_SUPPLY_BLOCKED_RETRY_SECONDS);
+            return;
         }
 
+        // 경과 시간으로 페이즈 선택 능력치 페이즈를 선택
         int phaseIndex = GetSupplyPhaseIndex((now - state.StartsAtUtc).TotalSeconds);
-        var budgetKey = (monster.HomeArea, phaseIndex);
-        if (monster.Kind == MonsterKind.RunawayGoblin)
-        {
-            return state.SupplyCoreRewarded.Add(budgetKey) ? reward : 0;
-        }
-
-        if (!state.SupplyStoneBucket.TryGetValue(budgetKey, out var bucket))
-        {
-            bucket = (Config.SWARM_MONSTER_SUPPLY_STONE_BUCKET_BURST, now);
-        }
-
-        var phases = SwarmSupplyPhaseData.GetAll();
-        double until = phases[phaseIndex].UntilSeconds;
-        double from = phaseIndex == 0 ? 0d : phases[phaseIndex - 1].UntilSeconds;
-        double durationSeconds = until > Config.SWARM_MATCH_DURATION_SECONDS ? Math.Max(1d, Config.SWARM_MATCH_DURATION_SECONDS - from) : Math.Max(1d, until - from);
-        double refillPerSecond = phases[phaseIndex].StoneBudget / durationSeconds;
-        double elapsedSeconds = Math.Max(0d, (now - bucket.RefilledAtUtc).TotalSeconds);
-        double available = Math.Min(Config.SWARM_MONSTER_SUPPLY_STONE_BUCKET_BURST, bucket.Available + elapsedSeconds * refillPerSecond);
-        int granted = Math.Min(reward, (int)Math.Floor(available));
-        state.SupplyStoneBucket[budgetKey] = (available - granted, now);
-
-        return granted;
+        SpawnSupplyMonsters(runtime, spawnCells, Math.Min(spawnCount, spawnCells.Count), phaseIndex, now);
     }
 
-    private static int CountAliveInArea(MatchMonsters state, AreaType area)
-    {
-        int count = 0;
-        foreach (var monster in state.Entities.Values)
-        {
-            if (monster.Alive && monster.HomeArea == area)
-            {
-                count++;
-            }
-        }
-
-        return count;
-    }
-
-    private int SpawnSupplyMonsters(MatchRuntime runtime, IReadOnlyList<PlayerPositionSnapshot> participants, AreaType area, int normals, bool includeCore, int phaseIndex, DateTime now)
+    private void SpawnSupplyMonsters(MatchRuntime runtime, List<(AreaType Area, Cell Cell)> spawnCells, int count, int phaseIndex, DateTime now)
     {
         var state = runtime.Monsters;
         var phase = SwarmSupplyPhaseData.GetAll()[phaseIndex];
-        var inward = MapCoordinateConverter.GetAreaDirection(Config.SWARM_MATCH_MAP, area, AreaType.S2Corridor9);
-        var freeAnchors = SelectSpawnAnchors(area, participants, inward);
-        if (freeAnchors.Count == 0)
-        {
-            return 0;
-        }
-        var spawnPlan = new List<(MonsterKind Kind, Vector3f Anchor)>(normals + 1);
-        for (int index = 0; index < normals; index++)
-        {
-            spawnPlan.Add((MonsterKind.Skeleton, freeAnchors[index % freeAnchors.Count]));
-        }
-
-        if (includeCore)
-        {
-            spawnPlan.Add((MonsterKind.RunawayGoblin, freeAnchors[^1]));
-        }
-
         var spawnedStates = new Dictionary<AreaType, List<MonsterInfo>>();
         var insignia = (MonsterInsignia)(state.NextSupplyPackOrdinal++ % InsigniaCount);
-        for (int index = 0; index < spawnPlan.Count; index++)
+        for (int index = 0; index < count; index++)
         {
-            var packAnchor = spawnPlan[index].Anchor;
-            float angle = (float)(index * Math.PI * 2d / spawnPlan.Count) + (float)(state.Rng.NextDouble() * 0.5d - 0.25d);
-            var destination = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(
-                packAnchor.X + MathF.Cos(angle) * Config.SWARM_MONSTER_SUPPLY_SCATTER_RADIUS + inward.X * Config.SWARM_MONSTER_SUPPLY_INWARD_BIAS,
-                packAnchor.Y + MathF.Sin(angle) * Config.SWARM_MONSTER_SUPPLY_SCATTER_RADIUS + inward.Y * Config.SWARM_MONSTER_SUPPLY_INWARD_BIAS,
-                0f), packAnchor, area);
-
-            var position = destination;
-            var spawnArea = area;
-            var fieldSpawn = ResolveFieldSpawn(runtime, area, now);
-            if (fieldSpawn != null)
+            // 생성할 구역 랜덤 선택
+            int selectedIndex = state.Rng.Next(spawnCells.Count);
+            var (area, spawnCell) = spawnCells[selectedIndex];
+            spawnCells.RemoveAt(selectedIndex);
+            var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, spawnCell);
+            bool isCore = false;
+            if (Config.SWARM_MONSTER_SUPPLY_CORE_FIRST_PHASE_INDEX <= phaseIndex)
             {
-                position = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Spawn), packAnchor, area);
-                var fieldAnchorWorld = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Anchor);
-                destination = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(fieldAnchorWorld.X + MathF.Cos(angle) * Config.SWARM_MONSTER_SUPPLY_SCATTER_RADIUS, fieldAnchorWorld.Y + MathF.Sin(angle) * Config.SWARM_MONSTER_SUPPLY_SCATTER_RADIUS, 0f), fieldAnchorWorld, area);
+                isCore = state.Rng.NextDouble() < Config.SWARM_MONSTER_SUPPLY_CORE_SPAWN_CHANCE;
             }
-            var kind = spawnPlan[index].Kind;
-            var definition = SwarmMonsterData.Get((int)kind) ?? SwarmMonsterData.Get((int)MonsterKind.Skeleton) ?? throw new InvalidOperationException("swarm_monster.csv must define the skeleton fallback row.");
-            bool isCore = kind == MonsterKind.RunawayGoblin;
+            var kind = isCore ? MonsterKind.RunawayGoblin : MonsterKind.Skeleton;
+            var definition = SwarmMonsterData.Get((int)kind) ?? SwarmMonsterData.Get((int)MonsterKind.Skeleton);
+            if (definition == null)
+            {
+                throw new InvalidOperationException("swarm_monster.csv must define the skeleton fallback row.");
+            }
             int stoneReward = isCore ? Config.SWARM_MONSTER_SUPPLY_CORE_STONE_REWARD : definition.StoneReward;
             int maxHp = isCore ? phase.CoreHp : phase.NormalHp;
             int contactDamage = isCore ? definition.OrbDamage : phase.ContactDamage;
-
             int serial = state.NextSerial++;
             var monster = new Monster
             {
                 MonsterId = FirstMonsterId + serial,
                 CombatTargetId = FirstCombatTargetId - serial,
                 Insignia = insignia,
-                Area = spawnArea,
-                HomeArea = area,
+                Area = area,
                 Position = position,
                 Health = maxHp,
                 Alive = true,
                 PhaseTier = phaseIndex,
-                SpawnedAtUtc = now,
                 NextContactAtUtc = now,
-                ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
                 SummonStoneReward = stoneReward,
                 HeartReward = definition.HeartReward > 0 ? definition.HeartReward : state.Rng.NextDouble() < Config.SWARM_MONSTER_SUPPLY_HEART_DROP_CHANCE ? 1 : 0,
                 ContactDamageValue = contactDamage,
@@ -358,11 +144,12 @@ internal sealed class MatchMonsterSpawnService
                 MaxHealthValue = maxHp,
                 AttackRangeValue = definition.AttackRange > 0f ? definition.AttackRange : Monster.BaseContactRadius,
                 AttackCooldownValue = insignia == MonsterInsignia.Wave && !isCore ? Config.SWARM_MONSTER_WAVE_INSIGNIA_ATTACK_COOLDOWN_SECONDS : definition.AttackCooldownSeconds,
-                AnchorX = fieldSpawn != null ? destination.X : position.X,
-                AnchorY = fieldSpawn != null ? destination.Y : position.Y,
+                Movement =
+                {
+                    LastProcessedAtUtc = now
+                }
             };
 
-            monster.Movement.LastProcessedAtUtc = now;
             state.Entities[monster.MonsterId] = monster;
             if (!spawnedStates.TryGetValue(monster.Area, out var states))
             {
@@ -372,134 +159,9 @@ internal sealed class MatchMonsterSpawnService
             states.Add(monster.ToMonsterInfo());
         }
 
-        if (spawnedStates.Count > 0)
+        foreach (var session in runtime.GetSessions())
         {
-            foreach (var session in runtime.GetSessions())
-            {
-                session.SendMonsterSnapshot(spawnedStates, fullSnapshot: false);
-            }
+            session.SendMonsterSnapshot(spawnedStates, fullSnapshot: false);
         }
-        return spawnPlan.Count;
-    }
-
-    private List<Vector3f> SelectSpawnAnchors(AreaType area, IReadOnlyList<PlayerPositionSnapshot> participants, Vector3f inward)
-    {
-        var center = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
-        var anchors = new List<Vector3f>(CampsPerArea);
-        for (int anchorIndex = 0; anchorIndex < CampsPerArea; anchorIndex++)
-        {
-            var customAnchorCell = GameMonsterCampData.GetAnchor(area, anchorIndex);
-            if (customAnchorCell != null)
-            {
-                anchors.Add(MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, MapPathfinder.InsetCellFromAreaEdge(Config.SWARM_MATCH_MAP, customAnchorCell, area, AnchorAreaEdgeMargin)), center, area));
-                continue;
-            }
-
-            float anchorAngle = anchorIndex * (MathF.Tau / CampsPerArea);
-            anchors.Add(MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(center.X + Config.SWARM_MONSTER_CAMP_ANCHOR_RADIUS * 0.6f * MathF.Cos(anchorAngle), center.Y + Config.SWARM_MONSTER_CAMP_ANCHOR_RADIUS * 0.6f * MathF.Sin(anchorAngle), 0f), center, area));
-        }
-
-        var ranked = new List<(Vector3f Anchor, float Distance, float Inwardness, int Order)>(anchors.Count);
-        foreach (var anchor in anchors)
-        {
-            float nearestSquared = float.MaxValue;
-            foreach (var participant in participants)
-            {
-                if (participant.Area != area)
-                {
-                    continue;
-                }
-                float dx = participant.Position.X - anchor.X;
-                float dy = participant.Position.Y - anchor.Y;
-                nearestSquared = Math.Min(nearestSquared, dx * dx + dy * dy);
-            }
-            float distance = nearestSquared == float.MaxValue ? float.MaxValue : MathF.Sqrt(nearestSquared);
-            if (distance < Config.SWARM_MONSTER_SUPPLY_SAFE_SPAWN_DISTANCE)
-            {
-                continue;
-            }
-            float inwardness = (anchor.X - center.X) * inward.X + (anchor.Y - center.Y) * inward.Y;
-            ranked.Add((anchor, distance, inwardness, ranked.Count));
-        }
-        if (ranked.Count == 0)
-        {
-            return [];
-        }
-        ranked.Sort(static (left, right) =>
-        {
-            bool leftOffscreen = left.Distance >= Config.SWARM_MONSTER_SUPPLY_OFFSCREEN_DISTANCE;
-            bool rightOffscreen = right.Distance >= Config.SWARM_MONSTER_SUPPLY_OFFSCREEN_DISTANCE;
-            if (leftOffscreen != rightOffscreen)
-            {
-                return leftOffscreen ? -1 : 1;
-            }
-            if (left.Inwardness != right.Inwardness)
-            {
-                return right.Inwardness.CompareTo(left.Inwardness);
-            }
-            if (left.Distance != right.Distance)
-            {
-                return right.Distance.CompareTo(left.Distance);
-            }
-            return left.Order.CompareTo(right.Order);
-        });
-
-        var freeAnchors = new List<Vector3f>(ranked.Count);
-        foreach (var entry in ranked)
-        {
-            freeAnchors.Add(entry.Anchor);
-        }
-        return freeAnchors;
-    }
-
-    private (Cell Spawn, Cell Anchor)? ResolveFieldSpawn(MatchRuntime runtime, AreaType area, DateTime now)
-    {
-        var state = runtime.Monsters;
-        (Cell Spawn, Cell Anchor)? fieldSpawn = null;
-        var cells = SwarmPressureField.GetAreaCellsByDistance(area);
-        if (cells.Count > 0)
-        {
-            double safeDistance = runtime.Closures.GetSafeDistance(now);
-            bool boundaryCrossing = safeDistance < cells[^1].Distance;
-            double spawnMin = boundaryCrossing ? safeDistance : cells[^1].Distance - Config.SWARM_MONSTER_FIELD_SPAWN_BAND_CELLS;
-            double spawnMax = boundaryCrossing ? safeDistance + Config.SWARM_MONSTER_FIELD_SPAWN_BAND_CELLS : cells[^1].Distance;
-            var spawnBand = new List<Cell>();
-            var anchorBand = new List<Cell>();
-            double anchorMax = cells[0].Distance + Config.SWARM_MONSTER_FIELD_SPAWN_BAND_CELLS;
-            foreach (var entry in cells)
-            {
-                if (entry.Distance > spawnMin && entry.Distance <= spawnMax)
-                {
-                    spawnBand.Add(entry.Cell);
-                }
-                if (entry.Distance < anchorMax)
-                {
-                    anchorBand.Add(entry.Cell);
-                }
-            }
-            if (spawnBand.Count == 0)
-            {
-                if (boundaryCrossing)
-                {
-                    foreach (var entry in cells)
-                    {
-                        if (entry.Distance > safeDistance)
-                        {
-                            spawnBand.Add(entry.Cell);
-                        }
-                    }
-                }
-                if (spawnBand.Count == 0)
-                {
-                    spawnBand.Add(cells[^1].Cell);
-                }
-            }
-            if (anchorBand.Count == 0)
-            {
-                anchorBand.Add(cells[0].Cell);
-            }
-            fieldSpawn = (spawnBand[state.Rng.Next(spawnBand.Count)], anchorBand[state.Rng.Next(anchorBand.Count)]);
-        }
-        return fieldSpawn;
     }
 }
