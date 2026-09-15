@@ -225,7 +225,7 @@ public class ProximityAutoCombatDataTests
 
         // #238: 레거시 잔상 공격 파이프라인 퇴역 — 현행 스웜의 몬스터 공격 피드백 계약을 검사한다.
         string swarmSource = ReadNormalizedSource(repoRoot, "game_server", "Matches", "MatchCombatService.cs");
-        Assert.Contains("SendMonsterHitNotification(", swarmSource);
+        Assert.Contains("QueueMonsterHitNotification(", swarmSource);
         // 봇 플레이어 ID도 음수라 플레이어 맵 우선 해석이 계약이다 (#219 봇전 연출 증발 수리)
         Assert.Contains(
             "if (packet.TargetPlayerId < 0 && !_playerMap.ContainsKey(packet.TargetPlayerId))",

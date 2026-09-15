@@ -598,7 +598,22 @@ internal sealed class MatchMonsterSpawnService
         route = null!;
         var originCenter = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9));
         var state = runtime.Monsters;
-        float baseAngle = ResolveInfiltrationExitBearing(runtime, destinationArea, destination, originCenter);
+        var blockedAreas = new HashSet<AreaType>();
+        foreach (var region in GameMapData.GetAreas(Config.SWARM_MATCH_MAP))
+        {
+            if (runtime.Closures.IsAreaClosed(region.AreaType))
+            {
+                blockedAreas.Add(region.AreaType);
+            }
+        }
+        foreach (var room in MatchSpawnData.GetPhaseRoomCandidates())
+        {
+            blockedAreas.Add(room);
+        }
+        // 기존 공급 경로의 출발·도착 구역 예외를 유지한다.
+        blockedAreas.Remove(AreaType.S2Corridor9);
+        blockedAreas.Remove(destinationArea);
+        float baseAngle = ResolveInfiltrationExitBearing(runtime, destinationArea, destination, originCenter, blockedAreas);
         double golden = (state.NextInfiltrationOriginOrdinal++ * InfiltrationGoldenAngle) % 1d;
         float angle = baseAngle + (float)((golden - 0.5d) * 2d) * Config.SWARM_MONSTER_INFILTRATION_ORIGIN_JITTER_RADIANS;
         origin = MapPathfinder.ClampToAreaWalkable(Config.SWARM_MATCH_MAP, new Vector3f(originCenter.X + MathF.Cos(angle) * Config.SWARM_MONSTER_INFILTRATION_ORIGIN_RADIUS, originCenter.Y + MathF.Sin(angle) * Config.SWARM_MONSTER_INFILTRATION_ORIGIN_RADIUS, 0f), originCenter, AreaType.S2Corridor9);
@@ -623,7 +638,7 @@ internal sealed class MatchMonsterSpawnService
                 burst,
                 destinationArea,
                 destination,
-                candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea),
+                blockedAreas,
                 out route);
             if (routeFound)
             {
@@ -632,10 +647,10 @@ internal sealed class MatchMonsterSpawnService
             }
         }
 
-        return MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9, origin, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out route);
+        return MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9, origin, destinationArea, destination, blockedAreas, out route);
     }
 
-    private static float ResolveInfiltrationExitBearing(MatchRuntime runtime, AreaType destinationArea, Vector3f destination, Vector3f originCenter)
+    private static float ResolveInfiltrationExitBearing(MatchRuntime runtime, AreaType destinationArea, Vector3f destination, Vector3f originCenter, IReadOnlyCollection<AreaType> blockedAreas)
     {
         var bearings = runtime.Monsters.InfiltrationExitBearings;
         if (bearings.TryGetValue(destinationArea, out float cached))
@@ -644,7 +659,7 @@ internal sealed class MatchMonsterSpawnService
         }
 
         float fallback = MathF.Atan2(destination.Y - originCenter.Y, destination.X - originCenter.X);
-        if (!MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9, originCenter, destinationArea, destination, candidate => IsInfiltrationRouteBlocked(runtime, candidate, destinationArea), out var probe))
+        if (!MapPathfinder.TryPlanRoute(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9, originCenter, destinationArea, destination, blockedAreas, out var probe))
         {
             return fallback;
         }
@@ -665,30 +680,6 @@ internal sealed class MatchMonsterSpawnService
 
         bearings[destinationArea] = fallback;
         return fallback;
-    }
-
-    private static bool IsInfiltrationRouteBlocked(MatchRuntime runtime, AreaType candidate, AreaType destinationArea)
-    {
-        if (runtime.Closures.IsAreaClosed(candidate))
-        {
-            return true;
-        }
-
-        if (candidate == destinationArea)
-        {
-            return false;
-        }
-
-        var rooms = MatchSpawnData.GetPhaseRoomCandidates();
-        foreach (var t in rooms)
-        {
-            if (t == candidate)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
 }

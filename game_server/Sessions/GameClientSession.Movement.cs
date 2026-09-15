@@ -12,7 +12,7 @@ namespace game_server.sessions;
 ///     클라이언트의 이동 요청을 처리한다.
 ///     매치 잠금 안에서 이동 값과 플레이 가능 상태를 확인하고,
 ///     이동 검증과 상태 반영은 PlayerMovementService에 맡긴다.
-///     처리 결과는 주변 플레이어에게 전송하며, 본인에게는 보정이 필요하거나 응답 간격이 지났을 때 전송한다.
+///     주변 동기화는 틱 끝에서 처리하고, 본인에게는 보정이 필요하거나 응답 간격이 지났을 때 전송한다.
 /// </summary>
 public partial class GameClientSession
 {
@@ -47,6 +47,7 @@ public partial class GameClientSession
                 long timestamp = Stopwatch.GetTimestamp();
                 float deltaTime = Player.CalculateMoveDeltaTime(timestamp);
 
+                match.SynchronizedObjects.TryAdd((ObjectType.PLAYER, Player.PlayerId), Player.GameInfo.ObjectInfo.Clone());
                 var result = _movement.ProcessMovement(match, Player, msg, deltaTime);
                 if (result.BlockedCell is { } blockedCell)
                 {
@@ -56,17 +57,12 @@ public partial class GameClientSession
                     return Task.CompletedTask;
                 }
 
-                if (result.SleepStopped)
-                    SendPlayerState();
-                if (result.OldArea != result.NewArea)
-                    SendAreaChange(result.OldArea, result.NewArea);
 
                 var validation = result.Movement;
                 long serverTimestamp = result.ServerTimestamp;
                 bool requiresClientCorrection = validation.RequiresCorrection;
 
                 using var packet = PacketMaker.G_TO_C_MOVE(Player.GameInfo.ObjectInfo, serverTimestamp, Player.OrbOrbitPhaseDegrees);
-                BroadcastMovement(packet);
 
                 if (requiresClientCorrection || Player.ShouldSendMoveResponse(timestamp))
                 {
@@ -130,149 +126,54 @@ public partial class GameClientSession
             var changed = new List<MonsterInfo>();
             foreach (var monster in monsters)
             {
-                if (_publishedMonsterStates.TryGetValue(monster.MonsterId, out var previous) &&
-                    previous.AreaType == monster.AreaType && previous.CurrentHealth == monster.CurrentHealth &&
-                    previous.MaxHealth == monster.MaxHealth && previous.IsAlive == monster.IsAlive &&
-                    previous.ChaseTargetPlayerId == monster.ChaseTargetPlayerId &&
-                    previous.RewardItemId == monster.RewardItemId && previous.IsCore == monster.IsCore &&
-                    previous.SummonStoneReward == monster.SummonStoneReward &&
-                    previous.Kind == monster.Kind && previous.Phase == monster.Phase)
+                if (!HasMonsterStateChanged(monster))
                 {
                     continue;
                 }
                 changed.Add(monster);
             }
-            if (changed.Count == 0) continue;
-            using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_SNAPSHOT);
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_SNAPSHOT
-            {
-                Monsters = changed
-            }));
-            if (TrySend(packet))
-            {
-                foreach (var monster in changed)
-                {
-                    if (monster.IsAlive) _publishedMonsterStates[monster.MonsterId] = monster;
-                    else _publishedMonsterStates.Remove(monster.MonsterId);
-                }
-            }
+            SendChangedMonsterStates(changed);
         }
     }
 
-    private void SendAreaChange(AreaType oldArea, AreaType newArea)
+    internal bool HasMonsterStateChanged(MonsterInfo monster)
     {
-        _publishedMonsterStates.Clear();
-        try
+        if (monster.AreaType != Player.CurrentArea)
         {
-            if (!PlayerId.HasValue) return;
-
-            Logger.LogInformation("Player {PlayerId} moved from Area {OldArea} to {NewArea}", PlayerId, oldArea,
-                newArea);
-
-            var allSessions = Match.GetSessions();
-            if (oldArea != AreaType.None)
-            {
-                var oldAreaSessions = new List<GameClientSession>();
-                foreach (var session in allSessions)
-                {
-                    if (!session.Player.IsEliminated && session.Player.CurrentArea == oldArea && session.PlayerId != PlayerId)
-                    {
-                        oldAreaSessions.Add(session);
-                    }
-                }
-
-                using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(PlayerId.Value);
-                foreach (var session in oldAreaSessions)
-                {
-                    session.TrySend(leavePacket);
-                    if (session.PlayerId.HasValue)
-                    {
-                        using var removePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(session.PlayerId.Value);
-                        TrySend(removePacket);
-                    }
-                }
-
-                // 나에게 이전 Area의 봇들 삭제 알림 (봇은 TCP 세션이 없어 별도 처리)
-                var oldAreaBots = Match.Bots.GetBots().Where(b => !b.Player.IsEliminated && b.Player.CurrentArea == oldArea).ToList();
-                foreach (var bot in oldAreaBots)
-                {
-                    using var botLeavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(bot.PlayerId);
-                    TrySend(botLeavePacket);
-                }
-
-                Logger.LogDebug("Sent LEAVE to {Count} players + {BotCount} bots in old Area {OldArea}", oldAreaSessions.Count, oldAreaBots.Count, oldArea);
-            }
-
-            if (newArea != AreaType.None)
-            {
-                var newAreaSessions = new List<GameClientSession>();
-                foreach (var session in allSessions)
-                {
-                    if (!session.Player.IsEliminated && session.Player.CurrentArea == newArea && session.PlayerId != PlayerId)
-                    {
-                        newAreaSessions.Add(session);
-                    }
-
-                }
-                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(Player.CreatePlayerObjectInfo());
-                foreach (var session in newAreaSessions)
-                {
-                    session.TrySend(enterPacket);
-                }
-
-                foreach (var session in newAreaSessions)
-                {
-                    if (!session.PlayerId.HasValue)
-                    {
-                        continue;
-                    }
-
-                    using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(session.Player.CreatePlayerObjectInfo());
-                    TrySend(otherEnterPacket);
-                }
-
-                var newAreaBots = Match.Bots.GetBots().Where(b => !b.Player.IsEliminated && b.Player.CurrentArea == newArea).ToList();
-                foreach (var bot in newAreaBots)
-                {
-                    var botPlayer = Match.Bots.GetPlayerObjectInfo(bot.PlayerId);
-                    if (botPlayer == null)
-                    {
-                        continue;
-                    }
-                    using var botEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(botPlayer);
-                    TrySend(botEnterPacket);
-                }
-
-                if (newAreaBots.Count > 0)
-                {
-                    Logger.LogDebug("Sent {Count} bots in new Area {NewArea} to Player {PlayerId}", newAreaBots.Count, newArea, PlayerId);
-                }
-
-                SendInteractableList();
-                SendGroundItemSnapshot(newArea);
-                SendMonsterSnapshot(Match.Monsters.GetVisualStatesByArea());
-            }
+            _publishedMonsterStates.Remove(monster.MonsterId);
+            return false;
         }
-        catch (Exception ex)
+        if (!_publishedMonsterStates.TryGetValue(monster.MonsterId, out var previous))
         {
-            Logger.LogError(ex, "SendAreaChange error for player {PlayerId}", PlayerId);
+            return true;
+        }
+        return previous.AreaType != monster.AreaType || previous.CurrentHealth != monster.CurrentHealth ||
+            previous.MaxHealth != monster.MaxHealth || previous.IsAlive != monster.IsAlive ||
+            previous.ChaseTargetPlayerId != monster.ChaseTargetPlayerId ||
+            previous.RewardItemId != monster.RewardItemId || previous.IsCore != monster.IsCore ||
+            previous.SummonStoneReward != monster.SummonStoneReward ||
+            previous.Kind != monster.Kind || previous.Phase != monster.Phase;
+    }
+
+    internal void SendChangedMonsterStates(List<MonsterInfo> changed)
+    {
+        if (changed.Count == 0) return;
+        using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_SNAPSHOT);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_SNAPSHOT
+        {
+            Monsters = changed
+        }));
+        if (!TrySend(packet)) return;
+        foreach (var monster in changed)
+        {
+            if (monster.IsAlive) _publishedMonsterStates[monster.MonsterId] = monster;
+            else _publishedMonsterStates.Remove(monster.MonsterId);
         }
     }
 
-    private void BroadcastMovement(Packet packet)
+    internal void SendAreaSnapshot()
     {
-        var targetSessions = new List<GameClientSession>();
-        foreach (var other in Match.GetSessions())
-        {
-            if (!other.Player.IsEliminated && other.Player.CurrentArea == Player.CurrentArea && other.PlayerId != PlayerId)
-            {
-                targetSessions.Add(other);
-            }
-        }
-
-        foreach (var other in targetSessions)
-        {
-            other.TrySend(packet);
-        }
+        SendInteractableList();
+        SendGroundItemSnapshot(Player.CurrentArea);
     }
 }

@@ -7,9 +7,9 @@ using network.packets;
 namespace game_server.sessions;
 
 /// <summary>
-///     플레이어의 행동 상태 변경 요청을 처리하고, 체력과 행동 상태를 전송한다.
+///     플레이어의 행동 상태 변경 요청을 처리하고 체력 변경을 전송한다.
 ///     행동 변경 시 매치 상태를 확인하고 필요한 상호작용을 취소한다.
-///     체력은 본인에게, 행동 상태는 같은 구역의 플레이어들에게 전송한다.
+///     체력은 본인에게 전송하며 행동 상태는 틱 끝 동기화에서 전송한다.
 ///     전송 메서드를 호출할 때는 매치 잠금을 유지해야 한다.
 /// </summary>
 public partial class GameClientSession
@@ -50,10 +50,7 @@ public partial class GameClientSession
             {
                 int[] canceledIds = _interactions.CancelPendingInteractions(match, Player);
                 SendInteractionCanceled(canceledIds, "PlayerState:SLEEP");
-                if (!Player.IsSleeping && Player.TryStartSleep(DateTime.UtcNow))
-                {
-                    SendPlayerState();
-                }
+                Player.TryStartSleep(DateTime.UtcNow);
                 return Task.CompletedTask;
             }
 
@@ -64,7 +61,6 @@ public partial class GameClientSession
             }
 
             Player.State = isExploreState ? PlayerState.EXPLORE_1 : PlayerState.IDLE;
-            SendPlayerState(includeSelf: false);
         }
 
         return Task.CompletedTask;
@@ -76,26 +72,4 @@ public partial class GameClientSession
         TrySend(packet);
     }
 
-    internal void SendPlayerState(bool includeSelf = true)
-    {
-        if (!PlayerId.HasValue)
-        {
-            return;
-        }
-        var targetSessions = new List<GameClientSession>();
-        foreach (var session in Match.GetSessions())
-        {
-            if (session.Player.IsEliminated || session.Player.CurrentArea != Player.CurrentArea)
-                continue;
-            if (!includeSelf && session.PlayerId == PlayerId)
-                continue;
-            targetSessions.Add(session);
-        }
-        using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, Player.State);
-        foreach (var targetSession in targetSessions)
-        {
-            targetSession.TrySend(packet);
-        }
-        Logger.LogInformation("Player state sent: PlayerId={PlayerId}, State={State}, Recipients={Count}", PlayerId, Player.State, targetSessions.Count);
-    }
 }

@@ -21,9 +21,7 @@ namespace network.common
         public static int SWARM_BOT_FIELD_EVACUATE_MARGIN_CELLS => SwarmConfigData.GetInt("SWARM_BOT_FIELD_EVACUATE_MARGIN_CELLS", 5);
         public static int SWARM_BOT_MONSTER_HUNT_STOP_DISTANCE_CELLS => SwarmConfigData.GetInt("SWARM_BOT_MONSTER_HUNT_STOP_DISTANCE_CELLS", 5);
         public static int SWARM_BOT_MONSTER_DANGER_RADIUS_CELLS => SwarmConfigData.GetInt("SWARM_BOT_MONSTER_DANGER_RADIUS_CELLS", 10);
-        public static int SWARM_BOT_MONSTER_FLEE_DISTANCE_CELLS => SwarmConfigData.GetInt("SWARM_BOT_MONSTER_FLEE_DISTANCE_CELLS", 10);
         public static int SWARM_BOT_MONSTER_ROAM_DISTANCE_CELLS => SwarmConfigData.GetInt("SWARM_BOT_MONSTER_ROAM_DISTANCE_CELLS", 6);
-        public static int SWARM_BOT_MIN_THREAT_FLEE_DISTANCE_CELLS => SwarmConfigData.GetInt("SWARM_BOT_MIN_THREAT_FLEE_DISTANCE_CELLS", 4);
         public static double SWARM_BOT_FLEE_COMMIT_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_FLEE_COMMIT_SECONDS", 2d);
         public static int SWARM_BOT_RIVAL_SCAN_RADIUS_CELLS => SwarmConfigData.GetInt("SWARM_BOT_RIVAL_SCAN_RADIUS_CELLS", 22);
         public static int SWARM_BOT_FLEE_PROBE_DISTANCE_CELLS => SwarmConfigData.GetInt("SWARM_BOT_FLEE_PROBE_DISTANCE_CELLS", 16);

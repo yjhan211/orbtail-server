@@ -66,10 +66,10 @@ public sealed class BotReplanningTests
         using var scope = runtime.Enter();
         bot.Player.Orbs.TakeAllItems();
         var behavior = new BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance);
-        behavior.SelectMovementTarget(runtime, bot);
-        Assert.False(bot.Movement.DestinationCell!.Equals(bot.Player.Cell));
-        var targetArea = bot.Movement.DestinationArea;
-        var targetCell = bot.Movement.DestinationCell!.Clone();
+        var selected = behavior.SelectMovementTarget(runtime, bot, DateTime.UtcNow);
+        Assert.False(selected!.Equals(bot.Player.Cell));
+        var targetArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, selected!);
+        var targetCell = selected!.Clone();
         Assert.Equal(bot.Player.CurrentArea, targetArea);
         int radius = Config.SWARM_BOT_MONSTER_ROAM_DISTANCE_CELLS;
         Assert.InRange(bot.Player.Cell!.GetDistance(targetCell), Math.Max(2, radius / 2), radius);
@@ -78,9 +78,9 @@ public sealed class BotReplanningTests
             bot.Player.Cell!, targetArea, targetCell)!);
         for (int i = 0; i < 10; i++)
         {
-            behavior.SelectMovementTarget(runtime, bot);
-            Assert.Equal(targetArea, bot.Movement.DestinationArea);
-            Assert.Equal(0, targetCell.GetDistance(bot.Movement.DestinationCell!));
+            selected = behavior.SelectMovementTarget(runtime, bot, DateTime.UtcNow);
+            Assert.Equal(targetArea, GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, selected!));
+            Assert.Equal(0, targetCell.GetDistance(selected!));
         }
     }
 
@@ -90,10 +90,10 @@ public sealed class BotReplanningTests
         var (runtime, bot, _) = CreateBot();
         using var scope = runtime.Enter();
         bot.Player.CurrentArea = AreaType.None;
-        BotBehaviorService.SelectWanderTarget(runtime, bot, DateTime.UtcNow);
-        Assert.True(bot.Movement.DestinationCell!.Equals(bot.Player.Cell));
+        var selected = BotBehaviorService.SelectWanderTarget(runtime, bot, DateTime.UtcNow);
+        Assert.True(selected!.Equals(bot.Player.Cell));
         Assert.Null(bot.ExplorationTarget);
-        Assert.Equal(0, bot.Player.Cell!.GetDistance(bot.Movement.DestinationCell!));
+        Assert.Equal(0, bot.Player.Cell!.GetDistance(selected!));
     }
 
     [Fact]
@@ -107,11 +107,11 @@ public sealed class BotReplanningTests
         runtime.Closures.Release();
         runtime.Closures.InitializeMatching(adjacentAreas.Select(area => (area, 0)).ToArray());
         runtime.Closures.CloseDueAreas();
-        BotBehaviorService.SelectWanderTarget(runtime, bot, DateTime.UtcNow);
-        Assert.False(bot.Movement.DestinationCell!.Equals(bot.Player.Cell));
-        Assert.Equal(bot.Player.CurrentArea, bot.Movement.DestinationArea);
+        var selected = BotBehaviorService.SelectWanderTarget(runtime, bot, DateTime.UtcNow);
+        Assert.False(selected!.Equals(bot.Player.Cell));
+        Assert.Equal(bot.Player.CurrentArea, GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, selected!));
         int radius = Config.SWARM_BOT_MONSTER_ROAM_DISTANCE_CELLS;
-        var destination = bot.Movement.DestinationCell!.Clone();
+        var destination = selected!.Clone();
         Assert.InRange(bot.Player.Cell!.GetDistance(destination), Math.Max(2, radius / 2), radius);
         var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.CurrentArea,
             bot.Player.Cell, bot.Player.CurrentArea, destination);
@@ -119,8 +119,35 @@ public sealed class BotReplanningTests
         Assert.NotEmpty(path!);
         double safeDistance = runtime.Closures.GetSafeDistance(DateTime.UtcNow);
         Assert.All(path!, step => Assert.True(SwarmPressureField.GetDistance(step.Cell) <= safeDistance));
-        BotBehaviorService.SelectWanderTarget(runtime, bot, DateTime.UtcNow);
-        Assert.Equal(0, destination.GetDistance(bot.Movement.DestinationCell!));
+        selected = BotBehaviorService.SelectWanderTarget(runtime, bot, DateTime.UtcNow);
+        Assert.Equal(0, destination.GetDistance(selected!));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MovementRequestPreservesExistingPathAndUsesSuppliedTime(bool hasTarget)
+    {
+        var (runtime, bot, destination) = CreateBot();
+        using var scope = runtime.Enter();
+        bot.SetMovementTarget(bot.Player.CurrentArea, destination);
+        var savedDestination = bot.Movement.DestinationCell;
+        var savedArea = bot.Movement.DestinationArea;
+        bot.Movement.Waypoints.Add(destination);
+        bot.Movement.NextPathPlanAtUtc = DateTime.UtcNow.AddMinutes(1);
+        var savedDeadline = bot.Movement.NextPathPlanAtUtc;
+        var nowUtc = DateTime.UtcNow.AddSeconds(-5);
+        var behavior = new TargetBehavior(savedArea, hasTarget ? destination : null);
+
+        var request = behavior.CreateMovementRequest(runtime, bot, nowUtc);
+
+        Assert.Equal(nowUtc, behavior.SelectedAtUtc);
+        Assert.Same(savedDestination, bot.Movement.DestinationCell);
+        Assert.Equal(savedArea, bot.Movement.DestinationArea);
+        Assert.Same(destination, Assert.Single(bot.Movement.Waypoints));
+        Assert.Equal(savedDeadline, bot.Movement.NextPathPlanAtUtc);
+        Assert.Equal(!hasTarget, request.HoldPosition);
+        Assert.Equal(hasTarget ? destination : null, request.DestinationCell);
     }
 
     private static (MatchRuntime Runtime, Bot Bot, Cell Destination) CreateBot()
@@ -140,13 +167,14 @@ public sealed class BotReplanningTests
         return (runtime, bot, destination);
     }
 
-    private sealed class TargetBehavior(AreaType area, Cell destination, bool hold = false)
+    private sealed class TargetBehavior(AreaType area, Cell? destination, bool hold = false)
         : BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance)
     {
-        public override void SelectMovementTarget(MatchRuntime runtime, Bot bot)
+        public DateTime SelectedAtUtc { get; private set; }
+        public override Cell? SelectMovementTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc)
         {
-            bot.SetMovementTarget(area, destination);
-            if (hold) bot.SetMovementTarget(bot.Player.CurrentArea, bot.Player.Cell!);
+            SelectedAtUtc = nowUtc;
+            return hold ? bot.Player.Cell : destination;
         }
     }
 }

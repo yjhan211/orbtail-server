@@ -138,7 +138,6 @@ internal class BotBehaviorService(
             {
                 continue;
             }
-            var previousState = player.State;
             if (player.PendingDoorInteractionId is { } interactId)
             {
                 int doorId = GameInteractableData.Get(interactId)?.DoorId ?? 0;
@@ -167,18 +166,7 @@ internal class BotBehaviorService(
                 player.State = PlayerState.EXPLORE_1;
             }
 
-            if (player.State == previousState)
-            {
-                continue;
-            }
-            using var statePacket = PacketMaker.G_TO_C_PLAYER_STATE(player.PlayerId, player.State);
-            foreach (var session in sessions)
-            {
-                if (!session.Player.IsEliminated && session.Player.CurrentArea == player.CurrentArea)
-                {
-                    session.TrySend(statePacket);
-                }
-            }
+
         }
     }
 
@@ -198,50 +186,71 @@ internal class BotBehaviorService(
         return false;
     }
 
-    public virtual void SelectMovementTarget(MatchRuntime runtime, Bot bot)
+    public virtual MovementRequest CreateMovementRequest(MatchRuntime runtime, Bot bot, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Bot decisions require the match lock.");
         }
-        var nowUtc = DateTime.UtcNow;
+        if (runtime.IsEnded || bot.Player.IsEliminated || bot.Player.IsSleeping)
+        {
+            return new MovementRequest(null, 0f, HoldPosition: true);
+        }
+        var requestedCell = SelectMovementTarget(runtime, bot, nowUtc);
+        if (requestedCell == null || requestedCell.Equals(bot.Player.Cell))
+        {
+            return new MovementRequest(requestedCell, 0f, HoldPosition: true);
+        }
 
-        // 자기장 대피
-        if (TrySelectFieldEvacuationTarget(runtime, bot, nowUtc))
-        {
-            return;
-        }
-        // 주변 몬스터 회피
-        if (TrySelectMonsterAvoidanceTarget(runtime, bot, nowUtc))
-        {
-            return;
-        }
-        // 전력 또는 피격 상황에 따른 도주
-        if (TrySelectEscapeTarget(runtime, bot, nowUtc))
-        {
-            return;
-        }
-        // 소환석 획득
-        if (TrySelectSummonStoneTarget(runtime, bot))
-        {
-            return;
-        }
-        // 최근 공격자에게 반격
-        if (TrySelectRetaliationTarget(runtime, bot, nowUtc))
-        {
-            return;
-        }
-        // 몬스터 사냥 이동
-        if (TrySelectMonsterHuntTarget(runtime, bot))
-        {
-            return;
-        }
-        // 안전하게 이동할 수 있는 주변 셀 배회
-        SelectWanderTarget(runtime, bot, nowUtc);
+        float speed = Config.SWARM_BOT_WALK_SPEED * GetBotMovementSpeedMultiplier(bot, nowUtc);
+        bool waiting = nowUtc < bot.LoopWaitUntil;
+        return new MovementRequest(requestedCell.Clone(), speed, HoldPosition: waiting);
     }
 
-    private bool TrySelectFieldEvacuationTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc)
+    public virtual Cell? SelectMovementTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc)
     {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Bot decisions require the match lock.");
+        }
+
+        // 자기장 대피
+        if (TrySelectFieldEvacuationTarget(runtime, bot, nowUtc, out var target))
+        {
+            return target;
+        }
+        // 주변 몬스터 회피
+        if (TrySelectMonsterAvoidanceTarget(runtime, bot, nowUtc, out target))
+        {
+            return target;
+        }
+        // 전력 또는 피격 상황에 따른 도주
+        if (TrySelectEscapeTarget(runtime, bot, nowUtc, out target))
+        {
+            return target;
+        }
+        // 소환석 획득
+        if (TrySelectSummonStoneTarget(runtime, bot, out target))
+        {
+            return target;
+        }
+        // 최근 공격자에게 반격
+        if (TrySelectRetaliationTarget(runtime, bot, nowUtc, out target))
+        {
+            return target;
+        }
+        // 몬스터 사냥 이동
+        if (TrySelectMonsterHuntTarget(runtime, bot, nowUtc, out target))
+        {
+            return target;
+        }
+        // 안전하게 이동할 수 있는 주변 셀 배회
+        return SelectWanderTarget(runtime, bot, nowUtc);
+    }
+
+    private bool TrySelectFieldEvacuationTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc, out Cell? target)
+    {
+        target = null;
         double safeDistance = runtime.Closures.GetSafeDistance(nowUtc);
         if (safeDistance >= double.MaxValue)
         {
@@ -273,7 +282,7 @@ internal class BotBehaviorService(
         }
         if (retreatCell != null)
         {
-            bot.SetMovementTarget(bot.Player.CurrentArea, retreatCell);
+            target = retreatCell.Clone();
             return true;
         }
 
@@ -298,15 +307,15 @@ internal class BotBehaviorService(
                 continue;
             }
             nearestDistance = distance;
-            bestArea = region.AreaType;
             bestCell = cells[0].Cell;
         }
-        bot.SetMovementTarget(bestArea, bestCell);
+        target = bestCell.Clone();
         return true;
     }
 
-    private static bool TrySelectMonsterAvoidanceTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc)
+    private static bool TrySelectMonsterAvoidanceTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc, out Cell? target)
     {
+        target = null;
         var currentCell = bot.Player.Cell!;
         var area = bot.Player.CurrentArea;
         long threatCellSumX = 0, threatCellSumY = 0;
@@ -337,18 +346,23 @@ internal class BotBehaviorService(
             bool committed = (nowUtc - previous.SelectedAtUtc).TotalSeconds < Config.SWARM_BOT_FLEE_COMMIT_SECONDS;
             if (committed && currentCell.GetDistance(previous.Destination) > 2)
             {
-                bot.SetMovementTarget(area, previous.Destination);
+                target = previous.Destination.Clone();
                 return true;
             }
         }
         var threatCell = new Cell((int)Math.Round(threatCellSumX / (double)threatCount), (int)Math.Round(threatCellSumY / (double)threatCount));
-        SelectThreatEscapeTarget(runtime, bot, threatCell, nowUtc, stayInCurrentArea: true);
-        bot.MonsterAvoidanceTarget = (bot.Movement.DestinationCell!.Clone(), nowUtc);
+        target = SelectThreatEscapeTarget(runtime, bot, threatCell, nowUtc);
+        bot.MonsterAvoidanceTarget = null;
+        if (target != null)
+        {
+            bot.MonsterAvoidanceTarget = (target.Clone(), nowUtc);
+        }
         return true;
     }
 
-    private bool TrySelectEscapeTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc)
+    private bool TrySelectEscapeTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc, out Cell? target)
     {
+        target = null;
         float orbPower = bot.Player.Orbs.GetOrbPower();
         float myPower = bot.Wounded ? 0f : orbPower;
         int nearestDistance = Config.SWARM_BOT_RIVAL_SCAN_RADIUS_CELLS;
@@ -398,12 +412,71 @@ internal class BotBehaviorService(
             return false;
         }
         bot.MonsterAvoidanceTarget = null;
-        SelectThreatEscapeTarget(runtime, bot, threatCell, nowUtc, stayInCurrentArea: false);
+        target = SelectThreatEscapeTarget(runtime, bot, threatCell, nowUtc);
         return true;
     }
 
-    private bool TrySelectRetaliationTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc)
+    internal static Cell? SelectThreatEscapeTarget(MatchRuntime runtime, Bot bot, Cell threatCell, DateTime nowUtc)
     {
+        // 현재 셀과 위협 셀 사이의 거리
+        var currentCell = bot.Player.Cell!;
+        int currentThreatDistance = currentCell.GetDistance(threatCell);
+        int radius = Config.SWARM_BOT_FLEE_PROBE_DISTANCE_CELLS;
+        int minimumDistance = Config.SWARM_BOT_MIN_FLEE_TARGET_DISTANCE_CELLS;
+
+        // 도주 반경 안의 셀을 후보로 수집
+        var candidates = new List<Cell>();
+        for (int x = currentCell.X - radius; x <= currentCell.X + radius; x++)
+        {
+            for (int y = currentCell.Y - radius; y <= currentCell.Y + radius; y++)
+            {
+                candidates.Add(new Cell(x, y));
+            }
+        }
+        // 위협에서 가장 먼 셀부터 검사
+        candidates.Sort((left, right) => right.GetDistance(threatCell).CompareTo(left.GetDistance(threatCell)));
+
+        double safeDistance = runtime.Closures.GetSafeDistance(nowUtc);
+        var targetCells = new List<Cell>();
+        foreach (var cell in candidates)
+        {
+            var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
+            if (area == AreaType.None)
+            {
+                continue;
+            }
+            if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell))
+            {
+                continue;
+            }
+            if (currentCell.GetDistance(cell) < minimumDistance)
+            {
+                continue;
+            }
+            if (cell.GetDistance(threatCell) <= currentThreatDistance)
+            {
+                continue;
+            }
+            if (runtime.Closures.IsAreaClosed(area) || SwarmPressureField.GetDistance(cell) > safeDistance)
+            {
+                continue;
+            }
+            targetCells.Add(cell);
+        }
+        foreach (var targetCell in targetCells)
+        {
+            if (!MatchMoveService.TryFindSafePath(runtime, bot.Player.GameInfo.ObjectInfo, targetCell, nowUtc, out _))
+            {
+                continue;
+            }
+            return targetCell.Clone();
+        }
+        return null;
+    }
+
+    private bool TrySelectRetaliationTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc, out Cell? target)
+    {
+        target = null;
         if (bot.Wounded || (nowUtc - bot.LastDamagedAtUtc).TotalSeconds > Config.SWARM_BOT_DAMAGED_FLEE_SECONDS)
         {
             return false;
@@ -426,12 +499,13 @@ internal class BotBehaviorService(
         {
             return false;
         }
-        bot.SetMovementTarget(area, attacker.Cell);
+        target = attacker.Cell.Clone();
         return true;
     }
 
-    private bool TrySelectSummonStoneTarget(MatchRuntime runtime, Bot bot)
+    private bool TrySelectSummonStoneTarget(MatchRuntime runtime, Bot bot, out Cell? target)
     {
+        target = null;
         Cell? cell = null;
         int nearestDistance = int.MaxValue;
         foreach (var item in runtime.GroundItems.GetItemsInArea(bot.Player.CurrentArea))
@@ -453,11 +527,11 @@ internal class BotBehaviorService(
         {
             return false;
         }
-        bot.SetMovementTarget(bot.Player.CurrentArea, cell);
+        target = cell.Clone();
         return true;
     }
 
-    internal static void SelectWanderTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc)
+    internal static Cell SelectWanderTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc)
     {
         var mapId = Config.SWARM_MATCH_MAP;
         var currentArea = bot.Player.CurrentArea;
@@ -509,21 +583,21 @@ internal class BotBehaviorService(
         {
             targetCells.Add(candidate.Cell);
         }
-        bool found = MatchMoveService.TrySelectReachableCell(
-            runtime, bot.Player.GameInfo.ObjectInfo, targetCells,
-            cell => SwarmPressureField.GetDistance(cell) <= safeDistance,
-            area => runtime.Closures.IsAreaClosed(area), out var targetCell);
-        if (found)
+        foreach (var targetCell in targetCells)
         {
+            if (!MatchMoveService.TryFindSafePath(runtime, bot.Player.GameInfo.ObjectInfo, targetCell, nowUtc, out _))
+            {
+                continue;
+            }
             bot.ExplorationTarget = (currentArea, targetCell.Clone());
-            bot.SetMovementTarget(currentArea, targetCell);
-            return;
+            return targetCell.Clone();
         }
-        bot.SetMovementTarget(currentArea, currentCell);
+        return currentCell.Clone();
     }
 
-    private bool TrySelectMonsterHuntTarget(MatchRuntime runtime, Bot bot)
+    private bool TrySelectMonsterHuntTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc, out Cell? target)
     {
+        target = null;
         if (!bot.Player.Orbs.HasAnyOrb())
         {
             return false;
@@ -539,15 +613,14 @@ internal class BotBehaviorService(
             {
                 continue;
             }
-            bot.SetMovementTarget(bot.Player.CurrentArea, bot.Player.Cell!);
+            target = bot.Player.Cell!.Clone();
             return true;
         }
-        var area = AreaType.None;
         Cell? cell = null;
         int nearestDistance = int.MaxValue;
         foreach (var monster in runtime.Monsters.Entities.Values)
         {
-            if (!monster.Alive || runtime.Closures.IsAreaUnsafe(monster.Area))
+            if (!monster.Alive || runtime.Closures.IsAreaUnsafe(monster.Area, nowUtc))
             {
                 continue;
             }
@@ -558,89 +631,14 @@ internal class BotBehaviorService(
                 continue;
             }
             nearestDistance = distance;
-            area = monster.Area;
             cell = candidate;
         }
         if (cell == null)
         {
             return false;
         }
-        bot.SetMovementTarget(area, cell);
+        target = cell.Clone();
         return true;
-    }
-
-    internal static void SelectThreatEscapeTarget(MatchRuntime runtime, Bot bot, Cell threatCell, DateTime nowUtc, bool stayInCurrentArea)
-    {
-        var mapId = Config.SWARM_MATCH_MAP;
-        var currentCell = bot.Player.Cell!;
-        var currentArea = bot.Player.CurrentArea;
-        int currentThreatDistance = currentCell.GetDistance(threatCell);
-        int radius = stayInCurrentArea ? Config.SWARM_BOT_MONSTER_FLEE_DISTANCE_CELLS : Config.SWARM_BOT_FLEE_PROBE_DISTANCE_CELLS;
-        int minimumDistance = stayInCurrentArea ? Config.SWARM_BOT_MIN_THREAT_FLEE_DISTANCE_CELLS : Config.SWARM_BOT_MIN_FLEE_TARGET_DISTANCE_CELLS;
-        var candidates = new List<Cell>();
-        for (int x = currentCell.X - radius; x <= currentCell.X + radius; x++)
-        {
-            for (int y = currentCell.Y - radius; y <= currentCell.Y + radius; y++)
-            {
-                candidates.Add(new Cell(x, y));
-            }
-        }
-        candidates.Sort((left, right) => right.GetDistance(threatCell).CompareTo(left.GetDistance(threatCell)));
-
-        double safeDistance = double.MaxValue;
-        if (!stayInCurrentArea)
-        {
-            safeDistance = runtime.Closures.GetSafeDistance(nowUtc);
-        }
-        var targetCells = new List<Cell>();
-        foreach (var cell in candidates)
-        {
-            var area = GameMapData.GetCurrentArea(mapId, cell);
-            if (area == AreaType.None)
-            {
-                continue;
-            }
-            if (!GameMapData.IsMoveablePosition(mapId, cell))
-            {
-                continue;
-            }
-            if (currentCell.GetDistance(cell) < minimumDistance)
-            {
-                continue;
-            }
-            if (cell.GetDistance(threatCell) <= currentThreatDistance)
-            {
-                continue;
-            }
-
-            if (stayInCurrentArea)
-            {
-                if (area != currentArea)
-                {
-                    continue;
-                }
-            }
-            else if (runtime.Closures.IsAreaUnsafe(area) || SwarmPressureField.GetDistance(cell) > safeDistance)
-            {
-                continue;
-            }
-
-            targetCells.Add(cell);
-        }
-        bool found = MatchMoveService.TrySelectReachableCell(
-            runtime, bot.Player.GameInfo.ObjectInfo, targetCells,
-            cell => stayInCurrentArea ||
-                (SwarmPressureField.GetDistance(cell) <= safeDistance &&
-                 cell.GetDistance(threatCell) >= currentThreatDistance),
-            area => !stayInCurrentArea && runtime.Closures.IsAreaUnsafe(area),
-            out var targetCell);
-        if (found)
-        {
-            var targetArea = GameMapData.GetCurrentArea(mapId, targetCell);
-            bot.SetMovementTarget(targetArea, targetCell);
-            return;
-        }
-        bot.SetMovementTarget(currentArea, currentCell);
     }
 
     public bool CanCutTrail(Bot bot, int healthBefore, DateTime nowUtc, int cutCost)
@@ -658,7 +656,6 @@ internal class BotBehaviorService(
         {
             throw new InvalidOperationException("Bot decisions require the match lock.");
         }
-        var sessions = runtime.GetSessions();
         var players = runtime.GetAlivePlayers();
         var monsterTargets = runtime.Monsters.GetCombatTargets();
         float safeRadiusSquared = Config.SWARM_ORB_ATTACK_RANGE * Config.SWARM_ORB_ATTACK_RANGE;
@@ -676,18 +673,13 @@ internal class BotBehaviorService(
                 hasSummonStone = true;
                 break;
             }
-            bool changed = unsafeToSleep || hasSummonStone || player.Health >= Config.MAX_HEALTH ? player.TryStopSleep() : player.TryStartSleep(nowUtc);
-            if (!changed)
+            if (unsafeToSleep || hasSummonStone || player.Health >= Config.MAX_HEALTH)
             {
-                continue;
+                player.TryStopSleep();
             }
-            using var packet = PacketMaker.G_TO_C_PLAYER_STATE(player.PlayerId, player.State);
-            foreach (var session in sessions)
+            else
             {
-                if (!session.Player.IsEliminated && session.Player.CurrentArea == player.CurrentArea)
-                {
-                    session.TrySend(packet);
-                }
+                player.TryStartSleep(nowUtc);
             }
         }
     }
@@ -707,15 +699,6 @@ internal class BotBehaviorService(
             return true;
         }
         if (MatchFieldService.GetDamagePerTick(runtime, position, nowUtc) > 0)
-        {
-            return true;
-        }
-
-        if (nowUtc < bot.SwarmDodgeHoldUntilUtc)
-        {
-            return true;
-        }
-        if (BotDodgeCalculator.CalculateDodge(runtime.SunCrossfireShapes, player.PlayerId, position, player.CurrentArea, nowUtc) != null)
         {
             return true;
         }
@@ -754,51 +737,5 @@ internal class BotBehaviorService(
         bool bareSpeedActive = !bot.Player.Orbs.HasAnyOrb() && now < bot.SwarmBareSpeedUntilUtc;
         bool waveSlowActive = now < bot.Player.WaveSlowUntilUtc;
         return MovementSpeed.GetMultiplier(orbs, bootsActive, bareSpeedActive, waveSlowActive);
-    }
-
-    public virtual MovementRequest CreateMovementRequest(MatchRuntime runtime, Bot bot, DateTime now)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Bot decisions require the match lock.");
-        }
-        var movement = bot.Movement;
-        if (runtime.IsEnded || bot.Player.IsEliminated || bot.Player.IsSleeping)
-        {
-            return new MovementRequest(null, 0f, HoldPosition: true);
-        }
-        var previousDestination = movement.DestinationCell;
-        var previousArea = movement.DestinationArea;
-        movement.DestinationCell = null;
-        movement.DestinationArea = AreaType.None;
-        SelectMovementTarget(runtime, bot);
-        var requestedCell = movement.DestinationCell;
-        movement.DestinationCell = previousDestination;
-        movement.DestinationArea = previousArea;
-        float speed = Config.SWARM_BOT_WALK_SPEED * GetBotMovementSpeedMultiplier(bot, now);
-        var advice = BotDodgeCalculator.CalculateDodge(runtime.SunCrossfireShapes,
-            bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now);
-        if (advice != null || now < bot.SwarmDodgeHoldUntilUtc)
-        {
-            if (BotDodgeCalculator.TrySelectDodgeCell(runtime, bot, now, out var dodgeCell))
-            {
-                bot.DodgeTargetCell = dodgeCell.Clone();
-                if (advice != null)
-                {
-                    bot.SwarmDodgeHoldUntilUtc = now.AddSeconds(advice.Value.HoldSeconds);
-                }
-                return new MovementRequest(dodgeCell, speed);
-            }
-            bot.DodgeTargetCell = null;
-            bot.SwarmDodgeHoldUntilUtc = DateTime.MinValue;
-            // 안전한 경로를 찾지 못하면 검증되지 않은 방향으로 움직이지 않는다.
-            return new MovementRequest(null, 0f, HoldPosition: true);
-        }
-        bot.DodgeTargetCell = null;
-        if (requestedCell == null || requestedCell.Equals(bot.Player.Cell))
-        {
-            return new MovementRequest(requestedCell, 0f, HoldPosition: true);
-        }
-        return new MovementRequest(requestedCell.Clone(), speed, HoldPosition: now < bot.LoopWaitUntil);
     }
 }

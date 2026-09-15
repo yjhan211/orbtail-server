@@ -178,20 +178,75 @@ public sealed class SharedMovementPlanningTests
     }
 
     [Fact]
-    public void CandidateSearchRejectsUnsafeIntermediateCell()
+    public void SafePathReturnsIntermediateCellsAndRejectsClosedDestination()
     {
         var runtime = CreateRuntime();
         using var scope = runtime.Enter();
         var info = CreateObject();
         var destination = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Library1);
-        var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, info.Area, info.Cell, AreaType.S2Library1, destination)!;
-        var blockedCell = path[path.Count / 2].Cell;
-        Assert.NotEqual(destination, blockedCell);
-        Assert.False(MatchMoveService.TrySelectReachableCell(runtime, info, [destination],
-            cell => !cell.Equals(blockedCell), _ => false, out _));
-        Assert.True(MatchMoveService.TrySelectReachableCell(runtime, info, [destination],
-            _ => true, _ => false, out var selected));
-        Assert.Equal(destination, selected);
+        Assert.True(MatchMoveService.TryFindSafePath(runtime, info, destination, DateTime.UtcNow, out var path));
+        Assert.True(path.Count > 1);
+        Assert.Equal(destination, path[^1].Cell);
+        Assert.All(path, step => Assert.True(GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, step.Cell)));
+        runtime.Closures.InitializeMatching([(AreaType.S2Library1, 0)]);
+        runtime.Closures.CloseDueAreas();
+        Assert.False(MatchMoveService.TryFindSafePath(runtime, info, destination, DateTime.UtcNow, out var blocked));
+        Assert.Empty(blocked);
+    }
+    [Fact]
+    public void SafePathAllowsLeavingClosedOrigin()
+    {
+        var runtime = CreateRuntime();
+        using var scope = runtime.Enter();
+        var info = CreateObject();
+        var destination = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Library1);
+        runtime.Closures.InitializeMatching([(info.Area, 0)]);
+        runtime.Closures.CloseDueAreas();
+
+        Assert.True(MatchMoveService.TryFindSafePath(runtime, info, destination, DateTime.UtcNow, out var path));
+        Assert.Equal(destination, path[^1].Cell);
+    }
+
+    [Fact]
+    public void FindPathRejectsBlockedDestination()
+    {
+        var runtime = CreateRuntime();
+        var info = CreateObject();
+        var area = AreaType.S2Library1;
+        var destination = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area);
+        var blockedAreas = new HashSet<AreaType> { area };
+
+        Assert.NotNull(MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, info.Area, info.Cell, area, destination));
+        Assert.Null(MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, info.Area, info.Cell, area, destination, blockedAreas));
+        Assert.Contains(area, blockedAreas);
+    }
+
+    [Fact]
+    public void FindPathRejectsBlockedIntermediateAreas()
+    {
+        var runtime = CreateRuntime();
+        var info = CreateObject();
+        var mapId = Config.SWARM_MATCH_MAP;
+        foreach (var region in GameMapData.GetAreas(mapId))
+        {
+            var destination = GameMapData.GetAreaSpawnCell(mapId, region.AreaType);
+            var path = MapPathfinder.FindPath(mapId, info.Area, info.Cell, region.AreaType, destination);
+            if (path == null || !path.Any(step => step.Area != info.Area && step.Area != region.AreaType))
+            {
+                continue;
+            }
+            var blockedAreas = new HashSet<AreaType>();
+            foreach (var candidate in GameMapData.GetAreas(mapId))
+            {
+                if (candidate.AreaType != info.Area && candidate.AreaType != region.AreaType)
+                {
+                    blockedAreas.Add(candidate.AreaType);
+                }
+            }
+            Assert.Null(MapPathfinder.FindPath(mapId, info.Area, info.Cell, region.AreaType, destination, blockedAreas));
+            return;
+        }
+        Assert.Fail("Test map must contain a route through an intermediate area.");
     }
 
     [Fact]
@@ -208,8 +263,7 @@ public sealed class SharedMovementPlanningTests
         Assert.False(MatchMoveService.TrySetMovementPath(runtime, info, state, info.Area, info.Cell, DateTime.UtcNow));
         Assert.Equal(DateTime.MinValue, state.NextPathPlanAtUtc);
         Assert.Single(state.Waypoints);
-        Assert.False(MatchMoveService.TrySelectReachableCell(runtime, info, [info.Cell],
-            _ => true, _ => false, out _));
+        Assert.False(MatchMoveService.TryFindSafePath(runtime, info, info.Cell, DateTime.UtcNow, out _));
     }
     [Theory]
     [InlineData(false)]

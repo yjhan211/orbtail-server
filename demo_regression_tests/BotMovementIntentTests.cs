@@ -146,37 +146,6 @@ public sealed class BotMovementIntentTests
         Assert.Equal(deadline, bot.Movement.NextPathPlanAtUtc);
     }
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void DodgeWithoutNewAdviceKeepsCellOnlyUntilHoldExpires(bool holding)
-    {
-        UserServerMatchingTestData.EnsureGameDataLoaded();
-        var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(987656);
-        using var scope = runtime.Enter();
-        var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
-        runtime.Bots.RegisterBots(runtime.MatchingId, [-1], new Dictionary<long, Cell> { [-1] = cell });
-        var bot = runtime.Bots.GetBot(-1)!;
-        var before = bot.Player.Position!;
-        var now = DateTime.UtcNow;
-        var destination = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, new Vector3f(before.X + 1f, before.Y, 0f));
-        bot.SetMovementTarget(bot.Player.CurrentArea, destination);
-        bot.Movement.Waypoints.Add(destination);
-        bot.LoopWaitUntil = DateTime.MinValue;
-        bot.DodgeTargetCell = cell.Clone();
-        bot.SwarmDodgeHoldUntilUtc = holding ? now.AddSeconds(1) : now;
-
-        var request = MovementPreparationTestSteps.Bot(new FixedTargetBehavior(bot), runtime, bot, now);
-
-        Assert.True(request.Speed > 0f);
-        if (holding)
-        {
-            Assert.Equal(cell, request.DestinationCell);
-        }
-        var result = MovementPreparationTestSteps.Advance(runtime, bot.Player.GameInfo.ObjectInfo, bot.Movement, request, 0.01f);
-        if (!holding) Assert.True(result.Changed);
-    }
-
     [Fact]
     public void HealthAndOrbChangesUpdateBotStateWithoutMovementPreparation()
     {
@@ -221,11 +190,10 @@ public sealed class BotMovementIntentTests
         public int Selections { get; private set; }
         private readonly AreaType _area = target.Movement.DestinationArea;
         private readonly Cell? _destination = target.Movement.DestinationCell;
-        public override void SelectMovementTarget(MatchRuntime runtime, Bot bot)
+        public override Cell? SelectMovementTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc)
         {
             Selections++;
-            bot.Movement.DestinationArea = _area;
-            bot.Movement.DestinationCell = _destination;
+            return _destination;
         }
     }
 }

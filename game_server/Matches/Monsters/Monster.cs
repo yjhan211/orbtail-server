@@ -112,10 +112,7 @@ public sealed class Monster
 
     public MonsterInfo ToMonsterInfo() => new()
     {
-        MonsterId = MonsterId,
-        AreaType = Area,
-        PositionX = Position.X,
-        PositionY = Position.Y,
+        ObjectInfo = Info.ObjectInfo.Clone(),
         MaxHealth = MaxHealthValue,
         CurrentHealth = Health,
         IsAlive = Alive,

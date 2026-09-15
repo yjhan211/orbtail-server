@@ -180,7 +180,9 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Assert.Equal(PlayerState.SLEEP, session.Player.CreatePlayerObjectInfo().GamePlayer.State);
 
             Assert.True(session.Player.TryStopSleep());
-            session.SendPlayerState();
+            runtime.StartGameplay(DateTime.UtcNow);
+            runtime.SynchronizedPlayerStates[session.PlayerId!.Value] = PlayerState.SLEEP;
+            new MatchSynchronizationService().ProcessTick(runtime, DateTime.UtcNow);
 
             Assert.Equal(PlayerState.IDLE, session.Player.State);
             Assert.False(session.Player.IsSleeping);

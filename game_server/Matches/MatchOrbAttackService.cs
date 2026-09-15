@@ -330,7 +330,7 @@ internal sealed class MatchOrbAttackService(
                 }
 
                 notifiedCount++;
-                combatDamage.SendMonsterHitNotification(runtime, owner, monsterId, vortex.Area, vortex.SourceItemId, monsterDamage, critical, showDamageOnly: true);
+                combatDamage.QueueMonsterHitNotification(runtime, owner, monsterId, vortex.Area, vortex.SourceItemId, monsterDamage, critical, showDamageOnly: true);
             }
 
             int soaked = 0;

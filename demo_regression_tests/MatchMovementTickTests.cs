@@ -210,11 +210,12 @@ public sealed class MatchMovementTickTests
     {
         public int Calls { get; private set; }
         public int Decisions { get; private set; }
-        public override void SelectMovementTarget(MatchRuntime runtime, Bot bot)
+        public override Cell? SelectMovementTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc)
         {
             Assert.True(Monitor.IsEntered(runtime.MatchLock));
             Calls++;
             Decisions++;
+            return null;
         }
     }
 }

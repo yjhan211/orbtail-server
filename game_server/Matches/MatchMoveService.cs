@@ -424,67 +424,52 @@ internal class MatchMoveService(
         return blockingDoor == null;
     }
 
-    // 행동 서비스가 정렬한 후보 중 실제로 도달 가능한 첫 셀을 선택한다.
-    // 목적지만 안전한 경로가 아니라 모든 경유 셀이 행동의 안전 조건을 만족해야 한다.
-    internal static bool TrySelectReachableCell(MatchRuntime runtime, GameObjectInfo objectInfo, IReadOnlyList<Cell> candidates, Func<Cell, bool> isSafeCell, Func<AreaType, bool> isBlockedArea, out Cell targetCell)
+    internal static bool TryFindSafePath(MatchRuntime runtime, GameObjectInfo objectInfo, Cell destination, DateTime nowUtc, out List<MapPathfinder.Step> path)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
-            throw new InvalidOperationException("Movement target selection requires the match lock.");
+            throw new InvalidOperationException("Movement path selection requires the match lock.");
         }
-        targetCell = null!;
+        path = [];
         if (runtime.IsEnded)
         {
             return false;
         }
-        foreach (var candidate in candidates)
-        {
-            var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, candidate);
-            if (area == AreaType.None || isBlockedArea(area) || !isSafeCell(candidate))
-            {
-                continue;
-            }
-            var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP,
-                objectInfo.Area, objectInfo.Cell, area, candidate, isBlockedArea);
-            if (path is not { Count: > 0 })
-            {
-                continue;
-            }
-            bool safe = true;
-            foreach (var step in path)
-            {
-                if (!isSafeCell(step.Cell))
-                {
-                    safe = false;
-                    break;
-                }
-            }
-            if (!safe)
-            {
-                continue;
-            }
-            targetCell = candidate;
-            return true;
-        }
-        return false;
-    }
-
-    internal static bool IsUnsafeStep(MatchRuntime runtime, Vector3f position, AreaType currentArea, Cell targetCell, AreaType targetArea, DateTime nowUtc)
-    {
-        if (targetArea != currentArea && runtime.Closures.IsAreaClosed(targetArea))
-        {
-            return true;
-        }
-
+        var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, destination);
         double safeDistance = runtime.Closures.GetSafeDistance(nowUtc);
-        int targetDistance = SwarmPressureField.GetDistance(targetCell);
-        if (targetDistance <= safeDistance)
+        if (area == AreaType.None || runtime.Closures.IsAreaClosed(area) || SwarmPressureField.GetDistance(destination) > safeDistance)
         {
             return false;
         }
-
-        var currentCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, position);
-        return targetDistance > SwarmPressureField.GetDistance(currentCell);
+        var blockedAreas = new HashSet<AreaType>();
+        foreach (var region in GameMapData.GetAreas(Config.SWARM_MATCH_MAP))
+        {
+            if (region.AreaType == objectInfo.Area)
+            {
+                continue;
+            }
+            if (runtime.Closures.IsAreaClosed(region.AreaType))
+            {
+                blockedAreas.Add(region.AreaType);
+            }
+        }
+        var planned = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, objectInfo.Area, objectInfo.Cell, area, destination, blockedAreas);
+        if (planned is not { Count: > 0 })
+        {
+            return false;
+        }
+        int previousDistance = SwarmPressureField.GetDistance(objectInfo.Cell);
+        foreach (var step in planned)
+        {
+            int distance = SwarmPressureField.GetDistance(step.Cell);
+            if (distance > safeDistance && distance > previousDistance)
+            {
+                return false;
+            }
+            previousDistance = distance;
+        }
+        path = planned;
+        return true;
     }
 
     private sealed record MovementTarget(GameObjectInfo ObjectInfo, MovementState Movement, bool IgnoreClosedDoors, Bot? Bot, Monster? Monster, AreaType FromArea, MovementRequest Request)

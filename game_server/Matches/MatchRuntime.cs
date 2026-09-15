@@ -42,7 +42,8 @@ internal sealed class MatchRuntime
         }
     }
     internal Dictionary<(ObjectType, long), GameObjectInfo> SynchronizedObjects { get; } = new();
-    internal Dictionary<long, PlayerState> SynchronizedBotStates { get; } = new();
+    internal Dictionary<long, PlayerState> SynchronizedPlayerStates { get; } = new();
+    internal Queue<(GameClientSession Session, G_TO_C_COMBAT_HIT Hit)> PendingCombatHits { get; } = new();
 
     public bool IsEnded => Volatile.Read(ref _ended) != 0;
     public object MatchLock { get; } = new();
@@ -160,6 +161,7 @@ internal sealed class MatchRuntime
                 return;
             }
 
+            SynchronizedPlayerStates[participant.PlayerId] = participant.State;
             _aliveCount = _participants.Count;
             _logger.LogInformation("Match participant registered: MatchingId={MatchingId}, PlayerId={PlayerId}, Count={Count}", MatchingId, participant.PlayerId, _aliveCount);
         }
@@ -395,6 +397,17 @@ internal sealed class MatchRuntime
             if (IsEnded && !_cleanupStarted)
             {
                 _cleanupStarted = true;
+                while (PendingCombatHits.Count > 0)
+                {
+                    try
+                    {
+                        MatchSynchronizationService.SendCombatHits(this);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Terminal combat hit publication failed: MatchingId={MatchingId}", MatchingId);
+                    }
+                }
                 TickLoop?.Stop();
                 foreach (var player in _participants.Values)
                 {
@@ -409,7 +422,7 @@ internal sealed class MatchRuntime
                 Bots.Release();
                 Monsters.Release();
                 SynchronizedObjects.Clear();
-                SynchronizedBotStates.Clear();
+                SynchronizedPlayerStates.Clear();
                 _runtimeStore.RemoveCompleted(this);
                 startRedisCleanup = true;
             }

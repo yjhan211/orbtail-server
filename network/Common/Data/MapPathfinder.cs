@@ -18,9 +18,9 @@ namespace network.common.data
             public bool IsAreaTransition { get; set; }
         }
 
-        public static List<Step>? FindPath(MapId mapId, AreaType fromArea, Cell fromCell, AreaType toArea, Cell toCell, Func<AreaType, bool>? isAreaBlocked = null)
+        public static List<Step>? FindPath(MapId mapId, AreaType fromArea, Cell fromCell, AreaType toArea, Cell toCell, IReadOnlyCollection<AreaType>? blockedAreas = null)
         {
-            var areaSeq = BfsAreaGraph(mapId, fromArea, toArea, isAreaBlocked);
+            var areaSeq = BfsAreaGraph(mapId, fromArea, toArea, blockedAreas);
             if (areaSeq == null) return null;
 
             var path = new List<Step>();
@@ -56,6 +56,10 @@ namespace network.common.data
 
                 var entryCell = forwardConn?.SpawnCell ?? GameMapData.GetAreaSpawnCell(mapId, toA);
                 entryCell = SnapToWalkableInArea(mapId, toA, entryCell);
+                if (!GameMapData.IsMoveablePosition(mapId, entryCell))
+                {
+                    return null;
+                }
                 path.Add(new Step
                 {
                     Cell = entryCell,
@@ -157,8 +161,12 @@ namespace network.common.data
             public AreaConnectionInfo? IncomingConn { get; set; }
         }
 
-        private static List<AreaSeqNode>? BfsAreaGraph(MapId mapId, AreaType fromArea, AreaType toArea, Func<AreaType, bool>? isAreaBlocked)
+        private static List<AreaSeqNode>? BfsAreaGraph(MapId mapId, AreaType fromArea, AreaType toArea, IReadOnlyCollection<AreaType>? blockedAreas)
         {
+            if (blockedAreas != null && blockedAreas.Contains(toArea))
+            {
+                return null;
+            }
             if (fromArea == toArea)
             {
                 return new List<AreaSeqNode> { new() { Area = fromArea, IncomingConn = null } };
@@ -179,7 +187,7 @@ namespace network.common.data
                     {
                         continue;
                     }
-                    if (isAreaBlocked != null && isAreaBlocked(next) && next != toArea)
+                    if (blockedAreas != null && blockedAreas.Contains(next))
                     {
                         continue;
                     }
@@ -445,10 +453,10 @@ namespace network.common.data
                     cell => IsWithinArea(areaRegions, cell) && GameMapData.IsMoveablePosition(mapId, cell));
         }
 
-        public static bool TryPlanRoute(MapId mapId, AreaType fromArea, Vector3f from, AreaType toArea, Vector3f to, Func<AreaType, bool>? isAreaBlocked, out List<Vector3f> route)
+        public static bool TryPlanRoute(MapId mapId, AreaType fromArea, Vector3f from, AreaType toArea, Vector3f to, IReadOnlyCollection<AreaType>? blockedAreas, out List<Vector3f> route)
         {
             route = null!;
-            var steps = FindPath(mapId, fromArea, MapCoordinateConverter.WorldToCell(mapId, from), toArea, MapCoordinateConverter.WorldToCell(mapId, to), isAreaBlocked);
+            var steps = FindPath(mapId, fromArea, MapCoordinateConverter.WorldToCell(mapId, from), toArea, MapCoordinateConverter.WorldToCell(mapId, to), blockedAreas);
             if (steps == null || steps.Count == 0)
             {
                 return false;

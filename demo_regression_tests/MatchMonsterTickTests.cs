@@ -197,7 +197,7 @@ public class MatchMonsterTickTests
         damageEvents.AddRange(firstTick.PlayerDamage);
 
         var monster = manager.GetVisualStates().First(state => state.IsAlive);
-        var onMonster = new Vector3f(monster.PositionX, monster.PositionY, 0f);
+        var onMonster = new Vector3f(monster.ObjectInfo.Position.X, monster.ObjectInfo.Position.Y, 0f);
 
         for (double elapsed = 0.5d; elapsed <= 9d; elapsed += 0.25d)
         {
@@ -272,7 +272,7 @@ public class MatchMonsterTickTests
         manager.Tick([new PlayerPositionSnapshot(1, AreaType.S2Corridor9, AreaCenter(AreaType.S2Corridor9))], true, now);
 
         var monster = manager.GetVisualStates().First(state => state.IsAlive);
-        var onMonster = new Vector3f(monster.PositionX, monster.PositionY, 0f);
+        var onMonster = new Vector3f(monster.ObjectInfo.Position.X, monster.ObjectInfo.Position.Y, 0f);
 
         var damageEvents = new List<MonsterContactDamage>();
         for (double elapsed = 0.5d; elapsed <= 9d; elapsed += 0.25d)
@@ -358,7 +358,7 @@ public class MatchMonsterTickTests
                 .Where(state => state.IsAlive && roomMonsterIds.Contains(state.MonsterId))
                 .Take(4)
                 .Select(state =>
-                    $"{state.MonsterId}@{state.AreaType}({state.PositionX:F1},{state.PositionY:F1}) chase={state.ChaseTargetPlayerId}")));
+                    $"{state.MonsterId}@{state.AreaType}({state.ObjectInfo.Position.X:F1},{state.ObjectInfo.Position.Y:F1}) chase={state.ChaseTargetPlayerId}")));
     }
 
     [Fact]

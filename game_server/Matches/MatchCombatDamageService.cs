@@ -11,7 +11,7 @@ using network.packets;
 namespace game_server.matches;
 
 /// <summary>
-///     플레이어·몬스터 피해와 지연 타격을 처리하고, 피격 로그와 알림을 남긴다.
+///     플레이어·몬스터 피해와 지연 타격을 처리하고, 틱 끝에 보낼 피격 알림을 모은다.
 ///     플레이어의 체력 변경·탈락 처리는 PlayerHealthService에 위임한다.
 /// </summary>
 internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
@@ -71,7 +71,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         return whole;
     }
 
-    public void SendPlayerHitNotification(MatchRuntime runtime, Player? attacker, long targetPlayerId, AreaType area, int weaponItemId, int damage, int targetHealth, bool isPeriodicDamage = false)
+    public void QueuePlayerHitNotification(MatchRuntime runtime, Player? attacker, long targetPlayerId, AreaType area, int weaponItemId, int damage, int targetHealth, bool isPeriodicDamage = false)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -82,7 +82,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
             return;
         }
 
-        using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
+        var hit = new G_TO_C_COMBAT_HIT
         {
             AttackerId = attacker.PlayerId,
             TargetId = targetPlayerId,
@@ -92,11 +92,14 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
             AttackerHealth = attacker.Health,
             TargetHealth = targetHealth,
             IsDot = isPeriodicDamage
-        });
-        attacker.Session?.TrySend(packet);
+        };
+        if (attacker.Session != null)
+        {
+            runtime.PendingCombatHits.Enqueue((attacker.Session, hit));
+        }
     }
 
-    public void SendMonsterHitNotification(MatchRuntime runtime, Player? attacker, int monsterId, AreaType area,
+    public void QueueMonsterHitNotification(MatchRuntime runtime, Player? attacker, int monsterId, AreaType area,
         int weaponItemId, int damage, bool critical = false, bool showDamageOnly = false)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -108,7 +111,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         {
             return;
         }
-        using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
+        var hit = new G_TO_C_COMBAT_HIT
         {
             AttackerId = attacker.PlayerId,
             TargetId = monsterId,
@@ -119,8 +122,11 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
             AttackerHealth = attacker.Health,
             IsCritical = critical,
             ShowDamageOnly = showDamageOnly
-        });
-        attacker.Session?.TrySend(packet);
+        };
+        if (attacker.Session != null)
+        {
+            runtime.PendingCombatHits.Enqueue((attacker.Session, hit));
+        }
     }
 
     public void ApplyProximityAutoCombatHit(MatchRuntime runtime, PlayerHealthService healthService, Player victim, long sourcePlayerId, AreaType area, int weaponItemId, int damage, bool isPeriodicDamage = false, int sourceHealth = -1)
@@ -148,7 +154,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
             return;
         }
 
-        using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
+        var hit = new G_TO_C_COMBAT_HIT
         {
             AttackerId = sourcePlayerId,
             TargetId = victim.PlayerId,
@@ -158,8 +164,8 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
             AttackerHealth = sourcePlayerId == victim.PlayerId ? victim.Health : sourceHealth,
             TargetHealth = victim.Health,
             IsDot = isPeriodicDamage
-        });
-        session.TrySend(packet);
+        };
+        runtime.PendingCombatHits.Enqueue((session, hit));
     }
 
     public void RecordCombatContact(MatchRuntime runtime, Player victim, long attackerId, DateTime nowUtc)
@@ -173,12 +179,6 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         {
             victim.State = PlayerState.IDLE;
             victim.Session?.SendDoorOpenInterrupted(interactId);
-            using var statePacket = PacketMaker.G_TO_C_PLAYER_STATE(victim.PlayerId, victim.State);
-            foreach (var observer in runtime.GetSessions())
-            {
-                if (!observer.Player.IsEliminated && observer.Player.CurrentArea == victim.CurrentArea)
-                    observer.TrySend(statePacket);
-            }
         }
 
         var bot = runtime.Bots.GetBots().FirstOrDefault(bot => ReferenceEquals(bot.Player, victim));
@@ -205,12 +205,6 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         {
             victim.State = PlayerState.IDLE;
             victim.Session?.SendDoorOpenInterrupted(interactId);
-            using var statePacket = PacketMaker.G_TO_C_PLAYER_STATE(victim.PlayerId, victim.State);
-            foreach (var observer in runtime.GetSessions())
-            {
-                if (!observer.Player.IsEliminated && observer.Player.CurrentArea == victim.CurrentArea)
-                    observer.TrySend(statePacket);
-            }
         }
 
         var bot = runtime.Bots.GetBots().FirstOrDefault(bot => ReferenceEquals(bot.Player, victim));
@@ -227,7 +221,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
             return;
         }
 
-        using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
+        var hit = new G_TO_C_COMBAT_HIT
         {
             AttackerId = monsterId,
             AttackerKind = CombatEntityKind.Monster,
@@ -235,8 +229,8 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
             AreaType = victim.CurrentArea,
             Damage = damage,
             TargetHealth = victim.Health
-        });
-        session.TrySend(packet);
+        };
+        runtime.PendingCombatHits.Enqueue((session, hit));
     }
 
     public int RollSwarmCriticalDamage(MatchRuntime runtime, int damage, out bool critical)
@@ -289,7 +283,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
 
         var attacker = runtime.GetParticipant(attackerId);
         RecordMonsterHit(attacker, damage, damageResult.Killed);
-        SendMonsterHitNotification(runtime, attacker, monsterId, area, weaponItemId, damage, critical, showDamageOnly: true);
+        QueueMonsterHitNotification(runtime, attacker, monsterId, area, weaponItemId, damage, critical, showDamageOnly: true);
         if (damageResult.Killed && damageResult.Monster != null)
         {
             SettleSwarmMonsterKill(runtime, damageResult, attackerId, allSessions);
@@ -343,7 +337,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         int ownerHealth = owner?.Health ?? -1;
         ApplyProximityAutoCombatHit(runtime, healthService, victim, ownerId, area, weaponItemId, shock, isPeriodicDamage, ownerHealth);
         int healthAfter = victim.Health;
-        SendPlayerHitNotification(runtime, owner, victimId, area, weaponItemId, shock, healthAfter, isPeriodicDamage);
+        QueuePlayerHitNotification(runtime, owner, victimId, area, weaponItemId, shock, healthAfter, isPeriodicDamage);
     }
 
     public void ProcessPendingMonsterHits(MatchRuntime runtime, DateTime nowUtc, List<GameClientSession> sessions)
@@ -422,7 +416,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         int targetHealth = target.Health;
         if (healthDamage > 0 && sendAttackerFeedback)
         {
-            SendPlayerHitNotification(runtime, attacker, attack.TargetPlayerId, attack.Area, attack.WeaponItemId, healthDamage, targetHealth);
+            QueuePlayerHitNotification(runtime, attacker, attack.TargetPlayerId, attack.Area, attack.WeaponItemId, healthDamage, targetHealth);
         }
 
         if (broadcastVfx)

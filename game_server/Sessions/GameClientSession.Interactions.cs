@@ -117,7 +117,6 @@ public partial class GameClientSession
             if (completed || (error != ErrorCode.SUCCESS && error != ErrorCode.DOOR_OPEN_TOO_EARLY && !Player.PendingDoorInteractionId.HasValue && Player.State == PlayerState.EXPLORE_1))
             {
                 Player.State = PlayerState.IDLE;
-                SendPlayerState();
             }
         }
         return Task.CompletedTask;

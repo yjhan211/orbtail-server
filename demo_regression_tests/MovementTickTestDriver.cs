@@ -2,6 +2,7 @@ using game_server.matches;
 using game_server.matches.monsters;
 using game_server.players.bots;
 using Microsoft.Extensions.Logging.Abstractions;
+using network.common.data.models;
 
 namespace demo_regression_tests;
 
@@ -41,10 +42,11 @@ internal static class MovementTickTestDriver
         : BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance)
     {
         public List<long> RequestedBotIds { get; } = [];
-        public override void SelectMovementTarget(MatchRuntime runtime, Bot bot)
+        public override Cell? SelectMovementTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc)
         {
             RequestedBotIds.Add(bot.PlayerId);
             decide(bot.PlayerId);
+            return null;
         }
     }
 

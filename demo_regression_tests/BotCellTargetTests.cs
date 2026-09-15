@@ -52,17 +52,17 @@ public sealed class BotCellTargetTests
         bot.LastDamagedAtUtc = DateTime.UtcNow;
         var service = new BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance);
 
-        service.SelectMovementTarget(runtime, bot);
+        var selected = service.SelectMovementTarget(runtime, bot, DateTime.UtcNow);
 
-        Assert.NotNull(bot.Movement.DestinationCell);
+        Assert.NotNull(selected);
         if (stronger || wounded)
         {
-            Assert.NotEqual(targetCell, bot.Movement.DestinationCell);
-            Assert.True(bot.Movement.DestinationCell!.GetDistance(targetCell) >= origin.GetDistance(targetCell));
+            Assert.NotEqual(targetCell, selected);
+            Assert.True(selected!.GetDistance(targetCell) >= origin.GetDistance(targetCell));
         }
         else
         {
-            Assert.Equal(targetCell, bot.Movement.DestinationCell);
+            Assert.Equal(targetCell, selected);
         }
     }
 

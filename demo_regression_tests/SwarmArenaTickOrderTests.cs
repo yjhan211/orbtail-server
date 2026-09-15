@@ -164,7 +164,7 @@ public sealed class SwarmArenaTickOrderTests
             "CollectSunCrossfireAnchoredTargets(",
             "autoAttacks.UpdateAttacks(",
             "TryStartSunCrossfire(",
-            "combatDamage.SendMonsterHitNotification(runtime, attacker,",
+            "combatDamage.QueueMonsterHitNotification(runtime, attacker,",
             "BroadcastSwarmAttackVfxToTargetAndObservers(");
     }
 
@@ -198,8 +198,8 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             applyProximityHit,
             "healthService.ApplyDamage(runtime, victim, damage, sourcePlayerId);",
-            "PacketMaker.G_TO_C_COMBAT_HIT(",
-            "session.TrySend(packet);");
+            "var hit = new G_TO_C_COMBAT_HIT",
+            "runtime.PendingCombatHits.Enqueue((session, hit));");
 
         string orbPublicationSteps = ReadMethodSlice(
             ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Orb.cs"),
@@ -328,7 +328,7 @@ public sealed class SwarmArenaTickOrderTests
     }
 
     [Fact]
-    public void SunCrossfireShapes_AreMatchOwnedAndDodgeLookupDoesNotCreateRuntime()
+    public void SunCrossfireShapes_AreMatchOwned()
     {
         string root = FindRepositoryRoot();
         string crossfire = ReadNormalizedSource(root, "game_server", "Matches", "MatchOrbAttackService.cs");
@@ -346,9 +346,6 @@ public sealed class SwarmArenaTickOrderTests
         Assert.Contains("public List<SwarmCrossfireShape> SunCrossfireShapes { get; } = new();", botDodge);
 
         Assert.Contains("new MatchBots(logger)", botDodge);
-        string botMovement = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotBehaviorService.cs");
-        Assert.Contains("BotDodgeCalculator.CalculateDodge(runtime.SunCrossfireShapes,", botMovement);
-        Assert.Contains("bot.PlayerId, bot.Player.Position!, bot.Player.CurrentArea, now)", botMovement);
         Assert.DoesNotContain("matchRuntimes.GetOrThrow(matchingId).Swarm", botDodge);
         Assert.False(File.Exists(Path.Combine(root, "game_server", "GameServer.SwarmBotDodge.cs")));
     }

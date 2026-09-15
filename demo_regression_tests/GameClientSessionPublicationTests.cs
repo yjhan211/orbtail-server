@@ -159,8 +159,8 @@ public sealed class GameClientSessionPublicationTests
         var combat = TestGameSessionServices.CreateCombatDamageService();
         using (session.Match.Enter())
         {
-            combat.SendPlayerHitNotification(session.Match, player, 999, (AreaType)50, 123, 7, 61);
-            combat.SendMonsterHitNotification(session.Match, player, 42, (AreaType)50, 123, 9);
+            combat.QueuePlayerHitNotification(session.Match, player, 999, (AreaType)50, 123, 7, 61);
+            combat.QueueMonsterHitNotification(session.Match, player, 42, (AreaType)50, 123, 9);
         }
         Assert.Equal(37, player.Health);
         Assert.False(player.IsEliminated);
@@ -266,6 +266,10 @@ public sealed class GameClientSessionPublicationTests
             var combat = TestGameSessionServices.CreateCombatDamageService();
             combat.ApplyProximityAutoCombatHit(session.Match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), session.Player, 101, (AreaType)50, 123, 5, isPeriodicDamage: true, sourceHealth: 73);
         }
+        using (session.Match.Enter())
+        {
+            new MatchSynchronizationService().SendUpdates(session.Match, new Dictionary<GameClientSession, G_TO_C_MOVE>(), new Dictionary<GameClientSession, List<MonsterInfo>>(), new Dictionary<GameClientSession, List<(Protocol Protocol, byte[] Body)>>(), []);
+        }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(101, hit.AttackerId);
         Assert.Equal(102, hit.TargetId);
@@ -298,6 +302,10 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(101, bot.LastProximityAttackerPlayerId);
         Assert.True(bot.LastDamagedAtUtc > DateTime.MinValue);
         Assert.NotEqual(DateTime.MinValue, bot.LastDamagedAtUtc);
+        using (match.Enter())
+        {
+            new MatchSynchronizationService().SendUpdates(match, new Dictionary<GameClientSession, G_TO_C_MOVE>(), new Dictionary<GameClientSession, List<MonsterInfo>>(), new Dictionary<GameClientSession, List<(Protocol Protocol, byte[] Body)>>(), []);
+        }
         Assert.Single(fixture.ConnectionFor(session).AttemptedProtocols, protocol => protocol == Protocol.G_TO_C_COMBAT_HIT);
     }
 
@@ -324,6 +332,10 @@ public sealed class GameClientSessionPublicationTests
         Assert.False(bot.Player.CanSleep(DateTime.UtcNow));
         Assert.True(bot.LastDamagedAtUtc > DateTime.MinValue);
         Assert.Equal(0, bot.LastProximityAttackerPlayerId);
+        using (session.Match.Enter())
+        {
+            new MatchSynchronizationService().SendUpdates(session.Match, new Dictionary<GameClientSession, G_TO_C_MOVE>(), new Dictionary<GameClientSession, List<MonsterInfo>>(), new Dictionary<GameClientSession, List<(Protocol Protocol, byte[] Body)>>(), []);
+        }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(CombatEntityKind.Monster, hit.AttackerKind);
         Assert.Equal(42, hit.AttackerId);
@@ -347,7 +359,11 @@ public sealed class GameClientSessionPublicationTests
         var combat = TestGameSessionServices.CreateCombatDamageService();
         using (session.Match.Enter())
         {
-            combat.SendMonsterHitNotification(session.Match, session.Player, 42, (AreaType)50, 123, 9, critical: true, showDamageOnly: true);
+            combat.QueueMonsterHitNotification(session.Match, session.Player, 42, (AreaType)50, 123, 9, critical: true, showDamageOnly: true);
+        }
+        using (session.Match.Enter())
+        {
+            new MatchSynchronizationService().SendUpdates(session.Match, new Dictionary<GameClientSession, G_TO_C_MOVE>(), new Dictionary<GameClientSession, List<MonsterInfo>>(), new Dictionary<GameClientSession, List<(Protocol Protocol, byte[] Body)>>(), []);
         }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(CombatEntityKind.Monster, hit.TargetKind);
@@ -368,6 +384,10 @@ public sealed class GameClientSessionPublicationTests
             var combat = TestGameSessionServices.CreateCombatDamageService();
             combat.ApplySwarmAfterimageMonsterHit(session.Match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), session.Player, 42, 1);
         }
+        using (session.Match.Enter())
+        {
+            new MatchSynchronizationService().SendUpdates(session.Match, new Dictionary<GameClientSession, G_TO_C_MOVE>(), new Dictionary<GameClientSession, List<MonsterInfo>>(), new Dictionary<GameClientSession, List<(Protocol Protocol, byte[] Body)>>(), []);
+        }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(CombatEntityKind.Monster, hit.AttackerKind);
         Assert.Equal(42, hit.AttackerId);
@@ -385,7 +405,11 @@ public sealed class GameClientSessionPublicationTests
         session.Player.Health = 37;
         using (session.Match.Enter())
         {
-            combat.SendPlayerHitNotification(session.Match, session.Player, 999, (AreaType)50, 123, 7, targetHealth: 61);
+            combat.QueuePlayerHitNotification(session.Match, session.Player, 999, (AreaType)50, 123, 7, targetHealth: 61);
+        }
+        using (session.Match.Enter())
+        {
+            new MatchSynchronizationService().SendUpdates(session.Match, new Dictionary<GameClientSession, G_TO_C_MOVE>(), new Dictionary<GameClientSession, List<MonsterInfo>>(), new Dictionary<GameClientSession, List<(Protocol Protocol, byte[] Body)>>(), []);
         }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(999, hit.TargetId);
@@ -476,7 +500,7 @@ public sealed class GameClientSessionPublicationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void PlayerStateFiltersOwnMatchAreaAndEliminatedPlayers(bool includeSelf)
+    public void PlayerStateFiltersOwnMatchAreaAndEliminatedPlayers(bool sleeping)
     {
         using var fixture = new SessionFixture();
         var self = fixture.CreateSession(70001, 101, (AreaType)50);
@@ -488,13 +512,16 @@ public sealed class GameClientSessionPublicationTests
 
         Assert.Equal(4, self.Match.GetSessions().Count);
         using (self.Match.Enter())
-            self.SendPlayerState(includeSelf);
+        {
+            self.Match.StartGameplay(DateTime.UtcNow);
+            new MatchSynchronizationService().TrackNewObjects(self.Match);
+            self.Player.State = sleeping ? PlayerState.SLEEP : PlayerState.EXPLORE_1;
+            Assert.Empty(fixture.ConnectionFor(peer).AttemptedProtocols);
+            new MatchSynchronizationService().ProcessTick(self.Match, DateTime.UtcNow);
+        }
 
-        Assert.Equal(Protocol.G_TO_C_PLAYER_STATE, Assert.Single(fixture.ConnectionFor(peer).AttemptedProtocols));
-        if (includeSelf)
-            Assert.Equal(Protocol.G_TO_C_PLAYER_STATE, Assert.Single(fixture.ConnectionFor(self).AttemptedProtocols));
-        else
-            Assert.Empty(fixture.ConnectionFor(self).AttemptedProtocols);
+        Assert.Equal(new[] { Protocol.G_TO_C_PLAYER_STATE, Protocol.G_TO_C_MOVE }, fixture.ConnectionFor(peer).AttemptedProtocols);
+        Assert.Equal(Protocol.G_TO_C_PLAYER_STATE, Assert.Single(fixture.ConnectionFor(self).AttemptedProtocols));
         Assert.Empty(fixture.ConnectionFor(eliminated).AttemptedProtocols);
         Assert.Empty(fixture.ConnectionFor(otherArea).AttemptedProtocols);
         Assert.Empty(fixture.ConnectionFor(otherMatch).AttemptedProtocols);
@@ -667,8 +694,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(
             [
                 Protocol.G_TO_C_DOOR_STATE_UPDATE,
-                Protocol.G_TO_C_DOOR_OPEN_ACK,
-                Protocol.G_TO_C_PLAYER_STATE
+                Protocol.G_TO_C_DOOR_OPEN_ACK
             ],
             fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.True((fixture.Store.GetOrNull(70001)?.Doors.IsDoorOpen(201) == true));
