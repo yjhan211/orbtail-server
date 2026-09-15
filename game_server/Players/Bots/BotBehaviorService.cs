@@ -5,12 +5,11 @@ using network.common;
 using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
-using network.packets;
 
 namespace game_server.players.bots;
 
 /// <summary>
-///     봇의 대피·반격·사냥·아이템 회수 방향을 결정하고, 문 열기·수면·오브 성장을 공통 Player 규칙으로 실행한다.
+///     봇의 대피·아이템 회수·배회 방향을 결정하고, 문 열기·수면·오브 성장을 공통 Player 규칙으로 실행한다.
 ///     기억과 재사용 대기 시간은 매치가 소유하며 호출자는 매치 잠금을 보유한다.
 ///     이동 목표만 선택하며 경로 계획과 위치 갱신은 MatchMoveService가 담당한다.
 ///     MatchMoveService가 이동 명령을 실행하고 결과를 전송한다.
@@ -212,16 +211,6 @@ internal class BotBehaviorService(
         }
         // 소환석 획득
         if (TrySelectSummonStoneTarget(runtime, bot, out target))
-        {
-            return target;
-        }
-        // 최근 공격자에게 반격
-        if (TrySelectRetaliationTarget(runtime, bot, nowUtc, out target))
-        {
-            return target;
-        }
-        // 몬스터 사냥 이동
-        if (TrySelectMonsterHuntTarget(runtime, bot, nowUtc, out target))
         {
             return target;
         }
@@ -455,34 +444,6 @@ internal class BotBehaviorService(
         return null;
     }
 
-    private bool TrySelectRetaliationTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc, out Cell? target)
-    {
-        target = null;
-        if (bot.Wounded || (nowUtc - bot.LastDamagedAtUtc).TotalSeconds > Config.SWARM_BOT_DAMAGED_FLEE_SECONDS)
-        {
-            return false;
-        }
-        var attacker = runtime.GetParticipant(bot.LastProximityAttackerPlayerId);
-        if (attacker == null || attacker.Cell == null || attacker.IsEliminated || attacker.PlayerId == bot.PlayerId)
-        {
-            return false;
-        }
-        if (attacker.Orbs.GetOrbPower() >= bot.Player.Orbs.GetOrbPower() * Config.SWARM_BOT_FLEE_POWER_RATIO)
-        {
-            return false;
-        }
-        if (bot.Player.Cell!.GetDistance(attacker.Cell) <= 3)
-        {
-            return false;
-        }
-        var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, attacker.Cell);
-        if (area == AreaType.None || !GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, attacker.Cell))
-        {
-            return false;
-        }
-        target = attacker.Cell.Clone();
-        return true;
-    }
 
     private bool TrySelectSummonStoneTarget(MatchRuntime runtime, Bot bot, out Cell? target)
     {
@@ -576,51 +537,6 @@ internal class BotBehaviorService(
         return currentCell.Clone();
     }
 
-    private bool TrySelectMonsterHuntTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc, out Cell? target)
-    {
-        target = null;
-        if (!bot.Player.Orbs.HasAnyOrb())
-        {
-            return false;
-        }
-        int distanceCells = Config.SWARM_BOT_MONSTER_HUNT_STOP_DISTANCE_CELLS;
-        foreach (var monster in runtime.Monsters.GetCombatTargets())
-        {
-            if (monster.Area != bot.Player.CurrentArea)
-            {
-                continue;
-            }
-            if (bot.Player.Cell!.GetDistance(monster.Info.ObjectInfo.Cell) > distanceCells)
-            {
-                continue;
-            }
-            target = bot.Player.Cell!.Clone();
-            return true;
-        }
-        Cell? cell = null;
-        int nearestDistance = int.MaxValue;
-        foreach (var monster in runtime.Monsters.Entities.Values)
-        {
-            if (!monster.Alive || runtime.Closures.IsAreaUnsafe(monster.Area, nowUtc))
-            {
-                continue;
-            }
-            var candidate = monster.Info.ObjectInfo.Cell;
-            int distance = bot.Player.Cell!.GetDistance(candidate);
-            if (distance >= nearestDistance)
-            {
-                continue;
-            }
-            nearestDistance = distance;
-            cell = candidate;
-        }
-        if (cell == null)
-        {
-            return false;
-        }
-        target = cell.Clone();
-        return true;
-    }
 
     public bool CanCutTrail(Bot bot, int healthBefore, DateTime nowUtc, int cutCost)
     {

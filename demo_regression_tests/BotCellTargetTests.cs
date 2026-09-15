@@ -11,11 +11,39 @@ namespace demo_regression_tests;
 
 public sealed class BotCellTargetTests
 {
+    [Fact]
+    public void ArmedBotWandersInsteadOfChasingMonsterInAnotherArea()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(981241);
+        using var scope = runtime.Enter();
+        var area = AreaType.S2Corridor9;
+        var origin = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area);
+        runtime.Bots.RegisterBots(runtime.MatchingId, [-1], new Dictionary<long, Cell> { [-1] = origin });
+        var bot = runtime.Bots.GetBot(-1)!;
+        runtime.RegisterParticipant(bot.Player);
+        bot.Player.Orbs.AddItem(107000020);
+        var monsterArea = AreaType.S2Library1;
+        var monsterCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, monsterArea);
+        runtime.Monsters.Entities[1] = new Monster
+        {
+            MonsterId = 1, Alive = true, Health = 100, Area = monsterArea,
+            Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, monsterCell)
+        };
+        var service = new BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance);
+
+        var selected = service.SelectMovementTarget(runtime, bot, DateTime.UtcNow);
+
+        Assert.NotNull(selected);
+        Assert.NotEqual(monsterCell, selected);
+        Assert.Equal(area, GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, selected!));
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]
-    public void RecentAttackerUsesCellAndEscapeTakesPriorityOverRetaliation(bool stronger, bool wounded)
+    public void RecentAttackerTriggersEscapeWhenDangerousOtherwiseWander(bool stronger, bool wounded)
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(981240);
@@ -62,7 +90,8 @@ public sealed class BotCellTargetTests
         }
         else
         {
-            Assert.Equal(targetCell, selected);
+            Assert.True(bot.ExplorationTarget.HasValue);
+            Assert.Equal(bot.ExplorationTarget.Value.Cell, selected);
         }
     }
 
