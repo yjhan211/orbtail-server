@@ -7,6 +7,29 @@ using network.common.data.helpers;
 
 namespace network.common.data.models
 {
+    /// <summary>가시 범위에 새로 들어온 객체의 초기 상태.</summary>
+    [MessagePackObject]
+    public class G_TO_C_OBJECT_ENTER : IMessagePackObject
+    {
+        [Key("players")] public List<GamePlayerInfo> Players { get; set; } = new List<GamePlayerInfo>();
+        [Key("monsters")] public List<MonsterInfo> Monsters { get; set; } = new List<MonsterInfo>();
+        [Key("items")] public List<GroundItemInfo> Items { get; set; } = new List<GroundItemInfo>();
+    }
+
+    [MessagePackObject]
+    public class ObjectIdentity
+    {
+        [Key("type")] public ObjectType Type { get; set; }
+        [Key("id")] public long Id { get; set; }
+    }
+
+    /// <summary>가시 범위에서 벗어나거나 제거된 객체.</summary>
+    [MessagePackObject]
+    public class G_TO_C_OBJECT_LEAVE : IMessagePackObject
+    {
+        [Key("objects")] public List<ObjectIdentity> Objects { get; set; } = new List<ObjectIdentity>();
+    }
+
     public enum CombatEntityKind { Player = 0, Monster = 1 }
     public enum HealthRecoveryKind { Orb = 0, Sleep = 1 }
     public enum CombatStatusEffectKind { WaveOrbSlow = 0, SunBurn = 1, WindOrbWound = 2 }
@@ -92,7 +115,6 @@ namespace network.common.data.models
     [MessagePackObject]
     public class G_TO_C_AREA_PLAYER_ENTER : IMessagePackObject
     {
-        [Key("player")] public PlayerInfo Player { get; set; }
         [Key("gamePlayer")] public GamePlayerInfo GamePlayer { get; set; }
     }
 
@@ -234,17 +256,17 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class G_TO_C_INTERACTABLE_LIST : IMessagePackObject
+    public class G_TO_C_INTERACTABLE_INFO : IMessagePackObject
     {
         [Key("areaType")] public AreaType AreaType { get; set; }
-        [Key("objects")] public List<InteractableObjectState> Objects { get; set; }
+        [Key("objects")] public List<InteractableInfo> Objects { get; set; }
     }
 
     /// <summary>등장할 플레이어들의 현재 공간 정보와 행동 상태. 이름·외형은 매칭 로스터를 사용한다.</summary>
     [MessagePackObject]
-    public class G_TO_C_OBJECT_INFO : IMessagePackObject
+    public class G_TO_C_PLAYER_INFO : IMessagePackObject
     {
-        [Key("players")] public List<PlayerPresenceInfo> Players { get; set; }
+        [Key("players")] public List<GamePlayerInfo> Players { get; set; }
     }
 
     [MessagePackObject]

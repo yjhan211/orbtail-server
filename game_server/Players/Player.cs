@@ -45,7 +45,18 @@ public class Player
     }
 
     public long PlayerId => Profile.PlayerId;
-    public required PlayerInfo Profile { get; init; }
+    private PlayerInfo _profile = null!;
+    public required PlayerInfo Profile
+    {
+        get => _profile;
+        init
+        {
+            _profile = value;
+            // 매치 외형은 프로필과 독립적으로 보관한다.
+            GameInfo.Name = value.Name;
+            GameInfo.WearItemIdList = new List<int>(value.WearItemIdList);
+        }
+    }
     public GamePlayerInfo GameInfo { get; } = new();
     public bool IsEliminated => Status is PlayerMatchStatus.ELIMINATED or PlayerMatchStatus.SPECTATING;
     public PlayerMatchStatus Status { get => GameInfo.Status; set => GameInfo.Status = value; }
@@ -213,18 +224,15 @@ public class Player
         return GameInfo.ObjectInfo;
     }
 
-    /// <summary>등장 전송 단위. 프로필과 공간·체력·행동·참가 상태를 독립 복사한다.</summary>
-    public PlayerPresenceInfo CreatePlayerObjectInfo() => new()
+    /// <summary>등장에 필요한 매치 정보만 독립 복사한다. 로비 프로필은 전송하지 않는다.</summary>
+    public GamePlayerInfo CreatePlayerObjectInfo() => new()
     {
-        Player = new PlayerInfo
-        {
-            PlayerId = PlayerId, Name = Profile.Name,
-            WearItemIdList = new List<int>(Profile.WearItemIdList), Gold = Profile.Gold, IsNew = Profile.IsNew
-        },
-        GamePlayer = new GamePlayerInfo
-        {
-            ObjectInfo = CreateGameObjectInfo(), State = State, Health = Health, Status = Status
-        }
+        ObjectInfo = CreateGameObjectInfo(),
+        Name = GameInfo.Name,
+        WearItemIdList = new List<int>(GameInfo.WearItemIdList),
+        State = State,
+        Health = Health,
+        Status = Status
     };
     /// <summary>
     ///     전송용 공간 복사본. 식별자는 프로필과 매치에서 채우고, 셀이 아직 없으면 위치로 계산한다.

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using game_server.matches;
 using game_server.players;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -47,7 +48,7 @@ public partial class GameClientSession
                 long timestamp = Stopwatch.GetTimestamp();
                 float deltaTime = Player.CalculateMoveDeltaTime(timestamp);
 
-                match.SynchronizedObjects.TryAdd((ObjectType.PLAYER, Player.PlayerId), Player.GameInfo.ObjectInfo.Clone());
+                match.SynchronizedObjects.TryAdd((ObjectType.PLAYER, Player.PlayerId), new MatchObjectSnapshot(Player.GameInfo.ObjectInfo));
                 var result = _movement.ProcessMovement(match, Player, msg, deltaTime);
                 if (result.BlockedCell is { } blockedCell)
                 {
@@ -64,6 +65,7 @@ public partial class GameClientSession
 
                 using var packet = PacketMaker.G_TO_C_MOVE(Player.GameInfo.ObjectInfo, serverTimestamp, Player.OrbOrbitPhaseDegrees);
 
+                // 본인 보정·주기 응답은 틱 동기화를 기다리지 않고 요청 처리에서 직접 보낸다.
                 if (requiresClientCorrection || Player.ShouldSendMoveResponse(timestamp))
                 {
                     TrySend(packet);
@@ -81,7 +83,7 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
-    internal void SendGroundItemSnapshot(AreaType area)
+    internal void SendGroundItemEntries(AreaType area)
     {
         if (MatchingId <= 0 || area == AreaType.None)
         {
@@ -95,44 +97,77 @@ public partial class GameClientSession
         }
 
         var items = match.GroundItems.GetItemsInArea(area);
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, items);
-        TrySend(packet);
+        SendObjectEntries(new G_TO_C_OBJECT_ENTER { Items = items });
+    }
+
+    // 성공적으로 등장시킨 객체만 기억한다. 상태/이동 패킷은 생성을 대신하지 않는다.
+    internal HashSet<(ObjectType Type, long Id)> PublishedObjects { get; } = new();
+
+    internal void SendObjectEntries(G_TO_C_OBJECT_ENTER entries)
+    {
+        if (entries.Players.Count == 0 && entries.Monsters.Count == 0 && entries.Items.Count == 0) return;
+        using var packet = Packet.Create((int)Protocol.G_TO_C_OBJECT_ENTER);
+        packet.SetBody(MessagePackSerializer.Serialize(entries));
+        if (!TrySend(packet)) return;
+        foreach (var player in entries.Players)
+            PublishedObjects.Add((ObjectType.PLAYER, player.ObjectInfo.ObjectId));
+        foreach (var item in entries.Items)
+            PublishedObjects.Add((ObjectType.ITEM, item.GroundItemUid));
+        foreach (var monster in entries.Monsters)
+        {
+            PublishedObjects.Add((ObjectType.MONSTER, monster.MonsterId));
+            _publishedMonsterStates[monster.MonsterId] = monster;
+        }
+    }
+
+    internal void SendObjectLeaves(List<ObjectIdentity> objects)
+    {
+        if (objects.Count == 0) return;
+        using var packet = Packet.Create((int)Protocol.G_TO_C_OBJECT_LEAVE);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_OBJECT_LEAVE { Objects = objects }));
+        if (!TrySend(packet)) return;
+        foreach (var identity in objects)
+        {
+            PublishedObjects.Remove((identity.Type, identity.Id));
+            if (identity.Type == ObjectType.MONSTER)
+                _publishedMonsterStates.Remove((int)identity.Id);
+        }
     }
 
     private readonly Dictionary<int, MonsterInfo> _publishedMonsterStates = new();
 
     internal void SendMonsterSnapshot(IReadOnlyDictionary<AreaType, List<MonsterInfo>> snapshotsByArea, bool fullSnapshot = true)
     {
-        if (fullSnapshot)
-        {
-            var visibleIds = new HashSet<int>();
-            foreach (var pair in snapshotsByArea)
-            {
-                if (pair.Key != Player.CurrentArea) continue;
-                foreach (var monster in pair.Value) visibleIds.Add(monster.MonsterId);
-            }
-            foreach (int id in _publishedMonsterStates.Keys.ToArray())
-            {
-                if (!visibleIds.Contains(id)) _publishedMonsterStates.Remove(id);
-            }
-        }
+        var entries = new G_TO_C_OBJECT_ENTER();
+        var changed = new List<MonsterInfo>();
+        var visibleIds = new HashSet<long>();
         foreach (var (area, monsters) in snapshotsByArea)
         {
-            if (Player.CurrentArea != area)
-            {
-                continue;
-            }
-
-            var changed = new List<MonsterInfo>();
+            if (Player.CurrentArea != area) continue;
             foreach (var monster in monsters)
             {
-                if (!HasMonsterStateChanged(monster))
+                visibleIds.Add(monster.MonsterId);
+                if (!PublishedObjects.Contains((ObjectType.MONSTER, monster.MonsterId)))
                 {
-                    continue;
+                    if (monster.IsAlive) entries.Monsters.Add(monster);
                 }
-                changed.Add(monster);
+                else if (HasMonsterStateChanged(monster))
+                {
+                    changed.Add(monster);
+                }
             }
-            SendChangedMonsterStates(changed);
+        }
+        SendObjectEntries(entries);
+        SendChangedMonsterStates(changed);
+        if (fullSnapshot)
+        {
+            var leaves = new List<ObjectIdentity>();
+            foreach (var identity in PublishedObjects)
+            {
+                if (identity.Type == ObjectType.MONSTER && !visibleIds.Contains(identity.Id))
+                    leaves.Add(new ObjectIdentity { Type = identity.Type, Id = identity.Id });
+            }
+            SendObjectLeaves(leaves);
         }
     }
 
@@ -140,7 +175,6 @@ public partial class GameClientSession
     {
         if (monster.AreaType != Player.CurrentArea)
         {
-            _publishedMonsterStates.Remove(monster.MonsterId);
             return false;
         }
         if (!_publishedMonsterStates.TryGetValue(monster.MonsterId, out var previous))
@@ -158,22 +192,17 @@ public partial class GameClientSession
     internal void SendChangedMonsterStates(List<MonsterInfo> changed)
     {
         if (changed.Count == 0) return;
-        using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_SNAPSHOT);
-        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_SNAPSHOT
+        using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_INFO);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_INFO
         {
             Monsters = changed
         }));
         if (!TrySend(packet)) return;
         foreach (var monster in changed)
         {
-            if (monster.IsAlive) _publishedMonsterStates[monster.MonsterId] = monster;
-            else _publishedMonsterStates.Remove(monster.MonsterId);
+            _publishedMonsterStates[monster.MonsterId] = monster;
         }
     }
 
-    internal void SendAreaSnapshot()
-    {
-        SendInteractableList();
-        SendGroundItemSnapshot(Player.CurrentArea);
-    }
+
 }

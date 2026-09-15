@@ -42,7 +42,7 @@ public sealed class GameClientSessionConnectPublicationTests
         {
             using var wire = Packet.Create(packet.ToBytes());
             var protocol = (Protocol)wire.PopProtocolId();
-            if (protocol is Protocol.G_TO_C_MATCH_ROSTER or Protocol.G_TO_C_ORB_LIST or Protocol.G_TO_C_OBJECT_INFO or Protocol.G_TO_C_ORB_UPGRADE_INFO)
+            if (protocol is Protocol.G_TO_C_MATCH_ROSTER or Protocol.G_TO_C_ORB_LIST or Protocol.G_TO_C_PLAYER_INFO or Protocol.G_TO_C_ORB_UPGRADE_INFO)
                 initialPackets.Add((protocol, Monitor.IsEntered(runtime.MatchLock)));
             if (protocol == Protocol.G_TO_C_ORB_LIST)
             {
@@ -534,7 +534,10 @@ public sealed class GameClientSessionConnectPublicationTests
     {
         string scripts = Path.Combine(FindRepositoryRoot(), "client", "Assets", "Scripts");
         string packets = File.ReadAllText(Path.Combine(scripts, "Managers", "Map", "MapManager.Packets.cs"));
-        Assert.Contains("resetExistingPosition && playerId != GameUser.Instance.PlayerInfo.PlayerId", packets);
+        Assert.Contains("playerId != GameUser.Instance.PlayerInfo.PlayerId &&", packets);
+        Assert.Contains("resetExistingPosition || existingPlayer.ObjectInfo.Area != objectInfo.Area", packets);
+        Assert.Contains("ApplyPlayerState(playerId, gameInfo.State)", packets);
+        Assert.Contains("ShouldDeferLocalExploreState(playerId)", packets);
         Assert.Contains("existingPlayer.SetGameObject(gameInfo, this)", packets);
         string map = File.ReadAllText(Path.Combine(scripts, "Managers", "Map", "MapManager.cs"));
         Assert.Contains("SetPlayer(GameUser.Instance.PlayerInfo)", map);

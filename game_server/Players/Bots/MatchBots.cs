@@ -53,6 +53,7 @@ public class MatchBots
                 Player =
                 {
                     Profile = { Name = $"Player{Math.Abs(botPlayerId)}", WearItemIdList = BuildBotWearItems(botPlayerId) },
+                    GameInfo = { Name = $"Player{Math.Abs(botPlayerId)}", WearItemIdList = BuildBotWearItems(botPlayerId) },
                     CurrentArea = startArea,
                     Cell = startCell,
                     Position = startPosition,
@@ -83,7 +84,7 @@ public class MatchBots
     }
 
     public PlayerInfo? GetPlayerProfile(long botPlayerId) => GetBot(botPlayerId)?.Player.Profile;
-    public PlayerPresenceInfo? GetPlayerObjectInfo(long botPlayerId) => GetBot(botPlayerId)?.Player.CreatePlayerObjectInfo();
+    public GamePlayerInfo? GetPlayerObjectInfo(long botPlayerId) => GetBot(botPlayerId)?.Player.CreatePlayerObjectInfo();
 
     internal static Vector3f CellToWorldPosition(MapId mapId, Cell cell) => MapCoordinateConverter.CellToWorld(mapId, cell);
 

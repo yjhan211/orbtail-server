@@ -106,37 +106,22 @@ internal sealed class PlayerInteractionService
         return true;
     }
 
-    public List<InteractableObjectState> GetAvailableInteractions(MatchRuntime runtime, Player player)
+    public List<InteractableInfo> GetInteractionInfos(MatchRuntime runtime)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Available interactions require the match lock.");
         }
 
-        var available = new List<InteractableObjectState>();
+        var available = new List<InteractableInfo>();
         foreach (var definition in GameInteractableData.GetAll())
         {
-            if (definition.ZoneId != (int)player.CurrentArea)
-            {
-                continue;
-            }
-
             if (definition.DoorId <= 0)
             {
                 continue;
             }
 
-            if (runtime.Doors.IsDoorOpen(definition.DoorId))
-            {
-                continue;
-            }
-
-            var interaction = new InteractableObjectState { InteractId = definition.Id };
-            foreach (var action in definition.Actions)
-            {
-                interaction.Actions.Add(new InteractableActionState { Order = action.ActionId });
-            }
-            available.Add(interaction);
+            available.Add(new InteractableInfo { InteractId = definition.Id, IsCompleted = runtime.Doors.IsDoorOpen(definition.DoorId) });
         }
         return available;
     }

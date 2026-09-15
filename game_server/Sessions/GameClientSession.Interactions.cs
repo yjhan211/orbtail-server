@@ -1,7 +1,4 @@
-using game_server.matches;
-using game_server.players;
 using MessagePack;
-using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -42,9 +39,14 @@ public partial class GameClientSession
             var error = ErrorCode.INVALID_GAME_STATE;
             if (!match.IsEnded && !IsGameplayActionBlocked(out _) && GameInteractableData.Get(msg.InteractId) is { DoorId: > 0 } info)
             {
-                error = info.ZoneId != (int)Player.CurrentArea
-                    ? ErrorCode.AREA_MISMATCH
-                    : _interactions.StartDoor(match, Player, msg.InteractId, info.DoorId, Environment.TickCount64);
+                if (info.ZoneId != (int)Player.CurrentArea)
+                {
+                    error = ErrorCode.AREA_MISMATCH;
+                }
+                else
+                {
+                    error = _interactions.StartDoor(match, Player, msg.InteractId, info.DoorId, Environment.TickCount64);
+                }
             }
 
             using var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_OPEN_ACK, PlayerId.Value);
@@ -85,9 +87,14 @@ public partial class GameClientSession
             if (!match.IsEnded && !IsGameplayActionBlocked(out _) && GameInteractableData.Get(msg.InteractId) is { DoorId: > 0 } info)
             {
                 doorId = info.DoorId;
-                error = info.ZoneId != (int)Player.CurrentArea
-                    ? ErrorCode.AREA_MISMATCH
-                    : _interactions.CheckDoorGauge(match, Player, msg.InteractId, doorId);
+                if (info.ZoneId != (int)Player.CurrentArea)
+                {
+                    error = ErrorCode.AREA_MISMATCH;
+                }
+                else
+                {
+                    error = _interactions.CheckDoorGauge(match, Player, msg.InteractId, doorId);
+                }
             }
 
             bool completed = false;
@@ -98,11 +105,7 @@ public partial class GameClientSession
             else if (_interactions.TryFinishDoor(match, Player, msg.InteractId, doorId, Environment.TickCount64, out error))
             {
                 completed = true;
-                using var updatePacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, PlayerId.Value);
-                foreach (var session in match.GetSessions())
-                {
-                    session.TrySend(updatePacket);
-                }
+
             }
 
             using var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_OPEN_ACK, PlayerId.Value);
@@ -114,10 +117,26 @@ public partial class GameClientSession
             }));
             TrySend(packet);
 
-            if (completed || (error != ErrorCode.SUCCESS && error != ErrorCode.DOOR_OPEN_TOO_EARLY && !Player.PendingDoorInteractionId.HasValue && Player.State == PlayerState.EXPLORE_1))
+            if (!completed)
             {
-                Player.State = PlayerState.IDLE;
+                if (error == ErrorCode.SUCCESS)
+                {
+                    return Task.CompletedTask;
+                }
+                if (error == ErrorCode.DOOR_OPEN_TOO_EARLY)
+                {
+                    return Task.CompletedTask;
+                }
+                if (Player.PendingDoorInteractionId.HasValue)
+                {
+                    return Task.CompletedTask;
+                }
+                if (Player.State != PlayerState.EXPLORE_1)
+                {
+                    return Task.CompletedTask;
+                }
             }
+            Player.State = PlayerState.IDLE;
         }
         return Task.CompletedTask;
     }
@@ -137,33 +156,6 @@ public partial class GameClientSession
         TrySend(packet);
     }
 
-    private void SendDoorStateList()
-    {
-        if (!PlayerId.HasValue)
-        {
-            return;
-        }
-
-        var match = Volatile.Read(ref _match);
-        if (match == null)
-        {
-            return;
-        }
-
-        using (match.Enter())
-        {
-            if (match.IsEnded)
-            {
-                return;
-            }
-
-            var openDoors = match.Doors.GetOpenDoors();
-            using var packet = PacketMaker.G_TO_C_DOOR_STATE_LIST(openDoors);
-            TrySend(packet);
-            Logger.LogDebug("Sent DOOR_STATE_LIST to Player {PlayerId}: {Count} open doors", PlayerId, openDoors.Count);
-        }
-    }
-
     private void SendInteractionCanceled(int[] canceledIds, string reason)
     {
         foreach (int interactId in canceledIds)
@@ -178,26 +170,42 @@ public partial class GameClientSession
         }
     }
 
-    private void SendInteractableList()
+    internal AreaType PublishedInteractionArea { get; set; } = AreaType.None;
+    internal HashSet<int> PublishedOpenDoors { get; } = new();
+
+    internal List<InteractableInfo> GetInteractableInfos()
     {
-        if (Player.CurrentArea == AreaType.None)
+        return _interactions.GetInteractionInfos(Match);
+    }
+
+    internal void SendInteractableInfos(List<InteractableInfo> infos)
+    {
+        var area = Player.CurrentArea;
+        using var packet = PacketMaker.G_TO_C_INTERACTABLE_INFO(area, infos);
+        if (!TrySend(packet))
         {
+            PublishedInteractionArea = AreaType.None;
             return;
         }
-
-        var match = Match;
-        using (match.Enter())
+        PublishedInteractionArea = area;
+        PublishedOpenDoors.Clear();
+        foreach (var info in infos)
         {
-            if (match.IsEnded) return;
-
-            var interactions = _interactions.GetAvailableInteractions(match, Player);
-            if (interactions.Count == 0)
+            var definition = GameInteractableData.Get(info.InteractId);
+            if (info.IsCompleted && definition.DoorId > 0)
             {
-                return;
+                PublishedOpenDoors.Add(definition.DoorId);
             }
+        }
+    }
 
-            using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(Player.CurrentArea, interactions);
-            TrySend(packet);
+    private void SendInteractableList()
+    {
+        if (Player.CurrentArea == AreaType.None) return;
+        using (Match.Enter())
+        {
+            if (Match.IsEnded) return;
+            SendInteractableInfos(GetInteractableInfos());
         }
     }
 }

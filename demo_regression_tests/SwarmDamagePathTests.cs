@@ -78,7 +78,7 @@ public class SwarmDamagePathTests
         Assert.DoesNotContain("IsSwarmExploreDisabled", config);
 
         string interactions = File.ReadAllText(Path.Combine(root, "game_server", "Players", "PlayerInteractionService.cs"));
-        int listStart = interactions.IndexOf("public List<InteractableObjectState> GetAvailableInteractions", StringComparison.Ordinal);
+        int listStart = interactions.IndexOf("public List<InteractableInfo> GetInteractionInfos", StringComparison.Ordinal);
         Assert.True(listStart >= 0);
         Assert.Contains("if (definition.DoorId <= 0)", interactions[listStart..]);
 

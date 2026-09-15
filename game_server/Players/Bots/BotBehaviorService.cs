@@ -143,11 +143,7 @@ internal class BotBehaviorService(
                 int doorId = GameInteractableData.Get(interactId)?.DoorId ?? 0;
                 if (interactions.TryFinishDoor(runtime, player, interactId, doorId, now, out var error))
                 {
-                    using var openPacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, bot.PlayerId);
-                    foreach (var session in sessions)
-                    {
-                        session.TrySend(openPacket);
-                    }
+
                     logger.LogInformation("Swarm bot unlocked door: MatchingId={MatchingId}, BotId={BotId}, DoorId={DoorId}", runtime.MatchingId, bot.PlayerId, doorId);
                     player.State = PlayerState.IDLE;
                 }

@@ -104,7 +104,7 @@ internal sealed class MatchTickLoop(
         }
 
         monsterSpawns.ProcessSupply(runtime, utcNow);
-        synchronization.TrackNewObjects(runtime);
+        synchronization.InitializeComparisonSnapshots(runtime);
         movement.ProcessTick(runtime, utcNow);
         if (runtime.IsEnded)
         {

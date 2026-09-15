@@ -67,7 +67,7 @@ internal sealed class PlayerEliminationService(
                 }
             }
 
-            var spawnedItems = runtime.GroundItems.SpawnItems(
+            runtime.GroundItems.SpawnItems(
                 eliminatedArea,
                 position.X,
                 position.Y,
@@ -84,26 +84,6 @@ internal sealed class PlayerEliminationService(
                         Count = 0,
                         GiftState = item.GiftState
                     });
-                }
-            }
-            if (droppedItemIds.Count > 0)
-            {
-                if (spawnedItems.Count > 0)
-                {
-                    var targetSessions = new List<GameClientSession>();
-                    foreach (var session in runtime.GetSessions())
-                    {
-                        if (!session.Player.IsEliminated && session.Player.CurrentArea == eliminatedArea)
-                        {
-                            targetSessions.Add(session);
-                        }
-                    }
-
-                    using var spawnedPacket = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)eliminatedArea, spawnedItems.ToList());
-                    foreach (var session in targetSessions)
-                    {
-                        session.TrySend(spawnedPacket);
-                    }
                 }
             }
         }
@@ -123,12 +103,10 @@ internal sealed class PlayerEliminationService(
             session.TrySend(eliminatedPacket);
         }
 
-        using (var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(eliminatedPlayerId))
+        // 이 타격으로 바로 매치가 종료될 수 있으므로 퇴장도 여기서 확정한다.
+        foreach (var session in allSessions)
         {
-            foreach (var session in allSessions)
-            {
-                session.TrySend(leavePacket);
-            }
+            session.SendObjectLeaves([new ObjectIdentity { Type = ObjectType.PLAYER, Id = eliminatedPlayerId }]);
         }
 
         (bool isGameOver, long? winnerId) = runtime.CheckGameOver();

@@ -17,6 +17,7 @@ namespace network.common.data.models
         [Key("spawnOriginX")] public float SpawnOriginX { get; set; }
         [Key("spawnOriginY")] public float SpawnOriginY { get; set; }
         [Key("sourcePlayerId")] public long SourcePlayerId { get; set; }
+        [Key("isLanding")] public bool IsLanding { get; set; }
     }
 
     [MessagePackObject]

@@ -183,16 +183,54 @@ public sealed class PlayerInteractionServiceTests
         var match = store.GetOrCreate(948602);
         var player = TestGameSessionServices.GetOrRegisterPlayer(match, 11);
         player.CurrentArea = (AreaType)definition.ZoneId;
-        Assert.Throws<InvalidOperationException>(() => _interactions.GetAvailableInteractions(match, player));
+        Assert.Throws<InvalidOperationException>(() => _interactions.GetInteractionInfos(match));
         using var scope = match.Enter();
-        var first = _interactions.GetAvailableInteractions(match, player);
-        var second = _interactions.GetAvailableInteractions(match, player);
+        var first = _interactions.GetInteractionInfos(match);
+        var second = _interactions.GetInteractionInfos(match);
         Assert.NotEmpty(first);
         Assert.Contains(first, state => state.InteractId == definition.Id);
         Assert.Equal(first.Count, second.Count);
-        first[0].Actions[0].Order = -1;
-        first[0].Actions.Clear();
-        Assert.NotEmpty(second[0].Actions);
-        Assert.All(second.SelectMany(item => item.Actions), action => Assert.True(action.Order >= 0));
+        int originalId = second[0].InteractId;
+        first[0].InteractId = -1;
+        Assert.Equal(originalId, second[0].InteractId);
+        Assert.NotNull(GameInteractableData.Get(originalId));
+    }
+    [Fact]
+    public void InteractableInfoContainsCompletionAndEmptyListRoundTrips()
+    {
+        var info = new InteractableInfo { InteractId = 17 };
+        var json = MessagePack.MessagePackSerializer.ConvertToJson(
+            MessagePack.MessagePackSerializer.Serialize(info));
+        Assert.Contains("interactId", json);
+        Assert.DoesNotContain("actions", json);
+        Assert.Equal(2, typeof(InteractableInfo).GetProperties().Length);
+        Assert.Contains("isCompleted", json);
+
+        var packet = new G_TO_C_INTERACTABLE_INFO
+        {
+            AreaType = AreaType.S2Ground,
+            Objects = new List<InteractableInfo>()
+        };
+        var copy = MessagePack.MessagePackSerializer.Deserialize<G_TO_C_INTERACTABLE_INFO>(
+            MessagePack.MessagePackSerializer.Serialize(packet));
+        Assert.Equal(packet.AreaType, copy.AreaType);
+        Assert.Empty(copy.Objects);
+    }
+    [Fact]
+    public void InteractionInfosIncludeOpenAndClosedDoorsAcrossAllAreas()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(948603);
+        using var scope = runtime.Enter();
+        var definition = GameInteractableData.GetAll().First(item => item.DoorId > 0);
+        runtime.Doors.OpenDoor(definition.DoorId);
+        var infos = _interactions.GetInteractionInfos(runtime);
+        Assert.Contains(infos, info => info.InteractId == definition.Id && info.IsCompleted);
+        Assert.All(GameDoorData.GetAll(), door =>
+            Assert.Contains(infos, info => GameInteractableData.Get(info.InteractId)?.DoorId == door.DoorId));
+        runtime.Doors.Clear();
+        var closed = _interactions.GetInteractionInfos(runtime);
+        Assert.Equal(infos.Count, closed.Count);
+        Assert.All(closed, info => Assert.False(info.IsCompleted));
     }
 }

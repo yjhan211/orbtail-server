@@ -14,6 +14,257 @@ namespace demo_regression_tests;
 
 public sealed class BotMovementDeliveryTests
 {
+    [Fact]
+    public void GroundItemUsesTypedEntryLeaveAndDoesNotReplayLandingOnReentry()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(44911);
+        var recipient = AddRecipient(store, 44911, 1, AreaType.S2Ground, []);
+        var elsewhere = AddRecipient(store, 44911, 2, AreaType.S2Library1, []);
+        using var scope = runtime.Enter();
+        var now = DateTime.UtcNow;
+        var item = Assert.Single(runtime.GroundItems.SpawnItems(AreaType.S2Ground, 0, 0, [Config.SUMMON_STONE_GROUND_ITEM_ID]));
+        Assert.Empty(recipient.Packets);
+        var service = new MatchSynchronizationService();
+        var batch = new MatchSynchronizationService.SyncBatch(now, runtime.GetSessions());
+        service.CollectGroundItemEntries(runtime, batch);
+        Assert.Empty(recipient.Packets);
+        Assert.Empty(elsewhere.Packets);
+        service.SendBatch(runtime, batch);
+        Assert.True(Assert.Single(recipient.Read<G_TO_C_OBJECT_ENTER>(Protocol.G_TO_C_OBJECT_ENTER).Items).IsLanding);
+        Assert.Empty(elsewhere.Packets);
+        recipient.Packets.Clear();
+        service.ProcessTick(runtime, now);
+        Assert.Empty(recipient.Packets);
+
+        runtime.GetParticipant(1)!.CurrentArea = AreaType.S2Library1;
+        service.ProcessTick(runtime, now);
+        var leave = Assert.Single(recipient.Read<G_TO_C_OBJECT_LEAVE>(Protocol.G_TO_C_OBJECT_LEAVE).Objects);
+        Assert.Equal(ObjectType.ITEM, leave.Type);
+        Assert.Equal(item.GroundItemUid, leave.Id);
+        recipient.Packets.Clear();
+        TestGroundItemLanding.Complete(runtime.GroundItems);
+        runtime.GetParticipant(1)!.CurrentArea = AreaType.S2Ground;
+        service.ProcessTick(runtime, now);
+        Assert.False(Assert.Single(recipient.Read<G_TO_C_OBJECT_ENTER>(Protocol.G_TO_C_OBJECT_ENTER).Items).IsLanding);
+        recipient.Packets.Clear();
+        runtime.GroundItems.TakeItem(item.GroundItemUid);
+        Assert.Empty(recipient.Packets);
+        service.ProcessTick(runtime, now);
+        Assert.Equal(item.GroundItemUid, Assert.Single(recipient.Read<G_TO_C_OBJECT_LEAVE>(Protocol.G_TO_C_OBJECT_LEAVE).Objects).Id);
+    }
+
+    [Fact]
+    public void GroundItemConsumedBeforeFirstPublicationDoesNotSendEntryOrLeave()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(44912);
+        var recipient = AddRecipient(store, 44912, 1, AreaType.S2Ground, []);
+        using var scope = runtime.Enter();
+        var item = Assert.Single(runtime.GroundItems.SpawnItems(AreaType.S2Ground, 0, 0, [Config.SUMMON_STONE_GROUND_ITEM_ID]));
+        runtime.GroundItems.TakeItem(item.GroundItemUid);
+        new MatchSynchronizationService().ProcessTick(runtime, DateTime.UtcNow);
+        Assert.Empty(recipient.Packets);
+    }
+
+    [Fact]
+    public void DoorChangesAreCollectedDetachedAndFailedPublicationIsRetried()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(44913);
+        var recipient = AddRecipient(store, 44913, 1, AreaType.S2Corridor9, []);
+        using var scope = runtime.Enter();
+        var session = runtime.GetSessions().Single();
+        runtime.Doors.OpenDoor(201);
+        var service = new MatchSynchronizationService();
+        var batch = new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, runtime.GetSessions());
+        service.CollectInteractableUpdates(runtime, batch);
+        Assert.Empty(recipient.Packets);
+        Assert.Contains(batch.InteractableUpdates[session], info => GameInteractableData.Get(info.InteractId)?.DoorId == 201 && info.IsCompleted);
+        recipient.AcceptPackets = false;
+        service.SendBatch(runtime, batch);
+        Assert.DoesNotContain(201, session.PublishedOpenDoors);
+        recipient.AcceptPackets = true;
+        service.ProcessTick(runtime, DateTime.UtcNow);
+        Assert.Contains(recipient.Read<G_TO_C_INTERACTABLE_INFO>(Protocol.G_TO_C_INTERACTABLE_INFO).Objects, info => GameInteractableData.Get(info.InteractId)?.DoorId == 201 && info.IsCompleted);
+        Assert.Contains(201, session.PublishedOpenDoors);
+        recipient.Packets.Clear();
+        service.ProcessTick(runtime, DateTime.UtcNow);
+        Assert.Empty(recipient.Packets);
+
+        // 수집한 열린 상태를 보낸 뒤 닫힘은 다음 수집에서 별도로 전송한다.
+        var closeBatch = new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, runtime.GetSessions());
+        runtime.Doors.Clear();
+        service.CollectInteractableUpdates(runtime, closeBatch);
+        Assert.All(closeBatch.InteractableUpdates[session], info => Assert.False(info.IsCompleted));
+        Assert.Empty(recipient.Packets);
+        service.SendBatch(runtime, closeBatch);
+        Assert.All(recipient.Read<G_TO_C_INTERACTABLE_INFO>(Protocol.G_TO_C_INTERACTABLE_INFO).Objects, info => Assert.False(info.IsCompleted));
+        Assert.DoesNotContain(201, session.PublishedOpenDoors);
+    }
+
+    [Fact]
+    public void RemovedMonsterPublishesTypedLeaveOnceWithoutMovement()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(44901);
+        var recipient = AddRecipient(store, 44901, 1, AreaType.S2Ground, []);
+        using var scope = runtime.Enter();
+        var now = DateTime.UtcNow;
+        runtime.StartGameplay(now);
+        // 사람과 같은 숫자 ID여도 객체 종류로 구분한다.
+        runtime.Monsters.Entities[1] = new game_server.matches.monsters.Monster
+        {
+            MonsterId = 1, Alive = true, Health = 10, Area = AreaType.S2Ground
+        };
+        var service = new MatchSynchronizationService();
+        service.ProcessTick(runtime, now);
+        Assert.Single(recipient.Read<G_TO_C_OBJECT_ENTER>(Protocol.G_TO_C_OBJECT_ENTER).Monsters);
+        recipient.Packets.Clear();
+        runtime.Monsters.Entities.Remove(1);
+        service.ProcessTick(runtime, now.AddMilliseconds(50));
+        Assert.Single(recipient.Packets);
+        var leave = Assert.Single(recipient.Read<G_TO_C_OBJECT_LEAVE>(Protocol.G_TO_C_OBJECT_LEAVE).Objects);
+        Assert.Equal(ObjectType.MONSTER, leave.Type);
+        Assert.Equal(1, leave.Id);
+        recipient.Packets.Clear();
+        service.ProcessTick(runtime, now.AddMilliseconds(100));
+        Assert.Empty(recipient.Packets);
+    }
+
+    [Fact]
+    public void ObserverAreaChangePublishesStationaryMonsterLeaveAndEntry()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(44902);
+        var recipient = AddRecipient(store, 44902, 1, AreaType.S2Ground, []);
+        using var scope = runtime.Enter();
+        var now = DateTime.UtcNow;
+        runtime.StartGameplay(now);
+        runtime.Monsters.Entities[11] = new game_server.matches.monsters.Monster
+        {
+            MonsterId = 11, Alive = true, Health = 10, Area = AreaType.S2Ground
+        };
+        runtime.Monsters.Entities[12] = new game_server.matches.monsters.Monster
+        {
+            MonsterId = 12, Alive = true, Health = 10, Area = AreaType.S2Library1
+        };
+        var service = new MatchSynchronizationService();
+        service.ProcessTick(runtime, now);
+        recipient.Packets.Clear();
+        runtime.GetParticipant(1)!.CurrentArea = AreaType.S2Library1;
+        service.ProcessTick(runtime, now.AddMilliseconds(50));
+        Assert.Equal(11, Assert.Single(recipient.Read<G_TO_C_OBJECT_LEAVE>(Protocol.G_TO_C_OBJECT_LEAVE).Objects).Id);
+        Assert.Equal(12, Assert.Single(recipient.Read<G_TO_C_OBJECT_ENTER>(Protocol.G_TO_C_OBJECT_ENTER).Monsters).MonsterId);
+        Assert.DoesNotContain(recipient.Packets, p => p.Protocol == Protocol.G_TO_C_MOVE);
+    }
+
+    [Fact]
+    public void RejectedEntryIsRetriedAndRejectedLeaveKeepsPublishedIdentity()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(44903);
+        var recipient = AddRecipient(store, 44903, 1, AreaType.S2Ground, []);
+        using var scope = runtime.Enter();
+        var session = runtime.GetSessions().Single();
+        var entries = new G_TO_C_OBJECT_ENTER
+        {
+            Monsters = [new MonsterInfo { MonsterId = 7, IsAlive = true }]
+        };
+        recipient.AcceptPackets = false;
+        session.SendObjectEntries(entries);
+        Assert.Empty(session.PublishedObjects);
+        recipient.AcceptPackets = true;
+        session.SendObjectEntries(entries);
+        Assert.Contains((ObjectType.MONSTER, 7L), session.PublishedObjects);
+        recipient.AcceptPackets = false;
+        session.SendObjectLeaves([new ObjectIdentity { Type = ObjectType.MONSTER, Id = 7 }]);
+        Assert.Contains((ObjectType.MONSTER, 7L), session.PublishedObjects);
+        recipient.AcceptPackets = true;
+        session.SendObjectLeaves([new ObjectIdentity { Type = ObjectType.MONSTER, Id = 7 }]);
+        Assert.Empty(session.PublishedObjects);
+    }
+
+    [Fact]
+    public void MovementSnapshotCopiesCoordinatesAndPreservesComparisonTolerance()
+    {
+        var info = new GameObjectInfo { Area = AreaType.S2Ground };
+        var previous = new MatchObjectSnapshot(info);
+        Assert.True(previous.Matches(info));
+        info.Position.X = 0.000001f;
+        Assert.True(previous.Matches(info));
+        info.Position.X = 1f;
+        Assert.False(previous.Matches(info));
+        info.Position.X = 0f;
+        info.Velocity.Y = 1f;
+        Assert.False(previous.Matches(info));
+        info.Velocity.Y = 0f;
+        info.Rotation = 1f;
+        Assert.False(previous.Matches(info));
+        info.Rotation = 0f;
+        info.Area = AreaType.S2Library1;
+        Assert.Equal(AreaType.S2Ground, previous.Area);
+        Assert.False(previous.Matches(info));
+    }
+
+    [Fact]
+    public void MovementBatchSharesOneDetachedSnapshotAcrossRecipients()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(44120);
+        var first = AddRecipient(store, 44120, 1, AreaType.S2Ground, []);
+        var second = AddRecipient(store, 44120, 2, AreaType.S2Ground, []);
+        using var scope = runtime.Enter();
+        var now = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        var batch = new MatchSynchronizationService.SyncBatch(now, runtime.GetSessions());
+        var info = new GameObjectInfo
+        {
+            ObjectType = ObjectType.MONSTER, ObjectId = 7, Area = AreaType.S2Ground,
+            Position = new Vector3f(10, 20, 0), Cell = new Cell(3, 4), Velocity = new Vector3f(1, 0, 0)
+        };
+        var service = new MatchSynchronizationService();
+        service.CollectMovementUpdates(runtime, info, batch);
+        Assert.Equal(2, batch.Moves.Count);
+        var snapshots = batch.Moves.Values.Select(message => Assert.Single(message.Objects)).ToArray();
+        Assert.Same(snapshots[0], snapshots[1]);
+        Assert.NotSame(info, snapshots[0]);
+        info.Position.X = 999;
+        info.Cell.Y = 999;
+        info.Velocity.X = 999;
+        Assert.Equal(10f, snapshots[0].Position.X);
+        Assert.Equal(4, snapshots[0].Cell.Y);
+        Assert.Equal(1f, snapshots[0].Velocity.X);
+        service.SendBatch(runtime, batch);
+        long timestamp = new DateTimeOffset(now).ToUnixTimeMilliseconds();
+        Assert.Equal(timestamp, first.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE).ServerTimestamp);
+        Assert.Equal(timestamp, second.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE).ServerTimestamp);
+    }
+
+    [Fact]
+    public void TickMovementUsesProvidedTimeAndStopsResendingUnchangedObjects()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(44121);
+        var observer = AddRecipient(store, 44121, 1, AreaType.S2Ground, []);
+        AddRecipient(store, 44121, 2, AreaType.S2Ground, []);
+        using var scope = runtime.Enter();
+        var now = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        runtime.StartGameplay(now);
+        var service = new MatchSynchronizationService();
+        service.InitializeComparisonSnapshots(runtime);
+        runtime.GetParticipant(2)!.GameInfo.ObjectInfo.Position.X += 1f;
+        service.ProcessTick(runtime, now.AddMilliseconds(50));
+        var move = observer.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE);
+        Assert.Equal(new DateTimeOffset(now.AddMilliseconds(50)).ToUnixTimeMilliseconds(), move.ServerTimestamp);
+        observer.Packets.Clear();
+        service.ProcessTick(runtime, now.AddMilliseconds(100));
+        Assert.Empty(observer.Packets);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -28,7 +279,7 @@ public sealed class BotMovementDeliveryTests
             var now = DateTime.UtcNow;
             runtime.StartGameplay(now);
             var synchronization = new MatchSynchronizationService();
-            synchronization.TrackNewObjects(runtime);
+            synchronization.InitializeComparisonSnapshots(runtime);
             var player = runtime.GetParticipant(1)!;
             var combat = TestGameSessionServices.CreateCombatDamageService();
             combat.QueuePlayerHitNotification(runtime, player, 2, AreaType.S2Ground, 123, 5, 95);
@@ -60,6 +311,42 @@ public sealed class BotMovementDeliveryTests
     }
 
     [Fact]
+    public void PlayerBatchSharesIndependentModelAndSendsOnePacketPerRecipient()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(44112);
+        var first = AddRecipient(store, 44112, 1, AreaType.S2Ground, []);
+        var second = AddRecipient(store, 44112, 2, AreaType.S2Ground, []);
+        var elsewhere = AddRecipient(store, 44112, 3, AreaType.S2Library1, []);
+        using var scope = runtime.Enter();
+        var batch = new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, runtime.GetSessions());
+        var service = new MatchSynchronizationService();
+        foreach (long id in new[] { -10L, -20L })
+        {
+            var bot = new Bot { PlayerId = id };
+            bot.Player.CurrentArea = AreaType.S2Ground;
+            bot.Player.GameInfo.Name = $"Bot{id}";
+            bot.Player.GameInfo.WearItemIdList.Add(101000003);
+            bot.Player.State = PlayerState.SLEEP;
+            service.CollectPlayerUpdates(runtime, bot.Player, batch);
+            bot.Player.GameInfo.WearItemIdList.Clear();
+            bot.Player.State = PlayerState.IDLE;
+        }
+        Assert.Equal(2, batch.Entries.Count);
+        var models = batch.Entries.Values.Select(entry => entry.Players).ToArray();
+        Assert.Same(models[0][0], models[1][0]);
+        Assert.Single(models[0][0].WearItemIdList);
+        Assert.Equal(PlayerState.SLEEP, models[0][0].State);
+        Assert.Empty(batch.Leaves);
+        Assert.Empty(first.Packets);
+        Assert.Empty(second.Packets);
+        service.SendBatch(runtime, batch);
+        Assert.Single(first.Packets, p => p.Protocol == Protocol.G_TO_C_OBJECT_ENTER);
+        Assert.Equal(2, first.Read<G_TO_C_OBJECT_ENTER>(Protocol.G_TO_C_OBJECT_ENTER).Players.Count);
+        Assert.Single(second.Packets, p => p.Protocol == Protocol.G_TO_C_OBJECT_ENTER);
+        Assert.Empty(elsewhere.Packets);
+    }
+    [Fact]
     public void AreaSnapshotIsCollectedWithoutSendingAndPublishedOnce()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
@@ -68,21 +355,22 @@ public sealed class BotMovementDeliveryTests
         var recipient = AddRecipient(store, 44110, 1, AreaType.S2Ground, []);
         using var scope = runtime.Enter();
         var player = runtime.GetParticipant(1)!;
+        new MatchSynchronizationService().InitializeComparisonSnapshots(runtime);
         player.CurrentArea = AreaType.S2Library1;
-        var areaSnapshots = new HashSet<GameClientSession>();
-        var messages = new Dictionary<GameClientSession, G_TO_C_MOVE>();
-        var monsters = new Dictionary<GameClientSession, List<MonsterInfo>>();
-        var players = new Dictionary<GameClientSession, List<(Protocol Protocol, byte[] Body)>>();
+        var batch = new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, runtime.GetSessions());
+        var areaSnapshots = batch.InteractableUpdates;
+        var messages = batch.Moves;
+        var monsters = batch.MonsterUpdates;
+        var players = batch.PlayerUpdates;
         var service = new MatchSynchronizationService();
         for (int i = 0; i < 2; i++)
         {
-            service.SynchronizeObject(runtime, player.GameInfo.ObjectInfo, AreaType.S2Ground,
-                messages, monsters, players, areaSnapshots, includeMovement: false);
+            service.CollectInteractableUpdates(runtime, batch);
         }
         Assert.Single(areaSnapshots);
         Assert.Empty(recipient.Packets);
-        service.SendUpdates(runtime, messages, monsters, players, areaSnapshots);
-        Assert.Single(recipient.Packets, packet => packet.Protocol == Protocol.G_TO_C_GROUND_ITEM_SNAPSHOT);
+        service.SendBatch(runtime, batch);
+        Assert.Single(recipient.Packets, packet => packet.Protocol == Protocol.G_TO_C_INTERACTABLE_INFO);
         Assert.Empty(messages);
     }
 
@@ -103,19 +391,19 @@ public sealed class BotMovementDeliveryTests
             participant.Position = new Vector3f();
         }
         var synchronization = new MatchSynchronizationService();
-        synchronization.TrackNewObjects(runtime);
+        synchronization.InitializeComparisonSnapshots(runtime);
         var player = runtime.GetParticipant(1)!;
         player.CurrentArea = AreaType.S2Library1;
-        player.GameInfo.ObjectInfo.Position = new Vector3f(1, 0, 0);
+        player.Position = new Vector3f(1, 0, 0);
         Assert.Empty(previousArea.Packets);
         Assert.Empty(nextArea.Packets);
 
         synchronization.ProcessTick(runtime, now);
-        Assert.Equal(1, previousArea.Read<G_TO_C_AREA_PLAYER_LEAVE>(Protocol.G_TO_C_AREA_PLAYER_LEAVE).PlayerId);
-        Assert.Equal(1, nextArea.Read<G_TO_C_AREA_PLAYER_ENTER>(Protocol.G_TO_C_AREA_PLAYER_ENTER).Player.PlayerId);
+        Assert.Equal(1, Assert.Single(previousArea.Read<G_TO_C_OBJECT_LEAVE>(Protocol.G_TO_C_OBJECT_LEAVE).Objects).Id);
+        Assert.Equal(1, Assert.Single(nextArea.Read<G_TO_C_OBJECT_ENTER>(Protocol.G_TO_C_OBJECT_ENTER).Players).ObjectInfo.ObjectId);
         Assert.Equal(1, Assert.Single(nextArea.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE).Objects).ObjectId);
-        Assert.Equal(2, moving.Read<G_TO_C_AREA_PLAYER_LEAVE>(Protocol.G_TO_C_AREA_PLAYER_LEAVE).PlayerId);
-        Assert.Equal(3, moving.Read<G_TO_C_AREA_PLAYER_ENTER>(Protocol.G_TO_C_AREA_PLAYER_ENTER).Player.PlayerId);
+        Assert.Equal(2, Assert.Single(moving.Read<G_TO_C_OBJECT_LEAVE>(Protocol.G_TO_C_OBJECT_LEAVE).Objects).Id);
+        Assert.Equal(3, Assert.Single(moving.Read<G_TO_C_OBJECT_ENTER>(Protocol.G_TO_C_OBJECT_ENTER).Players).ObjectInfo.ObjectId);
         Assert.DoesNotContain(moving.Packets, packet => packet.Protocol == Protocol.G_TO_C_MOVE);
         previousArea.Packets.Clear();
         nextArea.Packets.Clear();
@@ -137,14 +425,14 @@ public sealed class BotMovementDeliveryTests
         runtime.StartGameplay(now);
         var player = runtime.GetParticipant(1)!;
         player.State = PlayerState.SLEEP;
-        player.GameInfo.ObjectInfo.Position = new Vector3f(1, 0, 0);
+        player.Position = new Vector3f(1, 0, 0);
         var synchronization = new MatchSynchronizationService();
-        synchronization.TrackNewObjects(runtime);
+        synchronization.InitializeComparisonSnapshots(runtime);
         Assert.Empty(recipient.Packets);
 
         synchronization.ProcessTick(runtime, now);
-        Assert.Equal(Protocol.G_TO_C_PLAYER_STATE, Assert.Single(recipient.Packets).Protocol);
-        Assert.Equal(PlayerState.SLEEP, recipient.Read<G_TO_C_PLAYER_STATE>(Protocol.G_TO_C_PLAYER_STATE).State);
+        Assert.Equal(Protocol.G_TO_C_PLAYER_INFO, Assert.Single(recipient.Packets).Protocol);
+        Assert.Equal(PlayerState.SLEEP, Assert.Single(recipient.Read<G_TO_C_PLAYER_INFO>(Protocol.G_TO_C_PLAYER_INFO).Players).State);
         recipient.Packets.Clear();
         synchronization.ProcessTick(runtime, now.AddMilliseconds(50));
         Assert.Empty(recipient.Packets);
@@ -167,22 +455,24 @@ public sealed class BotMovementDeliveryTests
             MonsterId = 1, Alive = true, Health = 10, Area = AreaType.S2Ground
         };
         runtime.Monsters.Entities[1] = monster;
-        var areaSnapshots = new HashSet<GameClientSession>();
-        var messages = new Dictionary<GameClientSession, G_TO_C_MOVE>();
-        var monsters = new Dictionary<GameClientSession, List<MonsterInfo>>();
-        var bots = new Dictionary<GameClientSession, List<(Protocol Protocol, byte[] Body)>>();
+        var batch = new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, runtime.GetSessions());
+        var areaSnapshots = batch.InteractableUpdates;
+        var messages = batch.Moves;
+        var monsters = batch.MonsterUpdates;
+        var bots = batch.PlayerUpdates;
         var service = new MatchSynchronizationService();
-        service.SynchronizeObject(runtime, bot.Player.GameInfo.ObjectInfo, AreaType.S2Ground, messages, monsters, bots, areaSnapshots);
-        service.SynchronizeObject(runtime, monster.Info.ObjectInfo, AreaType.S2Ground, messages, monsters, bots, areaSnapshots);
+        service.CollectPlayerUpdates(runtime, bot.Player, batch);
+        service.CollectMonsterUpdates(runtime, monster, batch);
+        service.CollectMovementUpdates(runtime, monster.Info.ObjectInfo, batch);
         Assert.Empty(recipient.Packets);
 
         bot.Player.State = PlayerState.IDLE;
         monster.Health = 1;
-        service.SendUpdates(runtime, messages, monsters, bots, areaSnapshots);
-        Assert.Equal(new[] { Protocol.G_TO_C_PLAYER_STATE, Protocol.G_TO_C_MONSTER_SNAPSHOT, Protocol.G_TO_C_MOVE },
+        service.SendBatch(runtime, batch);
+        Assert.Equal(new[] { Protocol.G_TO_C_OBJECT_ENTER, Protocol.G_TO_C_MOVE },
             recipient.Packets.Select(packet => packet.Protocol));
-        Assert.Equal(PlayerState.SLEEP, recipient.Read<G_TO_C_PLAYER_STATE>(Protocol.G_TO_C_PLAYER_STATE).State);
-        Assert.Equal(10, Assert.Single(recipient.Read<G_TO_C_MONSTER_SNAPSHOT>(Protocol.G_TO_C_MONSTER_SNAPSHOT).Monsters).CurrentHealth);
+        Assert.Equal(PlayerState.SLEEP, Assert.Single(recipient.Read<G_TO_C_OBJECT_ENTER>(Protocol.G_TO_C_OBJECT_ENTER).Players).State);
+        Assert.Equal(10, Assert.Single(recipient.Read<G_TO_C_OBJECT_ENTER>(Protocol.G_TO_C_OBJECT_ENTER).Monsters).CurrentHealth);
         Assert.Equal(2, recipient.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE).Objects.Count);
     }
 
@@ -206,15 +496,15 @@ public sealed class BotMovementDeliveryTests
             };
         }
         var synchronization = new MatchSynchronizationService();
-        synchronization.TrackNewObjects(runtime);
+        synchronization.InitializeComparisonSnapshots(runtime);
         synchronization.ProcessTick(runtime, now);
         Assert.Single(recipient.Packets);
         recipient.Packets.Clear();
         runtime.Monsters.Entities[1].Health = 5;
         runtime.Monsters.Entities[2].ChaseTargetPlayerId = 1;
         synchronization.ProcessTick(runtime, now.AddMilliseconds(50));
-        Assert.Equal(Protocol.G_TO_C_MONSTER_SNAPSHOT, Assert.Single(recipient.Packets).Protocol);
-        var monsters = recipient.Read<G_TO_C_MONSTER_SNAPSHOT>(Protocol.G_TO_C_MONSTER_SNAPSHOT).Monsters;
+        Assert.Equal(Protocol.G_TO_C_MONSTER_INFO, Assert.Single(recipient.Packets).Protocol);
+        var monsters = recipient.Read<G_TO_C_MONSTER_INFO>(Protocol.G_TO_C_MONSTER_INFO).Monsters;
         Assert.Equal(2, monsters.Count);
         Assert.Equal(5, monsters.Single(monster => monster.MonsterId == 1).CurrentHealth);
         Assert.Equal(1, monsters.Single(monster => monster.MonsterId == 2).ChaseTargetPlayerId);
@@ -244,12 +534,12 @@ public sealed class BotMovementDeliveryTests
         };
         runtime.Monsters.Entities[1] = monster;
         var synchronization = new MatchSynchronizationService();
-        synchronization.TrackNewObjects(runtime);
+        synchronization.InitializeComparisonSnapshots(runtime);
         bot.Player.GameInfo.ObjectInfo.Position = new Vector3f(1, 0, 0);
         monster.Position = new Vector3f(2, 0, 0);
         synchronization.ProcessTick(runtime, now);
 
-        Assert.Equal(Protocol.G_TO_C_MONSTER_SNAPSHOT, recipient.Packets[0].Protocol);
+        Assert.Equal(Protocol.G_TO_C_OBJECT_ENTER, recipient.Packets[0].Protocol);
         Assert.Single(recipient.Packets.Where(packet => packet.Protocol == Protocol.G_TO_C_MOVE));
         Assert.Equal(2, recipient.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE).Objects.Count);
         Assert.Empty(elsewhere.Packets);
@@ -278,7 +568,7 @@ public sealed class BotMovementDeliveryTests
         };
         var session = runtime.GetSessions().Single();
         session.SendMonsterSnapshot(runtime.Monsters.GetVisualStatesByArea());
-        Assert.Equal(1, Assert.Single(recipient.Read<G_TO_C_MONSTER_SNAPSHOT>(Protocol.G_TO_C_MONSTER_SNAPSHOT).Monsters).MonsterId);
+        Assert.Equal(1, Assert.Single(recipient.Read<G_TO_C_OBJECT_ENTER>(Protocol.G_TO_C_OBJECT_ENTER).Monsters).MonsterId);
         recipient.Packets.Clear();
         session.SendMonsterSnapshot(runtime.Monsters.GetVisualStatesByArea());
         Assert.Empty(recipient.Packets);
@@ -300,12 +590,13 @@ public sealed class BotMovementDeliveryTests
         runtime.Bots.GetBots().Add(bot);
         runtime.RegisterParticipant(bot.Player);
         var synchronization = new MatchSynchronizationService();
-        synchronization.TrackNewObjects(runtime);
+        synchronization.InitializeComparisonSnapshots(runtime);
+        runtime.GetSessions().Single(s => s.PlayerId == 1).PublishedObjects.Add((ObjectType.PLAYER, bot.PlayerId));
         Assert.Empty(oldArea.Packets);
         bot.Player.CurrentArea = AreaType.S2Library1;
         synchronization.ProcessTick(runtime, now);
-        Assert.Contains(oldArea.Packets, packet => packet.Protocol == Protocol.G_TO_C_AREA_PLAYER_LEAVE);
-        Assert.Equal(Protocol.G_TO_C_AREA_PLAYER_ENTER, newArea.Packets[0].Protocol);
+        Assert.Contains(oldArea.Packets, packet => packet.Protocol == Protocol.G_TO_C_OBJECT_LEAVE);
+        Assert.Equal(Protocol.G_TO_C_OBJECT_ENTER, newArea.Packets[0].Protocol);
         Assert.Equal(Protocol.G_TO_C_MOVE, newArea.Packets[1].Protocol);
         oldArea.Packets.Clear();
         newArea.Packets.Clear();
@@ -339,7 +630,7 @@ public sealed class BotMovementDeliveryTests
         {
             [runtime.GetSessions().Single()] = message
         };
-        new MatchSynchronizationService().SendUpdates(runtime, messages, new Dictionary<GameClientSession, List<MonsterInfo>>(), new Dictionary<GameClientSession, List<(Protocol Protocol, byte[] Body)>>(), []);
+        new MatchSynchronizationService().SendBatch(runtime, new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, runtime.GetSessions()) { Moves = messages });
 
         Assert.Equal(PlayerState.EXPLORE_1, bot.Player.State);
         Assert.Equal(Protocol.G_TO_C_MOVE, Assert.Single(recipient.Packets).Protocol);
@@ -358,15 +649,37 @@ public sealed class BotMovementDeliveryTests
             bot.Player.GameInfo.ObjectInfo.Velocity = movement.Info.Velocity;
             new BotBehaviorService(null!, null!, null!).CompleteMovement(runtime, bot);
         }
-        var areaSnapshots = new HashSet<GameClientSession>();
-        var messages = new Dictionary<GameClientSession, G_TO_C_MOVE>();
-        var monsterUpdates = new Dictionary<GameClientSession, List<MonsterInfo>>();
-        var botUpdates = new Dictionary<GameClientSession, List<(Protocol Protocol, byte[] Body)>>();
+        var batch = new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, runtime.GetSessions());
+        var areaSnapshots = batch.InteractableUpdates;
+        var messages = batch.Moves;
+        var monsterUpdates = batch.MonsterUpdates;
+        var botUpdates = batch.PlayerUpdates;
         foreach (var movement in movements)
         {
-            service.SynchronizeObject(runtime, movement.Info, movement.FromArea, messages, monsterUpdates, botUpdates, areaSnapshots);
+            // 이 도우미의 입력은 이미 변경된 이동 목록이다. 이전 좌표와 다른 값으로 기준을 구성한다.
+            var previous = movement.Info.Clone();
+            previous.Area = movement.FromArea;
+            previous.Position.X -= 1f;
+            runtime.SynchronizedObjects[(movement.Info.ObjectType, movement.Info.ObjectId)] = new MatchObjectSnapshot(previous);
+            if (movement.Info.ObjectType == ObjectType.PLAYER)
+            {
+                // 이미 출발 구역에 등장한 플레이어의 이동을 준비한다.
+                foreach (var session in runtime.GetSessions())
+                    if (session.Player.CurrentArea == movement.FromArea)
+                        session.PublishedObjects.Add((ObjectType.PLAYER, movement.Info.ObjectId));
+                var player = runtime.GetParticipant(movement.Info.ObjectId)!;
+                player.GameInfo.ObjectInfo = movement.Info;
+                service.CollectPlayerUpdates(runtime, player, batch);
+            }
+            else
+            {
+                var monster = runtime.Monsters.Entities[(int)movement.Info.ObjectId];
+                service.CollectMonsterUpdates(runtime, monster, batch);
+                service.CollectMovementUpdates(runtime, movement.Info, batch);
+            }
         }
-        service.SendUpdates(runtime, messages, monsterUpdates, botUpdates, areaSnapshots);
+        service.CollectObjectLeaves(runtime, batch);
+        service.SendBatch(runtime, batch);
     }
 
     private static void SendMovements(MatchRuntime runtime, IReadOnlyList<BotMovementResult> movements)
@@ -406,8 +719,8 @@ public sealed class BotMovementDeliveryTests
             Assert.Null(bot.Player.PendingDoorInteractionId);
             Assert.Equal(PlayerState.IDLE, bot.Player.State);
         }
-        Assert.Equal(new[] { (1L, Protocol.G_TO_C_PLAYER_STATE), (1L, Protocol.G_TO_C_MOVE) }, timeline);
-        Assert.Equal(PlayerState.IDLE, recipient.Read<G_TO_C_PLAYER_STATE>(Protocol.G_TO_C_PLAYER_STATE).State);
+        Assert.Equal(new[] { (1L, Protocol.G_TO_C_PLAYER_INFO), (1L, Protocol.G_TO_C_MOVE) }, timeline);
+        Assert.Equal(PlayerState.IDLE, Assert.Single(recipient.Read<G_TO_C_PLAYER_INFO>(Protocol.G_TO_C_PLAYER_INFO).Players).State);
     }
 
     [Theory]
@@ -450,10 +763,10 @@ public sealed class BotMovementDeliveryTests
         if (changesArea)
         {
             Assert.Equal(
-                new[] { (1L, Protocol.G_TO_C_AREA_PLAYER_LEAVE), (2L, Protocol.G_TO_C_AREA_PLAYER_ENTER), (2L, Protocol.G_TO_C_MOVE) },
+                new[] { (1L, Protocol.G_TO_C_OBJECT_LEAVE), (2L, Protocol.G_TO_C_OBJECT_ENTER), (2L, Protocol.G_TO_C_MOVE) },
                 timeline);
-            var appearance = destination.Read<G_TO_C_AREA_PLAYER_ENTER>(Protocol.G_TO_C_AREA_PLAYER_ENTER);
-            Assert.Equal(PlayerState.SLEEP, appearance.GamePlayer.State);
+            var appearance = Assert.Single(destination.Read<G_TO_C_OBJECT_ENTER>(Protocol.G_TO_C_OBJECT_ENTER).Players);
+            Assert.Equal(PlayerState.SLEEP, appearance.State);
         }
         else
         {
@@ -478,12 +791,13 @@ public sealed class BotMovementDeliveryTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(44003);
-        var movement = new BotMovementResult();
-        Assert.Throws<InvalidOperationException>(() => SendMovements(match, [movement]));
+        var service = new MatchSynchronizationService();
+        var batch = new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, []);
+        Assert.Throws<InvalidOperationException>(() => service.CollectMovementUpdates(match, new GameObjectInfo(), batch));
         using (match.Enter())
         {
             match.TryMarkEnded();
-            Assert.Throws<InvalidOperationException>(() => SendMovements(match, [movement]));
+            Assert.Throws<InvalidOperationException>(() => service.CollectMovementUpdates(match, new GameObjectInfo(), batch));
         }
     }
 
@@ -519,10 +833,10 @@ public sealed class BotMovementDeliveryTests
             Assert.Empty(otherMatch.Packets);
             return;
         }
-        Assert.DoesNotContain(recipient.Packets, packet => packet.Protocol == Protocol.G_TO_C_MONSTER_SNAPSHOT);
+        Assert.DoesNotContain(recipient.Packets, packet => packet.Protocol == Protocol.G_TO_C_MONSTER_INFO);
         foreach (var session in runtime.GetSessions())
             session.SendMonsterSnapshot(runtime.Monsters.GetVisualStatesByArea());
-        Assert.True(Assert.Single(recipient.Read<G_TO_C_MONSTER_SNAPSHOT>(Protocol.G_TO_C_MONSTER_SNAPSHOT).Monsters).IsAlive);
+        Assert.True(Assert.Single(recipient.Read<G_TO_C_OBJECT_ENTER>(Protocol.G_TO_C_OBJECT_ENTER).Monsters).IsAlive);
         recipient.Packets.Clear();
 
         runtime.Monsters.Initialize(now);
@@ -530,13 +844,13 @@ public sealed class BotMovementDeliveryTests
         combat.ApplyMonsterDamage(runtime, monster.CombatTargetId, 101, 5, now);
         Assert.Empty(recipient.Packets);
         new MatchSynchronizationService().ProcessTick(runtime, now.AddMilliseconds(50));
-        Assert.Equal(5, Assert.Single(recipient.Read<G_TO_C_MONSTER_SNAPSHOT>(Protocol.G_TO_C_MONSTER_SNAPSHOT).Monsters).CurrentHealth);
+        Assert.Equal(5, Assert.Single(recipient.Read<G_TO_C_MONSTER_INFO>(Protocol.G_TO_C_MONSTER_INFO).Monsters).CurrentHealth);
         Assert.Empty(elsewhere.Packets);
         Assert.Empty(otherMatch.Packets);
 
         recipient.Packets.Clear();
         runtime.RemoveMonster(monster);
-        Assert.False(Assert.Single(recipient.Read<G_TO_C_MONSTER_SNAPSHOT>(Protocol.G_TO_C_MONSTER_SNAPSHOT).Monsters).IsAlive);
+        Assert.False(Assert.Single(recipient.Read<G_TO_C_MONSTER_INFO>(Protocol.G_TO_C_MONSTER_INFO).Monsters).IsAlive);
         Assert.Empty(runtime.Monsters.Entities);
     }
     [Fact]
@@ -568,7 +882,7 @@ public sealed class BotMovementDeliveryTests
         Assert.Equal(ObjectType.MONSTER, packet.Objects[1].ObjectType);
         Assert.Equal(bot.Player.OrbOrbitPhaseDegrees, packet.OrbPhases[-20]);
         Assert.True(packet.ServerTimestamp > 0);
-        Assert.Equal(Protocol.G_TO_C_MONSTER_SNAPSHOT, recipient.Packets[0].Protocol);
+        Assert.Equal(Protocol.G_TO_C_OBJECT_ENTER, recipient.Packets[0].Protocol);
         recipient.Packets.Clear();
         CompleteMovements(runtime, objects);
         Assert.Single(recipient.Packets);
@@ -576,7 +890,7 @@ public sealed class BotMovementDeliveryTests
         monster.Health = 4;
         recipient.Packets.Clear();
         CompleteMovements(runtime, objects);
-        Assert.Equal(4, Assert.Single(recipient.Read<G_TO_C_MONSTER_SNAPSHOT>(Protocol.G_TO_C_MONSTER_SNAPSHOT).Monsters).CurrentHealth);
+        Assert.Equal(4, Assert.Single(recipient.Read<G_TO_C_MONSTER_INFO>(Protocol.G_TO_C_MONSTER_INFO).Monsters).CurrentHealth);
     }
 
     [Fact]
@@ -598,12 +912,15 @@ public sealed class BotMovementDeliveryTests
         newArea.Packets.Clear();
         monster.Area = AreaType.S2Library1;
         CompleteMovements(runtime, [(monster.Info.ObjectInfo, AreaType.S2Ground)]);
-        Assert.Equal(AreaType.S2Library1, Assert.Single(oldArea.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE).Objects).Area);
-        Assert.Equal(Protocol.G_TO_C_MONSTER_SNAPSHOT, newArea.Packets[0].Protocol);
+        var leave = Assert.Single(oldArea.Read<G_TO_C_OBJECT_LEAVE>(Protocol.G_TO_C_OBJECT_LEAVE).Objects);
+        Assert.Equal(ObjectType.MONSTER, leave.Type);
+        Assert.Equal(1, leave.Id);
+        Assert.DoesNotContain(oldArea.Packets, p => p.Protocol == Protocol.G_TO_C_MOVE);
+        Assert.Equal(Protocol.G_TO_C_OBJECT_ENTER, newArea.Packets[0].Protocol);
         oldArea.Packets.Clear();
         monster.Area = AreaType.S2Ground;
         CompleteMovements(runtime, [(monster.Info.ObjectInfo, AreaType.S2Library1)]);
-        Assert.Equal(Protocol.G_TO_C_MONSTER_SNAPSHOT, oldArea.Packets[0].Protocol);
+        Assert.Equal(Protocol.G_TO_C_OBJECT_ENTER, oldArea.Packets[0].Protocol);
     }
 
     [Fact]
@@ -657,7 +974,7 @@ public sealed class BotMovementDeliveryTests
             Assert.Null(monster.Movement.DestinationCell);
         });
         Assert.NotEmpty(recipient.Packets);
-        Assert.All(recipient.Packets, p => Assert.Equal(Protocol.G_TO_C_MONSTER_SNAPSHOT, p.Protocol));
+        Assert.All(recipient.Packets, p => Assert.Equal(Protocol.G_TO_C_OBJECT_ENTER, p.Protocol));
         Assert.Empty(otherMatch.Packets);
         recipient.Packets.Clear();
         new MatchMoveService(null!, null!).ProcessTick(runtime, now.AddMilliseconds(50));
@@ -670,7 +987,7 @@ public sealed class BotMovementDeliveryTests
         var session = runtime.GetSessions().Single(s => s.PlayerId == 103);
         session.SendMonsterSnapshot(runtime.Monsters.GetVisualStatesByArea());
         Assert.NotEmpty(late.Packets);
-        Assert.All(late.Packets, p => Assert.Equal(Protocol.G_TO_C_MONSTER_SNAPSHOT, p.Protocol));
+        Assert.All(late.Packets, p => Assert.Equal(Protocol.G_TO_C_OBJECT_ENTER, p.Protocol));
     }
 
     private static RecordingConnection AddRecipient(
@@ -684,16 +1001,26 @@ public sealed class BotMovementDeliveryTests
         typeof(GameClientSession).GetProperty("MatchingId", flags)!.SetValue(session, matchingId);
         TestGameSessionServices.BindMatch(session, matchingId, store);
         session.Player.CurrentArea = area;
+        session.PublishedInteractionArea = area;
+        session.Player.Position = new Vector3f();
         TestGameSessionServices.AttachSession(session);
+        foreach (var other in store.GetOrCreate(matchingId).GetSessions())
+        {
+            if (other.Player.CurrentArea != area || other == session) continue;
+            session.PublishedObjects.Add((ObjectType.PLAYER, other.Player.PlayerId));
+            other.PublishedObjects.Add((ObjectType.PLAYER, playerId));
+        }
         return connection;
     }
 
     private sealed class RecordingConnection(long playerId, List<(long PlayerId, Protocol Protocol)> timeline) : TcpConnection
     {
+        public bool AcceptPackets { get; set; } = true;
         public List<(Protocol Protocol, byte[] Wire)> Packets { get; } = [];
 
         public override bool TrySend(Packet packet)
         {
+            if (!AcceptPackets) return false;
             packet.RecordSize();
             var protocol = (Protocol)packet.ProtocolId;
             Packets.Add((protocol, packet.ToBytes()));

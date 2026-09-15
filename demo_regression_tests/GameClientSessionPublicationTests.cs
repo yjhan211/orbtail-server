@@ -225,13 +225,13 @@ public sealed class GameClientSessionPublicationTests
         {
             fixture.ConnectionFor(session).BeforeSend = protocol =>
             {
-                Assert.Equal(Protocol.G_TO_C_OBJECT_INFO, protocol);
+                Assert.Equal(Protocol.G_TO_C_OBJECT_ENTER, protocol);
                 Assert.True(Monitor.IsEntered(runtime.MatchLock));
                 sendCount++;
             };
         }
         if (sendThrows)
-            fixture.ConnectionFor(joining).ThrowOnceOn = Protocol.G_TO_C_OBJECT_INFO;
+            fixture.ConnectionFor(joining).ThrowOnceOn = Protocol.G_TO_C_OBJECT_ENTER;
         var broadcast = typeof(GameClientSession).GetMethod(
             "SyncPlayersOnEntry", BindingFlags.Instance | BindingFlags.NonPublic)!;
         if (sendThrows)
@@ -268,7 +268,7 @@ public sealed class GameClientSessionPublicationTests
         }
         using (session.Match.Enter())
         {
-            new MatchSynchronizationService().SendUpdates(session.Match, new Dictionary<GameClientSession, G_TO_C_MOVE>(), new Dictionary<GameClientSession, List<MonsterInfo>>(), new Dictionary<GameClientSession, List<(Protocol Protocol, byte[] Body)>>(), []);
+            new MatchSynchronizationService().SendBatch(session.Match, new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, session.Match.GetSessions()));
         }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(101, hit.AttackerId);
@@ -304,7 +304,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.NotEqual(DateTime.MinValue, bot.LastDamagedAtUtc);
         using (match.Enter())
         {
-            new MatchSynchronizationService().SendUpdates(match, new Dictionary<GameClientSession, G_TO_C_MOVE>(), new Dictionary<GameClientSession, List<MonsterInfo>>(), new Dictionary<GameClientSession, List<(Protocol Protocol, byte[] Body)>>(), []);
+            new MatchSynchronizationService().SendBatch(match, new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, match.GetSessions()));
         }
         Assert.Single(fixture.ConnectionFor(session).AttemptedProtocols, protocol => protocol == Protocol.G_TO_C_COMBAT_HIT);
     }
@@ -334,7 +334,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(0, bot.LastProximityAttackerPlayerId);
         using (session.Match.Enter())
         {
-            new MatchSynchronizationService().SendUpdates(session.Match, new Dictionary<GameClientSession, G_TO_C_MOVE>(), new Dictionary<GameClientSession, List<MonsterInfo>>(), new Dictionary<GameClientSession, List<(Protocol Protocol, byte[] Body)>>(), []);
+            new MatchSynchronizationService().SendBatch(session.Match, new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, session.Match.GetSessions()));
         }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(CombatEntityKind.Monster, hit.AttackerKind);
@@ -363,7 +363,7 @@ public sealed class GameClientSessionPublicationTests
         }
         using (session.Match.Enter())
         {
-            new MatchSynchronizationService().SendUpdates(session.Match, new Dictionary<GameClientSession, G_TO_C_MOVE>(), new Dictionary<GameClientSession, List<MonsterInfo>>(), new Dictionary<GameClientSession, List<(Protocol Protocol, byte[] Body)>>(), []);
+            new MatchSynchronizationService().SendBatch(session.Match, new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, session.Match.GetSessions()));
         }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(CombatEntityKind.Monster, hit.TargetKind);
@@ -386,7 +386,7 @@ public sealed class GameClientSessionPublicationTests
         }
         using (session.Match.Enter())
         {
-            new MatchSynchronizationService().SendUpdates(session.Match, new Dictionary<GameClientSession, G_TO_C_MOVE>(), new Dictionary<GameClientSession, List<MonsterInfo>>(), new Dictionary<GameClientSession, List<(Protocol Protocol, byte[] Body)>>(), []);
+            new MatchSynchronizationService().SendBatch(session.Match, new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, session.Match.GetSessions()));
         }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(CombatEntityKind.Monster, hit.AttackerKind);
@@ -409,7 +409,7 @@ public sealed class GameClientSessionPublicationTests
         }
         using (session.Match.Enter())
         {
-            new MatchSynchronizationService().SendUpdates(session.Match, new Dictionary<GameClientSession, G_TO_C_MOVE>(), new Dictionary<GameClientSession, List<MonsterInfo>>(), new Dictionary<GameClientSession, List<(Protocol Protocol, byte[] Body)>>(), []);
+            new MatchSynchronizationService().SendBatch(session.Match, new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, session.Match.GetSessions()));
         }
         var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
         Assert.Equal(999, hit.TargetId);
@@ -513,15 +513,17 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(4, self.Match.GetSessions().Count);
         using (self.Match.Enter())
         {
+            self.PublishedObjects.Add((ObjectType.PLAYER, peer.Player.PlayerId));
+            peer.PublishedObjects.Add((ObjectType.PLAYER, self.Player.PlayerId));
             self.Match.StartGameplay(DateTime.UtcNow);
-            new MatchSynchronizationService().TrackNewObjects(self.Match);
+            new MatchSynchronizationService().InitializeComparisonSnapshots(self.Match);
             self.Player.State = sleeping ? PlayerState.SLEEP : PlayerState.EXPLORE_1;
             Assert.Empty(fixture.ConnectionFor(peer).AttemptedProtocols);
             new MatchSynchronizationService().ProcessTick(self.Match, DateTime.UtcNow);
         }
 
-        Assert.Equal(new[] { Protocol.G_TO_C_PLAYER_STATE, Protocol.G_TO_C_MOVE }, fixture.ConnectionFor(peer).AttemptedProtocols);
-        Assert.Equal(Protocol.G_TO_C_PLAYER_STATE, Assert.Single(fixture.ConnectionFor(self).AttemptedProtocols));
+        Assert.Equal(new[] { Protocol.G_TO_C_PLAYER_INFO, Protocol.G_TO_C_MOVE }, fixture.ConnectionFor(peer).AttemptedProtocols);
+        Assert.Equal(Protocol.G_TO_C_PLAYER_INFO, Assert.Single(fixture.ConnectionFor(self).AttemptedProtocols));
         Assert.Empty(fixture.ConnectionFor(eliminated).AttemptedProtocols);
         Assert.Empty(fixture.ConnectionFor(otherArea).AttemptedProtocols);
         Assert.Empty(fixture.ConnectionFor(otherMatch).AttemptedProtocols);
@@ -619,7 +621,7 @@ public sealed class GameClientSessionPublicationTests
         leaving.OnRemoved();
 
         Assert.False(registry.TryGetSession(101, out _));
-        Assert.Equal([Protocol.G_TO_C_AREA_PLAYER_LEAVE], fixture.ConnectionFor(nearby).DeliveredProtocols);
+        Assert.Equal([Protocol.G_TO_C_OBJECT_LEAVE], fixture.ConnectionFor(nearby).DeliveredProtocols);
         Assert.Empty(fixture.ConnectionFor(otherArea).DeliveredProtocols);
         Assert.Empty(fixture.ConnectionFor(otherMatch).DeliveredProtocols);
         Assert.NotNull(fixture.Store.GetOrNull(70001));
@@ -693,11 +695,20 @@ public sealed class GameClientSessionPublicationTests
 
         Assert.Equal(
             [
-                Protocol.G_TO_C_DOOR_STATE_UPDATE,
                 Protocol.G_TO_C_DOOR_OPEN_ACK
             ],
             fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.True((fixture.Store.GetOrNull(70001)?.Doors.IsDoorOpen(201) == true));
+        using (session.Match.Enter())
+        {
+            var sync = new MatchSynchronizationService();
+            var batch = new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, session.Match.GetSessions());
+            sync.CollectInteractableUpdates(session.Match, batch);
+            Assert.DoesNotContain(Protocol.G_TO_C_INTERACTABLE_INFO, fixture.ConnectionFor(session).DeliveredProtocols);
+            sync.SendBatch(session.Match, batch);
+        }
+        var doorUpdate = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_INTERACTABLE_INFO>(Protocol.G_TO_C_INTERACTABLE_INFO);
+        Assert.Contains(doorUpdate.Objects, info => GameInteractableData.Get(info.InteractId)?.DoorId == 201 && info.IsCompleted);
         Assert.True(fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK).Completed);
         Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(70001)!.MatchLock));
@@ -721,7 +732,7 @@ public sealed class GameClientSessionPublicationTests
         IReadOnlyList<Protocol> protocols = fixture.ConnectionFor(session).DeliveredProtocols;
         if (expectedPrefix.HasValue)
             Assert.Equal(expectedPrefix.Value, protocols[0]);
-        Assert.Equal(Protocol.G_TO_C_GROUND_ITEM_REMOVED, protocols[^2]);
+        Assert.DoesNotContain(Protocol.G_TO_C_GROUND_ITEM_REMOVED, protocols);
         Assert.Equal(Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT, protocols[^1]);
         Assert.Null(fixture.Store.GetOrThrow(70001).GroundItems.GetItem(item.GroundItemUid));
 
@@ -746,7 +757,6 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(
             [
                 Protocol.G_TO_C_PLAYER_STATS_UPDATE,
-                Protocol.G_TO_C_GROUND_ITEM_REMOVED,
                 Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT
             ],
             fixture.ConnectionFor(session).DeliveredProtocols);
@@ -925,7 +935,6 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(
             [
                 "send:G_TO_C_SUMMON_STONE_STATE",
-                "send:G_TO_C_GROUND_ITEM_REMOVED",
                 "send:G_TO_C_GROUND_ITEM_PICKUP_RESULT",
                 "cleanup",
                 "after"
@@ -941,7 +950,7 @@ public sealed class GameClientSessionPublicationTests
         RecordingSession session = fixture.CreateSession(70001, 101, AreaType.S2Corridor9);
         GroundItemInfo item = fixture.SpawnAtSession(session, Config.SUMMON_STONE_GROUND_ITEM_ID);
         RecordingTcpConnection connection = fixture.ConnectionFor(session);
-        connection.ThrowOnceOn = Protocol.G_TO_C_GROUND_ITEM_REMOVED;
+        connection.ThrowOnceOn = Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT;
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => RunPickupTickAsync(session, fixture.Store));
 
@@ -950,10 +959,10 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(
             [
                 Protocol.G_TO_C_SUMMON_STONE_STATE,
-                Protocol.G_TO_C_GROUND_ITEM_REMOVED
+                Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT
             ],
             connection.AttemptedProtocols);
-        Assert.DoesNotContain(Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT, connection.AttemptedProtocols);
+        Assert.DoesNotContain(Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT, connection.DeliveredProtocols);
         Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(70001)!.MatchLock));
     }
 
@@ -964,7 +973,7 @@ public sealed class GameClientSessionPublicationTests
         RecordingSession session = fixture.CreateSession(70001, 101, AreaType.S2Corridor9);
         fixture.SetHealth(session, 20);
         GroundItemInfo item = fixture.SpawnAtSession(session, Config.HEART_GROUND_ITEM_ID);
-        fixture.ConnectionFor(session).ThrowOnceOn = Protocol.G_TO_C_GROUND_ITEM_REMOVED;
+        fixture.ConnectionFor(session).ThrowOnceOn = Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT;
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => RunPickupTickAsync(session, fixture.Store));
 
@@ -1078,7 +1087,7 @@ public sealed class GameClientSessionPublicationTests
             ReadMethodSlice(
                 doors,
                 "internal void SendDoorOpenInterrupted(int interactId)",
-                "private void SendDoorStateList("));
+                "private void SendInteractableList("));
     }
 
     [Theory]
@@ -1093,14 +1102,14 @@ public sealed class GameClientSessionPublicationTests
         bool sentUnderLock = false;
         connection.BeforeSend = protocol =>
         {
-            if (protocol == Protocol.G_TO_C_DOOR_STATE_LIST)
+            if (protocol == Protocol.G_TO_C_INTERACTABLE_INFO)
                 sentUnderLock = Monitor.IsEntered(runtime.MatchLock);
         };
         if (sendThrows)
-            connection.ThrowOnceOn = Protocol.G_TO_C_DOOR_STATE_LIST;
+            connection.ThrowOnceOn = Protocol.G_TO_C_INTERACTABLE_INFO;
 
         var send = typeof(GameClientSession).GetMethod(
-            "SendDoorStateList", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            "SendInteractableList", BindingFlags.Instance | BindingFlags.NonPublic)!;
         if (sendThrows)
             Assert.IsType<InvalidOperationException>(
                 Assert.Throws<TargetInvocationException>(() => send.Invoke(session, null)).InnerException);
@@ -1235,7 +1244,7 @@ public sealed class GameClientSessionPublicationTests
         loop.ProcessTick();
         Assert.NotNull(session.Match.GroundItems.GetItem(item.GroundItemUid));
         Assert.All(fixture.ConnectionFor(session).DeliveredProtocols,
-            protocol => Assert.Equal(Protocol.G_TO_C_MONSTER_SNAPSHOT, protocol));
+            protocol => Assert.Equal(Protocol.G_TO_C_OBJECT_ENTER, protocol));
 
         // 테스트에서 대기 없이 활성 게이트를 연다.
         fixture.Store.GetOrThrow(session.MatchingId).StartGameplay();
@@ -1366,8 +1375,8 @@ public sealed class GameClientSessionPublicationTests
             Assert.Empty(TestGameSessionServices.Orbs(match, 101).GetAllItems());
             Assert.Single(match.GroundItems.GetItemsInArea(eliminated.Player.CurrentArea));
         }
-        Assert.Equal([Protocol.G_TO_C_ORB_UPDATE, Protocol.G_TO_C_PLAYER_ELIMINATED, Protocol.G_TO_C_AREA_PLAYER_LEAVE], fixture.ConnectionFor(eliminated).DeliveredProtocols);
-        Assert.Equal([Protocol.G_TO_C_GROUND_ITEM_SPAWN, Protocol.G_TO_C_PLAYER_ELIMINATED, Protocol.G_TO_C_AREA_PLAYER_LEAVE], fixture.ConnectionFor(observer).DeliveredProtocols);
+        Assert.Equal([Protocol.G_TO_C_ORB_UPDATE, Protocol.G_TO_C_PLAYER_ELIMINATED, Protocol.G_TO_C_OBJECT_LEAVE], fixture.ConnectionFor(eliminated).DeliveredProtocols);
+        Assert.Equal([Protocol.G_TO_C_PLAYER_ELIMINATED, Protocol.G_TO_C_OBJECT_LEAVE], fixture.ConnectionFor(observer).DeliveredProtocols);
         Assert.DoesNotContain(Protocol.G_TO_C_GROUND_ITEM_SPAWN, fixture.ConnectionFor(otherArea).DeliveredProtocols);
         Assert.DoesNotContain(Protocol.G_TO_C_GROUND_ITEM_SPAWN, fixture.ConnectionFor(inactiveObserver).DeliveredProtocols);
     }
@@ -1380,9 +1389,9 @@ public sealed class GameClientSessionPublicationTests
         var other = fixture.CreateSession(70001, 102, AreaType.S2Corridor9);
         var item = fixture.SpawnAtSession(owner, Config.SUMMON_STONE_GROUND_ITEM_ID);
         using (owner.Match.Enter())
-            owner.SendGroundItemSnapshot(owner.Player.CurrentArea);
-        var snapshot = fixture.ConnectionFor(owner).DeserializeSingle<G_TO_C_GROUND_ITEM_SNAPSHOT>(
-            Protocol.G_TO_C_GROUND_ITEM_SNAPSHOT);
+            owner.SendGroundItemEntries(owner.Player.CurrentArea);
+        var snapshot = fixture.ConnectionFor(owner).DeserializeSingle<G_TO_C_OBJECT_ENTER>(
+            Protocol.G_TO_C_OBJECT_ENTER);
         Assert.Equal(item.GroundItemUid, Assert.Single(snapshot.Items).GroundItemUid);
         Assert.Empty(fixture.ConnectionFor(other).DeliveredProtocols);
     }
@@ -1475,6 +1484,8 @@ public sealed class GameClientSessionPublicationTests
                 _sessions,
                 Store, removeSession);
             SetIdentity(session, matchingId, playerId, area);
+            session.PublishedInteractionArea = area;
+            session.PublishedOpenDoors.UnionWith(session.Match.Doors.GetOpenDoors());
             _sessions.Add(session);
             TestGameSessionServices.AttachSession(session);
             _connections.Add(session, connection);

@@ -32,6 +32,6 @@ public sealed class NaturalStockRemovalTests
     public void RetiredStockProtocolDoesNotRenumberFollowingMessages()
     {
         Assert.DoesNotContain("G_TO_C_AREA_STOCK_STATE", Enum.GetNames<Protocol>());
-        Assert.Equal((int)Protocol.G_TO_C_ORB_EFFECT_STATE + 2, (int)Protocol.G_TO_C_MONSTER_SNAPSHOT);
+        Assert.Equal((int)Protocol.G_TO_C_ORB_EFFECT_STATE + 2, (int)Protocol.G_TO_C_MONSTER_INFO);
     }
 }

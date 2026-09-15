@@ -9,7 +9,6 @@ namespace network.packets;
 ///   - PacketMaker.InGameInventory.cs : G_TO_C_* 인게임 아이템
 ///   - PacketMaker.PlayerStatus.cs : G_TO_C_* 스탯/상태
 ///   - PacketMaker.ExitProcedure.cs: G_TO_C_* 탈출 절차
-///   - PacketMaker.Environment.cs  : G_TO_C_* 환경 (문, 복도)
 ///   - PacketMaker.PlayerInteract.cs : G_TO_C_* 플레이어 상호작용
 /// </summary>
 public static partial class PacketMaker;

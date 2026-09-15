@@ -44,10 +44,10 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_OBJECT_INFO(List<PlayerPresenceInfo> players)
+    public static Packet G_TO_C_PLAYER_INFO(List<GamePlayerInfo> players)
     {
-        var packet = Packet.Create((int)Protocol.G_TO_C_OBJECT_INFO);
-        G_TO_C_OBJECT_INFO body = new() { Players = players };
+        var packet = Packet.Create((int)Protocol.G_TO_C_PLAYER_INFO);
+        G_TO_C_PLAYER_INFO body = new() { Players = players };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -65,10 +65,10 @@ public static partial class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    public static Packet G_TO_C_AREA_PLAYER_ENTER(PlayerPresenceInfo player)
+    public static Packet G_TO_C_AREA_PLAYER_ENTER(GamePlayerInfo player)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_AREA_PLAYER_ENTER);
-        G_TO_C_AREA_PLAYER_ENTER body = new() { Player = player.Player, GamePlayer = player.GamePlayer };
+        G_TO_C_AREA_PLAYER_ENTER body = new() { GamePlayer = player };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -114,10 +114,10 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_INTERACTABLE_LIST(AreaType areaType, List<InteractableObjectState> objects)
+    public static Packet G_TO_C_INTERACTABLE_INFO(AreaType areaType, List<InteractableInfo> objects)
     {
-        var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTABLE_LIST);
-        G_TO_C_INTERACTABLE_LIST body = new() { AreaType = areaType, Objects = objects };
+        var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTABLE_INFO);
+        G_TO_C_INTERACTABLE_INFO body = new() { AreaType = areaType, Objects = objects };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

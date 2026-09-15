@@ -27,14 +27,14 @@ namespace network.common
         C_TO_G_CONNECT,
         C_TO_G_MATCH_START_READY,
         G_TO_C_CONNECT_RESULT,
-        G_TO_C_OBJECT_INFO,
+        G_TO_C_PLAYER_INFO,
         C_TO_G_MOVE,
         G_TO_C_MOVE,
         G_TO_C_GAME_TIME_WARNING,
         G_TO_C_GAME_END,
         G_TO_C_AREA_PLAYER_ENTER, // 다른 플레이어가 내 Area에 진입
         G_TO_C_AREA_PLAYER_LEAVE, // 다른 플레이어가 내 Area에서 퇴장
-        G_TO_C_INTERACTABLE_LIST, // 구역 진입·재접속 시 상호작용 가능한 오브젝트 목록 (현재는 닫힌 문)
+        G_TO_C_INTERACTABLE_INFO, // 구역 진입·재접속 시 상호작용 가능한 오브젝트 목록 (현재는 닫힌 문)
         G_TO_C_AREA_EXIT_BLOCKED, // Area 퇴장 조건 미충족 시 이동 차단 알림
 
         // 보유 오브 동기화
@@ -49,8 +49,6 @@ namespace network.common
         G_TO_C_PLAYER_STATS_UPDATE, // 스태미나/정신력 등 스탯 변경 알림
 
         // 문 프로토콜
-        G_TO_C_DOOR_STATE_UPDATE, // 문 상태 변경 브로드캐스트
-        G_TO_C_DOOR_STATE_LIST, // 입장 시 열린 문 목록
         C_TO_G_DOOR_OPEN_START, // 문 게이지 시작
         C_TO_G_DOOR_OPEN_FINISH, // 문 게이지 완료 요청
         G_TO_C_DOOR_OPEN_ACK, // 시작 승인·완료·중단 결과
@@ -98,7 +96,7 @@ namespace network.common
         G_TO_C_PROXIMITY_ATTACK_VFX,
         G_TO_C_ORB_EFFECT_STATE,
         // 제거된 자연 재고 메시지의 번호는 재사용하지 않는다.
-        G_TO_C_MONSTER_SNAPSHOT = G_TO_C_ORB_EFFECT_STATE + 2,
+        G_TO_C_MONSTER_INFO = G_TO_C_ORB_EFFECT_STATE + 2,
         G_TO_C_MONSTER_ATTACK_VFX,
         G_TO_C_SUMMON_STONE_STATE,
         C_TO_G_SUMMON_ORB,
@@ -130,6 +128,8 @@ namespace network.common
         G_TO_C_COMBAT_HIT,
         G_TO_C_HEALTH_RECOVERY,
         G_TO_C_STATUS_EFFECT,
+        G_TO_C_OBJECT_ENTER,
+        G_TO_C_OBJECT_LEAVE,
         END
     }
 

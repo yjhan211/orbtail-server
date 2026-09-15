@@ -291,7 +291,8 @@ public sealed class SwarmArenaTickOrderTests
             "field.ProcessClosureTick(runtime);");
         Assert.DoesNotContain("TryEnter", tick);
 
-        // 같은 잠금 안에서 단계마다 상태를 바꾼 직후 그 패킷을 보낸다. 전송 실패는 상태를 되돌리지 않는다.
+        // 폐쇄 처리는 문 상태만 바꾼다. 문 변경 전송은 틱 끝 동기화가 담당한다.
+        Assert.DoesNotContain("PacketMaker.G_TO_C_DOOR_STATE_UPDATE(", tick);
         AssertInOrder(
             tick,
             "closures.InitializeMatching(",
@@ -300,7 +301,6 @@ public sealed class SwarmArenaTickOrderTests
             "Area closed:",
             "Protocol.G_TO_C_AREA_CLOSED",
             "runtime.Doors.CloseDoorsForAreas(",
-            "PacketMaker.G_TO_C_DOOR_STATE_UPDATE(",
             "DestroyOrbsFromOrdinal(",
             "SendOrbUpdate(",
             "Protocol.G_TO_C_ORB_RING_EFFECT");

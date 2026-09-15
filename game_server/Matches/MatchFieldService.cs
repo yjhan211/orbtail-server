@@ -77,14 +77,7 @@ internal class MatchFieldService(
             return;
         }
 
-        foreach (int doorId in runtime.Doors.CloseDoorsForAreas(closedAreas))
-        {
-            using var packet = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false);
-            foreach (var session in sessions)
-            {
-                session.TrySend(packet);
-            }
-        }
+        runtime.Doors.CloseDoorsForAreas(closedAreas);
 
         var closedAreaSet = closedAreas.ToHashSet();
         foreach (var owner in runtime.GetAlivePlayers())

@@ -41,7 +41,7 @@ internal sealed class MatchRuntime
             session.SendMonsterSnapshot(states, fullSnapshot: false);
         }
     }
-    internal Dictionary<(ObjectType, long), GameObjectInfo> SynchronizedObjects { get; } = new();
+    internal Dictionary<(ObjectType Type, long Id), MatchObjectSnapshot> SynchronizedObjects { get; } = new();
     internal Dictionary<long, PlayerState> SynchronizedPlayerStates { get; } = new();
     internal Queue<(GameClientSession Session, G_TO_C_COMBAT_HIT Hit)> PendingCombatHits { get; } = new();
 
@@ -401,7 +401,7 @@ internal sealed class MatchRuntime
                 {
                     try
                     {
-                        MatchSynchronizationService.SendCombatHits(this);
+                        MatchSynchronizationService.SendPendingCombatHits(this);
                     }
                     catch (Exception ex)
                     {

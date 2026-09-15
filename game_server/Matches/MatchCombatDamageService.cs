@@ -243,7 +243,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         return critical ? Math.Max(damage + 1, (int)MathF.Round(damage * SwarmCriticalMultiplier)) : damage;
     }
 
-    private void SpawnSwarmSummonStone(MatchRuntime runtime, Monster defeated, int groundStoneReward, int heartReward, IReadOnlyCollection<GameClientSession> sessions)
+    private void SpawnSwarmSummonStone(MatchRuntime runtime, Monster defeated, int groundStoneReward, int heartReward)
     {
         if (groundStoneReward <= 0 && heartReward <= 0)
         {
@@ -251,12 +251,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         }
 
         int[] itemIds = Enumerable.Repeat(Config.SUMMON_STONE_GROUND_ITEM_ID, Math.Max(0, groundStoneReward)).Concat(Enumerable.Repeat(Config.HEART_GROUND_ITEM_ID, Math.Max(0, heartReward))).ToArray();
-        var spawned = runtime.GroundItems.SpawnItems(defeated.Area, defeated.Position.X, defeated.Position.Y, itemIds);
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)defeated.Area, spawned.ToList());
-        foreach (var session in sessions.Where(session => session.Player.CurrentArea == defeated.Area))
-        {
-            session.TrySend(packet);
-        }
+        runtime.GroundItems.SpawnItems(defeated.Area, defeated.Position.X, defeated.Position.Y, itemIds);
     }
 
     public void ApplySwarmMonsterHitNow(
@@ -301,7 +296,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
             return;
         }
 
-        SpawnSwarmSummonStone(runtime, defeated, damageResult.SummonStoneReward, defeated.HeartReward, allSessions);
+        SpawnSwarmSummonStone(runtime, defeated, damageResult.SummonStoneReward, defeated.HeartReward);
     }
 
     public void ApplySwarmShock(MatchRuntime runtime, PlayerHealthService healthService,

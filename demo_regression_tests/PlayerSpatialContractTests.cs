@@ -14,17 +14,17 @@ public sealed class PlayerSpatialContractTests
     {
         var redis = new InMemoryRedisOperations();
         var presence = CreatePlayerObject();
-        var player = presence.Player;
+        var player = new PlayerInfo { PlayerId = 42, Name = presence.Name, WearItemIdList = new(presence.WearItemIdList) };
         player.InventoryInfo = new InventoryInfo(InventoryOwnerType.PLAYER, player.PlayerId);
-        var objectInfo = presence.GamePlayer.ObjectInfo;
-        var state = presence.GamePlayer.State;
+        var objectInfo = presence.ObjectInfo;
+        var state = presence.State;
         await player.Save(redis);
         var stored = await redis.HashGetAsync(PlayerInfo.HashKey, player.PlayerId);
         string json = MessagePackSerializer.ConvertToJson((byte[])stored!);
         Assert.DoesNotContain("objectInfo", json);
         Assert.DoesNotContain("\"state\"", json);
-        Assert.Same(objectInfo, presence.GamePlayer.ObjectInfo);
-        Assert.Equal(state, presence.GamePlayer.State);
+        Assert.Same(objectInfo, presence.ObjectInfo);
+        Assert.Equal(state, presence.State);
         var loaded = await PlayerInfo.Load(redis, player.PlayerId);
         Assert.NotNull(loaded);
         Assert.Equal(player.Name, loaded.Name);
@@ -53,8 +53,8 @@ public sealed class PlayerSpatialContractTests
     public void PlayerInfoSerialization_ExcludesGameState()
     {
         var presence = CreatePlayerObject();
-        var player = presence.Player;
-        Assert.NotNull(presence.GamePlayer.ObjectInfo);
+        var player = new PlayerInfo { PlayerId = 42, Name = presence.Name, WearItemIdList = new(presence.WearItemIdList) };
+        Assert.NotNull(presence.ObjectInfo);
         string json = MessagePackSerializer.ConvertToJson(MessagePackSerializer.Serialize(player));
         Assert.DoesNotContain("lastMap", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("lastCell", json, StringComparison.OrdinalIgnoreCase);
@@ -63,7 +63,7 @@ public sealed class PlayerSpatialContractTests
         var copy = MessagePackSerializer.Deserialize<PlayerInfo>(MessagePackSerializer.Serialize(player));
         Assert.Null(typeof(PlayerInfo).GetProperty("ObjectInfo"));
         Assert.DoesNotContain("\"state\"", json);
-        Assert.NotNull(presence.GamePlayer.ObjectInfo);
+        Assert.NotNull(presence.ObjectInfo);
         Assert.Contains("playerId", json);
     }
 
@@ -94,18 +94,19 @@ public sealed class PlayerSpatialContractTests
     [Fact]
     public void ObjectPresence_RoundTripsProfileSpatialAndActionState()
     {
-        using var packet = PacketMaker.G_TO_C_OBJECT_INFO([CreatePlayerObject()]);
+        using var packet = PacketMaker.G_TO_C_PLAYER_INFO([CreatePlayerObject()]);
         using var wire = Packet.Create(packet.ToBytes());
         wire.PopProtocolId();
         wire.PopPlayerId();
         var bytes = wire.PopBody();
-        var copy = MessagePackSerializer.Deserialize<G_TO_C_OBJECT_INFO>(bytes);
+        var copy = MessagePackSerializer.Deserialize<G_TO_C_PLAYER_INFO>(bytes);
         var presence = Assert.Single(copy.Players);
-        AssertPlayerObject(presence.GamePlayer);
+        AssertPlayerObject(presence);
         string json = MessagePackSerializer.ConvertToJson(bytes);
         Assert.DoesNotContain("playerInfo", json, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("wearItemIdList", json);
-        Assert.Contains("gold", json);
+        Assert.DoesNotContain("gold", json);
+        Assert.DoesNotContain("isNew", json);
     }
 
     [Fact]
@@ -140,11 +141,10 @@ public sealed class PlayerSpatialContractTests
             MessagePackSerializer.Serialize(monster));
         Assert.Equal(AreaType.S2Library1, copy.ObjectInfo.Area);
     }
-    private static PlayerPresenceInfo CreatePlayerObject() => new()
+    private static GamePlayerInfo CreatePlayerObject() => new()
     {
-        Player = new PlayerInfo { PlayerId = 42, Name = "TestPlayer", WearItemIdList = [101000003] },
-        GamePlayer = new GamePlayerInfo
-        {
+        Name = "TestPlayer",
+        WearItemIdList = [101000003],
         ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, 42, MapId.Camp, new Cell(3, 4))
         {
             Area = AreaType.S2Corridor9,
@@ -153,12 +153,26 @@ public sealed class PlayerSpatialContractTests
             Rotation = 75f
         },
         State = PlayerState.SLEEP, Health = 73, Status = PlayerMatchStatus.ACTIVE
-        }
     };
 
+    [Fact]
+    public void MatchAppearanceAndPublishedSnapshot_DoNotShareProfileLists()
+    {
+        var profile = new PlayerInfo { PlayerId = 7, Name = "MatchName", WearItemIdList = [101000003] };
+        var player = new Player { Profile = profile, Position = new Vector3f(1, 2, 0) };
+        profile.Name = "LobbyName";
+        profile.WearItemIdList.Clear();
+        var snapshot = player.CreatePlayerObjectInfo();
+        Assert.Equal("MatchName", snapshot.Name);
+        Assert.Equal(new[] { 101000003 }, snapshot.WearItemIdList);
+        snapshot.WearItemIdList.Clear();
+        Assert.Single(player.GameInfo.WearItemIdList);
+    }
     // 공간 정보는 GameObjectInfo가, 행동 상태는 플레이어 전송 단위가 든다.
     private static void AssertPlayerObject(GamePlayerInfo player)
     {
+        Assert.Equal("TestPlayer", player.Name);
+        Assert.Equal(new[] { 101000003 }, player.WearItemIdList);
         var info = player.ObjectInfo;
         Assert.Equal(42, info.ObjectId);
         Assert.Equal(AreaType.S2Corridor9, info.Area);
@@ -184,14 +198,14 @@ public sealed class PlayerSpatialContractTests
 
         player.Position = new Vector3f(1f, 2f, 0f);
         var snapshot = player.CreatePlayerObjectInfo();
-        Assert.Equal(PlayerState.SLEEP, snapshot.GamePlayer.State);
-        Assert.Equal(7, snapshot.GamePlayer.ObjectInfo.ObjectId);
+        Assert.Equal(PlayerState.SLEEP, snapshot.State);
+        Assert.Equal(7, snapshot.ObjectInfo.ObjectId);
         player.Health = 51;
         Assert.Equal(51, player.GameInfo.Health);
         player.GameInfo.Status = PlayerMatchStatus.ACTIVE;
         Assert.Equal(PlayerMatchStatus.ACTIVE, player.Status);
-        Assert.NotEqual(player.Health, snapshot.GamePlayer.Health);
-        snapshot.GamePlayer.ObjectInfo.Position.X = 99f;
+        Assert.NotEqual(player.Health, snapshot.Health);
+        snapshot.ObjectInfo.Position.X = 99f;
         Assert.Equal(1f, player.Position!.X);
 
         player.Position = null;

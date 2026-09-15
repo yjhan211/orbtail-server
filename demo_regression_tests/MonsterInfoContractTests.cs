@@ -74,13 +74,13 @@ public sealed class MonsterInfoContractTests
             CurrentHealth = 12,
             IsAlive = true
         };
-        var bytes = MessagePackSerializer.Serialize(new G_TO_C_MONSTER_SNAPSHOT { Monsters = [info] });
+        var bytes = MessagePackSerializer.Serialize(new G_TO_C_MONSTER_INFO { Monsters = [info] });
         string json = MessagePackSerializer.ConvertToJson(bytes);
         Assert.DoesNotContain("\"positionX\"", json);
         Assert.DoesNotContain("\"positionY\"", json);
         Assert.Contains("\"objectInfo\"", json);
         Assert.Contains("\"monsterId\":7", json);
-        var copy = Assert.Single(MessagePackSerializer.Deserialize<G_TO_C_MONSTER_SNAPSHOT>(bytes).Monsters);
+        var copy = Assert.Single(MessagePackSerializer.Deserialize<G_TO_C_MONSTER_INFO>(bytes).Monsters);
         Assert.Equal(7, copy.ObjectInfo.ObjectId);
         Assert.Equal(copy.ObjectInfo.ObjectId, copy.MonsterId);
         Assert.Equal(3, copy.ObjectInfo.Position.X);

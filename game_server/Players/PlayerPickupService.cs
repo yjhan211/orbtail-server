@@ -234,22 +234,6 @@ internal sealed class PlayerPickupService(PlayerHealthService healthService, ILo
 
         }
 
-        using (var removed = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(claimedItem.GroundItemUid, player.PlayerId, autoUsed))
-        {
-            var targetSessions = new List<GameClientSession>();
-            foreach (var other in match.GetSessions())
-            {
-                if (!other.Player.IsEliminated && other.Player.CurrentArea == (AreaType)claimedItem.AreaType)
-                {
-                    targetSessions.Add(other);
-                }
-            }
-
-            foreach (var other in targetSessions)
-            {
-                other.TrySend(removed);
-            }
-        }
         using var result = PacketMaker.G_TO_C_GROUND_ITEM_PICKUP_RESULT(claimedItem.GroundItemUid, claimedItem.ItemId, true, autoUsed, ErrorCode.SUCCESS);
         player.Session?.TrySend(result);
         return true;

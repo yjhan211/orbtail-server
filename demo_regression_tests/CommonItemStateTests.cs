@@ -21,7 +21,8 @@ public sealed class CommonItemStateTests
         Assert.Equal(56, item.PositionX);
         var bytes = MessagePackSerializer.Serialize(item);
         var fields = MessagePackSerializer.Deserialize<Dictionary<string, object>>(bytes);
-        Assert.Equal(8, fields.Count);
+        Assert.Equal(9, fields.Count);
+        Assert.Contains("isLanding", fields.Keys);
         Assert.DoesNotContain("objectInfo", fields.Keys);
         var restored = MessagePackSerializer.Deserialize<GroundItemInfo>(bytes);
         Assert.Equal(56, restored.ObjectInfo.Position.X);

@@ -273,12 +273,11 @@ public partial class GameClientSession : SessionBase
 
                 SendInteractableList();
 
-                SendGroundItemSnapshot(Player.CurrentArea);
+                SendGroundItemEntries(Player.CurrentArea);
                 SendMonsterSnapshot(runtime.Monsters.GetVisualStatesByArea());
                 SendOrbList();
                 SendOrbUpgradeInfo(_orbGrowth.GetOrbUpgradeInfo(runtime, Player));
                 SendSummonStoneState();
-                SendDoorStateList();
                 SendPressureFieldState();
 
                 SyncPlayersOnEntry();
@@ -369,27 +368,23 @@ public partial class GameClientSession : SessionBase
 
             if (sessions.Count > 0)
             {
-                using var others = PacketMaker.G_TO_C_OBJECT_INFO(sessions.Select(s => s.Player.CreatePlayerObjectInfo()).ToList());
-                TrySend(others);
+                SendObjectEntries(new G_TO_C_OBJECT_ENTER { Players = sessions.Select(s => s.Player.CreatePlayerObjectInfo()).ToList() });
             }
 
-            using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([Player.CreatePlayerObjectInfo()]))
+            var mine = new G_TO_C_OBJECT_ENTER { Players = [Player.CreatePlayerObjectInfo()] };
+            foreach (var session in sessions)
             {
-                foreach (var session in sessions)
-                {
-                    session.TrySend(mine);
-                }
+                session.SendObjectEntries(mine);
             }
 
             var bots = match.Bots.GetBots().Where(bot => !bot.Player.IsEliminated && bot.Player.CurrentArea == Player.CurrentArea).ToList();
-            var botPlayers = bots.Select(bot => match.Bots.GetPlayerObjectInfo(bot.PlayerId)).OfType<PlayerPresenceInfo>().ToList();
+            var botPlayers = bots.Select(bot => match.Bots.GetPlayerObjectInfo(bot.PlayerId)).OfType<GamePlayerInfo>().ToList();
             if (botPlayers.Count <= 0)
             {
                 return;
             }
 
-            using var packet = PacketMaker.G_TO_C_OBJECT_INFO(botPlayers);
-            TrySend(packet);
+            SendObjectEntries(new G_TO_C_OBJECT_ENTER { Players = botPlayers });
         }
 
     }
@@ -680,7 +675,6 @@ public partial class GameClientSession : SessionBase
 
         if (Player != null && MatchingId > 0 && Player.CurrentArea != AreaType.None)
         {
-            using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(PlayerId.Value);
             var sameAreaSessions = new List<GameClientSession>();
             foreach (var other in Match.GetSessions())
             {
@@ -697,7 +691,7 @@ public partial class GameClientSession : SessionBase
 
             foreach (var other in sameAreaSessions)
             {
-                other.TrySend(leavePacket);
+                other.SendObjectLeaves([new ObjectIdentity { Type = ObjectType.PLAYER, Id = PlayerId.Value }]);
             }
 
             Logger.LogInformation(

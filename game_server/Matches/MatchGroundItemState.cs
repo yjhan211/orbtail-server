@@ -56,6 +56,11 @@ public sealed class MatchGroundItemState(TimeProvider? timeProvider = null)
         return _items.Values.Where(item => item.AreaType == (int)area).OrderBy(item => item.GroundItemUid).Select(Clone).ToList();
     }
 
+    public AreaType GetItemArea(long groundItemUid)
+    {
+        return _items.TryGetValue(groundItemUid, out var item) ? (AreaType)item.AreaType : AreaType.None;
+    }
+
     public GroundItemInfo? GetItem(long groundItemUid)
     {
         return _items.TryGetValue(groundItemUid, out var item) ? Clone(item) : null;
@@ -114,9 +119,10 @@ public sealed class MatchGroundItemState(TimeProvider? timeProvider = null)
         return (originX + MathF.Cos(fallbackAngle) * fallbackRadius, originY + MathF.Sin(fallbackAngle) * fallbackRadius * 0.55f);
     }
 
-    private static GroundItemInfo Clone(GroundItemInfo source) => new()
+    private GroundItemInfo Clone(GroundItemInfo source) => new()
     {
         GroundItemUid = source.GroundItemUid,
+        IsLanding = IsLanding(source.GroundItemUid),
         ItemId = source.ItemId,
         AreaType = source.AreaType,
         PositionX = source.PositionX,
