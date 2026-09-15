@@ -32,10 +32,8 @@ namespace network.common
         G_TO_C_MOVE,
         G_TO_C_GAME_TIME_WARNING,
         G_TO_C_GAME_END,
-        G_TO_C_AREA_PLAYER_ENTER, // 다른 플레이어가 내 Area에 진입
-        G_TO_C_AREA_PLAYER_LEAVE, // 다른 플레이어가 내 Area에서 퇴장
         G_TO_C_INTERACTABLE_INFO, // 구역 진입·재접속 시 상호작용 가능한 오브젝트 목록 (현재는 닫힌 문)
-        G_TO_C_AREA_EXIT_BLOCKED, // Area 퇴장 조건 미충족 시 이동 차단 알림
+        G_TO_C_MOVE_CORRECTION, // 본인 이동을 서버 승인 위치로 즉시 보정
 
         // 보유 오브 동기화
         G_TO_C_ORB_LIST, // 입장·강화 후 보유 목록

@@ -30,14 +30,13 @@ public sealed class PlayerServiceStateTests
         {
             player.InitializeSpawn(spawn);
             player.State = PlayerState.SLEEP;
-            var result = service.ProcessMovement(match, player, new C_TO_G_MOVE
+            bool correction = service.ProcessMovement(match, player, new C_TO_G_MOVE
             {
                 Position = player.Position!,
                 Velocity = new Vector3f(),
                 Rotation = 45f
             }, 0.05f);
-            Assert.Null(result.BlockedCell);
-            Assert.True(result.SleepStopped);
+            Assert.False(correction);
             Assert.Null(player.Session);
             Assert.False(player.IsSleeping);
             Assert.Equal(45f, player.Rotation);

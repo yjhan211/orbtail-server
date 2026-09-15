@@ -65,23 +65,6 @@ public static partial class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    public static Packet G_TO_C_AREA_PLAYER_ENTER(GamePlayerInfo player)
-    {
-        var packet = Packet.Create((int)Protocol.G_TO_C_AREA_PLAYER_ENTER);
-        G_TO_C_AREA_PLAYER_ENTER body = new() { GamePlayer = player };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet G_TO_C_AREA_PLAYER_LEAVE(long playerId)
-    {
-        var packet = Packet.Create((int)Protocol.G_TO_C_AREA_PLAYER_LEAVE);
-        G_TO_C_AREA_PLAYER_LEAVE body = new() { PlayerId = playerId };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
 
     public static Packet G_TO_C_COMBAT_HIT(G_TO_C_COMBAT_HIT body)
     {
@@ -105,10 +88,10 @@ public static partial class PacketMaker
     }
 
 
-    public static Packet G_TO_C_AREA_EXIT_BLOCKED(AreaType areaType, Cell correctedCell)
+    public static Packet G_TO_C_MOVE_CORRECTION(GameObjectInfo info)
     {
-        var packet = Packet.Create((int)Protocol.G_TO_C_AREA_EXIT_BLOCKED);
-        G_TO_C_AREA_EXIT_BLOCKED body = new() { AreaType = areaType, CorrectedCell = correctedCell };
+        var packet = Packet.Create((int)Protocol.G_TO_C_MOVE_CORRECTION);
+        G_TO_C_MOVE_CORRECTION body = new() { ObjectInfo = info };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

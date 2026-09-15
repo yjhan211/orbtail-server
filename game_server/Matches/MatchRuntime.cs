@@ -145,7 +145,6 @@ internal sealed class MatchRuntime
         Volatile.Write(ref _isSetupComplete, true);
     }
 
-    // 참가자 등록·조회·탈락 처리도 Enter()로 진입해 잠금 깊이를 함께 추적한다.
     public void RegisterParticipant(Player participant)
     {
         using (Enter())
@@ -167,7 +166,6 @@ internal sealed class MatchRuntime
         }
     }
 
-    /// <summary>참가자의 배낭. 등록되지 않은 플레이어면 아무것도 담지 않는 빈 배낭을 돌려준다.</summary>
     public PlayerOrbCollection GetOrbs(long playerId) => GetParticipant(playerId)?.Orbs ?? new PlayerOrbCollection();
 
     public Player? GetParticipant(long playerId)
@@ -183,7 +181,6 @@ internal sealed class MatchRuntime
         }
     }
 
-    /// <summary>연결 유무와 관계없이 생존한 사람·봇 참가자의 스냅샷을 반환한다.</summary>
     public List<Player> GetAlivePlayers()
     {
         using (Enter())
@@ -192,7 +189,6 @@ internal sealed class MatchRuntime
         }
     }
 
-    /// <summary>연결·탈락 여부와 관계없이 매치의 전체 참가자 스냅샷을 반환한다.</summary>
     public List<Player> GetPlayers()
     {
         using (Enter())

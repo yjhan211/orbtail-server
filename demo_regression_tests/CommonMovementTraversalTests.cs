@@ -108,9 +108,9 @@ public sealed class CommonMovementTraversalTests
         player.InitializeSpawn(startCell);
         runtime.RegisterParticipant(player);
         var service = new PlayerMovementService(NullLogger<PlayerMovementService>.Instance);
-        var result = service.ProcessMovement(runtime, player,
+        bool correction = service.ProcessMovement(runtime, player,
             new C_TO_G_MOVE { Position = end, Velocity = new Vector3f() }, 1f);
-        Assert.True(result.Movement.RequiresCorrection);
+        Assert.True(correction);
         Assert.Equal(start, player.Position);
         Assert.False(MapPathfinder.IsSegmentWalkable(map, start, end));
         foreach (bool ignoreDoors in new[] { false, true })

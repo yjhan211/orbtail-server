@@ -27,7 +27,6 @@ public class Player
     private readonly Dictionary<int, int> _orbUpgradeCounts = new();
 
     private long _lastMoveProcessedTimestamp;
-    private long _lastMoveResponseTimestamp;
 
     private int _swarmSleepGrantedTicks;
     private readonly List<PeriodicBuffEntry> _periodicBuffs = [];
@@ -204,18 +203,7 @@ public class Player
         return PlayerMovementService.ClampMoveDeltaTime(elapsedSeconds);
     }
 
-    /// <summary>첫 이동 응답이거나, 마지막 응답 이후 전송 간격이 지났는지 확인한다.</summary>
-    public bool ShouldSendMoveResponse(long timestamp)
-    {
-        if (_lastMoveResponseTimestamp == 0)
-            return true;
 
-        double elapsedSeconds = (timestamp - _lastMoveResponseTimestamp) / (double)Stopwatch.Frequency;
-        return elapsedSeconds >= PlayerMovementService.MovementAcknowledgementIntervalSeconds;
-    }
-
-    /// <summary>이동 응답을 전송한 시각을 기록한다. 즉시 보정 응답도 같은 간격에 반영한다.</summary>
-    public void RecordMoveResponse(long timestamp) => _lastMoveResponseTimestamp = timestamp;
 
     private GameObjectInfo EnsureObject()
     {

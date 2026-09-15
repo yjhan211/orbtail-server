@@ -249,7 +249,7 @@ internal sealed class MatchSynchronizationService
         GameObjectInfo? snapshot = null;
         foreach (var session in batch.Sessions)
         {
-            if (session.Player.IsEliminated || (info.ObjectType == ObjectType.PLAYER && session.Player.PlayerId == info.ObjectId))
+            if (session.Player.IsEliminated)
             {
                 continue;
             }
@@ -307,6 +307,8 @@ internal sealed class MatchSynchronizationService
             }
         }
     }
+
+
 
     internal static void SendPendingCombatHits(MatchRuntime runtime)
     {

@@ -112,17 +112,6 @@ namespace network.common.data.models
         [Key("rotation")] public float Rotation { get; set; }
     }
 
-    [MessagePackObject]
-    public class G_TO_C_AREA_PLAYER_ENTER : IMessagePackObject
-    {
-        [Key("gamePlayer")] public GamePlayerInfo GamePlayer { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_AREA_PLAYER_LEAVE : IMessagePackObject
-    {
-        [Key("playerId")] public long PlayerId { get; set; }
-    }
 
     /// <summary>
     /// 자동 전투 당사자가 아닌 같은 구역 관전자에게만 보내는 월드 이펙트 이벤트다.
@@ -249,10 +238,9 @@ namespace network.common.data.models
 
 
     [MessagePackObject]
-    public class G_TO_C_AREA_EXIT_BLOCKED : IMessagePackObject
+    public class G_TO_C_MOVE_CORRECTION : IMessagePackObject
     {
-        [Key("areaType")] public AreaType AreaType { get; set; } // 나가려던 Area
-        [Key("correctedCell")] public Cell CorrectedCell { get; set; } // 되돌아갈 셀 위치
+        [Key("object")] public GameObjectInfo ObjectInfo { get; set; }
     }
 
     [MessagePackObject]

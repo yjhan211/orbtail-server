@@ -110,15 +110,13 @@ public sealed class PlayerSpatialContractTests
     }
 
     [Fact]
-    public void AreaEntry_RoundTripsSameSpatialContract()
+    public void ObjectEntry_RoundTripsSameSpatialContract()
     {
-        using var packet = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(CreatePlayerObject());
-        using var wire = Packet.Create(packet.ToBytes());
-        wire.PopProtocolId();
-        wire.PopPlayerId();
-        var bytes = wire.PopBody();
-        var copy = MessagePackSerializer.Deserialize<G_TO_C_AREA_PLAYER_ENTER>(bytes);
-        AssertPlayerObject(copy.GamePlayer);
+        var body = new G_TO_C_OBJECT_ENTER();
+        body.Players.Add(CreatePlayerObject());
+        var bytes = MessagePackSerializer.Serialize(body);
+        var copy = MessagePackSerializer.Deserialize<G_TO_C_OBJECT_ENTER>(bytes);
+        AssertPlayerObject(Assert.Single(copy.Players));
     }
 
     [Fact]

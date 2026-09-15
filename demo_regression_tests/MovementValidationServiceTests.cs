@@ -81,8 +81,8 @@ public sealed class MovementValidationServiceTests
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "game_server", "Players", "PlayerMovementService.cs"));
         int check = source.IndexOf("match.Doors.GetBlockingDoor(", StringComparison.Ordinal);
-        int reject = source.IndexOf("if (blockedCell != null)", check, StringComparison.Ordinal);
-        int stop = source.IndexOf("return new MovementResult(", reject, StringComparison.Ordinal);
+        int reject = source.IndexOf("if (transitionDoor != null)", check, StringComparison.Ordinal);
+        int stop = source.IndexOf("return true;", reject, StringComparison.Ordinal);
         int commit = source.IndexOf("player.ApplyValidatedMovement(validation, msg.Rotation);", StringComparison.Ordinal);
         Assert.True(check >= 0 && reject > check && stop > reject && commit > stop);
         Assert.Contains("WorldToCell(Config.SWARM_MATCH_MAP, player.Position)", source);
@@ -117,11 +117,13 @@ public sealed class MovementValidationServiceTests
             player.Position = position;
             player.Cell = cell;
             match.RegisterParticipant(player);
-            return _service.ProcessMovement(match, player, new C_TO_G_MOVE
+            bool correction = _service.ProcessMovement(match, player, new C_TO_G_MOVE
             {
                 Position = input,
                 Velocity = velocity
-            }, deltaTime).Movement;
+            }, deltaTime);
+            return new PlayerMovementService.ValidatedMovement(player.Position!, player.Velocity, player.Cell,
+                correction);
         }
     }
 

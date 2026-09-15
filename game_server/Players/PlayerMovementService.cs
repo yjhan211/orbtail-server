@@ -17,7 +17,6 @@ internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logge
     private const float MaximumReceiptDeltaSeconds = 0.25f;
     public const float InitialReceiptDeltaSeconds = 0.05f;
     public const float MaximumSpeedUnitsPerSecond = 10f;
-    public const float MovementAcknowledgementIntervalSeconds = 0.25f;
 
     public static bool IsFinite(Vector3f value) => float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
     public static float ClampMoveDeltaTime(double elapsedSeconds)
@@ -35,7 +34,7 @@ internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logge
         return speed > MaximumSpeedUnitsPerSecond ? velocity.Normalized() * MaximumSpeedUnitsPerSecond : velocity;
     }
 
-    public MovementResult ProcessMovement(MatchRuntime match, Player player, C_TO_G_MOVE msg, float deltaTime)
+    public bool ProcessMovement(MatchRuntime match, Player player, C_TO_G_MOVE msg, float deltaTime)
     {
         if (!Monitor.IsEntered(match.MatchLock))
         {
@@ -106,27 +105,21 @@ internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logge
         var currentCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, validatedPosition);
         var oldArea = player.CurrentArea;
         var newArea = GameMapData.GetStableCurrentArea(Config.SWARM_MATCH_MAP, currentCell, oldArea);
-        long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var previousCell = player.Position != null ? MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, player.Position) : currentCell;
 
-        Cell? blockedCell = null;
         if (newArea != oldArea && newArea != AreaType.None)
         {
             var transitionDoor = match.Doors.GetBlockingDoor(oldArea, newArea, previousCell, currentCell);
             if (transitionDoor != null)
             {
                 logger.LogWarning("Player {PlayerId} blocked crossing {CurrentArea}→{NewArea} (locked door: {DoorId})", playerId, oldArea, newArea, transitionDoor.DoorId);
-                blockedCell = transitionDoor.AreaType == oldArea
-                    ? new Cell((int)transitionDoor.PositionX, (int)transitionDoor.PositionY)
-                    : new Cell(transitionDoor.FallbackCellX, transitionDoor.FallbackCellY);
+                // 문 셀로 옮기지 않고 마지막 승인 위치를 유지한다.
+                player.GameInfo.ObjectInfo.Velocity = new Vector3f();
+                return true;
             }
         }
-        if (blockedCell != null)
-        {
-            return new MovementResult(validation, currentCell, serverTimestamp, oldArea, newArea, blockedCell, false);
-        }
 
-        bool sleepStopped = player.TryStopSleep();
+        player.TryStopSleep();
         var pickupArea = newArea == AreaType.None ? oldArea : newArea;
         PlayerPickupService.AddReachableItemsForMovement(match, player, player.Position ?? validatedPosition, validatedPosition, pickupArea);
         player.ApplyValidatedMovement(validation, msg.Rotation);
@@ -138,7 +131,7 @@ internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logge
         }
 
         CompleteMovement(match, player);
-        return new MovementResult(validation, currentCell, serverTimestamp, oldArea, player.CurrentArea, null, sleepStopped);
+        return requiresClientCorrection;
     }
 
     public static void CompleteMovement(MatchRuntime runtime, Player player)
@@ -156,6 +149,5 @@ internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logge
         }
     }
 
-    internal readonly record struct MovementResult(ValidatedMovement Movement, Cell Cell, long ServerTimestamp, AreaType OldArea, AreaType NewArea, Cell? BlockedCell, bool SleepStopped);
     internal readonly record struct ValidatedMovement(Vector3f Position, Vector3f Velocity, Cell? ValidCell, bool RequiresCorrection);
 }

@@ -56,16 +56,15 @@ public sealed class GameClientSessionPublicationTests
             session.Player.InitializeSpawn(spawn);
             session.Player.State = PlayerState.SLEEP;
             int sentBefore = connection.DeliveredProtocols.Count;
-            var result = TestGameSessionServices.GetMovement(session).ProcessMovement(session.Match, session.Player, new C_TO_G_MOVE
+            bool correction = TestGameSessionServices.GetMovement(session).ProcessMovement(session.Match, session.Player, new C_TO_G_MOVE
             {
                 Position = session.Player.Position!,
                 Velocity = new Vector3f(),
                 Rotation = 45f
             }, 0.05f);
 
-            Assert.Null(result.BlockedCell);
-            Assert.True(result.SleepStopped);
-            Assert.Equal(result.OldArea, result.NewArea);
+            Assert.False(correction);
+            Assert.False(session.Player.IsSleeping);
             Assert.Equal(PlayerState.IDLE, session.Player.State);
             Assert.Equal(45f, session.Player.Rotation);
             Assert.Equal(sentBefore, connection.DeliveredProtocols.Count);
@@ -523,7 +522,7 @@ public sealed class GameClientSessionPublicationTests
         }
 
         Assert.Equal(new[] { Protocol.G_TO_C_PLAYER_INFO, Protocol.G_TO_C_MOVE }, fixture.ConnectionFor(peer).AttemptedProtocols);
-        Assert.Equal(Protocol.G_TO_C_PLAYER_INFO, Assert.Single(fixture.ConnectionFor(self).AttemptedProtocols));
+        Assert.Equal(new[] { Protocol.G_TO_C_PLAYER_INFO, Protocol.G_TO_C_MOVE }, fixture.ConnectionFor(self).AttemptedProtocols);
         Assert.Empty(fixture.ConnectionFor(eliminated).AttemptedProtocols);
         Assert.Empty(fixture.ConnectionFor(otherArea).AttemptedProtocols);
         Assert.Empty(fixture.ConnectionFor(otherMatch).AttemptedProtocols);
@@ -1453,6 +1452,58 @@ public sealed class GameClientSessionPublicationTests
         }
         Assert.Equal(1, Delivered(reconnected));
     }
+
+    [Fact]
+    public void TickMovementBatchIncludesOwnerAndNearbyPlayer()
+    {
+        using var fixture = new SessionFixture();
+        var owner = fixture.CreateSession(70001, 101, AreaType.S2Corridor9);
+        var peer = fixture.CreateSession(70001, 102, AreaType.S2Corridor9);
+        using var scope = owner.Match.Enter();
+        owner.Match.StartGameplay();
+        var sync = new MatchSynchronizationService();
+        sync.InitializeComparisonSnapshots(owner.Match);
+        owner.Player.GameInfo.ObjectInfo.Rotation = 123f;
+        peer.Player.GameInfo.ObjectInfo.Rotation = 123f;
+        fixture.ConnectionFor(owner).ClearPackets();
+        sync.ProcessTick(owner.Match, DateTime.UtcNow);
+        var message = fixture.ConnectionFor(owner).DeserializeSingle<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE);
+        Assert.Contains(message.Objects, info => info.ObjectId == owner.Player.PlayerId);
+        Assert.Contains(message.Objects, info => info.ObjectId == peer.Player.PlayerId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MoveHandlerOnlySendsImmediateCorrectionWhenRequired(bool rejected)
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, AreaType.S2Corridor9);
+        session.Match.StartGameplay();
+        using (session.Match.Enter())
+        {
+            session.Player.InitializeSpawn(GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9));
+        }
+        var connection = fixture.ConnectionFor(session);
+        connection.ClearPackets();
+        var position = session.Player.Position!;
+        var request = new C_TO_G_MOVE
+        {
+            Position = rejected ? new Vector3f(100000, 100000, 0) : position,
+            Velocity = new Vector3f()
+        };
+        var method = typeof(GameClientSession).GetMethod("HandleMove", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        await (Task)method.Invoke(session, [request])!;
+        Assert.DoesNotContain(Protocol.G_TO_C_MOVE, connection.DeliveredProtocols);
+        Assert.Equal(rejected, connection.DeliveredProtocols.Contains(Protocol.G_TO_C_MOVE_CORRECTION));
+        if (rejected)
+        {
+            var correction = connection.DeserializeSingle<G_TO_C_MOVE_CORRECTION>(Protocol.G_TO_C_MOVE_CORRECTION);
+            Assert.Equal(session.Player.Position, correction.ObjectInfo.Position);
+            Assert.Equal(session.Player.PlayerId, correction.ObjectInfo.ObjectId);
+        }
+    }
+
 
     private sealed class SessionFixture : IDisposable
     {

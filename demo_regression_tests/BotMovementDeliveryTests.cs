@@ -160,7 +160,7 @@ public sealed class BotMovementDeliveryTests
         service.ProcessTick(runtime, now.AddMilliseconds(50));
         Assert.Equal(11, Assert.Single(recipient.Read<G_TO_C_OBJECT_LEAVE>(Protocol.G_TO_C_OBJECT_LEAVE).Objects).Id);
         Assert.Equal(12, Assert.Single(recipient.Read<G_TO_C_OBJECT_ENTER>(Protocol.G_TO_C_OBJECT_ENTER).Monsters).MonsterId);
-        Assert.DoesNotContain(recipient.Packets, p => p.Protocol == Protocol.G_TO_C_MOVE);
+        Assert.Equal(1, Assert.Single(recipient.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE).Objects).ObjectId);
     }
 
     [Fact]
@@ -404,7 +404,7 @@ public sealed class BotMovementDeliveryTests
         Assert.Equal(1, Assert.Single(nextArea.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE).Objects).ObjectId);
         Assert.Equal(2, Assert.Single(moving.Read<G_TO_C_OBJECT_LEAVE>(Protocol.G_TO_C_OBJECT_LEAVE).Objects).Id);
         Assert.Equal(3, Assert.Single(moving.Read<G_TO_C_OBJECT_ENTER>(Protocol.G_TO_C_OBJECT_ENTER).Players).ObjectInfo.ObjectId);
-        Assert.DoesNotContain(moving.Packets, packet => packet.Protocol == Protocol.G_TO_C_MOVE);
+        Assert.Equal(1, Assert.Single(moving.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE).Objects).ObjectId);
         previousArea.Packets.Clear();
         nextArea.Packets.Clear();
         moving.Packets.Clear();
@@ -431,7 +431,7 @@ public sealed class BotMovementDeliveryTests
         Assert.Empty(recipient.Packets);
 
         synchronization.ProcessTick(runtime, now);
-        Assert.Equal(Protocol.G_TO_C_PLAYER_INFO, Assert.Single(recipient.Packets).Protocol);
+        Assert.Equal(new[] { Protocol.G_TO_C_PLAYER_INFO, Protocol.G_TO_C_MOVE }, recipient.Packets.Select(p => p.Protocol));
         Assert.Equal(PlayerState.SLEEP, Assert.Single(recipient.Read<G_TO_C_PLAYER_INFO>(Protocol.G_TO_C_PLAYER_INFO).Players).State);
         recipient.Packets.Clear();
         synchronization.ProcessTick(runtime, now.AddMilliseconds(50));
@@ -845,7 +845,7 @@ public sealed class BotMovementDeliveryTests
         Assert.Empty(recipient.Packets);
         new MatchSynchronizationService().ProcessTick(runtime, now.AddMilliseconds(50));
         Assert.Equal(5, Assert.Single(recipient.Read<G_TO_C_MONSTER_INFO>(Protocol.G_TO_C_MONSTER_INFO).Monsters).CurrentHealth);
-        Assert.Empty(elsewhere.Packets);
+        Assert.All(elsewhere.Packets, p => Assert.Equal(Protocol.G_TO_C_MOVE, p.Protocol));
         Assert.Empty(otherMatch.Packets);
 
         recipient.Packets.Clear();

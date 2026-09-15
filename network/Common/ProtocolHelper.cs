@@ -21,6 +21,7 @@ namespace network.common
             Protocol.G_TO_C_PLAYER_INFO,
             Protocol.C_TO_G_MOVE,
             Protocol.G_TO_C_MOVE,
+            Protocol.G_TO_C_MOVE_CORRECTION,
             Protocol.C_TO_G_SUMMON_ORB,
             Protocol.C_TO_G_DOOR_OPEN_START,
             Protocol.C_TO_G_DOOR_OPEN_FINISH,

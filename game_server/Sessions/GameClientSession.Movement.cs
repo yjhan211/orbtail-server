@@ -13,7 +13,7 @@ namespace game_server.sessions;
 ///     클라이언트의 이동 요청을 처리한다.
 ///     매치 잠금 안에서 이동 값과 플레이 가능 상태를 확인하고,
 ///     이동 검증과 상태 반영은 PlayerMovementService에 맡긴다.
-///     주변 동기화는 틱 끝에서 처리하고, 본인에게는 보정이 필요하거나 응답 간격이 지났을 때 전송한다.
+///     본인 포함 이동 동기화는 틱 끝에서 전송하고, 거절·보정된 이동만 즉시 강제 보정한다.
 /// </summary>
 public partial class GameClientSession
 {
@@ -49,25 +49,11 @@ public partial class GameClientSession
                 float deltaTime = Player.CalculateMoveDeltaTime(timestamp);
 
                 match.SynchronizedObjects.TryAdd((ObjectType.PLAYER, Player.PlayerId), new MatchObjectSnapshot(Player.GameInfo.ObjectInfo));
-                var result = _movement.ProcessMovement(match, Player, msg, deltaTime);
-                if (result.BlockedCell is { } blockedCell)
+                bool requiresCorrection = _movement.ProcessMovement(match, Player, msg, deltaTime);
+                if (requiresCorrection)
                 {
-                    using var rejected = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(result.NewArea, blockedCell);
-                    TrySend(rejected);
-                    Logger.LogDebug("Sent AREA_EXIT_BLOCKED to Player {PlayerId}: Area={Area}, CorrectedCell=({X},{Y})", PlayerId, result.NewArea, blockedCell.X, blockedCell.Y);
-                    return Task.CompletedTask;
-                }
-
-                var validation = result.Movement;
-                long serverTimestamp = result.ServerTimestamp;
-                bool requiresClientCorrection = validation.RequiresCorrection;
-
-                using var packet = PacketMaker.G_TO_C_MOVE(Player.GameInfo.ObjectInfo, serverTimestamp, Player.OrbOrbitPhaseDegrees);
-                // 본인 보정·주기 응답은 틱 동기화를 기다리지 않고 요청 처리에서 직접 보낸다.
-                if (requiresClientCorrection || Player.ShouldSendMoveResponse(timestamp))
-                {
-                    TrySend(packet);
-                    Player.RecordMoveResponse(timestamp);
+                    using var correction = PacketMaker.G_TO_C_MOVE_CORRECTION(Player.GameInfo.ObjectInfo);
+                    TrySend(correction);
                 }
             }
             catch (Exception ex)
