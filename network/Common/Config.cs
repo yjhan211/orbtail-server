@@ -168,7 +168,7 @@ namespace network.common
         public static float SWARM_MONSTER_ESCALATION_STAGE2_MOVE_SPEED_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_MONSTER_ESCALATION_STAGE2_MOVE_SPEED_MULTIPLIER", 1.1f);
 
         /// <summary>구역 보충 웨이브 간격(초) — 웨이브 사이가 정리하는 창</summary>
-        public static double SWARM_MONSTER_SUPPLY_TOP_UP_INTERVAL_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_SUPPLY_TOP_UP_INTERVAL_SECONDS", 12d);
+        public static double SWARM_MONSTER_SUPPLY_TOP_UP_INTERVAL_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_SUPPLY_TOP_UP_INTERVAL_SECONDS", 6d);
 
         /// <summary>웨이브 한 번의 최대 보충 마릿수 — 구역 목표에 잘린다</summary>
         public static int SWARM_MONSTER_SUPPLY_TOP_UP_COUNT => SwarmConfigData.GetInt("SWARM_MONSTER_SUPPLY_TOP_UP_COUNT", 30);
