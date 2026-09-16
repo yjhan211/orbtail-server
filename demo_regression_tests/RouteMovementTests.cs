@@ -36,6 +36,11 @@ public sealed class RouteMovementTests
         var start = MapCoordinateConverter.CellToWorld(map, from);
         var bot = CreatePath(route);
         var monster = CreatePath(route);
+        var info = new GameObjectInfo { Area = AreaType.S2Corridor9, Cell = from, Position = start };
+        var now = DateTime.UtcNow;
+        var request = new MovementRequest(to, 1f);
+        MatchMoveService.PrepareMovement(runtime, info, bot, request, now);
+        MatchMoveService.PrepareMovement(runtime, info, monster, request, now, true);
         MatchMoveService.MoveAlongPath(runtime, bot, start, 10000f, DateTime.UtcNow);
         Assert.True(bot.WaypointIndex < route.Count);
         var monsterPosition = MatchMoveService.MoveAlongPath(runtime, monster, start, 10000f, DateTime.UtcNow, ignoreClosedDoors: true);
@@ -43,13 +48,14 @@ public sealed class RouteMovementTests
         Assert.Equal(route[^1], monsterPosition);
         foreach (var door in GameDoorData.GetAll()) runtime.Doors.OpenDoor(door.DoorId);
         var openBot = CreatePath(route);
+        MatchMoveService.PrepareMovement(runtime, info, openBot, request, now);
         var openBotPosition = MatchMoveService.MoveAlongPath(runtime, openBot, start, 10000f, DateTime.UtcNow);
         Assert.Equal(monster.WaypointIndex, openBot.WaypointIndex);
         Assert.Equal(monsterPosition, openBotPosition);
     }
 
     [Fact]
-    public void WallsBlockBothAndDoNotConsumeWaypoint()
+    public void PreparationRejectsWallPathsForBoth()
     {
         var runtime = CreateRuntime();
         using var scope = runtime.Enter();
@@ -60,6 +66,13 @@ public sealed class RouteMovementTests
         Assert.False(MapPathfinder.IsSegmentWalkable(map, start, target));
         var bot = CreatePath([target]);
         var monster = CreatePath([target]);
+        var cell = MapCoordinateConverter.WorldToCell(map, start);
+        var info = new GameObjectInfo { Area = GameMapData.GetCurrentArea(map, cell), Cell = cell, Position = start };
+        var request = new MovementRequest(new Cell(-10000, -10000), 1f);
+        MatchMoveService.PrepareMovement(runtime, info, bot, request, DateTime.UtcNow);
+        MatchMoveService.PrepareMovement(runtime, info, monster, request, DateTime.UtcNow, true);
+        Assert.Empty(bot.Waypoints);
+        Assert.Empty(monster.Waypoints);
         Assert.Equal(start, MatchMoveService.MoveAlongPath(runtime, bot, start, 1000, DateTime.UtcNow));
         Assert.Equal(start, MatchMoveService.MoveAlongPath(runtime, monster, start, 1000, DateTime.UtcNow, ignoreClosedDoors: true));
         Assert.Equal(0, bot.WaypointIndex);
@@ -91,7 +104,7 @@ public sealed class RouteMovementTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void ClosedAreaBlocksBothEvenWithOpenDoors(bool ignoreClosedDoors)
+    public void PreparationDoesNotOverrideRequestedClosedDestination(bool ignoreClosedDoors)
     {
         var runtime = CreateRuntime();
         using var scope = runtime.Enter();
@@ -103,10 +116,15 @@ public sealed class RouteMovementTests
         var path = CreatePath(steps.Select(step => MapCoordinateConverter.CellToWorld(map, step.Cell)));
         runtime.Closures.InitializeMatching([(AreaType.S2Library1, 0)]);
         runtime.Closures.CloseDueAreas();
+        var info = new GameObjectInfo { Cell = from, Area = AreaType.S2Corridor9,
+            Position = MapCoordinateConverter.CellToWorld(map, from) };
+        MatchMoveService.PrepareMovement(runtime, info, path, new MovementRequest(to, 1f),
+            DateTime.UtcNow, ignoreClosedDoors);
+        Assert.NotEmpty(path.Waypoints);
         var position = MatchMoveService.MoveAlongPath(runtime, path,
             MapCoordinateConverter.CellToWorld(map, from), 10000f, DateTime.UtcNow, ignoreClosedDoors);
-        Assert.True(path.WaypointIndex < path.Waypoints.Count);
-        Assert.NotEqual(AreaType.S2Library1, GameMapData.GetCurrentArea(map,
+        Assert.Equal(MapCoordinateConverter.CellToWorld(map, to), position);
+        Assert.Equal(AreaType.S2Library1, GameMapData.GetCurrentArea(map,
             MapCoordinateConverter.WorldToCell(map, position)));
     }
     [Fact]

@@ -154,6 +154,16 @@ internal class MatchMoveService(
             previousArea = nextArea;
         }
 
+        previousCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, objectInfo.Position);
+        foreach (var step in path)
+        {
+            if (!CanTraverse(runtime, previousCell, step.Cell, ignoreClosedDoors))
+            {
+                return;
+            }
+            previousCell = step.Cell;
+        }
+
         movement.Waypoints.Clear();
         foreach (var step in path)
         {
@@ -265,8 +275,6 @@ internal class MatchMoveService(
         }
 
         var mapId = Config.SWARM_MATCH_MAP;
-        var originCell = MapCoordinateConverter.WorldToCell(mapId, position);
-        var originArea = GameMapData.GetCurrentArea(mapId, originCell);
         int index = movement.WaypointIndex;
         var current = position;
         while (remainingDistance > 0f && index < movement.Waypoints.Count)
@@ -282,8 +290,6 @@ internal class MatchMoveService(
                 index++;
                 continue;
             }
-            // 현재 셀
-            var currentCell = MapCoordinateConverter.WorldToCell(mapId, current);
             // 다음 이동할 거리
             float moveDistance = Math.Min(remainingDistance, distanceToWaypoint);
             float directionX = dx / distanceToWaypoint;
@@ -297,12 +303,6 @@ internal class MatchMoveService(
             if (reachesWaypoint)
             {
                 next = new Vector3f(target.X, target.Y, 0f);
-            }
-            var nextCell = MapCoordinateConverter.WorldToCell(mapId, next);
-            if (!CanTraverse(runtime, currentCell, nextCell, ignoreClosedDoors, originArea))
-            {
-                // 다음 셀이 막혀있으므로 정지
-                break;
             }
             current = next;
             remainingDistance -= moveDistance;
@@ -322,11 +322,10 @@ internal class MatchMoveService(
             return false;
         }
         var previous = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, objectInfo.Position);
-        var originArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, previous);
         for (int i = movement.WaypointIndex; i < movement.Waypoints.Count; i++)
         {
             var next = movement.Waypoints[i];
-            bool valid = CanTraverse(runtime, previous, next, ignoreClosedDoors, originArea);
+            bool valid = CanTraverse(runtime, previous, next, ignoreClosedDoors);
             if (!valid)
             {
                 return false;
@@ -336,21 +335,20 @@ internal class MatchMoveService(
         return true;
     }
 
-    internal static bool CanTraverse(MatchRuntime runtime, Cell from, Cell to, bool ignoreClosedDoors, AreaType? allowedClosedArea = null)
+    internal static bool CanTraverse(MatchRuntime runtime, Cell from, Cell to, bool ignoreClosedDoors)
     {
         foreach (var step in MapTraversal.GetSteps(from, to))
         {
             if (step.Horizontal != null && step.Vertical != null)
             {
-                // 대각선 통과 가능 여부
-                bool horizontalOpen = CanEnterCell(runtime, step.Horizontal, allowedClosedArea) && CanCrossDoor(runtime, step.From, step.Horizontal, ignoreClosedDoors);
-                bool verticalOpen = CanEnterCell(runtime, step.Vertical, allowedClosedArea) && CanCrossDoor(runtime, step.From, step.Vertical, ignoreClosedDoors);
+                bool horizontalOpen = GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, step.Horizontal) && CanCrossDoor(runtime, step.From, step.Horizontal, ignoreClosedDoors);
+                bool verticalOpen = GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, step.Vertical) && CanCrossDoor(runtime, step.From, step.Vertical, ignoreClosedDoors);
                 if (!horizontalOpen && !verticalOpen)
                 {
                     return false;
                 }
             }
-            if (!CanEnterCell(runtime, step.To, allowedClosedArea))
+            if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, step.To))
             {
                 return false;
             }
@@ -358,20 +356,6 @@ internal class MatchMoveService(
             {
                 return false;
             }
-        }
-        return true;
-    }
-
-    private static bool CanEnterCell(MatchRuntime runtime, Cell cell, AreaType? allowedClosedArea)
-    {
-        if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell))
-        {
-            return false;
-        }
-        var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
-        if (area != allowedClosedArea && runtime.Closures.IsAreaClosed(area))
-        {
-            return false;
         }
         return true;
     }
@@ -401,19 +385,7 @@ internal class MatchMoveService(
         {
             return false;
         }
-        var blockedAreas = new HashSet<AreaType>();
-        foreach (var region in GameMapData.GetAreas(Config.SWARM_MATCH_MAP))
-        {
-            if (region.AreaType == objectInfo.Area)
-            {
-                continue;
-            }
-            if (runtime.Closures.IsAreaClosed(region.AreaType))
-            {
-                blockedAreas.Add(region.AreaType);
-            }
-        }
-        var planned = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, objectInfo.Area, objectInfo.Cell, area, destination, blockedAreas);
+        var planned = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, objectInfo.Area, objectInfo.Cell, area, destination);
         if (planned is not { Count: > 0 })
         {
             return false;

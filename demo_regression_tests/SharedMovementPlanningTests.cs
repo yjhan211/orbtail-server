@@ -25,47 +25,31 @@ public sealed class SharedMovementPlanningTests
     }
 
     [Theory]
-    [InlineData(1000000f, 0.05f, false, true)]
-    [InlineData(0f, 0.05f, false, false)]
-    [InlineData(1f, 0f, false, false)]
-    [InlineData(1f, 0.05f, true, false)]
-    public void FailedMovementDiscardsPathButStationaryRequestsPreserveIt(float speed, float elapsed, bool hold, bool shouldDiscard)
+    [InlineData(1f)]
+    [InlineData(0f)]
+    public void PreparationDiscardsInvalidRouteOnlyWhenMoving(float speed)
     {
         var runtime = CreateRuntime();
         using var scope = runtime.Enter();
         var info = CreateObject();
         var now = DateTime.UtcNow;
         var deadline = now.AddMinutes(1);
-        var destination = info.Cell.GetAdjacentCells().First(cell =>
-            GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == info.Area &&
-            MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, info.Area, info.Cell, info.Area, cell) is { Count: > 0 });
-        var state = new MovementState
-        {
-            NextPathPlanAtUtc = deadline
-        };
+        var state = new MovementState { NextPathPlanAtUtc = deadline };
         var blocked = new Cell(-10000, -10000);
         state.Waypoints.Add(blocked);
-        var position = info.Position;
-        var request = new MovementRequest(destination, hold ? 0f : speed);
-
-        var result = MovementPreparationTestSteps.Advance(runtime, info, state, request, elapsed, nowUtc: now);
-
-        Assert.Equal(position, info.Position);
-        Assert.False(result.ReachedPathEnd);
-        if (!shouldDiscard)
+        var request = new MovementRequest(blocked, speed);
+        MatchMoveService.PrepareMovement(runtime, info, state, request, now);
+        var result = MovementPreparationTestSteps.Advance(runtime, info, state, request, 0.05f, nowUtc: now);
+        Assert.False(result.Changed);
+        if (speed <= 0f)
         {
             Assert.Same(blocked, Assert.Single(state.Waypoints));
             Assert.Equal(deadline, state.NextPathPlanAtUtc);
             return;
         }
-
         Assert.Empty(state.Waypoints);
         Assert.Equal(0, state.WaypointIndex);
-        Assert.Equal(DateTime.MinValue, state.NextPathPlanAtUtc);
-        MatchMoveService.PrepareMovement(runtime, info, state, request, now);
-        Assert.NotEmpty(state.Waypoints);
-        Assert.DoesNotContain(blocked, state.Waypoints);
-        Assert.True(state.NextPathPlanAtUtc < deadline);
+        Assert.Equal(now.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS), state.NextPathPlanAtUtc);
     }
     [Theory]
     [InlineData(false)]
@@ -246,6 +230,38 @@ public sealed class SharedMovementPlanningTests
                 }
             }
             Assert.Null(MapPathfinder.FindPath(mapId, info.Area, info.Cell, region.AreaType, destination, blockedAreas));
+            return;
+        }
+        Assert.Fail("Test map must contain a route through an intermediate area.");
+    }
+
+    [Fact]
+    public void OpenDestinationCanBeReachedThroughClosedIntermediateAreas()
+    {
+        var runtime = CreateRuntime();
+        using var scope = runtime.Enter();
+        var info = CreateObject();
+        var map = Config.SWARM_MATCH_MAP;
+        foreach (var door in GameDoorData.GetAll()) runtime.Doors.OpenDoor(door.DoorId);
+        foreach (var region in GameMapData.GetAreas(map))
+        {
+            var destination = GameMapData.GetAreaSpawnCell(map, region.AreaType);
+            var original = MapPathfinder.FindPath(map, info.Area, info.Cell, region.AreaType, destination);
+            if (original == null) continue;
+            var intermediate = original.Select(step => step.Area)
+                .Where(area => area != info.Area && area != region.AreaType && area != AreaType.None)
+                .Distinct().ToArray();
+            if (intermediate.Length == 0) continue;
+            runtime.Closures.InitializeMatching(intermediate.Select(area => (area, 0)).ToArray());
+            runtime.Closures.CloseDueAreas();
+            var now = DateTime.UtcNow;
+            Assert.True(MatchMoveService.TryFindSafePath(runtime, info, destination, now, out _));
+            var state = new MovementState();
+            MatchMoveService.PrepareMovement(runtime, info, state, new MovementRequest(destination, 1f), now);
+            Assert.NotEmpty(state.Waypoints);
+            Assert.Contains(state.Waypoints, cell => runtime.Closures.IsAreaClosed(GameMapData.GetCurrentArea(map, cell)));
+            var reached = MatchMoveService.MoveAlongPath(runtime, state, info.Position, 10000f, now);
+            Assert.Equal(destination, MapCoordinateConverter.WorldToCell(map, reached));
             return;
         }
         Assert.Fail("Test map must contain a route through an intermediate area.");

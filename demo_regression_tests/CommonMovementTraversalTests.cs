@@ -35,6 +35,73 @@ public sealed class CommonMovementTraversalTests
         Assert.False(MapTraversal.IsTraversable(from, to, cell => !cell.Equals(to)));
         Assert.Empty(MapTraversal.GetSteps(from, from));
     }
+    [Theory]
+    [InlineData(0.4f)]
+    [InlineData(-0.4f)]
+    [InlineData(0f)]
+    public void CellValidatedRouteMovesWithoutCenterDetour(float offsetX)
+    {
+        var map = Config.SWARM_MATCH_MAP;
+        var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(987638);
+        using var scope = runtime.Enter();
+        foreach (var door in GameDoorData.GetAll())
+        {
+            for (int x = (int)door.PositionX - 5; x <= door.PositionX + 5; x++)
+            {
+                for (int y = (int)door.PositionY - 5; y <= door.PositionY + 5; y++)
+                {
+                    var from = new Cell(x, y);
+                    var to = new Cell(x + 1, y + 1);
+                    var horizontal = new Cell(x + 1, y);
+                    if (!GameMapData.IsMoveablePosition(map, from) ||
+                        GameMapData.IsMoveablePosition(map, horizontal) ||
+                        !MatchMoveService.CanTraverse(runtime, from, to, true))
+                    {
+                        continue;
+                    }
+                    var area = GameMapData.GetCurrentArea(map, from);
+                    if (area == AreaType.None || GameMapData.GetCurrentArea(map, to) != area)
+                    {
+                        continue;
+                    }
+                    var planned = MapPathfinder.FindPath(map, area, from, area, to);
+                    if (planned == null || planned.Count != 1 || !planned[0].Cell.Equals(to))
+                    {
+                        continue;
+                    }
+                    var center = MapCoordinateConverter.CellToWorld(map, from);
+                    // 셀 중심에서 X축 방향으로 치우친 위치. 셀 좌표는 여전히 from이다.
+                    var start = new Vector3f(center.X + offsetX, center.Y, 0f);
+                    var end = MapCoordinateConverter.CellToWorld(map, to);
+                    Assert.Equal(from, MapCoordinateConverter.WorldToCell(map, start));
+                    Assert.False(MatchMoveService.CanTraverse(runtime, from, horizontal, true));
+                    var state = new MovementState();
+                    var info = new GameObjectInfo { Cell = from, Area = area, Position = start };
+                    var now = DateTime.UtcNow;
+                    var request = new MovementRequest(to, 1f);
+                    MatchMoveService.PrepareMovement(runtime, info, state, request, now, true);
+                    Assert.Equal(to, state.Waypoints[0]);
+                    Assert.Single(state.Waypoints);
+                    Assert.Equal(start, info.Position);
+                    var current = start;
+                    for (int tick = 0; tick < 200 && state.WaypointIndex < state.Waypoints.Count; tick++)
+                    {
+                        info.Position = current;
+                        info.Cell = MapCoordinateConverter.WorldToCell(map, current);
+                        info.Area = GameMapData.GetCurrentArea(map, info.Cell);
+                        MatchMoveService.PrepareMovement(runtime, info, state, request, now.AddSeconds(tick * 0.01), true);
+                        var next = MatchMoveService.MoveAlongPath(runtime, state, current, 0.01f, now, true);
+                        Assert.NotEqual(current, next);
+                        current = next;
+                    }
+                    Assert.Equal(end, current);
+                    return;
+                }
+            }
+        }
+        Assert.Fail("Test map must contain a diagonal route beside a blocked corner.");
+    }
+
     [Fact]
     public void WorldAndCellChecksAgreeAroundEveryDoor()
     {
@@ -117,6 +184,9 @@ public sealed class CommonMovementTraversalTests
         {
             var path = new MovementState();
             path.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, end));
+            MatchMoveService.PrepareMovement(runtime, player.GameInfo.ObjectInfo, path,
+                new MovementRequest(new Cell(-10000, -10000), 1f), DateTime.UtcNow, ignoreDoors);
+            Assert.Empty(path.Waypoints);
             Assert.Equal(start, MatchMoveService.MoveAlongPath(runtime, path, start, 10f, DateTime.UtcNow, ignoreDoors));
             Assert.Equal(0, path.WaypointIndex);
         }
