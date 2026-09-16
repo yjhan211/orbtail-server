@@ -1,5 +1,6 @@
 using game_server.matches;
 using game_server.matches.monsters;
+using game_server.sessions;
 using MessagePack;
 using network.common;
 using network.common.data;
@@ -17,8 +18,6 @@ internal sealed class PlayerOrbService(
     MatchCombatDamageService combatDamage,
     PlayerOrbTrailService orbTrails)
 {
-    private const float SwarmGroundYScale = GroundGeometry.GroundYScale;
-    private const float SwarmCrossfireMonsterRadius = GroundGeometry.MonsterRadius;
     private const float AreaBoundaryProbeStep = 0.2f;
     private static double SwarmWindBladeVictimImmuneSeconds => SwarmConfigData.GetDouble("SWARM_WIND_BLADE_VICTIM_IMMUNE_SECONDS", 0.9d);
     private static double WaveOrbAttackIntervalSeconds => SwarmConfigData.GetDouble("SWARM_WAVE_VORTEX_INTERVAL_SECONDS", 2d);
@@ -41,7 +40,8 @@ internal sealed class PlayerOrbService(
             throw new InvalidOperationException("Orb attack owner must belong to the match.");
         }
 
-        var alivePlayers = runtime.GetAlivePlayers();
+        var ownerArea = owner.GameInfo.ObjectInfo.Area;
+        List<Player>? alivePlayers = null;
         IReadOnlyList<Monster>? monsterTargets = null;
         var orderedOrbs = owner.Orbs.GetOrderedOrbs();
         if (orderedOrbs.Count == 0)
@@ -79,7 +79,7 @@ internal sealed class PlayerOrbService(
             bool hasTargetInRange = false;
             foreach (var monsterTarget in monsterTargets)
             {
-                if (monsterTarget.Area != owner.GameInfo.ObjectInfo.Area)
+                if (monsterTarget.Area != ownerArea)
                 {
                     continue;
                 }
@@ -93,6 +93,7 @@ internal sealed class PlayerOrbService(
 
             if (!hasTargetInRange)
             {
+                alivePlayers ??= runtime.GetAlivePlayers();
                 foreach (var participant in alivePlayers)
                 {
                     if (participant.Position == null)
@@ -103,7 +104,7 @@ internal sealed class PlayerOrbService(
                     {
                         continue;
                     }
-                    if (participant.GameInfo.ObjectInfo.Area != owner.GameInfo.ObjectInfo.Area)
+                    if (participant.GameInfo.ObjectInfo.Area != ownerArea)
                     {
                         continue;
                     }
@@ -128,7 +129,7 @@ internal sealed class PlayerOrbService(
                 sunDamageMultiplier = OrbData.GetSunPveAttackMultiplier(orderedOrbs);
             }
             int damage = Math.Max(1, (int)MathF.Round(baseDamage * sunDamageMultiplier * Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER));
-            runtime.PendingWaveAttacks.Add(new PendingWaveAttack(owner.PlayerId, owner.GameInfo.ObjectInfo.Area, orbPosition, damage, radius, orb.ItemId, nowUtc.AddSeconds(WaveOrbDetonationDelaySeconds)));
+            runtime.PendingWaveAttacks.Add(new PendingWaveAttack(owner.PlayerId, ownerArea, orbPosition, damage, radius, orb.ItemId, nowUtc.AddSeconds(WaveOrbDetonationDelaySeconds)));
             using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_RING_EFFECT);
             packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_RING_EFFECT
             {
@@ -142,7 +143,7 @@ internal sealed class PlayerOrbService(
             foreach (var session in runtime.GetSessions())
             {
                 if (session is { PlayerId: not null, IsGameEnded: false } &&
-                    session.Player.GameInfo.ObjectInfo.Area == owner.GameInfo.ObjectInfo.Area)
+                    session.Player.GameInfo.ObjectInfo.Area == ownerArea)
                 {
                     session.TrySend(packet);
                 }
@@ -174,24 +175,16 @@ internal sealed class PlayerOrbService(
         var monsterTargets = runtime.Monsters.GetCombatTargets();
         var origin = attack.Origin ?? owner.Position;
         var anchor = attack.AnchorPosition;
-        int anchorMonsterId = (runtime.Monsters.FindAliveByCombatTarget(attack.TargetPlayerId)?.MonsterId ?? 0);
+        var anchorMonster = runtime.Monsters.FindAliveByCombatTarget(attack.TargetPlayerId);
+        int anchorMonsterId = anchorMonster?.MonsterId ?? 0;
         if (anchor == null && runtime.GetParticipant(attack.TargetPlayerId)?.Position is { } targetPosition)
         {
             anchor = targetPosition;
         }
 
-        if (anchor == null)
+        if (anchor == null && anchorMonster != null && anchorMonster.Health > anchorMonster.PendingDamage)
         {
-            foreach (var monsterTarget in monsterTargets)
-            {
-                if (monsterTarget.CombatTargetId != attack.TargetPlayerId)
-                {
-                    continue;
-                }
-
-                anchor = monsterTarget.Position;
-                break;
-            }
+            anchor = anchorMonster.Position;
         }
 
         if (anchor == null)
@@ -206,7 +199,7 @@ internal sealed class PlayerOrbService(
         }
 
         float targetGroundX = anchor.X - origin.X;
-        float targetGroundY = (anchor.Y - origin.Y) * SwarmGroundYScale;
+        float targetGroundY = (anchor.Y - origin.Y) * GroundGeometry.GroundYScale;
         if (targetGroundX * targetGroundX + targetGroundY * targetGroundY < 0.0025f)
         {
             return false;
@@ -231,6 +224,9 @@ internal sealed class PlayerOrbService(
         float fallbackProjection = float.MinValue;
         bool hasSelectedDirection = false;
         bool hasTargetedDirection = false;
+        float reach = halfWidth + GroundGeometry.MonsterRadius;
+        float bodyStart = -Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
+        float bodyEnd = GroundGeometry.MonsterBodyHeight - Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
         for (int direction = 0; direction < 4; direction++)
         {
             float candidateLength = maxGroundLength;
@@ -239,7 +235,7 @@ internal sealed class PlayerOrbService(
             {
                 var probe = new Vector3f(
                     origin.X + directionX[direction] * along,
-                    origin.Y + directionY[direction] * along / SwarmGroundYScale,
+                    origin.Y + directionY[direction] * along / GroundGeometry.GroundYScale,
                     0f);
                 var cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, probe);
                 if (GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == attack.Area)
@@ -257,9 +253,6 @@ internal sealed class PlayerOrbService(
 
             int hits = 0;
             float nearest = float.MaxValue;
-            float reach = halfWidth + SwarmCrossfireMonsterRadius;
-            float bodyStart = -Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
-            float bodyEnd = GroundGeometry.MonsterBodyHeight - Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
             foreach (var monsterTarget in monsterTargets)
             {
                 if (monsterTarget.Area != attack.Area)
@@ -271,7 +264,7 @@ internal sealed class PlayerOrbService(
                 for (float bodyY = bodyStart; bodyY <= bodyEnd + 0.001f; bodyY += 0.45f)
                 {
                     float relativeX = monsterTarget.Position.X - origin.X;
-                    float relativeY = (monsterTarget.Position.Y + bodyY - origin.Y) * SwarmGroundYScale;
+                    float relativeY = (monsterTarget.Position.Y + bodyY - origin.Y) * GroundGeometry.GroundYScale;
                     float targetAlong = relativeX * directionX[direction] + relativeY * directionY[direction];
                     if (targetAlong < 0f || targetAlong > candidateLength)
                     {
@@ -295,7 +288,22 @@ internal sealed class PlayerOrbService(
                 hits++;
                 nearest = MathF.Min(nearest, monsterNearestAlong);
             }
-            bool isBetterTargetDirection = hits > 0 && (!hasTargetedDirection || nearest < nearestTargetAlong - 0.001f || (MathF.Abs(nearest - nearestTargetAlong) <= 0.001f && hits > bestTargetCount));
+            bool isBetterTargetDirection = false;
+            if (hits > 0)
+            {
+                if (!hasTargetedDirection)
+                {
+                    isBetterTargetDirection = true;
+                }
+                else if (nearest < nearestTargetAlong - 0.001f)
+                {
+                    isBetterTargetDirection = true;
+                }
+                else if (MathF.Abs(nearest - nearestTargetAlong) <= 0.001f && hits > bestTargetCount)
+                {
+                    isBetterTargetDirection = true;
+                }
+            }
             if (isBetterTargetDirection)
             {
                 bestTargetCount = hits;
@@ -328,7 +336,7 @@ internal sealed class PlayerOrbService(
         }
 
         bool detonateAtWall = selectedLength < maxGroundLength - 0.01f;
-        var endPosition = new Vector3f(origin.X + selectedDirectionX * selectedLength, origin.Y + selectedDirectionY * selectedLength / SwarmGroundYScale, 0f);
+        var endPosition = new Vector3f(origin.X + selectedDirectionX * selectedLength, origin.Y + selectedDirectionY * selectedLength / GroundGeometry.GroundYScale, 0f);
 
         float sweepSeconds = (selectedLength + width) / sweepSpeed;
         long eventId = MatchOrbAttackService.AllocateEventId();
@@ -398,8 +406,9 @@ internal sealed class PlayerOrbService(
             throw new InvalidOperationException("Wind orb attack owner must belong to the match.");
         }
 
-        var alivePlayers = runtime.GetAlivePlayers();
-        var activeSessions = runtime.GetSessions().Where(session => !session.IsGameEnded).ToList();
+        var ownerArea = owner.GameInfo.ObjectInfo.Area;
+        List<Player>? alivePlayers = null;
+        List<GameClientSession>? activeSessions = null;
         IReadOnlyList<Monster>? monsterTargets = null;
         var orderedOrbs = owner.Orbs.GetOrderedOrbs();
         if (orderedOrbs.Count == 0)
@@ -429,7 +438,7 @@ internal sealed class PlayerOrbService(
             List<Monster>? monstersInRadius = null;
             foreach (var monster in monsterTargets)
             {
-                if (monster.Area != owner.GameInfo.ObjectInfo.Area)
+                if (monster.Area != ownerArea)
                 {
                     continue;
                 }
@@ -443,6 +452,7 @@ internal sealed class PlayerOrbService(
             }
 
             List<Player>? playersInRadius = null;
+            alivePlayers ??= runtime.GetAlivePlayers();
             foreach (var participant in alivePlayers)
             {
                 if (participant.Position == null)
@@ -450,7 +460,7 @@ internal sealed class PlayerOrbService(
                     continue;
                 }
 
-                if (participant.PlayerId == owner.PlayerId || participant.GameInfo.ObjectInfo.Area != owner.GameInfo.ObjectInfo.Area)
+                if (participant.PlayerId == owner.PlayerId || participant.GameInfo.ObjectInfo.Area != ownerArea)
                 {
                     continue;
                 }
@@ -482,10 +492,11 @@ internal sealed class PlayerOrbService(
             int damage = Math.Max(1, (int)MathF.Round(OrbData.GetSwarmPveAttackDamage(orb.ItemId) * sunDamageMultiplier * Config.SWARM_WIND_BLADE_DAMAGE_MULTIPLIER));
             if (monstersInRadius != null)
             {
+                activeSessions ??= runtime.GetSessions().Where(session => !session.IsGameEnded).ToList();
                 foreach (var monster in monstersInRadius)
                 {
                     int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, damage, out bool critical);
-                    combatDamage.ApplySwarmMonsterHitNow(runtime, monster.CombatTargetId, monster.MonsterId, owner.PlayerId, orb.ItemId, owner.GameInfo.ObjectInfo.Area, monsterDamage, critical, nowUtc, activeSessions);
+                    combatDamage.ApplySwarmMonsterHitNow(runtime, monster.CombatTargetId, monster.MonsterId, owner.PlayerId, orb.ItemId, ownerArea, monsterDamage, critical, nowUtc, activeSessions);
                 }
             }
 
@@ -498,7 +509,7 @@ internal sealed class PlayerOrbService(
                         continue;
                     }
 
-                    combatDamage.ApplySwarmShock(runtime, healthService, owner.PlayerId, orb.ItemId, owner.GameInfo.ObjectInfo.Area, participant.PlayerId, alivePlayers);
+                    combatDamage.ApplySwarmShock(runtime, healthService, owner.PlayerId, orb.ItemId, ownerArea, participant.PlayerId, alivePlayers);
                     if (runtime.IsEnded)
                     {
                         return;
@@ -515,7 +526,7 @@ internal sealed class PlayerOrbService(
                     {
                         SourcePlayerId = owner.PlayerId,
                         TargetPlayerId = participant.PlayerId,
-                        AreaType = owner.GameInfo.ObjectInfo.Area,
+                        AreaType = ownerArea,
                         Effect = CombatStatusEffectKind.WindOrbWound,
                         DurationMs = (int)(Config.SWARM_WIND_WOUND_SECONDS * 1000f)
                     });
