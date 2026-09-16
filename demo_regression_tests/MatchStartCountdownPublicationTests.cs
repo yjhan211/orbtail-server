@@ -129,8 +129,8 @@ public sealed class MatchStartCountdownPublicationTests
         // 구성 확정 전에도 등록할 세션은 매치의 실제 참가자를 가리켜야 한다.
         if (!hasComposition)
         {
-            runtime.RegisterParticipant(new Player(new PlayerInfo { PlayerId = 101 }));
-            runtime.RegisterParticipant(new Player(new PlayerInfo { PlayerId = 202 }));
+            runtime.RegisterPlayer(new Player(new PlayerInfo { PlayerId = 101 }));
+            runtime.RegisterPlayer(new Player(new PlayerInfo { PlayerId = 202 }));
             Assert.False(runtime.IsSetupComplete);
         }
         var anchor = new RecordingEntrySession();
@@ -196,7 +196,7 @@ public sealed class MatchStartCountdownPublicationTests
                 .GetValue(server));
         var completedSession = new RecordingEntrySession();
         SetSessionIdentity(server.GetMatchRuntimes(), completedSession, completedPlayerId, matchingId);
-        completedSession.Match.RegisterParticipant(completedSession.Player);
+        completedSession.Match.RegisterPlayer(completedSession.Player);
         Assert.Null(sessionRegistry.Register(completedPlayerId, completedSession));
         Assert.Same(completedSession, Assert.Single(completedSession.Match.GetSessions()));
 

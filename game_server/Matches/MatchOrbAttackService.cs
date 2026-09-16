@@ -303,7 +303,7 @@ internal sealed class MatchOrbAttackService(
             runtime.PendingWaveAttacks.RemoveAt(index);
 
             var players = runtime.GetAlivePlayers();
-            var owner = runtime.GetParticipant(vortex.OwnerId);
+            var owner = runtime.GetPlayer(vortex.OwnerId);
             int hitCount = 0;
             int notifiedCount = 0;
             foreach (var target in runtime.Monsters.GetCombatTargets())

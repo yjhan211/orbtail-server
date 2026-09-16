@@ -160,7 +160,7 @@ internal sealed class PlayerOrbTrailService
         }
         foreach (var participant in participants)
         {
-            var player = runtime.GetParticipant(participant.PlayerId);
+            var player = runtime.GetPlayer(participant.PlayerId);
             if (player == null)
             {
                 continue;

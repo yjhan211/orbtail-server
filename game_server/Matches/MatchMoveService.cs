@@ -70,7 +70,7 @@ internal class MatchMoveService(
             {
                 continue;
             }
-            var player = runtime.GetParticipant(actor.ObjectInfo.ObjectId);
+            var player = runtime.GetPlayer(actor.ObjectInfo.ObjectId);
             if (player != null)
             {
                 PlayerMovementService.CompleteMovement(runtime, player);

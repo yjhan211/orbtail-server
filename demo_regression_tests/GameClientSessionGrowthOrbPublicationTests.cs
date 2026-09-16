@@ -141,7 +141,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Assert.Equal(0, info.WindCost);
             Assert.Equal(0, info.WaveCost);
             Assert.Equal(before, TestGameSessionServices.SummonStones(runtime, FirstPlayerId));
-            Assert.Equal(0, runtime.GetParticipant(FirstPlayerId)!.Orbs.GetUpgradeCount(10700001));
+            Assert.Equal(0, runtime.GetPlayer(FirstPlayerId)!.Orbs.GetUpgradeCount(10700001));
             Assert.Empty(fixture.ConnectionFor(session).DeliveredProtocols);
         }
     }
@@ -207,8 +207,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Position = position
         };
         using var scope = runtime.Enter();
-        runtime.RegisterParticipant(human);
-        runtime.RegisterParticipant(bot);
+        runtime.RegisterPlayer(human);
+        runtime.RegisterPlayer(bot);
         foreach (var player in new[] { human, bot })
             Assert.True(TestGameSessionServices.Orbs(runtime, player.PlayerId).TryAddOrbWithCapacity(107000010, Config.SWARM_ORB_CAPACITY, out _));
         var actorBuilder = fixture.Server.GetActorBuilder(FirstMatchingId);
@@ -263,9 +263,9 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var locks = new List<bool>();
         connection.BeforeSend = _ => locks.Add(Monitor.IsEntered(runtime.MatchLock));
         await SendAsync(session, Protocol.C_TO_G_SUMMON_ORB, new C_TO_G_SUMMON_ORB());
-        await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_START, new C_TO_G_DOOR_OPEN_START { InteractId = int.MaxValue });
+        await SendAsync(session, Protocol.C_TO_G_INTERACTION_START, new C_TO_G_INTERACTION_START { InteractId = int.MaxValue });
         Assert.Contains(Protocol.G_TO_C_SUMMON_ORB_RESULT, connection.DeliveredProtocols);
-        Assert.Contains(Protocol.G_TO_C_DOOR_OPEN_ACK, connection.DeliveredProtocols);
+        Assert.Contains(Protocol.G_TO_C_INTERACTION_ACK, connection.DeliveredProtocols);
         Assert.NotEmpty(locks);
         Assert.All(locks, held => Assert.True(held));
     }
@@ -320,7 +320,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(-1, invalid.TargetOrdinal);
         Assert.Equal(originalItemId, Assert.Single(
             TestGameSessionServices.Orbs(fixture.Store.GetOrThrow(FirstMatchingId), FirstPlayerId).GetAllOrbs()).ItemId);
-        Assert.Equal(0, fixture.Runtime(FirstMatchingId).GetParticipant(FirstPlayerId)!.Orbs.GetUpgradeCount(orbGroupId));
+        Assert.Equal(0, fixture.Runtime(FirstMatchingId).GetPlayer(FirstPlayerId)!.Orbs.GetUpgradeCount(orbGroupId));
 
         connection.ClearPackets();
         int upgradeCost = Math.Min(
@@ -350,7 +350,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(
             20 - upgradeCost,
             TestGameSessionServices.SummonStones(fixture.Store.GetOrThrow(FirstMatchingId), FirstPlayerId).StoneCount);
-        Assert.Equal(1, fixture.Runtime(FirstMatchingId).GetParticipant(FirstPlayerId)!.Orbs.GetUpgradeCount(orbGroupId));
+        Assert.Equal(1, fixture.Runtime(FirstMatchingId).GetPlayer(FirstPlayerId)!.Orbs.GetUpgradeCount(orbGroupId));
 
         G_TO_C_UPGRADE_ORB_RESULT success =
             connection.DeserializeSingle<G_TO_C_UPGRADE_ORB_RESULT>(
@@ -451,7 +451,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(
             20 - upgradeCost,
             TestGameSessionServices.SummonStones(fixture.Store.GetOrThrow(FirstMatchingId), FirstPlayerId).StoneCount);
-        Assert.Equal(1, fixture.Runtime(FirstMatchingId).GetParticipant(FirstPlayerId)!.Orbs.GetUpgradeCount(10700001));
+        Assert.Equal(1, fixture.Runtime(FirstMatchingId).GetPlayer(FirstPlayerId)!.Orbs.GetUpgradeCount(10700001));
         Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(FirstMatchingId)!.MatchLock));
 
         // 실패한 핸들러가 잠금을 풀었으므로 종료 정리가 바로 진행된다.
@@ -476,7 +476,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         {
             Assert.Equal(upgradedItemId, Assert.Single(TestGameSessionServices.Orbs(runtime, FirstPlayerId).GetAllOrbs()).ItemId);
             Assert.Equal(20 - cost, TestGameSessionServices.SummonStones(runtime, FirstPlayerId).StoneCount);
-            Assert.Equal(1, runtime.GetParticipant(FirstPlayerId)!.Orbs.GetUpgradeCount(10700001));
+            Assert.Equal(1, runtime.GetPlayer(FirstPlayerId)!.Orbs.GetUpgradeCount(10700001));
         };
         await SendAsync(session, Protocol.C_TO_G_UPGRADE_ORB,
             new C_TO_G_UPGRADE_ORB { Action = Config.ORB_UPGRADE_GROUP, TargetItemId = 107000010 });
@@ -536,8 +536,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var secondRuntime = second.Match;
         var request = new C_TO_G_UPGRADE_ORB { Action = Config.ORB_UPGRADE_GROUP, TargetItemId = 107000010 };
         await SendAsync(first, Protocol.C_TO_G_UPGRADE_ORB, request);
-        Assert.Equal(1, firstRuntime.GetParticipant(FirstPlayerId)!.Orbs.GetUpgradeCount(10700001));
-        Assert.Equal(0, secondRuntime.GetParticipant(SecondPlayerId)!.Orbs.GetUpgradeCount(10700001));
+        Assert.Equal(1, firstRuntime.GetPlayer(FirstPlayerId)!.Orbs.GetUpgradeCount(10700001));
+        Assert.Equal(0, secondRuntime.GetPlayer(SecondPlayerId)!.Orbs.GetUpgradeCount(10700001));
         await SendAsync(second, Protocol.C_TO_G_UPGRADE_ORB, request);
         int firstPacketCount = fixture.ConnectionFor(first).DeliveredProtocols.Count;
         int secondPacketCount = fixture.ConnectionFor(second).DeliveredProtocols.Count;
@@ -551,8 +551,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         fixture.SetPlayerMatchStatus(second, PlayerMatchStatus.ELIMINATED);
         await SendAsync(first, Protocol.C_TO_G_UPGRADE_ORB, request);
         await SendAsync(second, Protocol.C_TO_G_UPGRADE_ORB, request);
-        Assert.Equal(1, firstRuntime.GetParticipant(FirstPlayerId)!.Orbs.GetUpgradeCount(10700001));
-        Assert.Equal(1, secondRuntime.GetParticipant(SecondPlayerId)!.Orbs.GetUpgradeCount(10700001));
+        Assert.Equal(1, firstRuntime.GetPlayer(FirstPlayerId)!.Orbs.GetUpgradeCount(10700001));
+        Assert.Equal(1, secondRuntime.GetPlayer(SecondPlayerId)!.Orbs.GetUpgradeCount(10700001));
         Assert.Equal(firstPacketCount, fixture.ConnectionFor(first).DeliveredProtocols.Count);
         Assert.Equal(secondPacketCount, fixture.ConnectionFor(second).DeliveredProtocols.Count);
     }

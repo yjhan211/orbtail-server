@@ -348,7 +348,7 @@ public sealed class GameClientSessionTerminalPublicationTests
                     : $"Player{entry.PlayerId}";
                 entry.GameInfo.Name = name;
                 entry.GameInfo.WearItemIdList = [1001, 1002, 1003, 1004];
-                Store.GetOrThrow(matchingId).RegisterParticipant(entry);
+                Store.GetOrThrow(matchingId).RegisterPlayer(entry);
             }
         }
 

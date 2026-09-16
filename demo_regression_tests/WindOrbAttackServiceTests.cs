@@ -38,8 +38,8 @@ public sealed class WindOrbAttackServiceTests
         var now = DateTime.UtcNow;
         var owner = new Bot { PlayerId = 11 };
         var victim = new Bot { PlayerId = 12 };
-        match.RegisterParticipant(owner.Player);
-        match.RegisterParticipant(victim.Player);
+        match.RegisterPlayer(owner.Player);
+        match.RegisterPlayer(victim.Player);
         using (MatchRuntimeStore.Enter(match))
         {
             TestGameSessionServices.Orbs(match, 11).AddOrb(107000020);
@@ -76,8 +76,8 @@ public sealed class WindOrbAttackServiceTests
         var service = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), TestGameSessionServices.CreateCombatDamageService(), trails);
         var owner = new Bot { PlayerId = 11 };
         var victim = new Bot { PlayerId = 12 };
-        match.RegisterParticipant(owner.Player);
-        match.RegisterParticipant(victim.Player);
+        match.RegisterPlayer(owner.Player);
+        match.RegisterPlayer(victim.Player);
         using (MatchRuntimeStore.Enter(match))
         {
             TestGameSessionServices.Orbs(match, 11).AddOrb(itemId);

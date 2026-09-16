@@ -213,7 +213,7 @@ public sealed class GameClientSessionConnectPublicationTests
         var velocity = new Vector3f(2f, 3f, 0f);
         var cell = new Cell(10, 20);
         using var scope = session.Match.Enter();
-        session.Match.RegisterParticipant(session.Player);
+        session.Match.RegisterPlayer(session.Player);
         TestGameSessionServices.SetMovementProperty(session, "Position", position);
         TestGameSessionServices.SetMovementProperty(session, "Velocity", velocity);
         TestGameSessionServices.SetMovementProperty(session, "Cell", cell);

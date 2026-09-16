@@ -173,7 +173,7 @@ public sealed class CommonMovementTraversalTests
         using var scope = runtime.Enter();
         var player = new Player(new PlayerInfo { PlayerId = 1 });
         player.InitializeSpawn(startCell);
-        runtime.RegisterParticipant(player);
+        runtime.RegisterPlayer(player);
         var service = new PlayerMovementService(NullLogger<PlayerMovementService>.Instance);
         bool correction = service.ProcessMovement(runtime, player,
             new C_TO_G_MOVE { Position = end, Velocity = new Vector3f() }, 1f);

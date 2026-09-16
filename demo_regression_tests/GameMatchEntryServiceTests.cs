@@ -143,7 +143,7 @@ public sealed class GameMatchEntryServiceTests
         var human = Assert.Single(runtime.GetPlayerProfiles(), entry => entry.PlayerId == 1001);
         Assert.Equal("AtEntry", human.Name);
         Assert.Equal(new[] { 202 }, human.WearItemIdList);
-        Assert.Equal(new[] { 202 }, runtime.GetParticipant(1001)!.GameInfo.WearItemIdList);
+        Assert.Equal(new[] { 202 }, runtime.GetPlayer(1001)!.GameInfo.WearItemIdList);
         Assert.Equal(new[] { 303 }, (await PlayerInfo.Load(redis, 1001))!.WearItemIdList);
     }
 

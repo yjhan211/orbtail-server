@@ -32,9 +32,9 @@ public sealed class MatchGameplayStateTests
 
     private static Player GetOrRegisterPlayer(MatchRuntime runtime, long playerId)
     {
-        if (runtime.GetParticipant(playerId) is { } player) return player;
+        if (runtime.GetPlayer(playerId) is { } player) return player;
         player = new Player(new PlayerInfo { PlayerId = playerId });
-        runtime.RegisterParticipant(player);
+        runtime.RegisterPlayer(player);
         return player;
     }
 

@@ -36,8 +36,8 @@ public sealed class MatchFieldServiceTests
         };
         using (match.Enter())
         {
-            match.RegisterParticipant(first);
-            match.RegisterParticipant(second);
+            match.RegisterPlayer(first);
+            match.RegisterPlayer(second);
             match.Closures.InitializeMatching([]);
             match.Closures.GameStartTime = DateTime.UtcNow.AddSeconds(-network.common.Config.SWARM_MATCH_DURATION_SECONDS - 100);
             Assert.Empty(match.GetSessions());
@@ -118,7 +118,7 @@ public sealed class MatchFieldServiceTests
         match.Closures.InitializeMatching(MatchFieldService.SwarmFieldClosureSchedule.Value);
         match.Closures.GameStartTime = DateTime.UtcNow.AddSeconds(-network.common.Config.SWARM_MATCH_DURATION_SECONDS - 100);
         var bots = match.Bots.GetBots().ToList();
-        foreach (var bot in bots) match.RegisterParticipant(bot.Player);
+        foreach (var bot in bots) match.RegisterPlayer(bot.Player);
         var healthBefore = bots.Select(bot => bot.Player.Health).ToArray();
         lock (match.MatchLock)
         {

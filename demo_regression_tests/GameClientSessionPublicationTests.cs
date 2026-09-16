@@ -123,7 +123,7 @@ public sealed class GameClientSessionPublicationTests
         var bot = new game_server.players.bots.Bot { PlayerId = -102 };
         var player = bot.Player;
         player.Position = session.Player.Position;
-        match.RegisterParticipant(player);
+        match.RegisterPlayer(player);
         match.Bots.GetBots().Add(bot);
         var pickup = new PlayerPickupService(TestGameSessionServices.CreateHealthService(fixture.Store), NullLogger<PlayerPickupService>.Instance);
         using (match.Enter())
@@ -319,7 +319,7 @@ public sealed class GameClientSessionPublicationTests
         int before = bot.Player.Health;
         using (match.Enter())
         {
-            if (match.GetParticipant(bot.PlayerId) == null) match.RegisterParticipant(bot.Player);
+            if (match.GetPlayer(bot.PlayerId) == null) match.RegisterPlayer(bot.Player);
             TestGameSessionServices.CreateCombatDamageService().ApplySwarmAfterimageMonsterHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), session.Player, 42, 5);
             TestGameSessionServices.CreateCombatDamageService().ApplySwarmAfterimageMonsterHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), bot.Player, 42, 5);
         }
@@ -341,7 +341,7 @@ public sealed class GameClientSessionPublicationTests
 
         using (match.Enter())
         {
-            if (match.GetParticipant(bot.PlayerId) == null) match.RegisterParticipant(bot.Player);
+            if (match.GetPlayer(bot.PlayerId) == null) match.RegisterPlayer(bot.Player);
             TestGameSessionServices.CreateCombatDamageService().ApplySwarmAfterimageMonsterHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), bot.Player, 42, Config.MAX_HEALTH);
             Assert.Equal(0, bot.Player.Health);
             Assert.True(bot.Player.IsEliminated);
@@ -631,19 +631,19 @@ public sealed class GameClientSessionPublicationTests
 
         await SendAsync(
             session,
-            Protocol.C_TO_G_DOOR_OPEN_START,
-            new C_TO_G_DOOR_OPEN_START { InteractId = 702000101 });
+            Protocol.C_TO_G_INTERACTION_START,
+            new C_TO_G_INTERACTION_START { InteractId = 702000101 });
 
-        G_TO_C_DOOR_OPEN_ACK startAck = fixture.ConnectionFor(session)
-            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK);
+        G_TO_C_INTERACTION_ACK startAck = fixture.ConnectionFor(session)
+            .DeserializeSingle<G_TO_C_INTERACTION_ACK>(Protocol.G_TO_C_INTERACTION_ACK);
         Assert.Equal(ErrorCode.SUCCESS, startAck.ErrorCode);
         Assert.False(startAck.Completed);
 
         fixture.ConnectionFor(session).ClearPackets();
-        await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_FINISH,
-            new C_TO_G_DOOR_OPEN_FINISH { InteractId = 702000101 });
+        await SendAsync(session, Protocol.C_TO_G_INTERACTION_FINISH,
+            new C_TO_G_INTERACTION_FINISH { InteractId = 702000101 });
         Assert.Equal(ErrorCode.DOOR_OPEN_TOO_EARLY, fixture.ConnectionFor(session)
-            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK).ErrorCode);
+            .DeserializeSingle<G_TO_C_INTERACTION_ACK>(Protocol.G_TO_C_INTERACTION_ACK).ErrorCode);
         Assert.False(session.Match.Doors.IsDoorOpen(201));
 
         // 실제로 잠들지 않고 서버가 기록한 시작 시각만 앞당긴다.
@@ -653,12 +653,12 @@ public sealed class GameClientSessionPublicationTests
         fixture.ConnectionFor(session).ClearPackets();
         await SendAsync(
             session,
-            Protocol.C_TO_G_DOOR_OPEN_FINISH,
-            new C_TO_G_DOOR_OPEN_FINISH { InteractId = 702000101 });
+            Protocol.C_TO_G_INTERACTION_FINISH,
+            new C_TO_G_INTERACTION_FINISH { InteractId = 702000101 });
 
         Assert.Equal(
             [
-                Protocol.G_TO_C_DOOR_OPEN_ACK
+                Protocol.G_TO_C_INTERACTION_ACK
             ],
             fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.True((fixture.Store.GetOrNull(70001)?.Doors.IsDoorOpen(201) == true));
@@ -673,7 +673,7 @@ public sealed class GameClientSessionPublicationTests
         var doorUpdate = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_INTERACTABLE_INFO>(Protocol.G_TO_C_INTERACTABLE_INFO);
         Assert.Contains(doorUpdate.Objects, info => GameInteractableData.Get(info.InteractId)?.DoorId == 201 && info.IsCompleted);
         Assert.True(fixture.ConnectionFor(session)
-            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK).Completed);
+            .DeserializeSingle<G_TO_C_INTERACTION_ACK>(Protocol.G_TO_C_INTERACTION_ACK).Completed);
         Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(70001)!.MatchLock));
     }
 
@@ -758,11 +758,11 @@ public sealed class GameClientSessionPublicationTests
         else
             fixture.SetMatchingId(session, 0);
 
-        await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_START,
-            new C_TO_G_DOOR_OPEN_START { InteractId = 201 });
+        await SendAsync(session, Protocol.C_TO_G_INTERACTION_START,
+            new C_TO_G_INTERACTION_START { InteractId = 201 });
 
         var result = fixture.ConnectionFor(session)
-            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK);
+            .DeserializeSingle<G_TO_C_INTERACTION_ACK>(Protocol.G_TO_C_INTERACTION_ACK);
         Assert.Equal(201, result.InteractId);
         Assert.False(result.Completed);
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, result.ErrorCode);
@@ -778,22 +778,22 @@ public sealed class GameClientSessionPublicationTests
 
         await SendAsync(
             session,
-            Protocol.C_TO_G_DOOR_OPEN_START,
-            new C_TO_G_DOOR_OPEN_START { InteractId = 702000101 });
+            Protocol.C_TO_G_INTERACTION_START,
+            new C_TO_G_INTERACTION_START { InteractId = 702000101 });
         await SendAsync(
             session,
-            Protocol.C_TO_G_DOOR_OPEN_FINISH,
-            new C_TO_G_DOOR_OPEN_FINISH { InteractId = 702000101 });
+            Protocol.C_TO_G_INTERACTION_FINISH,
+            new C_TO_G_INTERACTION_FINISH { InteractId = 702000101 });
 
         Assert.Equal(
             [
-                Protocol.G_TO_C_DOOR_OPEN_ACK,
-                Protocol.G_TO_C_DOOR_OPEN_ACK
+                Protocol.G_TO_C_INTERACTION_ACK,
+                Protocol.G_TO_C_INTERACTION_ACK
             ],
             fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.DoesNotContain(Protocol.G_TO_C_ERROR, fixture.ConnectionFor(session).AttemptedProtocols);
-        foreach (G_TO_C_DOOR_OPEN_ACK ack in fixture.ConnectionFor(session)
-                     .DeserializeAll<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK))
+        foreach (G_TO_C_INTERACTION_ACK ack in fixture.ConnectionFor(session)
+                     .DeserializeAll<G_TO_C_INTERACTION_ACK>(Protocol.G_TO_C_INTERACTION_ACK))
         {
             Assert.Equal(ErrorCode.INVALID_GAME_STATE, ack.ErrorCode);
         }
@@ -821,18 +821,18 @@ public sealed class GameClientSessionPublicationTests
         // 잠금을 기다리는 사이 매치가 끝나면 core 대신 거부 응답만 나간다.
         Task message = Task.Run(() => SendAsync(
             session,
-            Protocol.C_TO_G_DOOR_OPEN_START,
-            new C_TO_G_DOOR_OPEN_START { InteractId = 702000101 }));
+            Protocol.C_TO_G_INTERACTION_START,
+            new C_TO_G_INTERACTION_START { InteractId = 702000101 }));
         await Task.Delay(100);
         Assert.False(message.IsCompleted);
         markTerminal.Set();
         await holder.WaitAsync(TimeSpan.FromSeconds(5));
         await message.WaitAsync(TimeSpan.FromSeconds(5));
 
-        G_TO_C_DOOR_OPEN_ACK ack = fixture.ConnectionFor(session)
-            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK);
+        G_TO_C_INTERACTION_ACK ack = fixture.ConnectionFor(session)
+            .DeserializeSingle<G_TO_C_INTERACTION_ACK>(Protocol.G_TO_C_INTERACTION_ACK);
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, ack.ErrorCode);
-        Assert.Equal([Protocol.G_TO_C_DOOR_OPEN_ACK], fixture.ConnectionFor(session).DeliveredProtocols);
+        Assert.Equal([Protocol.G_TO_C_INTERACTION_ACK], fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.False((fixture.Store.GetOrNull(70001)?.Doors.IsDoorOpen(201) == true));
         Assert.Null(fixture.Store.GetOrNull(70001));
     }
@@ -846,12 +846,12 @@ public sealed class GameClientSessionPublicationTests
 
         await SendAsync(
             session,
-            Protocol.C_TO_G_DOOR_OPEN_START,
-            new C_TO_G_DOOR_OPEN_START { InteractId = 702000101 });
+            Protocol.C_TO_G_INTERACTION_START,
+            new C_TO_G_INTERACTION_START { InteractId = 702000101 });
 
-        Assert.Equal([Protocol.G_TO_C_DOOR_OPEN_ACK], fixture.ConnectionFor(session).AttemptedProtocols);
+        Assert.Equal([Protocol.G_TO_C_INTERACTION_ACK], fixture.ConnectionFor(session).AttemptedProtocols);
         var ack = fixture.ConnectionFor(session)
-            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK);
+            .DeserializeSingle<G_TO_C_INTERACTION_ACK>(Protocol.G_TO_C_INTERACTION_ACK);
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, ack.ErrorCode);
         Assert.Equal(702000101, ack.InteractId);
         Assert.Null(fixture.Store.GetOrNull(70001));
@@ -1094,7 +1094,7 @@ public sealed class GameClientSessionPublicationTests
             Assert.Equal(ErrorCode.INVALID_GAME_STATE, error);
         }
         var ack = fixture.ConnectionFor(session)
-            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK);
+            .DeserializeSingle<G_TO_C_INTERACTION_ACK>(Protocol.G_TO_C_INTERACTION_ACK);
         Assert.Equal(ErrorCode.DOOR_OPEN_INTERRUPTED, ack.ErrorCode);
         Assert.False(ack.Completed);
     }
@@ -1107,10 +1107,10 @@ public sealed class GameClientSessionPublicationTests
         session.Player.Cell = new Cell(113, 78);
         session.Player.Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, session.Player.Cell);
         fixture.Store.GetOrThrow(70001).StartGameplay();
-        await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_FINISH,
-            new C_TO_G_DOOR_OPEN_FINISH { InteractId = 702000101 });
+        await SendAsync(session, Protocol.C_TO_G_INTERACTION_FINISH,
+            new C_TO_G_INTERACTION_FINISH { InteractId = 702000101 });
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, fixture.ConnectionFor(session)
-            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK).ErrorCode);
+            .DeserializeSingle<G_TO_C_INTERACTION_ACK>(Protocol.G_TO_C_INTERACTION_ACK).ErrorCode);
         Assert.False(session.Match.Doors.IsDoorOpen(201));
     }
 
@@ -1130,7 +1130,7 @@ public sealed class GameClientSessionPublicationTests
             new C_TO_G_PLAYER_STATE { State = PlayerState.IDLE });
 
         var ack = fixture.ConnectionFor(session)
-            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK);
+            .DeserializeSingle<G_TO_C_INTERACTION_ACK>(Protocol.G_TO_C_INTERACTION_ACK);
         Assert.Equal(702000101, ack.InteractId);
         Assert.Equal(ErrorCode.DOOR_OPEN_INTERRUPTED, ack.ErrorCode);
         Assert.False(ack.Completed);

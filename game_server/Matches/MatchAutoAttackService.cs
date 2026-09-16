@@ -27,7 +27,7 @@ internal sealed class MatchAutoAttackService
         var activeWeapons = new HashSet<(long PlayerId, long ItemUid, int StackIndex)>();
         foreach (var attacker in actors)
         {
-            var owner = runtime.GetParticipant(attacker.PlayerId);
+            var owner = runtime.GetPlayer(attacker.PlayerId);
             if (owner == null)
             {
                 continue;

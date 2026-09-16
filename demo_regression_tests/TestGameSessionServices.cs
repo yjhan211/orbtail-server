@@ -101,9 +101,9 @@ internal static class TestGameSessionServices
         var match = session.Match;
         using (match.Enter())
         {
-            if (match.GetParticipant(session.PlayerId!.Value) == null)
-                match.RegisterParticipant(session.Player);
-            session.Player = match.GetParticipant(session.PlayerId.Value)!;
+            if (match.GetPlayer(session.PlayerId!.Value) == null)
+                match.RegisterPlayer(session.Player);
+            session.Player = match.GetPlayer(session.PlayerId.Value)!;
             session.Player.Session = session;
         }
     }
@@ -125,7 +125,7 @@ internal static class TestGameSessionServices
         var entry = (GameMatchEntryService?)typeof(GameClientSession).GetField("_matchEntry", flags)!.GetValue(session);
         typeof(GameClientSession).GetField("_match", flags)!.SetValue(session,
             matchingId > 0 ? (store?.GetOrCreate(matchingId) ?? ((MatchRuntimeStore)typeof(GameMatchEntryService).GetField("<matchRuntimes>P", flags)!.GetValue(entry)!).GetOrCreate(matchingId)) : null);
-        session.Player = (matchingId > 0 ? session.Match.GetParticipant(session.PlayerId ?? 0) : null)
+        session.Player = (matchingId > 0 ? session.Match.GetPlayer(session.PlayerId ?? 0) : null)
             ?? new Player(new network.common.data.models.PlayerInfo { PlayerId = session.PlayerId ?? 0 });
     }
 
@@ -142,11 +142,11 @@ internal static class TestGameSessionServices
     /// <summary>참가자·봇·미등록 순으로 플레이어를 찾고, 없으면 참가자로 등록한다.</summary>
     public static Player GetOrRegisterPlayer(MatchRuntime match, long playerId)
     {
-        var player = match.GetParticipant(playerId) ?? match.Bots.GetBot(playerId)?.Player;
+        var player = match.GetPlayer(playerId) ?? match.Bots.GetBot(playerId)?.Player;
         if (player != null)
             return player;
         player = new Player(new PlayerInfo { PlayerId = playerId });
-        match.RegisterParticipant(player);
+        match.RegisterPlayer(player);
         return player;
     }
 
@@ -155,7 +155,7 @@ internal static class TestGameSessionServices
 
     public static SummonStoneStateInfo SummonStones(MatchRuntime match, long playerId)
     {
-        var player = match.GetParticipant(playerId) ?? match.Bots.GetBot(playerId)?.Player;
+        var player = match.GetPlayer(playerId) ?? match.Bots.GetBot(playerId)?.Player;
         return player == null ? SummonStoneStateInfo.Empty : player.Orbs.SummonStones;
     }
 

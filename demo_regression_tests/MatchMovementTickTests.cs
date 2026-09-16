@@ -23,7 +23,7 @@ public sealed class MatchMovementTickTests
         var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
         runtime.InitializeMatch(solo ? MatchMode.SoloMapValidation : MatchMode.Normal,
             new Dictionary<long, Cell> { [1] = cell }, [new PlayerInfo { PlayerId = 1 }]);
-        var player = runtime.GetParticipant(1)!;
+        var player = runtime.GetPlayer(1)!;
         player.Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
         player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Corridor9)));
         if (started) runtime.StartGameplay();
@@ -60,7 +60,7 @@ public sealed class MatchMovementTickTests
         var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
         runtime.Bots.RegisterBots(runtime.MatchingId, [-1L], new Dictionary<long, Cell> { [-1] = cell });
         // 봇의 Player도 운영과 동일하게 참가자 목록에 등록한다.
-        runtime.RegisterParticipant(runtime.Bots.GetBot(-1)!.Player);
+        runtime.RegisterPlayer(runtime.Bots.GetBot(-1)!.Player);
         var initializedAt = DateTime.UtcNow;
         runtime.Monsters.Initialize(initializedAt);
         if (started) runtime.StartGameplay();
@@ -91,7 +91,7 @@ public sealed class MatchMovementTickTests
         monster.Movement.LastProcessedAtUtc = start.AddSeconds(-10);
         monster.Movement.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, new Vector3f(position.X + 1f, position.Y, 0f)));
         runtime.Monsters.Entities[1] = monster;
-        runtime.RegisterParticipant(new game_server.players.Player(new PlayerInfo { PlayerId = 1 }) { Health = 100,
+        runtime.RegisterPlayer(new game_server.players.Player(new PlayerInfo { PlayerId = 1 }) { Health = 100,
              Position = new Vector3f(position.X + 1f, position.Y, 0f)
         });
         var service = new MatchMoveService(null!, new MonsterBehaviorService());
@@ -183,7 +183,7 @@ public sealed class MatchMovementTickTests
         var now = DateTime.UtcNow;
         var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
         var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
-        runtime.RegisterParticipant(new game_server.players.Player(new PlayerInfo { PlayerId = 1 }) { Health = 100,
+        runtime.RegisterPlayer(new game_server.players.Player(new PlayerInfo { PlayerId = 1 }) { Health = 100,
             Position = new Vector3f(position.X + 1f, position.Y, 0f)
         });
         var monster = new Monster

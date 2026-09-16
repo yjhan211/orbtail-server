@@ -116,7 +116,7 @@ public sealed class MovementValidationServiceTests
             player.InitializeSpawn(cell);
             player.Position = position;
             player.Cell = cell;
-            match.RegisterParticipant(player);
+            match.RegisterPlayer(player);
             bool correction = _service.ProcessMovement(match, player, new C_TO_G_MOVE
             {
                 Position = input,

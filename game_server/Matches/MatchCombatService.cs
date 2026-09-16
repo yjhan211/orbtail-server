@@ -225,7 +225,7 @@ internal class MatchCombatService(
         Dictionary<long, ProximityCombatActor>? actorById = null;
         foreach (var attack in attacks)
         {
-            if (runtime.GetParticipant(attack.AttackerPlayerId)?.IsEliminated == true)
+            if (runtime.GetPlayer(attack.AttackerPlayerId)?.IsEliminated == true)
             {
                 continue;
             }
@@ -238,9 +238,9 @@ internal class MatchCombatService(
             if (MatchOrbAttackService.IsSunCrossfireWeapon(attack.WeaponItemId))
             {
                 bool anchoredThisTick = !crossfireAnchoredTargets.Add((attack.AttackerPlayerId, attack.TargetPlayerId));
-                if (anchoredThisTick || runtime.GetParticipant(attack.AttackerPlayerId) is not { } sunOwner || !playerOrbs.TryStartSunCrossfire(runtime, sunOwner, attack, nowUtc))
+                if (anchoredThisTick || runtime.GetPlayer(attack.AttackerPlayerId) is not { } sunOwner || !playerOrbs.TryStartSunCrossfire(runtime, sunOwner, attack, nowUtc))
                 {
-                    runtime.GetParticipant(attack.AttackerPlayerId)?.AutoAttack.ResetAttackCooldown(attack.AttackerItemUid, nowUtc);
+                    runtime.GetPlayer(attack.AttackerPlayerId)?.AutoAttack.ResetAttackCooldown(attack.AttackerItemUid, nowUtc);
                 }
                 continue;
             }
@@ -248,7 +248,7 @@ internal class MatchCombatService(
             if (monsterId > 0)
             {
                 int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, attack.Damage, out bool critical);
-                var attacker = runtime.GetParticipant(attack.AttackerPlayerId);
+                var attacker = runtime.GetPlayer(attack.AttackerPlayerId);
                 combatDamage.QueueMonsterHitNotification(runtime, attacker, monsterId, attack.Area, attack.WeaponItemId, monsterDamage, critical);
                 MatchCombatDamageService.BroadcastSwarmAttackVfxToTargetAndObservers(attack with { TargetPlayerId = -monsterId }, sessions);
                 actorById ??= actors.GroupBy(actor => actor.PlayerId).ToDictionary(group => group.Key, group => group.First());
@@ -290,7 +290,7 @@ internal class MatchCombatService(
         {
             throw new InvalidOperationException("Combat tick requires the match lock.");
         }
-        var victim = runtime.GetParticipant(damage.TargetPlayerId);
+        var victim = runtime.GetPlayer(damage.TargetPlayerId);
         if (runtime.IsEnded || victim == null || victim.IsEliminated)
         {
             return;

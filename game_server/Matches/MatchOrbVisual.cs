@@ -55,7 +55,7 @@ internal sealed record MatchOrbVisual(long ActorPlayerId, AreaType Area, int Wea
             }
 
             var primaryActor = orbActors.Count > 0 ? orbActors[0] : bodyActor;
-            int bodyHealth = runtime.GetParticipant(primaryActor.PlayerId)?.Health ?? -1;
+            int bodyHealth = runtime.GetPlayer(primaryActor.PlayerId)?.Health ?? -1;
             visuals.Add(new MatchOrbVisual(primaryActor.PlayerId, primaryActor.Area, primaryActor.WeaponItemId, bodyHealth, orbItemIds.MoveToImmutable()));
         }
         return visuals;

@@ -52,7 +52,7 @@ internal sealed class MatchRuntime
     public MatchMode Mode { get; private set; }
     public IReadOnlyDictionary<long, Cell> SpawnCells { get; private set; } = new Dictionary<long, Cell>();
 
-    private readonly Dictionary<long, Player> _participants = new();
+    private readonly Dictionary<long, Player> _players = new();
     private int _aliveCount;
 
     private readonly MatchRuntimeStore _runtimeStore;
@@ -132,7 +132,7 @@ internal sealed class MatchRuntime
         foreach (var player in playerRoster)
         {
             var participant = Bots.GetBot(player.PlayerId)?.Player ?? new Player(player);
-            RegisterParticipant(participant);
+            RegisterPlayer(participant);
             PlayerOrbGrowthService.GrantStartingSummonStones(this, participant);
         }
 
@@ -145,7 +145,7 @@ internal sealed class MatchRuntime
         Volatile.Write(ref _isSetupComplete, true);
     }
 
-    public void RegisterParticipant(Player participant)
+    public void RegisterPlayer(Player participant)
     {
         using (Enter())
         {
@@ -154,25 +154,25 @@ internal sealed class MatchRuntime
                 throw new InvalidOperationException($"Match is not available: {MatchingId}");
             }
 
-            if (!_participants.TryAdd(participant.PlayerId, participant))
+            if (!_players.TryAdd(participant.PlayerId, participant))
             {
                 _logger.LogDebug("Match participant already registered: MatchingId={MatchingId}, PlayerId={PlayerId}", MatchingId, participant.PlayerId);
                 return;
             }
 
             SynchronizedPlayerStates[participant.PlayerId] = participant.State;
-            _aliveCount = _participants.Count;
+            _aliveCount = _players.Count;
             _logger.LogInformation("Match participant registered: MatchingId={MatchingId}, PlayerId={PlayerId}, Count={Count}", MatchingId, participant.PlayerId, _aliveCount);
         }
     }
 
-    public PlayerOrbState GetOrbs(long playerId) => GetParticipant(playerId)?.Orbs ?? new PlayerOrbState();
+    public PlayerOrbState GetOrbs(long playerId) => GetPlayer(playerId)?.Orbs ?? new PlayerOrbState();
 
-    public Player? GetParticipant(long playerId)
+    public Player? GetPlayer(long playerId)
     {
         using (Enter())
         {
-            if (_cleanupStarted || !_participants.TryGetValue(playerId, out var entry))
+            if (_cleanupStarted || !_players.TryGetValue(playerId, out var entry))
             {
                 return null;
             }
@@ -185,7 +185,7 @@ internal sealed class MatchRuntime
     {
         using (Enter())
         {
-            return _participants.Values.Where(player => !player.IsEliminated).ToList();
+            return _players.Values.Where(player => !player.IsEliminated).ToList();
         }
     }
 
@@ -193,7 +193,7 @@ internal sealed class MatchRuntime
     {
         using (Enter())
         {
-            return _participants.Values.ToList();
+            return _players.Values.ToList();
         }
     }
 
@@ -202,8 +202,8 @@ internal sealed class MatchRuntime
         using (Enter())
         {
             // 로스터 전달용 복사본만 만든다. 계정 프로필은 매치에서 보관하지 않는다.
-            var profiles = new List<PlayerInfo>(_participants.Count);
-            foreach (var participant in _participants.Values)
+            var profiles = new List<PlayerInfo>(_players.Count);
+            foreach (var participant in _players.Values)
             {
                 profiles.Add(new PlayerInfo
                 {
@@ -225,7 +225,7 @@ internal sealed class MatchRuntime
             {
                 return false;
             }
-            if (!_participants.TryGetValue(playerId, out var participant)) return false;
+            if (!_players.TryGetValue(playerId, out var participant)) return false;
             if (participant.Status == PlayerMatchStatus.ELIMINATED) return false;
 
             participant.Status = PlayerMatchStatus.ELIMINATED;
@@ -247,7 +247,7 @@ internal sealed class MatchRuntime
         using (Enter())
         {
             var sessions = new List<GameClientSession>();
-            foreach (var player in _participants.Values)
+            foreach (var player in _players.Values)
             {
                 var session = player.Session;
                 if (session != null)
@@ -264,10 +264,10 @@ internal sealed class MatchRuntime
             if (_cleanupStarted)
                 return (false, null);
 
-            if (_participants.Count == 0)
+            if (_players.Count == 0)
                 return (false, null);
 
-            var activePlayers = _participants.Values
+            var activePlayers = _players.Values
                 .Where(l => l.Status != PlayerMatchStatus.ELIMINATED && l.Status != PlayerMatchStatus.SPECTATING)
                 .ToList();
 
@@ -293,7 +293,7 @@ internal sealed class MatchRuntime
             var result = new List<(long, EliminationReason, PlayerMatchStatus, DateTime?, long,
                 AreaType, int)>();
 
-            foreach (var participant in _participants.Values)
+            foreach (var participant in _players.Values)
             {
                 result.Add((participant.PlayerId,
                     participant.EliminationReason, participant.Status, participant.EliminatedAt, participant.AttackerPlayerId,
@@ -320,7 +320,7 @@ internal sealed class MatchRuntime
     {
         using (Enter())
         {
-            if (IsEnded || !IsSetupComplete || playerId <= 0 || GetParticipant(playerId) == null)
+            if (IsEnded || !IsSetupComplete || playerId <= 0 || GetPlayer(playerId) == null)
             {
                 return;
             }
@@ -332,12 +332,12 @@ internal sealed class MatchRuntime
     {
         using (Enter())
         {
-            if (IsEnded || !_entryDeadlineUtc.HasValue || playerId <= 0 || GetParticipant(playerId) == null)
+            if (IsEnded || !_entryDeadlineUtc.HasValue || playerId <= 0 || GetPlayer(playerId) == null)
             {
                 return;
             }
             _readyPlayerIds.Add(playerId);
-            if (_participants.Values.Any(player => player.PlayerId > 0 && !_readyPlayerIds.Contains(player.PlayerId)))
+            if (_players.Values.Any(player => player.PlayerId > 0 && !_readyPlayerIds.Contains(player.PlayerId)))
             {
                 return;
             }
@@ -415,14 +415,14 @@ internal sealed class MatchRuntime
                     }
                 }
                 TickLoop?.Stop();
-                foreach (var player in _participants.Values)
+                foreach (var player in _players.Values)
                 {
                     player.Session = null;
                     player.ReachableItems.Clear();
                 }
                 Doors.Clear();
                 GroundItems.Release();
-                _participants.Clear();
+                _players.Clear();
                 _aliveCount = 0;
                 Closures.Release();
                 Bots.Release();

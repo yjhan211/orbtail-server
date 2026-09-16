@@ -28,7 +28,7 @@ public sealed class PlayerOrbServiceTests
         var now = DateTime.UtcNow;
         using (runtime.Enter())
         {
-            runtime.RegisterParticipant(owner);
+            runtime.RegisterPlayer(owner);
             for (int i = 0; i < Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER; i++)
                 Assert.True(attacks.TryStartSunCrossfire(runtime, owner, attack, now));
             Assert.False(attacks.TryStartSunCrossfire(runtime, owner, attack, now));
@@ -55,7 +55,7 @@ public sealed class PlayerOrbServiceTests
         var now = DateTime.UtcNow;
         using (runtime.Enter())
         {
-            runtime.RegisterParticipant(owner);
+            runtime.RegisterPlayer(owner);
             Assert.Throws<InvalidOperationException>(() => attacks.ActivateWindOrbs(runtime, stale, now));
             Assert.Throws<InvalidOperationException>(() => attacks.TryStartSunCrossfire(runtime, stale, attack, now));
             Assert.Throws<InvalidOperationException>(() => attacks.TryStartSunCrossfire(runtime, owner, attack, now));

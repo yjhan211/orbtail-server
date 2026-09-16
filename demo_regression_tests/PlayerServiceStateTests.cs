@@ -24,7 +24,7 @@ public sealed class PlayerServiceStateTests
         var match = store.GetOrCreate(948011);
         var service = new PlayerMovementService(NullLogger<PlayerMovementService>.Instance);
         var player = new Player(new PlayerInfo { PlayerId = playerId });
-        match.RegisterParticipant(player);
+        match.RegisterPlayer(player);
         var spawn = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, MatchSpawnData.GetPhaseRoomCandidates()[0]);
         using (match.Enter())
         {
@@ -56,7 +56,7 @@ public sealed class PlayerServiceStateTests
 
         using (match.Enter())
         {
-            match.RegisterParticipant(player);
+            match.RegisterPlayer(player);
             health.ApplyDamage(match, player, 5, handleElimination: false);
             Assert.Equal(0, player.Health);
             Assert.False(player.IsEliminated);
@@ -72,8 +72,8 @@ public sealed class PlayerServiceStateTests
         var service = new PlayerHealthService(TestGameSessionServices.CreateEliminationService(store, NullLogger.Instance), NullLogger<PlayerHealthService>.Instance);
         var player = new Player(new PlayerInfo { PlayerId = 1 }) { Health = 50 };
         var other = new Player(new PlayerInfo { PlayerId = 2 }) { Health = 40 };
-        match.RegisterParticipant(player);
-        match.RegisterParticipant(other);
+        match.RegisterPlayer(player);
+        match.RegisterPlayer(other);
 
         using (match.Enter())
         {

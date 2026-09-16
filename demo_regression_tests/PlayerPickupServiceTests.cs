@@ -22,7 +22,7 @@ public sealed class PlayerPickupServiceTests
 
                 Position = At(item, 0, 0)
             };
-            match.RegisterParticipant(player);
+            match.RegisterPlayer(player);
             PlayerPickupService.AddReachableItemsInArea(
                 player,
                 match.GroundItems,
@@ -50,7 +50,7 @@ public sealed class PlayerPickupServiceTests
 
                 Position = At(item, 5, 0)
             };
-            match.RegisterParticipant(player);
+            match.RegisterPlayer(player);
             PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, AreaType.S2Corridor9,
                 At(item, -5, 0), At(item, 5, 0));
             var candidate = Assert.Single(PlayerPickupService.TakeReachableItems(player));
@@ -170,7 +170,7 @@ public sealed class PlayerPickupServiceTests
                 Position = At(item, 0, 0),
                 Health = Config.MAX_HEALTH
             };
-            match.RegisterParticipant(player);
+            match.RegisterPlayer(player);
             var service = CreateService(store);
 
             PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, player.GameInfo.ObjectInfo.Area, player.Position, player.Position);

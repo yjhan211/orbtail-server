@@ -61,7 +61,7 @@ public sealed class PlayerEliminationCauseTests
         using (match.Enter())
         {
             match.Bots.GetBots().Add(bot);
-            match.RegisterParticipant(bot.Player);
+            match.RegisterPlayer(bot.Player);
             combat.ApplyProximityAutoCombatHit(match, healthService, bot.Player, 101, AreaType.None, 123, 9);
             Assert.False(bot.Player.IsEliminated);
             combat.ApplyProximityAutoCombatHit(match, healthService, bot.Player, 102, AreaType.None, 123, 1);

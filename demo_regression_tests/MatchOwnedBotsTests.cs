@@ -162,13 +162,13 @@ public sealed class MatchOwnedBotsTests
             var profile = new PlayerInfo { PlayerId = bot.PlayerId };
             bot.Player.ApplyDamage(20);
             match.InitializeMatch(MatchMode.Normal, cells, [new PlayerInfo { PlayerId = 1 }, profile]);
-            Assert.Same(bot.Player, match.GetParticipant(-1));
+            Assert.Same(bot.Player, match.GetPlayer(-1));
             Assert.Equal(profile.PlayerId, bot.Player.PlayerId);
             Assert.Null(typeof(Bot).GetProperty("Health"));
-            Assert.Equal(Config.MAX_HEALTH - 20, match.GetParticipant(-1)!.Health);
-            match.GetParticipant(-1)!.Recover(5);
+            Assert.Equal(Config.MAX_HEALTH - 20, match.GetPlayer(-1)!.Health);
+            match.GetPlayer(-1)!.Recover(5);
             Assert.Equal(Config.MAX_HEALTH - 15, bot.Player.Health);
-            Assert.Equal(Config.MAX_HEALTH, match.GetParticipant(1)!.Health);
+            Assert.Equal(Config.MAX_HEALTH, match.GetPlayer(1)!.Health);
             Assert.Null(bot.Player.Session);
         }
     }
@@ -185,7 +185,7 @@ public sealed class MatchOwnedBotsTests
             var bot = match.Bots.GetBot(-1)!;
             var profile = new PlayerInfo { PlayerId = bot.PlayerId };
             match.InitializeMatch(MatchMode.Normal, cells, [new PlayerInfo { PlayerId = 1 }, profile]);
-            var player = match.GetParticipant(-1)!;
+            var player = match.GetPlayer(-1)!;
             Assert.Same(bot.Player, player);
             Assert.Equal(cells[-1].X, player.Cell!.X);
             Assert.Equal(cells[-1].Y, player.Cell.Y);
@@ -204,7 +204,7 @@ public sealed class MatchOwnedBotsTests
             Assert.Equal(6, bot.Player.Velocity.X);
             Assert.Equal(network.common.data.GameMapData.GetCurrentArea(network.common.Config.SWARM_MATCH_MAP, player.Cell!), bot.Player.GameInfo.ObjectInfo.Area);
             Assert.NotSame(player.Position, snapshot.Position);
-            Assert.Null(match.GetParticipant(1)!.Position);
+            Assert.Null(match.GetPlayer(1)!.Position);
             foreach (string field in new[] { "Position", "Cell", "WalkVelocity", "Rotation", "CurrentArea" })
                 Assert.Null(typeof(Bot).GetProperty(field));
         }

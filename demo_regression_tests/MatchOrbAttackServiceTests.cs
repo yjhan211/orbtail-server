@@ -30,7 +30,7 @@ public sealed class MatchOrbAttackServiceTests
         using (match.Enter())
         {
             var victim = new Player(new PlayerInfo { PlayerId = 12 });
-            match.RegisterParticipant(victim);
+            match.RegisterPlayer(victim);
             victim.StatusEffects.SunBurn = new PlayerStatusEffects.SunBurnState(11, 107000010, AreaType.None, now.AddSeconds(5), now.AddSeconds(1));
             var before = victim.StatusEffects.SunBurn;
             match.TryMarkEnded();
@@ -49,8 +49,8 @@ public sealed class MatchOrbAttackServiceTests
         var now = DateTime.UtcNow;
         var owner = new Bot { PlayerId = 11 };
         var victim = new Bot { PlayerId = 12 };
-        match.RegisterParticipant(owner.Player);
-        match.RegisterParticipant(victim.Player);
+        match.RegisterPlayer(owner.Player);
+        match.RegisterPlayer(victim.Player);
         using (MatchRuntimeStore.Enter(match))
         {
             var shape = new SwarmCrossfireShape
@@ -96,7 +96,7 @@ public sealed class MatchOrbAttackServiceTests
         var burned = new Bot { PlayerId = 12 };
         using (MatchRuntimeStore.Enter(first))
         {
-            first.RegisterParticipant(burned.Player);
+            first.RegisterPlayer(burned.Player);
             burned.Player.StatusEffects.SunBurn = new PlayerStatusEffects.SunBurnState(11, 107000010, AreaType.S2Gym1,
                 now.AddSeconds(Config.SWARM_SUN_BURN_SECONDS), now.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS));
         }
@@ -104,7 +104,7 @@ public sealed class MatchOrbAttackServiceTests
         using (MatchRuntimeStore.Enter(second))
         {
             var victim = new Bot { PlayerId = 12 };
-            second.RegisterParticipant(victim.Player);
+            second.RegisterPlayer(victim.Player);
             service.ProcessSunBurns(second, due);
             Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
             second.TryMarkEnded();
@@ -168,7 +168,7 @@ public sealed class MatchOrbAttackServiceTests
         var service = CreateService(store);
         var victim = new Bot { PlayerId = 20 };
         using var scope = MatchRuntimeStore.Enter(match);
-        match.RegisterParticipant(victim.Player);
+        match.RegisterPlayer(victim.Player);
         int tickDamage = Math.Max(1, (int)MathF.Round(
             Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE) * Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER));
         double interval = Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS;
@@ -242,8 +242,8 @@ public sealed class MatchOrbAttackServiceTests
         var now = DateTime.UtcNow;
         using (match.Enter())
         {
-            match.RegisterParticipant(owner);
-            match.RegisterParticipant(victim);
+            match.RegisterPlayer(owner);
+            match.RegisterPlayer(victim);
             var orb = owner.Orbs.AddOrb(107000030);
             attacks.ActivateWaveOrbs(match, owner, now);
             Assert.Empty(match.PendingWaveAttacks);
@@ -307,8 +307,8 @@ public sealed class MatchOrbAttackServiceTests
         using (match.Enter())
         {
             Assert.Throws<InvalidOperationException>(() => attacks.ActivateWaveOrbs(match, first, now));
-            match.RegisterParticipant(first);
-            match.RegisterParticipant(second);
+            match.RegisterPlayer(first);
+            match.RegisterPlayer(second);
             var orb = first.Orbs.AddOrb(107000030);
             attacks.ActivateWaveOrbs(match, first, now);
             Assert.NotNull(first.Orbs.GetNextWaveOrbAttackAtUtc(orb.ItemUid));

@@ -253,7 +253,7 @@ public sealed class MonsterMovementIntentTests
         };
         monster.Movement.LastProcessedAtUtc = now.AddSeconds(-0.05);
         runtime.Monsters.Entities.Add(monster.MonsterId, monster);
-        runtime.RegisterParticipant(new game_server.players.Player(new PlayerInfo { PlayerId = 77 }) { Health = 100,
+        runtime.RegisterPlayer(new game_server.players.Player(new PlayerInfo { PlayerId = 77 }) { Health = 100,
             Position = destination
         });
         var behavior = new MonsterBehaviorService();

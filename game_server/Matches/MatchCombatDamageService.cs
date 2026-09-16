@@ -141,7 +141,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         }
 
         RecordCombatContact(runtime, victim, sourcePlayerId, DateTime.UtcNow);
-        if (runtime.GetParticipant(sourcePlayerId) is { } attackerPlayer)
+        if (runtime.GetPlayer(sourcePlayerId) is { } attackerPlayer)
         {
             attackerPlayer.PvpDamageDealt += damage;
         }
@@ -274,7 +274,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
             return;
         }
 
-        var attacker = runtime.GetParticipant(attackerId);
+        var attacker = runtime.GetPlayer(attackerId);
         QueueMonsterHitNotification(runtime, attacker, monsterId, area, weaponItemId, damage, critical, showDamageOnly: true);
         if (damageResult.Killed && damageResult.Monster != null)
         {
@@ -325,7 +325,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
             shock = Math.Max(shock + 1, (int)MathF.Round(shock * SwarmCriticalMultiplier));
         }
 
-        var owner = runtime.GetParticipant(ownerId);
+        var owner = runtime.GetPlayer(ownerId);
         int ownerHealth = owner?.Health ?? -1;
         ApplyProximityAutoCombatHit(runtime, healthService, victim, ownerId, area, weaponItemId, shock, isPeriodicDamage, ownerHealth);
         int healthAfter = victim.Health;
@@ -393,7 +393,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
             return;
         }
         int healthDamage = ConsumeSwarmPvpDamage(target, attack.Damage);
-        var attacker = runtime.GetParticipant(attack.AttackerPlayerId);
+        var attacker = runtime.GetPlayer(attack.AttackerPlayerId);
         int attackerHealth = attacker?.Health ?? -1;
         if (healthDamage > 0)
         {

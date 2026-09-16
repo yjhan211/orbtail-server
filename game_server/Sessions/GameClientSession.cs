@@ -109,10 +109,10 @@ public partial class GameClientSession : SessionBase
 
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_STATE,
             async bytes => await HandleMessage<C_TO_G_PLAYER_STATE>(bytes, HandlePlayerState));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DOOR_OPEN_START,
-            async bytes => await HandleMessage<C_TO_G_DOOR_OPEN_START>(bytes, HandleDoorOpenStart));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DOOR_OPEN_FINISH,
-            async bytes => await HandleMessage<C_TO_G_DOOR_OPEN_FINISH>(bytes, HandleDoorOpenFinish));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_START,
+            async bytes => await HandleMessage<C_TO_G_INTERACTION_START>(bytes, HandleInteractionStart));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_FINISH,
+            async bytes => await HandleMessage<C_TO_G_INTERACTION_FINISH>(bytes, HandleInteractionFinish));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SOCIAL_ACTION,
             async bytes => await HandleMessage<C_TO_G_SOCIAL_ACTION>(bytes, HandleSocialAction));
     }
@@ -210,7 +210,7 @@ public partial class GameClientSession : SessionBase
                     return;
                 }
 
-                Player = runtime.GetParticipant(playerId) ?? throw new InvalidOperationException("Match participant was not initialized.");
+                Player = runtime.GetPlayer(playerId) ?? throw new InvalidOperationException("Match participant was not initialized.");
                 if (!Connection.TryRunIfActive(() => previousSession = _registerSessionCallback(playerId, this)))
                 {
                     throw new OperationCanceledException("Connection closed before session registration.");

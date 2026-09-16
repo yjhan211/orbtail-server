@@ -16,12 +16,12 @@ public sealed class MatchPlayerStateTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948001);
         var participant = new Player(new PlayerInfo { PlayerId = 10 });
-        match.RegisterParticipant(participant);
+        match.RegisterPlayer(participant);
         var session = TestGameSessionServices.CreateRecipientSession();
         typeof(GameClientSession).GetProperty(nameof(GameClientSession.PlayerId))!.SetValue(session, 10L);
         TestGameSessionServices.BindMatch(session, match.MatchingId, store);
 
-        Assert.Same(match.GetParticipant(10), session.Player);
+        Assert.Same(match.GetPlayer(10), session.Player);
         using (match.Enter())
         {
             participant.Health = 42;
@@ -44,7 +44,7 @@ public sealed class MatchPlayerStateTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948002);
         var participant = new Player(new PlayerInfo { PlayerId = 10 });
-        match.RegisterParticipant(participant);
+        match.RegisterPlayer(participant);
         var previous = TestGameSessionServices.CreateRecipientSession();
         var current = TestGameSessionServices.CreateRecipientSession();
         foreach (var session in new[] { previous, current })
@@ -74,8 +74,8 @@ public sealed class MatchPlayerStateTests
         var match = store.GetOrCreate(948003);
         var human = new Player(new PlayerInfo { PlayerId = 10 });
         var bot = new Player(new PlayerInfo { PlayerId = -1 });
-        match.RegisterParticipant(human);
-        match.RegisterParticipant(bot);
+        match.RegisterPlayer(human);
+        match.RegisterPlayer(bot);
         Assert.Null(typeof(Player).GetProperty("MapId"));
         Assert.Null(human.Session);
         Assert.Null(bot.Session);
@@ -102,8 +102,8 @@ public sealed class MatchPlayerStateTests
         Assert.True(registry.Remove(current));
         Assert.Null(human.Session);
         Assert.Empty(match.GetSessions());
-        Assert.Same(human, match.GetParticipant(10));
-        Assert.Same(bot, match.GetParticipant(-1));
+        Assert.Same(human, match.GetPlayer(10));
+        Assert.Same(bot, match.GetPlayer(-1));
         Assert.Equal(2, match.BuildGameResult().Count);
 
         registry.Register(10, current);

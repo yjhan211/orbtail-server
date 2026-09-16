@@ -380,16 +380,16 @@ public class MatchMonsterTickTests
                 // 접촉 면역은 Player가 들므로 스냅샷의 참가자를 매치에 등록해 둔다.
                 foreach (var participant in participants)
                 {
-                    if (Runtime.GetParticipant(participant.PlayerId) == null)
+                    if (Runtime.GetPlayer(participant.PlayerId) == null)
                     {
-                        Runtime.RegisterParticipant(new Player(new PlayerInfo { PlayerId = participant.PlayerId }));
+                        Runtime.RegisterPlayer(new Player(new PlayerInfo { PlayerId = participant.PlayerId }));
                     }
                 }
                 foreach (var player in Runtime.GetAlivePlayers())
                     player.Position = null;
                 foreach (var participant in participants)
                 {
-                    var player = Runtime.GetParticipant(participant.PlayerId)!;
+                    var player = Runtime.GetPlayer(participant.PlayerId)!;
                     player.Position = participant.Position;
                     if (player.GameInfo.ObjectInfo.Area != participant.Area)
                         player.Position = TestMapPosition.In(participant.Area);

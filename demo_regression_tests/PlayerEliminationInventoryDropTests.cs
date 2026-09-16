@@ -97,7 +97,7 @@ public sealed class PlayerEliminationInventoryDropTests
         }
 
         player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Classroom1)));
-        match.RegisterParticipant(player);
+        match.RegisterPlayer(player);
         return player;
     }
 

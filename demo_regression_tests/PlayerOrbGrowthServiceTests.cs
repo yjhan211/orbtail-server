@@ -23,7 +23,7 @@ public sealed class PlayerOrbGrowthServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984302);
         var player = new Player(new network.common.data.models.PlayerInfo { PlayerId = 1 });
-        runtime.RegisterParticipant(player);
+        runtime.RegisterPlayer(player);
         TestGameSessionServices.AddSummonStones(runtime, 1, 100);
         var service = new PlayerOrbGrowthService(NullLogger<PlayerOrbGrowthService>.Instance);
         Assert.Throws<InvalidOperationException>(() => service.Summon(runtime, player));
@@ -44,7 +44,7 @@ public sealed class PlayerOrbGrowthServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984301);
         var player = new Player(new network.common.data.models.PlayerInfo { PlayerId = 1 });
-        runtime.RegisterParticipant(player);
+        runtime.RegisterPlayer(player);
         using (MatchRuntimeStore.Enter(runtime))
         {
             int cost = TestGameSessionServices.SummonStones(runtime, 1).NextCost;

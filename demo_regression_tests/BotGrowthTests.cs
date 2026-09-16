@@ -16,11 +16,11 @@ public sealed class BotGrowthTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(949101);
         var human = new Player(new network.common.data.models.PlayerInfo { PlayerId = 1 });
-        match.RegisterParticipant(human);
+        match.RegisterPlayer(human);
         var growth = new PlayerOrbGrowthService(NullLogger<PlayerOrbGrowthService>.Instance);
         var decisions = new BotBehaviorService(growth, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
         var bot = new Bot { PlayerId = -1 };
-        match.RegisterParticipant(bot.Player);
+        match.RegisterPlayer(bot.Player);
         using (match.Enter())
         {
             TestGameSessionServices.AddSummonStones(match, -1, 100);
@@ -47,7 +47,7 @@ public sealed class BotGrowthTests
         var growth = new PlayerOrbGrowthService(NullLogger<PlayerOrbGrowthService>.Instance);
         var decisions = new BotBehaviorService(growth, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
         var bot = new Bot { PlayerId = -1 };
-        match.RegisterParticipant(bot.Player);
+        match.RegisterPlayer(bot.Player);
         using (match.Enter())
         {
             for (int i = 0; i < Config.SWARM_ORB_CAPACITY; i++)
@@ -70,7 +70,7 @@ public sealed class BotGrowthTests
         var growth = new PlayerOrbGrowthService(NullLogger<PlayerOrbGrowthService>.Instance);
         var decisions = new BotBehaviorService(growth, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
         var bot = new Bot { PlayerId = -1 };
-        match.RegisterParticipant(bot.Player);
+        match.RegisterPlayer(bot.Player);
         using (match.Enter())
         {
             decisions.ProcessOrbGrowth(match, [bot]);

@@ -35,7 +35,7 @@ internal sealed class PlayerOrbService(
             return;
         }
 
-        if (!ReferenceEquals(runtime.GetParticipant(owner.PlayerId), owner))
+        if (!ReferenceEquals(runtime.GetPlayer(owner.PlayerId), owner))
         {
             throw new InvalidOperationException("Orb attack owner must belong to the match.");
         }
@@ -163,7 +163,7 @@ internal sealed class PlayerOrbService(
             return false;
         }
 
-        if (!ReferenceEquals(runtime.GetParticipant(owner.PlayerId), owner) || attack.AttackerPlayerId != owner.PlayerId)
+        if (!ReferenceEquals(runtime.GetPlayer(owner.PlayerId), owner) || attack.AttackerPlayerId != owner.PlayerId)
         {
             throw new InvalidOperationException("Sun orb attack owner must belong to the match and match the attack.");
         }
@@ -177,7 +177,7 @@ internal sealed class PlayerOrbService(
         var anchor = attack.AnchorPosition;
         var anchorMonster = runtime.Monsters.FindAliveByCombatTarget(attack.TargetPlayerId);
         int anchorMonsterId = anchorMonster?.MonsterId ?? 0;
-        if (anchor == null && runtime.GetParticipant(attack.TargetPlayerId)?.Position is { } targetPosition)
+        if (anchor == null && runtime.GetPlayer(attack.TargetPlayerId)?.Position is { } targetPosition)
         {
             anchor = targetPosition;
         }
@@ -401,7 +401,7 @@ internal sealed class PlayerOrbService(
             return;
         }
 
-        if (!ReferenceEquals(runtime.GetParticipant(owner.PlayerId), owner))
+        if (!ReferenceEquals(runtime.GetPlayer(owner.PlayerId), owner))
         {
             throw new InvalidOperationException("Wind orb attack owner must belong to the match.");
         }

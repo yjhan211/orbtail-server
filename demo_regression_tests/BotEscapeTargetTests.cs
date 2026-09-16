@@ -110,7 +110,7 @@ public sealed class BotEscapeTargetTests
             var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
             runtime.Bots.RegisterBots(runtime.MatchingId, [-1L], new Dictionary<long, Cell> { [-1L] = cell });
             var bot = runtime.Bots.GetBot(-1)!;
-            runtime.RegisterParticipant(bot.Player);
+            runtime.RegisterPlayer(bot.Player);
             var position = bot.Player.Position!;
             var threatPosition = new Vector3f(position.X + threatOffset, position.Y, 0f);
             var rival = new Player(new PlayerInfo { PlayerId = 1 }) {
@@ -120,7 +120,7 @@ public sealed class BotEscapeTargetTests
                 Health = Config.MAX_HEALTH
             };
             rival.Orbs.TryAddOrbWithCapacity(107000020, 8, out _);
-            runtime.RegisterParticipant(rival);
+            runtime.RegisterPlayer(rival);
             var service = new BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance);
 
             bot.MonsterAvoidanceTarget = (cell, DateTime.UtcNow);

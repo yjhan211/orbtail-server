@@ -34,13 +34,13 @@ public sealed class MatchOwnedStateTests
         Assert.NotSame(first.Closures, second.Closures);
         var roster = first;
 
-        roster.RegisterParticipant(new Player(new network.common.data.models.PlayerInfo { PlayerId = 11 }));
+        roster.RegisterPlayer(new Player(new network.common.data.models.PlayerInfo { PlayerId = 11 }));
         TestGameSessionServices.AddSummonStones(first, 11, 9);
         TestGameSessionServices.Orbs(first, 11).AddOrb(107000010);
 
-        Assert.Same(first.GetParticipant(11)!.Orbs,
+        Assert.Same(first.GetPlayer(11)!.Orbs,
             TestGameSessionServices.Orbs(store.GetOrThrow(first.MatchingId), 11));
-        Assert.Null(second.GetParticipant(11));
+        Assert.Null(second.GetPlayer(11));
         Assert.Empty(second.GetOrbs(11).GetAllOrbs());
         Assert.Equal(9, TestGameSessionServices.SummonStones(store.GetOrThrow(first.MatchingId), 11).StoneCount);
         Assert.Equal(0, TestGameSessionServices.SummonStones(second, 11).StoneCount);
@@ -61,7 +61,7 @@ public sealed class MatchOwnedStateTests
 
         TestGameSessionServices.AddSummonStones(sibling, 11, 7);
         ground.SpawnItems(area, 0, 0, [107000010]);
-        roster.RegisterParticipant(new Player(new network.common.data.models.PlayerInfo { PlayerId = 11 }));
+        roster.RegisterPlayer(new Player(new network.common.data.models.PlayerInfo { PlayerId = 11 }));
         TestGameSessionServices.AddSummonStones(runtime, 11, 5);
         TestGameSessionServices.Orbs(runtime, 11).AddOrb(107000010);
         closures.InitializeMatching([]);
@@ -125,8 +125,8 @@ public sealed class MatchOwnedStateTests
         {
             runtime.Bots.RegisterBots(runtime.MatchingId,
                 [botId], new Dictionary<long, Cell> { [botId] = network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9) });
-            runtime.RegisterParticipant(runtime.Bots.GetBot(botId)!.Player);
-            runtime.RegisterParticipant(new Player(new network.common.data.models.PlayerInfo { PlayerId = 11 }));
+            runtime.RegisterPlayer(runtime.Bots.GetBot(botId)!.Player);
+            runtime.RegisterPlayer(new Player(new network.common.data.models.PlayerInfo { PlayerId = 11 }));
             TestGameSessionServices.Orbs(runtime, botId).AddOrb(107000010);
         }
         var bot = match.Bots.GetBot(botId)!;
@@ -138,7 +138,7 @@ public sealed class MatchOwnedStateTests
             var entry = match.BuildGameResult().Single(row => row.playerId == botId);
             Assert.Equal(PlayerMatchStatus.ELIMINATED, entry.finalStatus);
             Assert.True(bot.Player.IsEliminated);
-            Assert.Same(bot.Player, match.GetParticipant(botId));
+            Assert.Same(bot.Player, match.GetPlayer(botId));
             Assert.Equal(0, bot.Movement.WaypointIndex);
             Assert.Empty(TestGameSessionServices.Orbs(match, botId).GetAllOrbs());
             int drops = match.GroundItems.GetItemsInArea(bot.Player.GameInfo.ObjectInfo.Area).Count;
@@ -167,8 +167,8 @@ public sealed class MatchOwnedStateTests
                 [playerId], new Dictionary<long, Cell> { [playerId] = new(0, 0) });
             player = match.Bots.GetBot(playerId)!.Player;
         }
-        match.RegisterParticipant(player);
-        match.RegisterParticipant(new Player(new PlayerInfo { PlayerId = 11 }));
+        match.RegisterPlayer(player);
+        match.RegisterPlayer(new Player(new PlayerInfo { PlayerId = 11 }));
         var service = TestGameSessionServices.CreateEliminationService(store, NullLogger.Instance);
         using (match.Enter())
         {
@@ -197,7 +197,7 @@ public sealed class MatchOwnedStateTests
 
             Position = TestMapPosition.In(AreaType.S2Corridor9)
         };
-        match.RegisterParticipant(player);
+        match.RegisterPlayer(player);
         var service = TestGameSessionServices.CreateEliminationService(store, NullLogger.Instance);
         using (match.Enter())
         {

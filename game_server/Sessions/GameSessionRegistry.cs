@@ -23,7 +23,7 @@ public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
         }
 
         if (session.PlayerId != playerId || session.MatchingId != match.MatchingId ||
-            !ReferenceEquals(match.GetParticipant(playerId), session.Player))
+            !ReferenceEquals(match.GetPlayer(playerId), session.Player))
         {
             throw new InvalidOperationException("Session identity does not match its bound match.");
         }

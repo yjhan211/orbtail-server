@@ -53,7 +53,7 @@ internal class BotBehaviorService(
 
     private bool TryUpgradePreferredOrb(MatchRuntime runtime, long playerId)
     {
-        var player = runtime.GetParticipant(playerId)!;
+        var player = runtime.GetPlayer(playerId)!;
         var distinctGroupIds = new List<int>();
         var countByGroupId = new Dictionary<int, int>();
         foreach (var item in player.Orbs.GetOrderedOrbs())
@@ -370,7 +370,7 @@ internal class BotBehaviorService(
         }
         if (threatCell == null && (nowUtc - bot.LastDamagedAtUtc).TotalSeconds <= Config.SWARM_BOT_DAMAGED_FLEE_SECONDS)
         {
-            var attacker = runtime.GetParticipant(bot.LastProximityAttackerPlayerId);
+            var attacker = runtime.GetPlayer(bot.LastProximityAttackerPlayerId);
             if (attacker != null && attacker.Cell != null && !attacker.IsEliminated && (bot.Wounded || attacker.Orbs.GetOrbPower() >= orbPower * Config.SWARM_BOT_FLEE_POWER_RATIO))
             {
                 threatCell = attacker.Cell;

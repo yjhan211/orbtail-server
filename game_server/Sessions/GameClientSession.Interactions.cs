@@ -14,7 +14,7 @@ namespace game_server.sessions;
 /// </summary>
 public partial class GameClientSession
 {
-    private Task HandleDoorOpenStart(C_TO_G_DOOR_OPEN_START msg)
+    private Task HandleInteractionStart(C_TO_G_INTERACTION_START msg)
     {
         if (!PlayerId.HasValue)
         {
@@ -24,8 +24,8 @@ public partial class GameClientSession
         var match = Volatile.Read(ref _match);
         if (match == null)
         {
-            using var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_OPEN_ACK, PlayerId.Value);
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_DOOR_OPEN_ACK
+            using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_ACK, PlayerId.Value);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_INTERACTION_ACK
             {
                 InteractId = msg.InteractId,
                 ErrorCode = ErrorCode.INVALID_GAME_STATE
@@ -49,8 +49,8 @@ public partial class GameClientSession
                 }
             }
 
-            using var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_OPEN_ACK, PlayerId.Value);
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_DOOR_OPEN_ACK
+            using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_ACK, PlayerId.Value);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_INTERACTION_ACK
             {
                 InteractId = msg.InteractId,
                 ErrorCode = error
@@ -60,7 +60,7 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
-    private Task HandleDoorOpenFinish(C_TO_G_DOOR_OPEN_FINISH msg)
+    private Task HandleInteractionFinish(C_TO_G_INTERACTION_FINISH msg)
     {
         if (!PlayerId.HasValue)
         {
@@ -70,8 +70,8 @@ public partial class GameClientSession
         var match = Volatile.Read(ref _match);
         if (match == null)
         {
-            using var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_OPEN_ACK, PlayerId.Value);
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_DOOR_OPEN_ACK
+            using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_ACK, PlayerId.Value);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_INTERACTION_ACK
             {
                 InteractId = msg.InteractId,
                 ErrorCode = ErrorCode.INVALID_GAME_STATE
@@ -108,8 +108,8 @@ public partial class GameClientSession
 
             }
 
-            using var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_OPEN_ACK, PlayerId.Value);
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_DOOR_OPEN_ACK
+            using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_ACK, PlayerId.Value);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_INTERACTION_ACK
             {
                 InteractId = msg.InteractId,
                 ErrorCode = error,
@@ -147,8 +147,8 @@ public partial class GameClientSession
         {
             return;
         }
-        using var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_OPEN_ACK, PlayerId.Value);
-        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_DOOR_OPEN_ACK
+        using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_ACK, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_INTERACTION_ACK
         {
             InteractId = interactId,
             ErrorCode = ErrorCode.DOOR_OPEN_INTERRUPTED
@@ -160,8 +160,8 @@ public partial class GameClientSession
     {
         foreach (int interactId in canceledIds)
         {
-            using var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_OPEN_ACK, PlayerId.GetValueOrDefault());
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_DOOR_OPEN_ACK
+            using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_ACK, PlayerId.GetValueOrDefault());
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_INTERACTION_ACK
             {
                 InteractId = interactId,
                 ErrorCode = ErrorCode.DOOR_OPEN_INTERRUPTED

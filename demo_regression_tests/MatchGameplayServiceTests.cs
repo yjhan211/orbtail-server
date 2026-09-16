@@ -23,7 +23,7 @@ public sealed class MatchGameplayServiceTests
         };
         using (match.Enter())
         {
-            match.RegisterParticipant(player);
+            match.RegisterPlayer(player);
             Assert.Empty(match.GetSessions());
             Assert.Null(match.Bots.GetBot(playerId));
             var result = Assert.Single(service.BuildPlayerResults(match, playerId));
@@ -48,9 +48,9 @@ public sealed class MatchGameplayServiceTests
         var eliminated = new game_server.players.Player(new PlayerInfo { PlayerId = 303 });
         using (match.Enter())
         {
-            match.RegisterParticipant(winner);
-            match.RegisterParticipant(other);
-            match.RegisterParticipant(eliminated);
+            match.RegisterPlayer(winner);
+            match.RegisterPlayer(other);
+            match.RegisterPlayer(eliminated);
             match.TryEliminatePlayer(303, network.common.EliminationReason.HEALTH_ZERO);
             for (int i = 0; i < 2; i++)
                 Assert.True(TestGameSessionServices.Orbs(match, winnerId).TryAddOrbWithCapacity(107000010, 8, out _));
@@ -76,7 +76,7 @@ public sealed class MatchGameplayServiceTests
         using (match.Enter())
         {
             foreach (long id in new long[] { 101, -102, 103 })
-                match.RegisterParticipant(new game_server.players.Player(new PlayerInfo { PlayerId = id }));
+                match.RegisterPlayer(new game_server.players.Player(new PlayerInfo { PlayerId = id }));
             for (int i = 0; i < 2; i++)
                 Assert.True(TestGameSessionServices.Orbs(match, 101).TryAddOrbWithCapacity(107000010, 8, out _));
             Assert.True(TestGameSessionServices.Orbs(match, -102).TryAddOrbWithCapacity(107000010, 8, out _));
@@ -109,8 +109,8 @@ public sealed class MatchGameplayServiceTests
         var now = DateTime.UtcNow;
         using (match.Enter())
         {
-            match.RegisterParticipant(cutter);
-            match.RegisterParticipant(owner);
+            match.RegisterPlayer(cutter);
+            match.RegisterPlayer(owner);
             if (cutterId < 0) match.Bots.GetBots().Add(bot);
             Assert.True(TestGameSessionServices.Orbs(match, owner.PlayerId).TryAddOrbWithCapacity(107000010, 1, out _));
             Assert.Single(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllOrbs());
@@ -150,7 +150,7 @@ public sealed class MatchGameplayServiceTests
         };
         using (match.Enter())
         {
-            match.RegisterParticipant(player);
+            match.RegisterPlayer(player);
             player.Interactions.Begin(702000101, 0);
             service.ApplySwarmParticipantDamage(match,
                 new MonsterContactDamage(1, playerId, player.GameInfo.ObjectInfo.Area, 12), []);
@@ -184,8 +184,8 @@ public sealed class MatchGameplayServiceTests
         };
         using (match.Enter())
         {
-            match.RegisterParticipant(bot.Player);
-            match.RegisterParticipant(enemy);
+            match.RegisterPlayer(bot.Player);
+            match.RegisterPlayer(enemy);
             Assert.Empty(match.GetSessions());
             var now = DateTime.UtcNow;
             service.UpdateSleep(match, [bot], now);
@@ -210,8 +210,8 @@ public sealed class MatchGameplayServiceTests
         };
         using (match.Enter())
         {
-            match.RegisterParticipant(hunter);
-            match.RegisterParticipant(prey);
+            match.RegisterPlayer(hunter);
+            match.RegisterPlayer(prey);
             Assert.True(TestGameSessionServices.Orbs(match, hunter.PlayerId).TryAddOrbWithCapacity(107000010, 6, out _));
             Assert.Equal(1, growth.GetTopOrbCount(match));
             match.TryEliminatePlayer(prey.PlayerId, network.common.EliminationReason.HEALTH_ZERO);
@@ -233,8 +233,8 @@ public sealed class MatchGameplayServiceTests
         };
         using (match.Enter())
         {
-            match.RegisterParticipant(human);
-            match.RegisterParticipant(bot);
+            match.RegisterPlayer(human);
+            match.RegisterPlayer(bot);
             match.PendingWaveAttacks.Add(new PendingWaveAttack(99, human.GameInfo.ObjectInfo.Area, new Vector3f(), 5, 2f, 107000030, now));
             waveAttacks.ProcessWaveDetonations(match, now);
             Assert.True(human.Health < network.common.Config.MAX_HEALTH);
@@ -289,7 +289,7 @@ public sealed class MatchGameplayServiceTests
         var bot = new Bot { PlayerId = -11, Player = { Health = 10, Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Corridor9)) } };
         using (match.Enter())
         {
-            match.RegisterParticipant(bot.Player);
+            match.RegisterPlayer(bot.Player);
             var now = DateTime.UtcNow;
             service.UpdateSleep(match, [bot], now);
             Assert.True(bot.Player.IsSleeping);
@@ -314,7 +314,7 @@ public sealed class MatchGameplayServiceTests
         var store = provider.GetRequiredService<MatchRuntimeStore>();
         var match = store.GetOrCreate(947703);
         var bot = new Bot { PlayerId = -11, Player = { Health = 10, Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Corridor9)) } };
-        match.RegisterParticipant(bot.Player);
+        match.RegisterPlayer(bot.Player);
         var now = DateTime.UtcNow;
         using (match.Enter())
         {
@@ -341,13 +341,13 @@ public sealed class MatchGameplayServiceTests
         var bot = new Bot { PlayerId = -11, Player = { Health = 10, Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Corridor9)) } };
         var enemy = new Bot { PlayerId = -12 };
         enemy.Player.Position = bot.Player.Position!;
-        match.RegisterParticipant(bot.Player);
+        match.RegisterPlayer(bot.Player);
         var now = DateTime.UtcNow;
         using (match.Enter())
         {
             service.UpdateSleep(match, [bot], now);
             Assert.True(bot.Player.IsSleeping);
-            match.RegisterParticipant(enemy.Player);
+            match.RegisterPlayer(enemy.Player);
             service.UpdateSleep(match, [bot], now);
             Assert.False(bot.Player.IsSleeping);
             enemy.Player.Position = new Vector3f(1000, 1000, 0);

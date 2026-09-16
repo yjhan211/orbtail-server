@@ -18,8 +18,8 @@ public sealed class MatchRuntimeStoreTests
         var bot = new game_server.players.Player(new network.common.data.models.PlayerInfo { PlayerId = -1 });
         using (match.Enter())
         {
-            match.RegisterParticipant(human);
-            match.RegisterParticipant(bot);
+            match.RegisterPlayer(human);
+            match.RegisterPlayer(bot);
             Assert.Equal(new[] { human, bot }, match.GetAlivePlayers());
             Assert.Null(human.Session);
             match.TryEliminatePlayer(bot.PlayerId, network.common.EliminationReason.HEALTH_ZERO);

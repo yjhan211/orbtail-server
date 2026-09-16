@@ -41,7 +41,7 @@ internal sealed class MonsterCombatService
                 continue;
             }
 
-            var player = runtime.GetParticipant(participant.PlayerId);
+            var player = runtime.GetPlayer(participant.PlayerId);
             if (player == null || player.StatusEffects.IsActive(PlayerStatusEffectKind.MonsterContactImmunity, now))
             {
                 continue;
@@ -67,7 +67,7 @@ internal sealed class MonsterCombatService
                         continue;
                     }
 
-                    var splashedPlayer = runtime.GetParticipant(splashed.PlayerId);
+                    var splashedPlayer = runtime.GetPlayer(splashed.PlayerId);
                     if (splashedPlayer == null || splashedPlayer.StatusEffects.IsActive(PlayerStatusEffectKind.MonsterContactImmunity, now))
                     {
                         continue;

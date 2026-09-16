@@ -45,7 +45,7 @@ internal sealed class MatchTrailCutService(
             {
                 continue;
             }
-            var ownerPlayer = runtime.GetParticipant(owner.PlayerId)!;
+            var ownerPlayer = runtime.GetPlayer(owner.PlayerId)!;
             var orbTiers = new List<int>(orbs.Count);
             foreach (var orb in orbs)
             {
@@ -61,7 +61,7 @@ internal sealed class MatchTrailCutService(
 
         foreach (var cutter in participants)
         {
-            var cutterPlayer = runtime.GetParticipant(cutter.PlayerId);
+            var cutterPlayer = runtime.GetPlayer(cutter.PlayerId);
             if (cutterPlayer == null)
             {
                 continue;
@@ -102,7 +102,7 @@ internal sealed class MatchTrailCutService(
             throw new InvalidOperationException("Trail cuts require the match lock.");
         }
 
-        var cutter = runtime.GetParticipant(cutterId);
+        var cutter = runtime.GetPlayer(cutterId);
         if (runtime.IsEnded || cutter == null || cutter.IsEliminated)
         {
             return;
@@ -128,7 +128,7 @@ internal sealed class MatchTrailCutService(
             {
                 continue;
             }
-            var owner = runtime.GetParticipant(ownerId);
+            var owner = runtime.GetPlayer(ownerId);
             if (owner == null || owner.IsEliminated || owner.GameInfo.ObjectInfo.Area != cutterArea || owner.Position == null)
             {
                 continue;
@@ -202,7 +202,7 @@ internal sealed class MatchTrailCutService(
 
         cutter.OrbCutLatches[cutOrbUid] = nowUtc;
 
-        var victim = runtime.GetParticipant(victimId)!;
+        var victim = runtime.GetPlayer(victimId)!;
         var destroyedOrbs = orbTrails.DestroyOrbsFromOrdinal(runtime, victim, cutOrdinal);
         if (destroyedOrbs.Count == 0)
         {

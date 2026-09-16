@@ -21,7 +21,7 @@ public sealed class BotCellTargetTests
         var origin = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area);
         runtime.Bots.RegisterBots(runtime.MatchingId, [-1], new Dictionary<long, Cell> { [-1] = origin });
         var bot = runtime.Bots.GetBot(-1)!;
-        runtime.RegisterParticipant(bot.Player);
+        runtime.RegisterPlayer(bot.Player);
         bot.Player.Orbs.AddOrb(107000020);
         var monsterArea = AreaType.S2Library1;
         var monsterCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, monsterArea);
@@ -52,7 +52,7 @@ public sealed class BotCellTargetTests
         var origin = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area);
         runtime.Bots.RegisterBots(runtime.MatchingId, [-1], new Dictionary<long, Cell> { [-1] = origin });
         var bot = runtime.Bots.GetBot(-1)!;
-        runtime.RegisterParticipant(bot.Player);
+        runtime.RegisterPlayer(bot.Player);
         bot.Player.Orbs.TakeAllOrbs();
         for (int i = 0; i < 4; i++)
         {
@@ -72,7 +72,7 @@ public sealed class BotCellTargetTests
         {
             attacker.Orbs.AddOrb(107000020);
         }
-        runtime.RegisterParticipant(attacker);
+        runtime.RegisterPlayer(attacker);
         bot.Wounded = wounded;
         bot.LastProximityAttackerPlayerId = attacker.PlayerId;
         bot.LastDamagedAtUtc = DateTime.UtcNow;

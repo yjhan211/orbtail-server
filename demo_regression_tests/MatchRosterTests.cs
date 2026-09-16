@@ -13,9 +13,9 @@ public sealed class MatchRosterTests
         const long matchingId = 194001;
         var manager = MatchTestServices.Runtime(matchingId, NullLogger.Instance);
 
-        manager.RegisterParticipant(CreateLink(1, 2));
-        manager.RegisterParticipant(CreateLink(2, 3));
-        manager.RegisterParticipant(CreateLink(3, 1));
+        manager.RegisterPlayer(CreateLink(1, 2));
+        manager.RegisterPlayer(CreateLink(2, 3));
+        manager.RegisterPlayer(CreateLink(3, 1));
 
         bool eliminated = manager.TryEliminatePlayer(2, EliminationReason.HEALTH_ZERO);
 
@@ -31,8 +31,8 @@ public sealed class MatchRosterTests
         const long matchingId = 194002;
         var manager = MatchTestServices.Runtime(matchingId, NullLogger.Instance);
 
-        manager.RegisterParticipant(CreateLink(1, 2));
-        manager.RegisterParticipant(CreateLink(2, 1));
+        manager.RegisterPlayer(CreateLink(1, 2));
+        manager.RegisterPlayer(CreateLink(2, 1));
 
         manager.TryEliminatePlayer(2, EliminationReason.HEALTH_ZERO,
             attackerPlayerId: 1, eliminatedArea: AreaType.S2Library1);
@@ -49,9 +49,9 @@ public sealed class MatchRosterTests
         const long matchingId = 194003;
         var manager = MatchTestServices.Runtime(matchingId, NullLogger.Instance);
 
-        manager.RegisterParticipant(CreateLink(1, 2));
-        manager.RegisterParticipant(CreateLink(2, 3));
-        manager.RegisterParticipant(CreateLink(3, 1));
+        manager.RegisterPlayer(CreateLink(1, 2));
+        manager.RegisterPlayer(CreateLink(2, 3));
+        manager.RegisterPlayer(CreateLink(3, 1));
 
         manager.TryEliminatePlayer(
             2,
@@ -68,9 +68,9 @@ public sealed class MatchRosterTests
         const long matchingId = 194004;
         var manager = MatchTestServices.Runtime(matchingId, NullLogger.Instance);
 
-        manager.RegisterParticipant(CreateLink(1, 2));
-        manager.RegisterParticipant(CreateLink(2, 3));
-        manager.RegisterParticipant(CreateLink(3, 1));
+        manager.RegisterPlayer(CreateLink(1, 2));
+        manager.RegisterPlayer(CreateLink(2, 3));
+        manager.RegisterPlayer(CreateLink(3, 1));
 
         var first = manager.TryEliminatePlayer(
             2, EliminationReason.HEALTH_ZERO,
@@ -97,9 +97,9 @@ public sealed class MatchRosterTests
         const long matchingId = 227001;
         var manager = MatchTestServices.Runtime(matchingId, NullLogger.Instance);
 
-        manager.RegisterParticipant(CreateLink(1, 2));
-        manager.RegisterParticipant(CreateLink(2, 3));
-        manager.RegisterParticipant(CreateLink(3, 1));
+        manager.RegisterPlayer(CreateLink(1, 2));
+        manager.RegisterPlayer(CreateLink(2, 3));
+        manager.RegisterPlayer(CreateLink(3, 1));
 
         // 본체 HP 0 — 첫 확정.
         var byBodyHp = manager.TryEliminatePlayer(
@@ -129,7 +129,7 @@ public sealed class MatchRosterTests
     public void EndMatch_ClearsParticipantsAndRejectsFurtherRegistration()
     {
         var roster = MatchTestServices.Runtime(1, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
-        roster.RegisterParticipant(new Player(new network.common.data.models.PlayerInfo { PlayerId = 10, Name = "player", WearItemIdList = [1] }));
+        roster.RegisterPlayer(new Player(new network.common.data.models.PlayerInfo { PlayerId = 10, Name = "player", WearItemIdList = [1] }));
 
         using (roster.Enter())
             roster.TryMarkEnded();
@@ -137,12 +137,12 @@ public sealed class MatchRosterTests
             roster.TryMarkEnded();
 
         Assert.DoesNotContain(roster.BuildGameResult(), row => row.playerId == 10);
-        Assert.Null(roster.GetParticipant(10));
+        Assert.Null(roster.GetPlayer(10));
         Assert.Empty(roster.BuildGameResult());
         Assert.Equal((false, (long?)null), roster.CheckGameOver());
         Assert.False(roster.TryEliminatePlayer(10, EliminationReason.HEALTH_ZERO));
         Assert.Throws<InvalidOperationException>(() =>
-            roster.RegisterParticipant(new Player(new network.common.data.models.PlayerInfo { PlayerId = 20 })));
+            roster.RegisterPlayer(new Player(new network.common.data.models.PlayerInfo { PlayerId = 20 })));
     }
     [Fact]
     public void Participant_CopiesMatchIdentityAndPublishesIndependentRoster()
@@ -153,9 +153,9 @@ public sealed class MatchRosterTests
             PlayerId = 10, Name = "player", WearItemIdList = [123]
         };
         var participant = new Player(profile);
-        roster.RegisterParticipant(participant);
+        roster.RegisterPlayer(participant);
 
-        Assert.Same(participant, roster.GetParticipant(10));
+        Assert.Same(participant, roster.GetPlayer(10));
         var profiles = roster.GetPlayerProfiles();
         var snapshot = Assert.Single(profiles);
         Assert.NotSame(profile, snapshot);
@@ -171,7 +171,7 @@ public sealed class MatchRosterTests
 
         Assert.True(roster.TryEliminatePlayer(10, EliminationReason.HEALTH_ZERO));
         Assert.Equal(PlayerMatchStatus.ELIMINATED, participant.Status);
-        Assert.Equal("player", roster.GetParticipant(10)!.GameInfo.Name);
+        Assert.Equal("player", roster.GetPlayer(10)!.GameInfo.Name);
         Assert.Equal(123, Assert.Single(participant.GameInfo.WearItemIdList));
         using (roster.Enter())
             roster.TryMarkEnded();
@@ -182,19 +182,19 @@ public sealed class MatchRosterTests
     {
         var match = MatchTestServices.Runtime(194010, NullLogger.Instance);
         var participant = CreateLink(10, 0);
-        match.RegisterParticipant(participant);
+        match.RegisterPlayer(participant);
         match.TryEliminatePlayer(10, EliminationReason.PRESSURE_FIELD);
 
         using (match.Enter())
         {
             Assert.True(match.TryMarkEnded());
             using (match.Enter())
-                Assert.Same(participant, match.GetParticipant(10));
+                Assert.Same(participant, match.GetPlayer(10));
             Assert.Equal(EliminationReason.PRESSURE_FIELD, Assert.Single(match.BuildGameResult()).reason);
             Assert.Single(match.GetPlayerProfiles());
         }
 
-        Assert.Null(match.GetParticipant(10));
+        Assert.Null(match.GetPlayer(10));
         Assert.Empty(match.BuildGameResult());
         Assert.Empty(match.GetPlayerProfiles());
     }

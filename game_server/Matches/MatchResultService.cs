@@ -230,7 +230,7 @@ internal sealed class MatchResultService(
         var playerResults = new List<GameResultPlayerInfo>();
         foreach (var row in resultRows)
         {
-            var player = runtime.GetParticipant(row.playerId)!;
+            var player = runtime.GetPlayer(row.playerId)!;
             var orbs = runtime.GetOrbs(row.playerId);
             bool isWinner = row.playerId == winnerId;
             playerResults.Add(new GameResultPlayerInfo

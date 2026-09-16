@@ -46,10 +46,10 @@ namespace network.common
         // 플레이어 스탯 프로토콜
         G_TO_C_PLAYER_STATS_UPDATE, // 스태미나/정신력 등 스탯 변경 알림
 
-        // 문 프로토콜
-        C_TO_G_DOOR_OPEN_START, // 문 게이지 시작
-        C_TO_G_DOOR_OPEN_FINISH, // 문 게이지 완료 요청
-        G_TO_C_DOOR_OPEN_ACK, // 시작 승인·완료·중단 결과
+        // 상호작용 프로토콜
+        C_TO_G_INTERACTION_START, // 상호작용 시작 요청
+        C_TO_G_INTERACTION_FINISH, // 상호작용 완료 요청
+        G_TO_C_INTERACTION_ACK, // 시작 승인·완료·중단 결과
 
         // 복도 규칙 프로토콜
 
