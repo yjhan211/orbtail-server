@@ -1,13 +1,10 @@
-using network.common;
 using network.common.data.models;
 
 namespace game_server.matches;
 
-/// <summary>개체의 목적지·확정 경로. 매치 잠금 안에서 변경하며 목적지 갱신만으로 기존 경로를 교체하지 않는다.</summary>
+/// <summary>개체의 확정 경로와 이동 진행 상태. 매치 잠금 안에서 변경하며 목적지 갱신만으로 기존 경로를 교체하지 않는다.</summary>
 public sealed class MovementState
 {
-    public AreaType DestinationArea { get; set; }
-    public Cell? DestinationCell { get; set; }
     public List<Cell> Waypoints { get; } = [];
     public int WaypointIndex { get; set; }
     public DateTime NextPathPlanAtUtc { get; set; }

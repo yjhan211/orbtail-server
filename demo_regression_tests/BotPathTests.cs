@@ -7,31 +7,10 @@ namespace demo_regression_tests;
 public sealed class BotPathTests
 {
     [Fact]
-    public void NewMovementTargetDoesNotReplaceCommittedPath()
-    {
-        var bot = new Bot
-        {
-            Movement = { WaypointIndex = 2 }
-        };
-        var path = bot.Movement.Waypoints;
-        var cell = new network.common.data.models.Cell(3, 4);
-
-        bot.SetMovementTarget(AreaType.S2Gym1, cell);
-
-        Assert.NotNull(bot.Movement.DestinationCell);
-        Assert.Equal(AreaType.S2Gym1, bot.Movement.DestinationArea);
-        Assert.Equal(cell, bot.Movement.DestinationCell);
-        Assert.Same(path, bot.Movement.Waypoints);
-        Assert.Equal(2, bot.Movement.WaypointIndex);
-    }
-
-    [Fact]
-    public void ClearingPathPreservesDestinationAndDecisionButCancelsMovement()
+    public void ClearingPathRemovesWaypointsAndResetsIndex()
     {
         var bot = new Bot();
-        bot.SetMovementTarget(AreaType.S2Ground,
-            new network.common.data.models.Cell(3, 4));
-        var destination = bot.Movement.DestinationCell;
+        var destination = new network.common.data.models.Cell(3, 4);
         bot.Movement.Waypoints.Add(destination!);
         bot.Movement.WaypointIndex = 1;
 
@@ -39,8 +18,5 @@ public sealed class BotPathTests
 
         Assert.Empty(bot.Movement.Waypoints);
         Assert.Equal(0, bot.Movement.WaypointIndex);
-        Assert.Same(destination, bot.Movement.DestinationCell);
-        Assert.Equal(AreaType.S2Ground, bot.Movement.DestinationArea);
-        Assert.NotNull(bot.Movement.DestinationCell);
     }
 }

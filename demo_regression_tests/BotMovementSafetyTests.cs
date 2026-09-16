@@ -22,7 +22,6 @@ public sealed class BotMovementSafetyTests
             var deadline = DateTime.UtcNow.AddMinutes(1);
             bot.Movement.NextPathPlanAtUtc = deadline;
             bot.LoopWaitUntil = DateTime.MinValue;
-            bot.SetMovementTarget(AreaType.S2Library1, target);
             bot.Movement.Waypoints.Add(target);
             bot.Player.Velocity = new Vector3f(5, 0, 0);
             var originalPosition = bot.Player.Position;

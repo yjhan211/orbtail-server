@@ -26,8 +26,7 @@ public sealed class BotMovementIntentTests
         bot.Movement.Waypoints.Add(target);
         bot.Movement.LastProcessedAtUtc = now.AddSeconds(-0.05);
         bot.LoopWaitUntil = DateTime.MinValue;
-        bot.SetMovementTarget(bot.Player.CurrentArea, target);
-        var behavior = new FixedTargetBehavior(bot);
+        var behavior = new FixedTargetBehavior(target);
         var movement = new MatchMoveService(behavior, null!);
 
         var request = MovementPreparationTestSteps.Bot(behavior, runtime, bot, now);
@@ -78,10 +77,9 @@ public sealed class BotMovementIntentTests
             break;
         }
         Assert.NotNull(destination);
-        bot.SetMovementTarget(bot.Player.CurrentArea, destination!);
         bot.LoopWaitUntil = DateTime.MinValue;
         var before = bot.Player.Position;
-        var behavior = new FixedTargetBehavior(bot);
+        var behavior = new FixedTargetBehavior(destination);
 
         var request = MovementPreparationTestSteps.Bot(behavior, runtime, bot, DateTime.UtcNow);
 
@@ -109,7 +107,7 @@ public sealed class BotMovementIntentTests
         bot.Player.State = PlayerState.SLEEP;
         var target = new Cell(cell.X + 1, cell.Y);
         bot.Movement.Waypoints.Add(target);
-        var behavior = new FixedTargetBehavior(bot);
+        var behavior = new FixedTargetBehavior(target);
 
         var request = MovementPreparationTestSteps.Bot(behavior, runtime, bot, DateTime.UtcNow);
 
@@ -135,13 +133,12 @@ public sealed class BotMovementIntentTests
         var destination = cell.GetAdjacentCells().First(candidate =>
             GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, candidate) == bot.Player.CurrentArea &&
             MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.CurrentArea, cell, bot.Player.CurrentArea, candidate) is { Count: > 0 });
-        bot.SetMovementTarget(bot.Player.CurrentArea, destination);
         bot.Movement.Waypoints.Add(destination);
         bot.Movement.NextPathPlanAtUtc = deadline;
         bot.LastDamagedAtUtc = underFire ? now : now.AddMinutes(-1);
         bot.MonsterAvoidanceTarget = avoidingNow ? (bot.Player.Cell!, now) : null;
 
-        var request = MovementPreparationTestSteps.Bot(new FixedTargetBehavior(bot), runtime, bot, now);
+        var request = MovementPreparationTestSteps.Bot(new FixedTargetBehavior(destination), runtime, bot, now);
 
         Assert.Equal(deadline, bot.Movement.NextPathPlanAtUtc);
     }
@@ -179,17 +176,15 @@ public sealed class BotMovementIntentTests
         trails.DestroyOrbsFromOrdinal(runtime, bot.Player, 0);
         Assert.Equal(speedUntil, bot.SwarmBareSpeedUntilUtc);
         bot.Player.State = PlayerState.IDLE;
-        bot.Movement.DestinationCell = null;
-        var request = MovementPreparationTestSteps.Bot(new FixedTargetBehavior(bot), runtime, bot, DateTime.UtcNow);
+        var request = MovementPreparationTestSteps.Bot(new FixedTargetBehavior(null), runtime, bot, DateTime.UtcNow);
         Assert.Equal(speedUntil, bot.SwarmBareSpeedUntilUtc);
     }
 
-    private sealed class FixedTargetBehavior(Bot target)
+    private sealed class FixedTargetBehavior(Cell? destination)
         : BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance)
     {
         public int Selections { get; private set; }
-        private readonly AreaType _area = target.Movement.DestinationArea;
-        private readonly Cell? _destination = target.Movement.DestinationCell;
+        private readonly Cell? _destination = destination;
         public override Cell? SelectMovementTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc)
         {
             Selections++;

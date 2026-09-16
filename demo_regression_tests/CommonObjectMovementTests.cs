@@ -9,10 +9,8 @@ namespace demo_regression_tests;
 
 public sealed class CommonObjectMovementTests
 {
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void PlayerAndMonsterUseIdenticalSpatialUpdates(bool directTarget)
+    [Fact]
+    public void PlayerAndMonsterUseIdenticalSpatialUpdates()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(987661);
@@ -25,18 +23,8 @@ public sealed class CommonObjectMovementTests
         var target = new Vector3f(before.X + 1f, before.Y, 0f);
         var playerIntent = new MovementState();
         var monsterIntent = new MovementState();
-        if (directTarget)
-        {
-            playerIntent.DestinationCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target);
-            playerIntent.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target));
-            monsterIntent.DestinationCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target);
-            monsterIntent.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target));
-        }
-        else
-        {
-            playerIntent.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target));
-            monsterIntent.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target));
-        }
+        playerIntent.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target));
+        monsterIntent.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target));
 
         MovementPreparationTestSteps.Advance(runtime, player.GameInfo.ObjectInfo, playerIntent, new MovementRequest(null, 1f), 0.05f);
         MovementPreparationTestSteps.Advance(runtime, monster.Info.ObjectInfo, monsterIntent, new MovementRequest(null, 1f), 0.05f);

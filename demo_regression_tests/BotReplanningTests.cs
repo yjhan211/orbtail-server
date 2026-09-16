@@ -10,16 +10,39 @@ namespace demo_regression_tests;
 public sealed class BotReplanningTests
 {
     [Fact]
-    public void FinishedPathIsPlannedWithoutWaitingForAnotherActor()
+    public void FirstRequestPlansImmediatelyWithDefaultDeadline()
     {
         var (runtime, bot, destination) = CreateBot();
         using var scope = runtime.Enter();
         var now = DateTime.UtcNow;
-        var deadline = now.AddSeconds(1);
-        bot.Movement.NextPathPlanAtUtc = deadline;
-        MovementPreparationTestSteps.Bot(new TargetBehavior(bot.Player.CurrentArea, destination), runtime, bot, now);
+        Assert.Equal(DateTime.MinValue, bot.Movement.NextPathPlanAtUtc);
+        MovementPreparationTestSteps.Bot(new TargetBehavior(destination), runtime, bot, now);
         Assert.NotEmpty(bot.Movement.Waypoints);
         Assert.Equal(now.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS), bot.Movement.NextPathPlanAtUtc);
+    }
+
+    [Fact]
+    public void FailedPathRetriesLatestRequestOnlyAfterDeadline()
+    {
+        var (runtime, bot, destination) = CreateBot();
+        using var scope = runtime.Enter();
+        var now = DateTime.UtcNow;
+        var info = bot.Player.GameInfo.ObjectInfo;
+        var movement = bot.Movement;
+        MatchMoveService.PrepareMovement(runtime, info, movement,
+            new MovementRequest(new Cell(-10000, -10000), 1f), now);
+        Assert.Empty(movement.Waypoints);
+        var deadline = movement.NextPathPlanAtUtc;
+        Assert.True(deadline > now);
+
+        var request = new MovementRequest(destination, 1f);
+        MatchMoveService.PrepareMovement(runtime, info, movement, request, now);
+        Assert.Empty(movement.Waypoints);
+        Assert.Equal(deadline, movement.NextPathPlanAtUtc);
+
+        MatchMoveService.PrepareMovement(runtime, info, movement, request, deadline);
+        Assert.NotEmpty(movement.Waypoints);
+        Assert.Equal(destination, movement.Waypoints[^1]);
     }
 
     [Theory]
@@ -33,7 +56,7 @@ public sealed class BotReplanningTests
             ? destination
             : new Cell(-10000, -10000);
         bot.Movement.Waypoints.Add(waypoint);
-        MovementPreparationTestSteps.Bot(new TargetBehavior(AreaType.None, new Cell(-10000, -10000)), runtime, bot, DateTime.UtcNow);
+        MovementPreparationTestSteps.Bot(new TargetBehavior(new Cell(-10000, -10000)), runtime, bot, DateTime.UtcNow);
         Assert.True(bot.Movement.NextPathPlanAtUtc > DateTime.UtcNow);
         if (validPath)
         {
@@ -51,7 +74,7 @@ public sealed class BotReplanningTests
         var (runtime, bot, destination) = CreateBot();
         using var scope = runtime.Enter();
         bot.Movement.Waypoints.Add(destination);
-        var request = MovementPreparationTestSteps.Bot(new TargetBehavior(bot.Player.CurrentArea, bot.Player.Cell!, true), runtime, bot, DateTime.UtcNow);
+        var request = MovementPreparationTestSteps.Bot(new TargetBehavior(bot.Player.Cell!, true), runtime, bot, DateTime.UtcNow);
         Assert.Equal(0f, request.Speed);
         var position = bot.Player.Position;
         MovementPreparationTestSteps.Advance(runtime, bot.Player.GameInfo.ObjectInfo, bot.Movement, request, 0.05f);
@@ -130,20 +153,15 @@ public sealed class BotReplanningTests
     {
         var (runtime, bot, destination) = CreateBot();
         using var scope = runtime.Enter();
-        bot.SetMovementTarget(bot.Player.CurrentArea, destination);
-        var savedDestination = bot.Movement.DestinationCell;
-        var savedArea = bot.Movement.DestinationArea;
         bot.Movement.Waypoints.Add(destination);
         bot.Movement.NextPathPlanAtUtc = DateTime.UtcNow.AddMinutes(1);
         var savedDeadline = bot.Movement.NextPathPlanAtUtc;
         var nowUtc = DateTime.UtcNow.AddSeconds(-5);
-        var behavior = new TargetBehavior(savedArea, hasTarget ? destination : null);
+        var behavior = new TargetBehavior(hasTarget ? destination : null);
 
         var request = behavior.CreateMovementRequest(runtime, bot, nowUtc);
 
         Assert.Equal(nowUtc, behavior.SelectedAtUtc);
-        Assert.Same(savedDestination, bot.Movement.DestinationCell);
-        Assert.Equal(savedArea, bot.Movement.DestinationArea);
         Assert.Same(destination, Assert.Single(bot.Movement.Waypoints));
         Assert.Equal(savedDeadline, bot.Movement.NextPathPlanAtUtc);
         Assert.Equal(hasTarget, request.Speed > 0f);
@@ -167,7 +185,7 @@ public sealed class BotReplanningTests
         return (runtime, bot, destination);
     }
 
-    private sealed class TargetBehavior(AreaType area, Cell? destination, bool hold = false)
+    private sealed class TargetBehavior(Cell? destination, bool hold = false)
         : BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance)
     {
         public DateTime SelectedAtUtc { get; private set; }

@@ -20,7 +20,6 @@ public sealed class BotMovementStopTests
         foreach (var bot in runtime.Bots.GetBots())
         {
             bot.Player.Velocity = new Vector3f(5, 0, 0);
-            bot.Movement.DestinationCell = null;
         }
         int decisions = 0;
         MovementTickTestDriver.RunBotTick(runtime, _ =>
@@ -52,8 +51,6 @@ public sealed class BotMovementStopTests
             bot.LoopWaitUntil = DateTime.MinValue;
             var originalPosition = bot.Player.Position!;
             bot.Player.Velocity = new Vector3f(5f, 1f, 0f);
-            if (reason != "no_target")
-                bot.SetMovementTarget(bot.Player.CurrentArea, cell);
             if (reason is "waiting" or "blocked_cell")
                 bot.Movement.Waypoints.Add(reason == "blocked_cell" ? new Cell(-10000, -10000) : cell);
             if (reason == "waiting")

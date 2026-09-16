@@ -7,13 +7,6 @@ namespace game_server.players.bots;
 
 public class Bot
 {
-    /// <summary>목적지만 갱신한다. 확정 경로는 재계획 차례에 교체한다.</summary>
-    public void SetMovementTarget(AreaType area, Cell cell)
-    {
-        Movement.DestinationArea = area;
-        Movement.DestinationCell = cell.Clone();
-    }
-
     internal void UpdateWoundedState()
     {
         bool wounded = Wounded;

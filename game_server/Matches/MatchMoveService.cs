@@ -93,29 +93,12 @@ internal class MatchMoveService(
             return;
         }
 
-        // 이번에 요청한 목적지
         var destination = request.DestinationCell;
-        if (destination == null && movement.Waypoints.Count > 0)
-        {
-            // 요청 목적지가 없으면 기존 경로의 마지막 셀
-            destination = movement.Waypoints[^1];
-        }
-        // 아직 목적지가 없으면 저장된 목적지 사용
-        destination ??= movement.DestinationCell;
         if (destination == null)
         {
-            // 사용할 목적지가 없으므로 이동 준비 종료
             return;
         }
 
-        bool firstRequest = movement.DestinationCell == null;
-        bool changed = firstRequest || !movement.DestinationCell!.Equals(destination);
-        if (changed)
-        {
-            // 목적지 갱신
-            movement.DestinationCell = destination.Clone();
-            movement.DestinationArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, destination);
-        }
         if (movement.WaypointIndex < movement.Waypoints.Count && !CanKeepPath(runtime, objectInfo, movement, ignoreClosedDoors))
         {
             movement.Waypoints.Clear();
@@ -130,23 +113,53 @@ internal class MatchMoveService(
             return;
         }
 
-        // 목적지가 갱신 or 새 경로를 갱신해야 할 시점이 됐는지
-        bool needsPlan = (firstRequest && !hasPath) || nowUtc >= movement.NextPathPlanAtUtc;
-        if (!needsPlan)
+        // 재탐색 시점 전에는 기존 경로를 유지한다.
+        if (nowUtc < movement.NextPathPlanAtUtc)
         {
             return;
         }
 
-        bool planned = TrySetMovementPath(runtime, objectInfo, movement, movement.DestinationArea, destination, nowUtc, ignoreClosedDoors);
-        if (planned)
+        // 경로 탐색을 매 틱 수행하지 않도록 다음 탐색 가능 시간 지정
+        movement.NextPathPlanAtUtc = nowUtc.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS);
+        var destinationArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, destination);
+        var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, objectInfo.Area, objectInfo.Cell, destinationArea, destination);
+        if (path == null || path.Count == 0)
         {
             return;
         }
-        if (!CanKeepPath(runtime, objectInfo, movement, ignoreClosedDoors))
+
+        var previousCell = objectInfo.Cell;
+        var previousArea = objectInfo.Area;
+
+        // 계산된 경로를 순회하며 닫힌 문이 있다면 문으로 목표 변경
+        foreach (var step in path)
         {
-            movement.Waypoints.Clear();
-            movement.WaypointIndex = 0;
+            var nextArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, step.Cell);
+            var door = ignoreClosedDoors ? null : runtime.Doors.GetBlockingDoor(previousArea, nextArea, previousCell, step.Cell);
+            if (door != null)
+            {
+                var interaction = GameInteractableData.GetAll().FirstOrDefault(info => info.DoorId == door.DoorId && info.ZoneId == (int)previousArea);
+                if (interaction == null)
+                {
+                    return;
+                }
+                path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, objectInfo.Area, objectInfo.Cell, (AreaType)interaction.ZoneId, new Cell(interaction.CellX, interaction.CellY));
+                if (path == null || path.Count == 0)
+                {
+                    return;
+                }
+                break;
+            }
+            previousCell = step.Cell;
+            previousArea = nextArea;
         }
+
+        movement.Waypoints.Clear();
+        foreach (var step in path)
+        {
+            movement.Waypoints.Add(step.Cell.Clone());
+        }
+        movement.WaypointIndex = 0;
     }
 
     internal static MovementResult Move(MatchRuntime runtime, GameObjectInfo objectInfo, MovementState movement, MovementRequest request, bool ignoreClosedDoors = false, DateTime? nowUtc = null)
@@ -238,60 +251,6 @@ internal class MatchMoveService(
             movement.WaypointIndex = 0;
         }
         return new MovementResult(changed, reachedPathEnd);
-    }
-
-    internal static bool TrySetMovementPath(MatchRuntime runtime, GameObjectInfo objectInfo, MovementState movement, AreaType destinationArea, Cell destinationCell, DateTime nowUtc, bool ignoreClosedDoors = false)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Path planning requires the match lock.");
-        }
-        if (runtime.IsEnded)
-        {
-            return false;
-        }
-
-        // 경로 탐색을 매 틱 수행하지 않도록 다음 탐색 가능 시간 지정
-        movement.NextPathPlanAtUtc = nowUtc.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS);
-        var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, objectInfo.Area, objectInfo.Cell, destinationArea, destinationCell);
-        if (path == null || path.Count == 0)
-        {
-            return false;
-        }
-
-        var previousCell = objectInfo.Cell;
-        var previousArea = objectInfo.Area;
-
-        // 계산된 경로를 순회하며 닫힌 문이 있다면 문으로 목표 변경
-        foreach (var step in path)
-        {
-            var nextArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, step.Cell);
-            var door = ignoreClosedDoors ? null : runtime.Doors.GetBlockingDoor(previousArea, nextArea, previousCell, step.Cell);
-            if (door != null)
-            {
-                var interaction = GameInteractableData.GetAll().FirstOrDefault(info => info.DoorId == door.DoorId && info.ZoneId == (int)previousArea);
-                if (interaction == null)
-                {
-                    return false;
-                }
-                path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, objectInfo.Area, objectInfo.Cell, (AreaType)interaction.ZoneId, new Cell(interaction.CellX, interaction.CellY));
-                if (path == null || path.Count == 0)
-                {
-                    return false;
-                }
-                break;
-            }
-            previousCell = step.Cell;
-            previousArea = nextArea;
-        }
-
-        movement.Waypoints.Clear();
-        foreach (var step in path)
-        {
-            movement.Waypoints.Add(step.Cell.Clone());
-        }
-        movement.WaypointIndex = 0;
-        return true;
     }
 
     internal static Vector3f MoveAlongPath(MatchRuntime runtime, MovementState movement, Vector3f position, float remainingDistance, DateTime nowUtc, bool ignoreClosedDoors = false)

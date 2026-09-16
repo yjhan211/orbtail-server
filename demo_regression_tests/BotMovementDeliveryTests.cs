@@ -971,7 +971,6 @@ public sealed class BotMovementDeliveryTests
         Assert.All(runtime.Monsters.Entities.Values, monster =>
         {
             Assert.Empty(monster.Movement.Waypoints);
-            Assert.Null(monster.Movement.DestinationCell);
         });
         Assert.NotEmpty(recipient.Packets);
         Assert.All(recipient.Packets, p => Assert.Equal(Protocol.G_TO_C_OBJECT_ENTER, p.Protocol));
