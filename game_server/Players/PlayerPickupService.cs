@@ -41,11 +41,11 @@ internal sealed class PlayerPickupService(PlayerHealthService healthService, ILo
             return;
         }
 
-        if (nextArea != player.CurrentArea)
+        if (nextArea != player.GameInfo.ObjectInfo.Area)
         {
-            AddReachableItemsInArea(player, match.GroundItems, player.CurrentArea, from, to, Config.SWARM_MATCH_MAP);
+            AddReachableItemsInArea(player, match.GroundItems, player.GameInfo.ObjectInfo.Area, from, to, Config.SWARM_MATCH_MAP);
         }
-        AddReachableItemsInArea(player, match.GroundItems, nextArea, from, to, nextArea != player.CurrentArea ? Config.SWARM_MATCH_MAP : null);
+        AddReachableItemsInArea(player, match.GroundItems, nextArea, from, to, nextArea != player.GameInfo.ObjectInfo.Area ? Config.SWARM_MATCH_MAP : null);
     }
 
     public static void AddReachableItemsInArea(Player player, MatchGroundItemState items, AreaType area, Vector3f from, Vector3f to, MapId? transitionMap = null)
@@ -142,7 +142,7 @@ internal sealed class PlayerPickupService(PlayerHealthService healthService, ILo
             return;
         }
 
-        AddReachableItemsInArea(player, match.GroundItems, player.CurrentArea, player.Position, player.Position);
+        AddReachableItemsInArea(player, match.GroundItems, player.GameInfo.ObjectInfo.Area, player.Position, player.Position);
         foreach (var reachable in TakeReachableItems(player))
         {
             if (match.IsEnded)

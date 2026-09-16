@@ -52,7 +52,7 @@ public sealed class PlayerOrbRecoveryTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948021);
         var service = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService(), new PlayerOrbTrailService());
-        var player = new Player { Profile = new PlayerInfo { PlayerId = playerId }, Health = Config.MAX_HEALTH - 1 };
+        var player = new Player(new PlayerInfo { PlayerId = playerId }) { Health = Config.MAX_HEALTH - 1 };
         var actor = new ProximityCombatActor(playerId, AreaType.None, new Vector3f(),
             107000040, 0, 0, 0, WeaponItemUid: 1);
         var now = DateTime.UtcNow;

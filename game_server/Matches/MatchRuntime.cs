@@ -131,7 +131,7 @@ internal sealed class MatchRuntime
         SpawnCells = spawnCells;
         foreach (var player in playerRoster)
         {
-            var participant = Bots.GetBot(player.PlayerId)?.Player ?? new Player { Profile = player };
+            var participant = Bots.GetBot(player.PlayerId)?.Player ?? new Player(player);
             RegisterParticipant(participant);
             PlayerOrbGrowthService.GrantStartingSummonStones(this, participant);
         }
@@ -201,7 +201,18 @@ internal sealed class MatchRuntime
     {
         using (Enter())
         {
-            return _participants.Values.Select(participant => participant.Profile).ToList();
+            // 로스터 전달용 복사본만 만든다. 계정 프로필은 매치에서 보관하지 않는다.
+            var profiles = new List<PlayerInfo>(_participants.Count);
+            foreach (var participant in _participants.Values)
+            {
+                profiles.Add(new PlayerInfo
+                {
+                    PlayerId = participant.PlayerId,
+                    Name = participant.GameInfo.Name,
+                    WearItemIdList = new List<int>(participant.GameInfo.WearItemIdList)
+                });
+            }
+            return profiles;
         }
     }
 
@@ -327,7 +338,7 @@ internal sealed class MatchRuntime
                 return;
             }
             _readyPlayerIds.Add(playerId);
-            if (GetPlayerProfiles().Any(player => player.PlayerId > 0 && !_readyPlayerIds.Contains(player.PlayerId)))
+            if (_participants.Values.Any(player => player.PlayerId > 0 && !_readyPlayerIds.Contains(player.PlayerId)))
             {
                 return;
             }

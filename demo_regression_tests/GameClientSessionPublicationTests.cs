@@ -124,7 +124,6 @@ public sealed class GameClientSessionPublicationTests
         var bot = new game_server.players.bots.Bot { PlayerId = -102 };
         var player = bot.Player;
         player.Position = session.Player.Position;
-        player.CurrentArea = session.Player.CurrentArea;
         match.RegisterParticipant(player);
         match.Bots.GetBots().Add(bot);
         var pickup = new PlayerPickupService(TestGameSessionServices.CreateHealthService(fixture.Store), NullLogger<PlayerPickupService>.Instance);
@@ -316,7 +315,7 @@ public sealed class GameClientSessionPublicationTests
         var match = session.Match;
         var bot = new game_server.players.bots.Bot { PlayerId = -11 };
         bot.Player.Health = session.Player.Health;
-        bot.Player.CurrentArea = session.Player.CurrentArea;
+        bot.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(session.Player.GameInfo.ObjectInfo.Area)));
         match.Bots.GetBots().Add(bot);
         int before = bot.Player.Health;
         using (match.Enter())
@@ -1052,11 +1051,7 @@ public sealed class GameClientSessionPublicationTests
         string playerState = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.PlayerState.cs");
         Assert.DoesNotContain("RunWithMatchLock", playerState);
         Assert.DoesNotContain("ProcessPlayerState", playerState);
-        Assert.DoesNotContain("OnPeriodicBuffTick", playerState);
-        Assert.DoesNotContain("_periodicBuffTimer", session);
         Assert.DoesNotContain("new Timer(", playerState);
-        Assert.Contains("healthService.ApplyPeriodicBuffs(runtime, players, nowUtc)", combat);
-        Assert.Contains("player.TakeDuePeriodicBuffDeltas(nowUtc", ReadNormalizedSource(root, "game_server", "Players", "PlayerHealthService.cs"));
         Assert.Equal(2, CountOccurrences(playerState, "_interactions.CancelPendingInteractions(match, Player)"));
 
         Assert.DoesNotContain("ProcessUseInGameItem", playerState);
@@ -1127,7 +1122,6 @@ public sealed class GameClientSessionPublicationTests
         var interactions = session.Player;
         using (session.Match.Enter())
         {
-            interactions.CompleteDoor(); // 첫 문 피격 면제 이후의 문을 검사한다.
             interactions.BeginDoor(702000101, 0);
             int interactId = Assert.IsType<int>(interactions.InterruptDoor());
             session.SendDoorOpenInterrupted(interactId);
@@ -1299,7 +1293,7 @@ public sealed class GameClientSessionPublicationTests
         using (match.Enter())
         {
             PlayerPickupService.AddReachableItemsForMovement(session.Match, session.Player,
-                session.Player.Position!, session.Player.Position!, session.Player.CurrentArea);
+                session.Player.Position!, session.Player.Position!, session.Player.GameInfo.ObjectInfo.Area);
             Assert.Single(session.Player.ReachableItems);
         }
 
@@ -1335,13 +1329,13 @@ public sealed class GameClientSessionPublicationTests
         var match = previous.Match;
         using (match.Enter())
             PlayerPickupService.AddReachableItemsForMovement(previous.Match, previous.Player,
-                previous.Player.Position!, previous.Player.Position!, previous.Player.CurrentArea);
+                previous.Player.Position!, previous.Player.Position!, previous.Player.GameInfo.ObjectInfo.Area);
 
         var registry = new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance);
         registry.Register(101, previous);
         using (match.Enter())
             PlayerPickupService.AddReachableItemsForMovement(match, previous.Player,
-                previous.Player.Position!, previous.Player.Position!, previous.Player.CurrentArea);
+                previous.Player.Position!, previous.Player.Position!, previous.Player.GameInfo.ObjectInfo.Area);
         var current = fixture.CreateSession(70001, 101, AreaType.S2Corridor9);
         registry.Register(101, current);
         TestGameSessionServices.SetMovementProperty(current, "Position", new Vector3f(item.PositionX + 20, item.PositionY, 0));
@@ -1372,7 +1366,7 @@ public sealed class GameClientSessionPublicationTests
             eliminations.EliminatePlayer(match, eliminated.Player, EliminationReason.HEALTH_ZERO, deferGameOver: true);
 
             Assert.Empty(TestGameSessionServices.Orbs(match, 101).GetAllItems());
-            Assert.Single(match.GroundItems.GetItemsInArea(eliminated.Player.CurrentArea));
+            Assert.Single(match.GroundItems.GetItemsInArea(eliminated.Player.GameInfo.ObjectInfo.Area));
         }
         Assert.Equal([Protocol.G_TO_C_ORB_UPDATE, Protocol.G_TO_C_PLAYER_ELIMINATED, Protocol.G_TO_C_OBJECT_LEAVE], fixture.ConnectionFor(eliminated).DeliveredProtocols);
         Assert.Equal([Protocol.G_TO_C_PLAYER_ELIMINATED, Protocol.G_TO_C_OBJECT_LEAVE], fixture.ConnectionFor(observer).DeliveredProtocols);
@@ -1388,7 +1382,7 @@ public sealed class GameClientSessionPublicationTests
         var other = fixture.CreateSession(70001, 102, AreaType.S2Corridor9);
         var item = fixture.SpawnAtSession(owner, Config.SUMMON_STONE_GROUND_ITEM_ID);
         using (owner.Match.Enter())
-            owner.SendGroundItemEntries(owner.Player.CurrentArea);
+            owner.SendGroundItemEntries(owner.Player.GameInfo.ObjectInfo.Area);
         var snapshot = fixture.ConnectionFor(owner).DeserializeSingle<G_TO_C_OBJECT_ENTER>(
             Protocol.G_TO_C_OBJECT_ENTER);
         Assert.Equal(item.GroundItemUid, Assert.Single(snapshot.Items).GroundItemUid);
@@ -1558,9 +1552,9 @@ public sealed class GameClientSessionPublicationTests
         public GroundItemInfo SpawnAtSession(RecordingSession session, int itemId)
         {
             GroundItemInfo item = Store.GetOrThrow(session.MatchingId).GroundItems.SpawnItems(
-                session.Player.CurrentArea,
-                0f,
-                0f,
+                session.Player.GameInfo.ObjectInfo.Area,
+                session.Player.Position!.X,
+                session.Player.Position.Y,
                 [itemId]).Single();
             SetPosition(session, new Vector3f(item.PositionX, item.PositionY, 0f));
             TestGroundItemLanding.Complete(session.Match.GroundItems);
@@ -1582,7 +1576,7 @@ public sealed class GameClientSessionPublicationTests
         public void SeedPendingFinish(RecordingSession session, int interactId)
         {
             var pending = session.Player;
-            pending.BeginInteraction(interactId);
+            pending.BeginDoor(interactId, 0);
         }
 
         public void Dispose()
@@ -1599,8 +1593,7 @@ public sealed class GameClientSessionPublicationTests
             SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
             SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
             TestGameSessionServices.BindMatch(session, matchingId);
-            TestGameSessionServices.SetMovementProperty(session, "CurrentArea", area);
-            SetPosition(session, new Vector3f(0f, 0f, 0f));
+            TestGameSessionServices.SpawnInArea(session, area);
         }
 
         private static void SetProperty(GameClientSession session, string name, object value) =>

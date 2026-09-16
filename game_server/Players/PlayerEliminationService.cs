@@ -29,7 +29,7 @@ internal sealed class PlayerEliminationService(
         var allSessions = runtime.GetSessions();
         var eliminatedSession = eliminatedPlayer.Session;
         var eliminatedBot = runtime.Bots.GetBot(eliminatedPlayerId);
-        var eliminatedArea = eliminatedPlayer.CurrentArea;
+        var eliminatedArea = eliminatedPlayer.GameInfo.ObjectInfo.Area;
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
 
         int finalOrbTier = eliminatedPlayer.Orbs.GetHighestOrbTier();

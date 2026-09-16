@@ -15,7 +15,7 @@ public sealed class MatchPlayerStateTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948001);
-        var participant = new Player { Profile = new PlayerInfo { PlayerId = 10 } };
+        var participant = new Player(new PlayerInfo { PlayerId = 10 });
         match.RegisterParticipant(participant);
         var session = TestGameSessionServices.CreateRecipientSession();
         typeof(GameClientSession).GetProperty(nameof(GameClientSession.PlayerId))!.SetValue(session, 10L);
@@ -25,10 +25,10 @@ public sealed class MatchPlayerStateTests
         using (match.Enter())
         {
             participant.Health = 42;
-            participant.CurrentArea = AreaType.S2Library1;
-            participant.BeginInteraction(123);
+            participant.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Library1)));
+            participant.BeginDoor(123, 0);
             Assert.Equal(42, session.Player.Health);
-            Assert.Equal(AreaType.S2Library1, session.Player.CurrentArea);
+            Assert.Equal(AreaType.S2Library1, session.Player.GameInfo.ObjectInfo.Area);
             Assert.True(session.Player.TryFinishInteraction(123));
             Assert.True(match.TryEliminatePlayer(10, EliminationReason.PRESSURE_FIELD));
             Assert.True(session.Player.IsEliminated);
@@ -39,11 +39,11 @@ public sealed class MatchPlayerStateTests
     }
 
     [Fact]
-    public void PreviousConnectionRemoval_DoesNotClearSharedParticipantBuffs()
+    public void PreviousConnectionRemoval_PreservesSharedParticipantAndCurrentSession()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948002);
-        var participant = new Player { Profile = new PlayerInfo { PlayerId = 10 } };
+        var participant = new Player(new PlayerInfo { PlayerId = 10 });
         match.RegisterParticipant(participant);
         var previous = TestGameSessionServices.CreateRecipientSession();
         var current = TestGameSessionServices.CreateRecipientSession();
@@ -53,12 +53,11 @@ public sealed class MatchPlayerStateTests
             TestGameSessionServices.BindMatch(session, match.MatchingId, store);
         }
         TestGameSessionServices.AttachSession(current);
-        participant.AddPeriodicBuff(default, 1, 1);
 
         previous.OnRemoved();
 
         Assert.Same(previous.Player, current.Player);
-        Assert.True(TestGameSessionServices.GetPeriodicBuffCount(current.Player) > 0);
+        Assert.Same(current, participant.Session);
     }
 
     [Fact]
@@ -73,8 +72,8 @@ public sealed class MatchPlayerStateTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948003);
-        var human = new Player { Profile = new PlayerInfo { PlayerId = 10 } };
-        var bot = new Player { Profile = new PlayerInfo { PlayerId = -1 } };
+        var human = new Player(new PlayerInfo { PlayerId = 10 });
+        var bot = new Player(new PlayerInfo { PlayerId = -1 });
         match.RegisterParticipant(human);
         match.RegisterParticipant(bot);
         Assert.Null(typeof(Player).GetProperty("MapId"));

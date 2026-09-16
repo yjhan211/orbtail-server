@@ -25,24 +25,24 @@ public sealed class PlayerInteractionServiceTests
     [Fact]
     public void FinishIsSingleUseAndCancellationInvalidatesPending()
     {
-        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
-        state.BeginInteraction(10);
+        var state = new Player(new PlayerInfo { PlayerId = 1 });
+        state.BeginDoor(10, 0);
         Assert.True(state.TryFinishInteraction(10));
         Assert.False(state.TryFinishInteraction(10));
-        state.BeginInteraction(11);
+        state.BeginDoor(11, 0);
         state.ClearPendingInteractions();
         Assert.False(state.TryFinishInteraction(11));
         Assert.Empty(state.GetPendingInteractionIds());
     }
 
     [Fact]
-    public void FirstDoorSurvivesHitButLaterDoorDoesNot()
+    public void AnyPendingDoorIsInterruptedByHit()
     {
-        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
+        var state = new Player(new PlayerInfo { PlayerId = 1 });
         state.BeginDoor(10, 0);
+        Assert.Equal(10, state.InterruptDoor());
+        Assert.False(state.TryFinishDoor(10, 3000, TimeSpan.FromSeconds(3), out _));
         Assert.Null(state.InterruptDoor());
-        Assert.True(state.TryFinishDoor(10, 3000, TimeSpan.FromSeconds(3), out _));
-        state.CompleteDoor();
         state.BeginDoor(11, 3000);
         Assert.Equal(11, state.InterruptDoor());
         Assert.False(state.TryFinishInteraction(11));
@@ -53,7 +53,7 @@ public sealed class PlayerInteractionServiceTests
     [InlineData(12)]
     public void DoorFinishRequiresServerElapsedTimeAndIsSingleUse(int seconds)
     {
-        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
+        var state = new Player(new PlayerInfo { PlayerId = 1 });
         var duration = TimeSpan.FromSeconds(seconds);
         state.BeginDoor(10, 1000);
         Assert.False(state.TryFinishDoor(10, 1000, duration, out var error));
@@ -71,13 +71,14 @@ public sealed class PlayerInteractionServiceTests
     [Fact]
     public void DoorRestartResetsTimeAndCancelInvalidatesFinish()
     {
-        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
+        var state = new Player(new PlayerInfo { PlayerId = 1 });
         var duration = TimeSpan.FromSeconds(3);
         state.BeginDoor(10, 0);
         state.BeginDoor(10, 2000);
         Assert.False(state.TryFinishDoor(10, 3000, duration, out var error));
         Assert.Equal(ErrorCode.DOOR_OPEN_TOO_EARLY, error);
         state.BeginDoor(11, 3000);
+        Assert.Equal(new[] { 11 }, state.GetPendingInteractionIds());
         Assert.False(state.TryFinishDoor(10, 6000, duration, out error));
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, error);
         state.ClearPendingInteractions();
@@ -90,15 +91,15 @@ public sealed class PlayerInteractionServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984403);
-        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
+        var state = new Player(new PlayerInfo { PlayerId = 1 });
         using (MatchRuntimeStore.Enter(runtime))
         {
-            state.BeginInteraction(10);
+            state.BeginDoor(10, 0);
             state.BeginDoor(11, 0);
 
             int[] canceled = _interactions.CancelPendingInteractions(runtime, state);
 
-            Assert.Equal(new[] { 10, 11 }, canceled.OrderBy(id => id));
+            Assert.Equal(new[] { 11 }, canceled);
             Assert.Empty(state.GetPendingInteractionIds());
             Assert.False(state.TryFinishInteraction(10));
             Assert.False(state.TryFinishDoor(11, 6000, TimeSpan.FromSeconds(3), out _));
@@ -113,8 +114,8 @@ public sealed class PlayerInteractionServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984404);
-        var state = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
-        state.BeginInteraction(10);
+        var state = new Player(new PlayerInfo { PlayerId = 1 });
+        state.BeginDoor(10, 0);
 
         Assert.Throws<InvalidOperationException>(() =>
             _interactions.CancelPendingInteractions(runtime, state));
@@ -132,11 +133,11 @@ public sealed class PlayerInteractionServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984401);
         Assert.Throws<InvalidOperationException>(() =>
-            _interactions.CheckDoorGauge(runtime, new Player { Profile = new PlayerInfo { PlayerId = 1 } }, int.MaxValue, int.MaxValue));
+            _interactions.CheckDoorGauge(runtime, new Player(new PlayerInfo { PlayerId = 1 }), int.MaxValue, int.MaxValue));
         using (MatchRuntimeStore.Enter(runtime))
         {
 
-            Assert.Equal(ErrorCode.INVALID_GAME_STATE, _interactions.CheckDoorGauge(runtime, new Player { Profile = new PlayerInfo { PlayerId = 1 } }, int.MaxValue, int.MaxValue));
+            Assert.Equal(ErrorCode.INVALID_GAME_STATE, _interactions.CheckDoorGauge(runtime, new Player(new PlayerInfo { PlayerId = 1 }), int.MaxValue, int.MaxValue));
             runtime.TryMarkEnded();
         }
     }
@@ -144,7 +145,7 @@ public sealed class PlayerInteractionServiceTests
     [Theory]
     [InlineData(101)]
     [InlineData(-101)]
-    public void SharedDoorFlowChecksTimeAndFirstDoorProtection(long playerId)
+    public void SharedDoorFlowChecksTimeAndInterruptsFirstDoor(long playerId)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory != null && !File.Exists(Path.Combine(directory.FullName, "server.sln")))
@@ -155,13 +156,15 @@ public sealed class PlayerInteractionServiceTests
         var door = GameDoorData.Get(info.DoorId)!;
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(984405);
-        var player = new Player { Profile = new PlayerInfo { PlayerId = playerId }, CurrentArea = door.AreaType, Cell = new Cell(info.CellX, info.CellY) };
+        var player = new Player(new PlayerInfo { PlayerId = playerId }) {  Cell = new Cell(info.CellX, info.CellY) };
         long duration = (long)TimeSpan.FromSeconds(Config.GetSwarmDoorGaugeSeconds(door.DoorId)).TotalMilliseconds;
         using (match.Enter())
         {
             Assert.False(_interactions.TryFinishDoor(match, player, info.Id, door.DoorId, duration, out _));
             Assert.Equal(ErrorCode.SUCCESS, _interactions.StartDoor(match, player, info.Id, door.DoorId, 0));
-            Assert.Null(player.InterruptDoor());
+            Assert.Equal(info.Id, player.InterruptDoor());
+            Assert.False(_interactions.TryFinishDoor(match, player, info.Id, door.DoorId, duration, out _));
+            Assert.Equal(ErrorCode.SUCCESS, _interactions.StartDoor(match, player, info.Id, door.DoorId, 0));
             Assert.False(_interactions.TryFinishDoor(match, player, info.Id, door.DoorId, duration - 1, out var error));
             Assert.Equal(ErrorCode.DOOR_OPEN_TOO_EARLY, error);
             Assert.True(_interactions.TryFinishDoor(match, player, info.Id, door.DoorId, duration, out error));
@@ -182,7 +185,7 @@ public sealed class PlayerInteractionServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948602);
         var player = TestGameSessionServices.GetOrRegisterPlayer(match, 11);
-        player.CurrentArea = (AreaType)definition.ZoneId;
+        player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)((AreaType)definition.ZoneId)));
         Assert.Throws<InvalidOperationException>(() => _interactions.GetInteractionInfos(match));
         using var scope = match.Enter();
         var first = _interactions.GetInteractionInfos(match);
@@ -208,7 +211,7 @@ public sealed class PlayerInteractionServiceTests
 
         var packet = new G_TO_C_INTERACTABLE_INFO
         {
-            AreaType = AreaType.S2Ground,
+            AreaType = AreaType.S2Gym1,
             Objects = new List<InteractableInfo>()
         };
         var copy = MessagePack.MessagePackSerializer.Deserialize<G_TO_C_INTERACTABLE_INFO>(

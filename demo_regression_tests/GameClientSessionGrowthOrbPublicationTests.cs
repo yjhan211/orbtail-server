@@ -168,14 +168,13 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
     }
 
     [Fact]
-    public void MovementWakeAndSnapshotsUseConditionStateWithoutClearingBuffs()
+    public void MovementWakeAndSnapshotsUseConditionState()
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         var runtime = fixture.Store.GetOrThrow(FirstMatchingId);
         using (runtime.Enter())
         {
-            session.Player.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 2, 1, 10);
             Assert.True(session.Player.TryStartSleep(DateTime.UtcNow));
             Assert.Equal(PlayerState.SLEEP, session.Player.CreatePlayerObjectInfo().State);
 
@@ -186,7 +185,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
             Assert.Equal(PlayerState.IDLE, session.Player.State);
             Assert.False(session.Player.IsSleeping);
-            Assert.True(TestGameSessionServices.GetPeriodicBuffCount(session.Player) > 0);
             Assert.Equal(PlayerState.IDLE, session.Player.CreatePlayerObjectInfo().State);
 
             session.Player.State = PlayerState.EXPLORE_1;
@@ -202,15 +200,11 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var cell = GameMapData.GetMapInfo(Config.SWARM_MATCH_MAP)!.GetInitialPosition().Item1;
         var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
         var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
-        var human = new game_server.players.Player
-        {
-            Profile = new PlayerInfo { PlayerId = FirstPlayerId },
-            Position = position, CurrentArea = area
+        var human = new game_server.players.Player(new PlayerInfo { PlayerId = FirstPlayerId }) {
+            Position = position
         };
-        var bot = new game_server.players.Player
-        {
-            Profile = new PlayerInfo { PlayerId = -1 },
-            Position = position, CurrentArea = area
+        var bot = new game_server.players.Player(new PlayerInfo { PlayerId = -1 }) {
+            Position = position
         };
         using var scope = runtime.Enter();
         runtime.RegisterParticipant(human);
@@ -241,7 +235,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var runtime = fixture.Store.GetOrThrow(FirstMatchingId);
         var spawnCell = GameMapData.GetMapInfo(Config.SWARM_MATCH_MAP)!.GetInitialPosition().Item1;
         var spawnArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, spawnCell);
-        TestGameSessionServices.SetMovementProperty(session, "CurrentArea", spawnArea);
+        TestGameSessionServices.SpawnInArea(session, spawnArea);
         TestGameSessionServices.SetMovementProperty(session, "Position", MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, spawnCell));
         using var matchLock = runtime.Enter();
         Assert.True(TestGameSessionServices.Orbs(runtime, FirstPlayerId).TryAddItemWithCapacity(107000010, Config.SWARM_ORB_CAPACITY, out _));
@@ -744,7 +738,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
             SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
             TestGameSessionServices.BindMatch(session, matchingId);
-            TestGameSessionServices.SetMovementProperty(session, "CurrentArea", AreaType.S2Corridor9);
+            TestGameSessionServices.SpawnInArea(session, AreaType.S2Corridor9);
             TestGameSessionServices.SetMovementProperty(session, "Position", new Vector3f(0f, 0f, 0f));
         }
 

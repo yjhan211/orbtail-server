@@ -32,32 +32,22 @@ public class MatchBots
                 throw new InvalidOperationException($"Bot {botPlayerId} has no spawn assignment in match {matchingId}.");
             }
             var startCell = Cell.Clone(assignedSpawn);
-            var startArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, startCell);
-            if (startArea == AreaType.None)
-            {
-                startArea = AreaType.S2Corridor9;
-            }
 
-            var startPosition = CellToWorldPosition(Config.SWARM_MATCH_MAP, startCell);
-
-            return new Bot
+            var bot = new Bot
             {
                 PlayerId = botPlayerId,
                 Player =
                 {
-                    Profile = { Name = $"Player{Math.Abs(botPlayerId)}", WearItemIdList = BuildBotWearItems(botPlayerId) },
                     GameInfo = { Name = $"Player{Math.Abs(botPlayerId)}", WearItemIdList = BuildBotWearItems(botPlayerId) },
-                    CurrentArea = startArea,
-                    Cell = startCell,
-                    Position = startPosition,
-                    Rotation = 0f
                 }
             };
+            bot.Player.InitializeSpawn(startCell);
+            return bot;
         }).ToList();
 
         _bots = bots;
 
-        _logger.LogInformation("Bots registered: Count={Count}, MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]", bots.Count, matchingId, Config.SWARM_MATCH_MAP, string.Join(",", bots.Select(b => $"{b.PlayerId}@{b.Player.CurrentArea}")));
+        _logger.LogInformation("Bots registered: Count={Count}, MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]", bots.Count, matchingId, Config.SWARM_MATCH_MAP, string.Join(",", bots.Select(b => $"{b.PlayerId}@{b.Player.GameInfo.ObjectInfo.Area}")));
     }
 
     internal static List<int> BuildBotWearItems(long playerId)
@@ -74,7 +64,6 @@ public class MatchBots
         return list;
     }
 
-    public PlayerInfo? GetPlayerProfile(long botPlayerId) => GetBot(botPlayerId)?.Player.Profile;
     public GamePlayerInfo? GetPlayerObjectInfo(long botPlayerId) => GetBot(botPlayerId)?.Player.CreatePlayerObjectInfo();
 
     internal static Vector3f CellToWorldPosition(MapId mapId, Cell cell) => MapCoordinateConverter.CellToWorld(mapId, cell);

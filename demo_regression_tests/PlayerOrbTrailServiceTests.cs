@@ -27,8 +27,8 @@ public sealed class PlayerOrbTrailServiceTests
         var first = store.GetOrCreate(947401);
         var second = store.GetOrCreate(947402);
         var service = new PlayerOrbTrailService();
-        var firstPlayer = new Player { Profile = new PlayerInfo { PlayerId = 11 } };
-        var secondPlayer = new Player { Profile = new PlayerInfo { PlayerId = 11 } };
+        var firstPlayer = new Player(new PlayerInfo { PlayerId = 11 });
+        var secondPlayer = new Player(new PlayerInfo { PlayerId = 11 });
         first.RegisterParticipant(firstPlayer);
         second.RegisterParticipant(secondPlayer);
         var anchor = new Vector3f(0, 0, 0);
@@ -58,7 +58,7 @@ public sealed class PlayerOrbTrailServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947403);
         var service = new PlayerOrbTrailService();
-        var player = new Player { Profile = new PlayerInfo { PlayerId = 11 } };
+        var player = new Player(new PlayerInfo { PlayerId = 11 });
         match.RegisterParticipant(player);
         using (MatchRuntimeStore.Enter(match))
         {
@@ -81,7 +81,7 @@ public sealed class PlayerOrbTrailServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947406);
-        var player = new Player { Profile = new PlayerInfo { PlayerId = 11 } };
+        var player = new Player(new PlayerInfo { PlayerId = 11 });
         match.RegisterParticipant(player);
         var service = new PlayerOrbTrailService();
         var anchor = new Vector3f();

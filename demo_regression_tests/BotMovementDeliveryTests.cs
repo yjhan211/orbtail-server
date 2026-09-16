@@ -20,11 +20,12 @@ public sealed class BotMovementDeliveryTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44911);
-        var recipient = AddRecipient(store, 44911, 1, AreaType.S2Ground, []);
+        var recipient = AddRecipient(store, 44911, 1, AreaType.S2Gym1, []);
         var elsewhere = AddRecipient(store, 44911, 2, AreaType.S2Library1, []);
         using var scope = runtime.Enter();
         var now = DateTime.UtcNow;
-        var item = Assert.Single(runtime.GroundItems.SpawnItems(AreaType.S2Ground, 0, 0, [Config.SUMMON_STONE_GROUND_ITEM_ID]));
+        var spawn = TestMapPosition.In(AreaType.S2Gym1);
+        var item = Assert.Single(runtime.GroundItems.SpawnItems(AreaType.S2Gym1, spawn.X, spawn.Y, [Config.SUMMON_STONE_GROUND_ITEM_ID]));
         Assert.Empty(recipient.Packets);
         var service = new MatchSynchronizationService();
         var batch = new MatchSynchronizationService.SyncBatch(now, runtime.GetSessions());
@@ -38,14 +39,14 @@ public sealed class BotMovementDeliveryTests
         service.ProcessTick(runtime, now);
         Assert.Empty(recipient.Packets);
 
-        runtime.GetParticipant(1)!.CurrentArea = AreaType.S2Library1;
+        runtime.GetParticipant(1)!.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Library1)));
         service.ProcessTick(runtime, now);
         var leave = Assert.Single(recipient.Read<G_TO_C_OBJECT_LEAVE>(Protocol.G_TO_C_OBJECT_LEAVE).Objects);
         Assert.Equal(ObjectType.ITEM, leave.Type);
         Assert.Equal(item.GroundItemUid, leave.Id);
         recipient.Packets.Clear();
         TestGroundItemLanding.Complete(runtime.GroundItems);
-        runtime.GetParticipant(1)!.CurrentArea = AreaType.S2Ground;
+        runtime.GetParticipant(1)!.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)));
         service.ProcessTick(runtime, now);
         Assert.False(Assert.Single(recipient.Read<G_TO_C_OBJECT_ENTER>(Protocol.G_TO_C_OBJECT_ENTER).Items).IsLanding);
         recipient.Packets.Clear();
@@ -61,9 +62,9 @@ public sealed class BotMovementDeliveryTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44912);
-        var recipient = AddRecipient(store, 44912, 1, AreaType.S2Ground, []);
+        var recipient = AddRecipient(store, 44912, 1, AreaType.S2Gym1, []);
         using var scope = runtime.Enter();
-        var item = Assert.Single(runtime.GroundItems.SpawnItems(AreaType.S2Ground, 0, 0, [Config.SUMMON_STONE_GROUND_ITEM_ID]));
+        var item = Assert.Single(runtime.GroundItems.SpawnItems(AreaType.S2Gym1, 0, 0, [Config.SUMMON_STONE_GROUND_ITEM_ID]));
         runtime.GroundItems.TakeItem(item.GroundItemUid);
         new MatchSynchronizationService().ProcessTick(runtime, DateTime.UtcNow);
         Assert.Empty(recipient.Packets);
@@ -111,14 +112,14 @@ public sealed class BotMovementDeliveryTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44901);
-        var recipient = AddRecipient(store, 44901, 1, AreaType.S2Ground, []);
+        var recipient = AddRecipient(store, 44901, 1, AreaType.S2Gym1, []);
         using var scope = runtime.Enter();
         var now = DateTime.UtcNow;
         runtime.StartGameplay(now);
         // 사람과 같은 숫자 ID여도 객체 종류로 구분한다.
         runtime.Monsters.Entities[1] = new game_server.matches.monsters.Monster
         {
-            MonsterId = 1, Alive = true, Health = 10, Area = AreaType.S2Ground
+            MonsterId = 1, Alive = true, Health = 10, Position = network.common.data.MapCoordinateConverter.CellToWorld(network.common.Config.SWARM_MATCH_MAP, network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)))
         };
         var service = new MatchSynchronizationService();
         service.ProcessTick(runtime, now);
@@ -141,22 +142,22 @@ public sealed class BotMovementDeliveryTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44902);
-        var recipient = AddRecipient(store, 44902, 1, AreaType.S2Ground, []);
+        var recipient = AddRecipient(store, 44902, 1, AreaType.S2Gym1, []);
         using var scope = runtime.Enter();
         var now = DateTime.UtcNow;
         runtime.StartGameplay(now);
         runtime.Monsters.Entities[11] = new game_server.matches.monsters.Monster
         {
-            MonsterId = 11, Alive = true, Health = 10, Area = AreaType.S2Ground
+            MonsterId = 11, Alive = true, Health = 10, Position = network.common.data.MapCoordinateConverter.CellToWorld(network.common.Config.SWARM_MATCH_MAP, network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)))
         };
         runtime.Monsters.Entities[12] = new game_server.matches.monsters.Monster
         {
-            MonsterId = 12, Alive = true, Health = 10, Area = AreaType.S2Library1
+            MonsterId = 12, Alive = true, Health = 10, Position = network.common.data.MapCoordinateConverter.CellToWorld(network.common.Config.SWARM_MATCH_MAP, network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Library1)))
         };
         var service = new MatchSynchronizationService();
         service.ProcessTick(runtime, now);
         recipient.Packets.Clear();
-        runtime.GetParticipant(1)!.CurrentArea = AreaType.S2Library1;
+        runtime.GetParticipant(1)!.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Library1)));
         service.ProcessTick(runtime, now.AddMilliseconds(50));
         Assert.Equal(11, Assert.Single(recipient.Read<G_TO_C_OBJECT_LEAVE>(Protocol.G_TO_C_OBJECT_LEAVE).Objects).Id);
         Assert.Equal(12, Assert.Single(recipient.Read<G_TO_C_OBJECT_ENTER>(Protocol.G_TO_C_OBJECT_ENTER).Monsters).MonsterId);
@@ -168,7 +169,7 @@ public sealed class BotMovementDeliveryTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44903);
-        var recipient = AddRecipient(store, 44903, 1, AreaType.S2Ground, []);
+        var recipient = AddRecipient(store, 44903, 1, AreaType.S2Gym1, []);
         using var scope = runtime.Enter();
         var session = runtime.GetSessions().Single();
         var entries = new G_TO_C_OBJECT_ENTER
@@ -192,7 +193,8 @@ public sealed class BotMovementDeliveryTests
     [Fact]
     public void MovementSnapshotCopiesCoordinatesAndPreservesComparisonTolerance()
     {
-        var info = new GameObjectInfo { Area = AreaType.S2Ground };
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var info = new GameObjectInfo { MapId = network.common.Config.SWARM_MATCH_MAP, Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)) };
         var previous = new MatchObjectSnapshot(info);
         Assert.True(previous.Matches(info));
         info.Position.X = 0.000001f;
@@ -206,8 +208,8 @@ public sealed class BotMovementDeliveryTests
         info.Rotation = 1f;
         Assert.False(previous.Matches(info));
         info.Rotation = 0f;
-        info.Area = AreaType.S2Library1;
-        Assert.Equal(AreaType.S2Ground, previous.Area);
+        info.Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Library1));
+        Assert.Equal(AreaType.S2Gym1, previous.Area);
         Assert.False(previous.Matches(info));
     }
 
@@ -216,15 +218,15 @@ public sealed class BotMovementDeliveryTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44120);
-        var first = AddRecipient(store, 44120, 1, AreaType.S2Ground, []);
-        var second = AddRecipient(store, 44120, 2, AreaType.S2Ground, []);
+        var first = AddRecipient(store, 44120, 1, AreaType.S2Gym1, []);
+        var second = AddRecipient(store, 44120, 2, AreaType.S2Gym1, []);
         using var scope = runtime.Enter();
         var now = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
         var batch = new MatchSynchronizationService.SyncBatch(now, runtime.GetSessions());
         var info = new GameObjectInfo
         {
-            ObjectType = ObjectType.MONSTER, ObjectId = 7, Area = AreaType.S2Ground,
-            Position = new Vector3f(10, 20, 0), Cell = new Cell(3, 4), Velocity = new Vector3f(1, 0, 0)
+            MapId = network.common.Config.SWARM_MATCH_MAP, ObjectType = ObjectType.MONSTER, ObjectId = 7,
+            Position = TestMapPosition.In(AreaType.S2Gym1), Cell = network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Gym1), Velocity = new Vector3f(1, 0, 0)
         };
         var service = new MatchSynchronizationService();
         service.CollectMovementUpdates(runtime, info, batch);
@@ -235,8 +237,8 @@ public sealed class BotMovementDeliveryTests
         info.Position.X = 999;
         info.Cell.Y = 999;
         info.Velocity.X = 999;
-        Assert.Equal(10f, snapshots[0].Position.X);
-        Assert.Equal(4, snapshots[0].Cell.Y);
+        Assert.Equal(TestMapPosition.In(AreaType.S2Gym1).X, snapshots[0].Position.X);
+        Assert.Equal(network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Gym1).Y, snapshots[0].Cell.Y);
         Assert.Equal(1f, snapshots[0].Velocity.X);
         service.SendBatch(runtime, batch);
         long timestamp = new DateTimeOffset(now).ToUnixTimeMilliseconds();
@@ -249,8 +251,8 @@ public sealed class BotMovementDeliveryTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44121);
-        var observer = AddRecipient(store, 44121, 1, AreaType.S2Ground, []);
-        AddRecipient(store, 44121, 2, AreaType.S2Ground, []);
+        var observer = AddRecipient(store, 44121, 1, AreaType.S2Gym1, []);
+        AddRecipient(store, 44121, 2, AreaType.S2Gym1, []);
         using var scope = runtime.Enter();
         var now = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
         runtime.StartGameplay(now);
@@ -272,8 +274,8 @@ public sealed class BotMovementDeliveryTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44111);
-        var recipient = AddRecipient(store, 44111, 1, AreaType.S2Ground, []);
-        var other = AddRecipient(store, 44111, 2, AreaType.S2Ground, []);
+        var recipient = AddRecipient(store, 44111, 1, AreaType.S2Gym1, []);
+        var other = AddRecipient(store, 44111, 2, AreaType.S2Gym1, []);
         using (runtime.Enter())
         {
             var now = DateTime.UtcNow;
@@ -282,9 +284,9 @@ public sealed class BotMovementDeliveryTests
             synchronization.InitializeComparisonSnapshots(runtime);
             var player = runtime.GetParticipant(1)!;
             var combat = TestGameSessionServices.CreateCombatDamageService();
-            combat.QueuePlayerHitNotification(runtime, player, 2, AreaType.S2Ground, 123, 5, 95);
+            combat.QueuePlayerHitNotification(runtime, player, 2, AreaType.S2Gym1, 123, 5, 95);
             if (ended) runtime.TryMarkEnded();
-            combat.QueuePlayerHitNotification(runtime, player, 2, AreaType.S2Ground, 123, 7, 88);
+            combat.QueuePlayerHitNotification(runtime, player, 2, AreaType.S2Gym1, 123, 7, 88);
             Assert.Empty(recipient.Packets);
             Assert.Equal(2, runtime.PendingCombatHits.Count);
             if (!ended)
@@ -315,8 +317,8 @@ public sealed class BotMovementDeliveryTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44112);
-        var first = AddRecipient(store, 44112, 1, AreaType.S2Ground, []);
-        var second = AddRecipient(store, 44112, 2, AreaType.S2Ground, []);
+        var first = AddRecipient(store, 44112, 1, AreaType.S2Gym1, []);
+        var second = AddRecipient(store, 44112, 2, AreaType.S2Gym1, []);
         var elsewhere = AddRecipient(store, 44112, 3, AreaType.S2Library1, []);
         using var scope = runtime.Enter();
         var batch = new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, runtime.GetSessions());
@@ -324,7 +326,7 @@ public sealed class BotMovementDeliveryTests
         foreach (long id in new[] { -10L, -20L })
         {
             var bot = new Bot { PlayerId = id };
-            bot.Player.CurrentArea = AreaType.S2Ground;
+            bot.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)));
             bot.Player.GameInfo.Name = $"Bot{id}";
             bot.Player.GameInfo.WearItemIdList.Add(101000003);
             bot.Player.State = PlayerState.SLEEP;
@@ -352,11 +354,11 @@ public sealed class BotMovementDeliveryTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44110);
-        var recipient = AddRecipient(store, 44110, 1, AreaType.S2Ground, []);
+        var recipient = AddRecipient(store, 44110, 1, AreaType.S2Gym1, []);
         using var scope = runtime.Enter();
         var player = runtime.GetParticipant(1)!;
         new MatchSynchronizationService().InitializeComparisonSnapshots(runtime);
-        player.CurrentArea = AreaType.S2Library1;
+        player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Library1)));
         var batch = new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, runtime.GetSessions());
         var areaSnapshots = batch.InteractableUpdates;
         var messages = batch.Moves;
@@ -380,21 +382,19 @@ public sealed class BotMovementDeliveryTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44109);
-        var moving = AddRecipient(store, 44109, 1, AreaType.S2Ground, []);
-        var previousArea = AddRecipient(store, 44109, 2, AreaType.S2Ground, []);
+        var moving = AddRecipient(store, 44109, 1, AreaType.S2Gym1, []);
+        var previousArea = AddRecipient(store, 44109, 2, AreaType.S2Gym1, []);
         var nextArea = AddRecipient(store, 44109, 3, AreaType.S2Library1, []);
         using var scope = runtime.Enter();
         var now = DateTime.UtcNow;
         runtime.StartGameplay(now);
         foreach (var participant in runtime.GetAlivePlayers())
         {
-            participant.Position = new Vector3f();
         }
         var synchronization = new MatchSynchronizationService();
         synchronization.InitializeComparisonSnapshots(runtime);
         var player = runtime.GetParticipant(1)!;
-        player.CurrentArea = AreaType.S2Library1;
-        player.Position = new Vector3f(1, 0, 0);
+        player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Library1)));
         Assert.Empty(previousArea.Packets);
         Assert.Empty(nextArea.Packets);
 
@@ -419,7 +419,7 @@ public sealed class BotMovementDeliveryTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44108);
-        var recipient = AddRecipient(store, 44108, 1, AreaType.S2Ground, []);
+        var recipient = AddRecipient(store, 44108, 1, AreaType.S2Gym1, []);
         using var scope = runtime.Enter();
         var now = DateTime.UtcNow;
         runtime.StartGameplay(now);
@@ -443,16 +443,16 @@ public sealed class BotMovementDeliveryTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44107);
-        var recipient = AddRecipient(store, 44107, 1, AreaType.S2Ground, []);
+        var recipient = AddRecipient(store, 44107, 1, AreaType.S2Gym1, []);
         using var scope = runtime.Enter();
         var bot = new Bot { PlayerId = -20 };
-        bot.Player.CurrentArea = AreaType.S2Ground;
+        bot.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)));
         runtime.Bots.GetBots().Add(bot);
         runtime.RegisterParticipant(bot.Player);
         bot.Player.State = PlayerState.SLEEP;
         var monster = new game_server.matches.monsters.Monster
         {
-            MonsterId = 1, Alive = true, Health = 10, Area = AreaType.S2Ground
+            MonsterId = 1, Alive = true, Health = 10, Position = network.common.data.MapCoordinateConverter.CellToWorld(network.common.Config.SWARM_MATCH_MAP, network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)))
         };
         runtime.Monsters.Entities[1] = monster;
         var batch = new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, runtime.GetSessions());
@@ -483,7 +483,7 @@ public sealed class BotMovementDeliveryTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44106);
-        var recipient = AddRecipient(store, 44106, 1, AreaType.S2Ground, []);
+        var recipient = AddRecipient(store, 44106, 1, AreaType.S2Gym1, []);
         var elsewhere = AddRecipient(store, 44106, 2, AreaType.S2Library1, []);
         using var scope = runtime.Enter();
         var now = DateTime.UtcNow;
@@ -492,7 +492,7 @@ public sealed class BotMovementDeliveryTests
         {
             runtime.Monsters.Entities[id] = new game_server.matches.monsters.Monster
             {
-                MonsterId = id, Alive = true, Health = 10, Area = AreaType.S2Ground
+                MonsterId = id, Alive = true, Health = 10, Position = network.common.data.MapCoordinateConverter.CellToWorld(network.common.Config.SWARM_MATCH_MAP, network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)))
             };
         }
         var synchronization = new MatchSynchronizationService();
@@ -519,24 +519,24 @@ public sealed class BotMovementDeliveryTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44105);
-        var recipient = AddRecipient(store, 44105, 1, AreaType.S2Ground, []);
+        var recipient = AddRecipient(store, 44105, 1, AreaType.S2Gym1, []);
         var elsewhere = AddRecipient(store, 44105, 2, AreaType.S2Library1, []);
         using var scope = runtime.Enter();
         var now = DateTime.UtcNow;
         runtime.StartGameplay(now);
         var bot = new Bot { PlayerId = -20 };
-        bot.Player.CurrentArea = AreaType.S2Ground;
+        bot.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)));
         runtime.Bots.GetBots().Add(bot);
         runtime.RegisterParticipant(bot.Player);
         var monster = new game_server.matches.monsters.Monster
         {
-            MonsterId = 1, Alive = true, Health = 10, Area = AreaType.S2Ground
+            MonsterId = 1, Alive = true, Health = 10, Position = network.common.data.MapCoordinateConverter.CellToWorld(network.common.Config.SWARM_MATCH_MAP, network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)))
         };
         runtime.Monsters.Entities[1] = monster;
         var synchronization = new MatchSynchronizationService();
         synchronization.InitializeComparisonSnapshots(runtime);
-        bot.Player.GameInfo.ObjectInfo.Position = new Vector3f(1, 0, 0);
-        monster.Position = new Vector3f(2, 0, 0);
+        bot.Player.Position = TestMapPosition.In(AreaType.S2Gym1, 0.1f);
+        monster.Position = TestMapPosition.In(AreaType.S2Gym1, 0.2f);
         synchronization.ProcessTick(runtime, now);
 
         Assert.Equal(Protocol.G_TO_C_OBJECT_ENTER, recipient.Packets[0].Protocol);
@@ -555,16 +555,16 @@ public sealed class BotMovementDeliveryTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44104);
-        var recipient = AddRecipient(store, 44104, 1, AreaType.S2Ground, []);
+        var recipient = AddRecipient(store, 44104, 1, AreaType.S2Gym1, []);
         using var scope = runtime.Enter();
         if (started) runtime.StartGameplay(DateTime.UtcNow);
         runtime.Monsters.Entities[1] = new game_server.matches.monsters.Monster
         {
-            MonsterId = 1, Alive = true, Health = 10, Area = AreaType.S2Ground
+            MonsterId = 1, Alive = true, Health = 10, Position = network.common.data.MapCoordinateConverter.CellToWorld(network.common.Config.SWARM_MATCH_MAP, network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)))
         };
         runtime.Monsters.Entities[2] = new game_server.matches.monsters.Monster
         {
-            MonsterId = 2, Alive = true, Health = 10, Area = AreaType.S2Library1
+            MonsterId = 2, Alive = true, Health = 10, Position = network.common.data.MapCoordinateConverter.CellToWorld(network.common.Config.SWARM_MATCH_MAP, network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Library1)))
         };
         var session = runtime.GetSessions().Single();
         session.SendMonsterSnapshot(runtime.Monsters.GetVisualStatesByArea());
@@ -580,20 +580,20 @@ public sealed class BotMovementDeliveryTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44103);
         var timeline = new List<(long PlayerId, Protocol Protocol)>();
-        var oldArea = AddRecipient(store, 44103, 1, AreaType.S2Ground, timeline);
+        var oldArea = AddRecipient(store, 44103, 1, AreaType.S2Gym1, timeline);
         var newArea = AddRecipient(store, 44103, 2, AreaType.S2Library1, timeline);
         using var scope = runtime.Enter();
         var now = DateTime.UtcNow;
         runtime.StartGameplay(now);
         var bot = new Bot { PlayerId = -20 };
-        bot.Player.CurrentArea = AreaType.S2Ground;
+        bot.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)));
         runtime.Bots.GetBots().Add(bot);
         runtime.RegisterParticipant(bot.Player);
         var synchronization = new MatchSynchronizationService();
         synchronization.InitializeComparisonSnapshots(runtime);
         runtime.GetSessions().Single(s => s.PlayerId == 1).PublishedObjects.Add((ObjectType.PLAYER, bot.PlayerId));
         Assert.Empty(oldArea.Packets);
-        bot.Player.CurrentArea = AreaType.S2Library1;
+        bot.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Library1)));
         synchronization.ProcessTick(runtime, now);
         Assert.Contains(oldArea.Packets, packet => packet.Protocol == Protocol.G_TO_C_OBJECT_LEAVE);
         Assert.Equal(Protocol.G_TO_C_OBJECT_ENTER, newArea.Packets[0].Protocol);
@@ -611,17 +611,17 @@ public sealed class BotMovementDeliveryTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44102);
         var timeline = new List<(long PlayerId, Protocol Protocol)>();
-        var recipient = AddRecipient(store, 44102, 1, AreaType.S2Ground, timeline);
+        var recipient = AddRecipient(store, 44102, 1, AreaType.S2Gym1, timeline);
         using var scope = runtime.Enter();
         var bot = new Bot { PlayerId = -20 };
-        bot.Player.CurrentArea = AreaType.S2Ground;
+        bot.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)));
         bot.Player.State = PlayerState.EXPLORE_1;
         bot.Player.GameInfo.ObjectInfo.Velocity = new Vector3f(1f, 0f, 0f);
         runtime.Bots.GetBots().Add(bot);
         runtime.RegisterParticipant(bot.Player);
         runtime.Monsters.Entities[1] = new game_server.matches.monsters.Monster
         {
-            MonsterId = 1, Alive = true, Health = 10, Area = AreaType.S2Ground
+            MonsterId = 1, Alive = true, Health = 10, Position = network.common.data.MapCoordinateConverter.CellToWorld(network.common.Config.SWARM_MATCH_MAP, network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)))
         };
 
         var message = new G_TO_C_MOVE();
@@ -658,14 +658,14 @@ public sealed class BotMovementDeliveryTests
         {
             // 이 도우미의 입력은 이미 변경된 이동 목록이다. 이전 좌표와 다른 값으로 기준을 구성한다.
             var previous = movement.Info.Clone();
-            previous.Area = movement.FromArea;
+            previous.Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(movement.FromArea));
             previous.Position.X -= 1f;
             runtime.SynchronizedObjects[(movement.Info.ObjectType, movement.Info.ObjectId)] = new MatchObjectSnapshot(previous);
             if (movement.Info.ObjectType == ObjectType.PLAYER)
             {
                 // 이미 출발 구역에 등장한 플레이어의 이동을 준비한다.
                 foreach (var session in runtime.GetSessions())
-                    if (session.Player.CurrentArea == movement.FromArea)
+                    if (session.Player.GameInfo.ObjectInfo.Area == movement.FromArea)
                         session.PublishedObjects.Add((ObjectType.PLAYER, movement.Info.ObjectId));
                 var player = runtime.GetParticipant(movement.Info.ObjectId)!;
                 player.GameInfo.ObjectInfo = movement.Info;
@@ -689,8 +689,8 @@ public sealed class BotMovementDeliveryTests
         {
             objects.Add((new GameObjectInfo
             {
-                ObjectType = ObjectType.PLAYER, ObjectId = movement.BotPlayerId,
-                Area = movement.ToArea, Cell = movement.ToCell, Position = movement.Position,
+            MapId = network.common.Config.SWARM_MATCH_MAP, ObjectType = ObjectType.PLAYER, ObjectId = movement.BotPlayerId,
+                 Cell = movement.ToCell, Position = movement.Position,
                 Velocity = movement.Velocity, Rotation = movement.Rotation
             }, movement.FromArea));
         }
@@ -703,7 +703,7 @@ public sealed class BotMovementDeliveryTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(44004);
         var timeline = new List<(long PlayerId, Protocol Protocol)>();
-        var recipient = AddRecipient(store, match.MatchingId, 1, AreaType.S2Ground, timeline);
+        var recipient = AddRecipient(store, match.MatchingId, 1, AreaType.S2Gym1, timeline);
         var bot = new Bot { PlayerId = -20 };
         bot.Player.State = PlayerState.EXPLORE_1;
         bot.Player.BeginDoor(213, 0);
@@ -713,8 +713,9 @@ public sealed class BotMovementDeliveryTests
             match.RegisterParticipant(bot.Player);
             SendMovements(match, [new BotMovementResult
             {
-                BotPlayerId = -20, FromArea = AreaType.S2Ground, ToArea = AreaType.S2Ground,
-                Position = new Vector3f(1, 1, 0), Velocity = new Vector3f(1, 0, 0), ToCell = new Cell(1, 1)
+                BotPlayerId = -20, FromArea = AreaType.S2Gym1, ToArea = AreaType.S2Gym1,
+                Position = TestMapPosition.In(AreaType.S2Gym1), Velocity = new Vector3f(1, 0, 0),
+                ToCell = network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Gym1)
             }]);
             Assert.Null(bot.Player.PendingDoorInteractionId);
             Assert.Equal(PlayerState.IDLE, bot.Player.State);
@@ -731,23 +732,23 @@ public sealed class BotMovementDeliveryTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(44001);
         var timeline = new List<(long PlayerId, Protocol Protocol)>();
-        var previous = AddRecipient(store, match.MatchingId, 1, AreaType.S2Gym1, timeline);
-        var destination = AddRecipient(store, match.MatchingId, 2, AreaType.S2Ground, timeline);
+        var previous = AddRecipient(store, match.MatchingId, 1, AreaType.S2Corridor9, timeline);
+        var destination = AddRecipient(store, match.MatchingId, 2, AreaType.S2Gym1, timeline);
         var elsewhere = AddRecipient(store, match.MatchingId, 3, AreaType.S2Library1, timeline);
-        var otherMatch = AddRecipient(store, 44002, 4, AreaType.S2Ground, timeline);
+        var otherMatch = AddRecipient(store, 44002, 4, AreaType.S2Gym1, timeline);
         var movement = new BotMovementResult
         {
             BotPlayerId = -20,
-            FromArea = changesArea ? AreaType.S2Gym1 : AreaType.S2Ground,
-            ToArea = AreaType.S2Ground,
-            ToCell = new Cell(3, 4),
-            Position = new Vector3f(10, 20, 0),
+            FromArea = changesArea ? AreaType.S2Corridor9 : AreaType.S2Gym1,
+            ToArea = AreaType.S2Gym1,
+            ToCell = network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Gym1),
+            Position = TestMapPosition.In(AreaType.S2Gym1),
             Velocity = new Vector3f(3, 4, 0),
             Rotation = 17,
             IsAreaTransition = changesArea
         };
         var bot = new Bot { PlayerId = -20 };
-        bot.Player.CurrentArea = movement.ToArea;
+        bot.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(movement.ToArea)));
         bot.Player.Cell = movement.ToCell;
         bot.Player.Position = movement.Position;
         bot.Player.State = PlayerState.SLEEP;
@@ -780,8 +781,8 @@ public sealed class BotMovementDeliveryTests
         movement.Position.X = 999;
         movement.ToCell.Y = 999;
         var sent = Assert.Single(destination.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE).Objects);
-        Assert.Equal(10f, sent.Position.X);
-        Assert.Equal(4, sent.Cell.Y);
+        Assert.Equal(TestMapPosition.In(AreaType.S2Gym1).X, sent.Position.X);
+        Assert.Equal(network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Gym1).Y, sent.Cell.Y);
         Assert.Equal(3f, sent.Velocity.X);
         Assert.Equal(17f, sent.Rotation);
     }
@@ -818,7 +819,7 @@ public sealed class BotMovementDeliveryTests
         if (started) runtime.StartGameplay(now);
         var monster = new game_server.matches.monsters.Monster
         {
-            MonsterId = 1, Alive = true, Health = 10, Area = AreaType.S2Corridor9,
+            MonsterId = 1, Alive = true, Health = 10,
             Position = network.common.data.MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP,
                 network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9))
         };
@@ -859,21 +860,21 @@ public sealed class BotMovementDeliveryTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44100);
         var timeline = new List<(long PlayerId, Protocol Protocol)>();
-        var recipient = AddRecipient(store, 44100, 1, AreaType.S2Ground, timeline);
+        var recipient = AddRecipient(store, 44100, 1, AreaType.S2Gym1, timeline);
         using var scope = runtime.Enter();
         var bot = new Bot { PlayerId = -20 };
-        bot.Player.CurrentArea = AreaType.S2Ground;
+        bot.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)));
         runtime.Bots.GetBots().Add(bot);
         runtime.RegisterParticipant(bot.Player);
         var monster = new game_server.matches.monsters.Monster
         {
-            MonsterId = 1, Alive = true, Health = 10, Area = AreaType.S2Ground
+            MonsterId = 1, Alive = true, Health = 10, Position = network.common.data.MapCoordinateConverter.CellToWorld(network.common.Config.SWARM_MATCH_MAP, network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)))
         };
         runtime.Monsters.Entities[1] = monster;
         var objects = new List<(GameObjectInfo Info, AreaType FromArea)>
         {
-            (bot.Player.GameInfo.ObjectInfo, AreaType.S2Ground),
-            (monster.Info.ObjectInfo, AreaType.S2Ground)
+            (bot.Player.GameInfo.ObjectInfo, AreaType.S2Gym1),
+            (monster.Info.ObjectInfo, AreaType.S2Gym1)
         };
         CompleteMovements(runtime, objects);
         var packet = recipient.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE);
@@ -899,26 +900,26 @@ public sealed class BotMovementDeliveryTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(44101);
         var timeline = new List<(long PlayerId, Protocol Protocol)>();
-        var oldArea = AddRecipient(store, 44101, 1, AreaType.S2Ground, timeline);
+        var oldArea = AddRecipient(store, 44101, 1, AreaType.S2Gym1, timeline);
         var newArea = AddRecipient(store, 44101, 2, AreaType.S2Library1, timeline);
         using var scope = runtime.Enter();
         var monster = new game_server.matches.monsters.Monster
         {
-            MonsterId = 1, Alive = true, Health = 10, Area = AreaType.S2Ground
+            MonsterId = 1, Alive = true, Health = 10, Position = network.common.data.MapCoordinateConverter.CellToWorld(network.common.Config.SWARM_MATCH_MAP, network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)))
         };
         runtime.Monsters.Entities[1] = monster;
-        CompleteMovements(runtime, [(monster.Info.ObjectInfo, AreaType.S2Ground)]);
+        CompleteMovements(runtime, [(monster.Info.ObjectInfo, AreaType.S2Gym1)]);
         oldArea.Packets.Clear();
         newArea.Packets.Clear();
-        monster.Area = AreaType.S2Library1;
-        CompleteMovements(runtime, [(monster.Info.ObjectInfo, AreaType.S2Ground)]);
+        monster.Info.ObjectInfo.Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Library1));
+        CompleteMovements(runtime, [(monster.Info.ObjectInfo, AreaType.S2Gym1)]);
         var leave = Assert.Single(oldArea.Read<G_TO_C_OBJECT_LEAVE>(Protocol.G_TO_C_OBJECT_LEAVE).Objects);
         Assert.Equal(ObjectType.MONSTER, leave.Type);
         Assert.Equal(1, leave.Id);
         Assert.DoesNotContain(oldArea.Packets, p => p.Protocol == Protocol.G_TO_C_MOVE);
         Assert.Equal(Protocol.G_TO_C_OBJECT_ENTER, newArea.Packets[0].Protocol);
         oldArea.Packets.Clear();
-        monster.Area = AreaType.S2Ground;
+        monster.Info.ObjectInfo.Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1));
         CompleteMovements(runtime, [(monster.Info.ObjectInfo, AreaType.S2Library1)]);
         Assert.Equal(Protocol.G_TO_C_OBJECT_ENTER, oldArea.Packets[0].Protocol);
     }
@@ -929,7 +930,7 @@ public sealed class BotMovementDeliveryTests
         var info = new GameObjectInfo
         {
             ObjectType = ObjectType.PLAYER, ObjectId = 42, MapId = Config.SWARM_MATCH_MAP,
-            Area = AreaType.S2Ground, Cell = new Cell(3, 4), Position = new Vector3f(10, 20, 0),
+             Cell = new Cell(3, 4), Position = new Vector3f(10, 20, 0),
             Velocity = new Vector3f(1, 2, 0), Rotation = 30
         };
         using var packet = PacketMaker.G_TO_C_MOVE(info, 123456, 45f);
@@ -945,7 +946,7 @@ public sealed class BotMovementDeliveryTests
         Assert.Equal(4, sent.Cell.Y);
         Assert.Equal(30f, sent.Rotation);
         Assert.Equal(2f, sent.Velocity.Y);
-        Assert.Equal(AreaType.S2Ground, sent.Area);
+        Assert.Equal(network.common.data.GameMapData.GetCurrentArea(sent.MapId, sent.Cell), sent.Area);
         Assert.Equal(123456, message.ServerTimestamp);
         Assert.Equal(45f, message.OrbPhases[42]);
     }
@@ -999,13 +1000,12 @@ public sealed class BotMovementDeliveryTests
         typeof(GameClientSession).GetProperty("PlayerId", flags)!.SetValue(session, playerId);
         typeof(GameClientSession).GetProperty("MatchingId", flags)!.SetValue(session, matchingId);
         TestGameSessionServices.BindMatch(session, matchingId, store);
-        session.Player.CurrentArea = area;
+        session.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(area)));
         session.PublishedInteractionArea = area;
-        session.Player.Position = new Vector3f();
         TestGameSessionServices.AttachSession(session);
         foreach (var other in store.GetOrCreate(matchingId).GetSessions())
         {
-            if (other.Player.CurrentArea != area || other == session) continue;
+            if (other.Player.GameInfo.ObjectInfo.Area != area || other == session) continue;
             session.PublishedObjects.Add((ObjectType.PLAYER, other.Player.PlayerId));
             other.PublishedObjects.Add((ObjectType.PLAYER, playerId));
         }

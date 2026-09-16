@@ -48,7 +48,7 @@ public sealed class WindOrbAttackServiceTests
             victim.Player.Position = origin;
             service.ActivateWindOrbs(match, owner.Player, now);
             Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
-            Assert.False(victim.Player.IsWounded(now));
+            Assert.False(victim.Player.StatusEffects.IsActive(PlayerStatusEffectKind.Wound, now));
 
             var hitAt = now.AddSeconds(Math.Max(Config.SWARM_WIND_BLADE_TICK_SECONDS,
                 Config.SWARM_WIND_BLADE_SPINUP_SECONDS) + 0.001);
@@ -56,7 +56,7 @@ public sealed class WindOrbAttackServiceTests
             int expected = Math.Max(1, (int)MathF.Round(
                 Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE)));
             Assert.Equal(Config.MAX_HEALTH - expected, victim.Player.Health);
-            Assert.True(victim.Player.IsWounded(hitAt));
+            Assert.True(victim.Player.StatusEffects.IsActive(PlayerStatusEffectKind.Wound, hitAt));
             Assert.Equal(Config.MAX_HEALTH, owner.Player.Health);
 
             service.ActivateWindOrbs(match, owner.Player, hitAt.AddSeconds(Config.SWARM_WIND_BLADE_TICK_SECONDS + 0.001));
@@ -84,12 +84,12 @@ public sealed class WindOrbAttackServiceTests
             var origin = trails.GetOrbPosition(match, owner.Player, 0, new Vector3f(0, 0, 0));
             owner.Player.Position = new Vector3f(0, 0, 0);
             victim.Player.Position = origin;
-            victim.Player.CurrentArea = otherArea ? (AreaType)1 : AreaType.None;
+            if (otherArea) victim.Player.Position = TestMapPosition.In(AreaType.S2Library1);
             var now = DateTime.UtcNow;
             service.ActivateWindOrbs(match, owner.Player, now);
             service.ActivateWindOrbs(match, owner.Player, now.AddSeconds(1));
             Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
-            Assert.False(victim.Player.IsWounded(now.AddSeconds(1)));
+            Assert.False(victim.Player.StatusEffects.IsActive(PlayerStatusEffectKind.Wound, now.AddSeconds(1)));
             match.TryMarkEnded();
         }
     }

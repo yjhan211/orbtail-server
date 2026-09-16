@@ -78,7 +78,7 @@ public sealed class GameMatchEntryServiceTests
         var bot = Assert.Single(runtime.GetPlayerProfiles(), profile => profile.PlayerId == botId);
         Assert.False(string.IsNullOrWhiteSpace(bot.Name));
         Assert.NotEmpty(bot.WearItemIdList);
-        Assert.Equal(runtime.Bots.GetPlayerProfile(botId)!.WearItemIdList, bot.WearItemIdList);
+        Assert.Equal(runtime.Bots.GetBot(botId)!.Player.GameInfo.WearItemIdList, bot.WearItemIdList);
 
         var restored = MessagePackSerializer.Deserialize<G_TO_C_MATCH_ROSTER>(
             MessagePackSerializer.Serialize(new G_TO_C_MATCH_ROSTER
@@ -138,11 +138,12 @@ public sealed class GameMatchEntryServiceTests
         await profile.Save(redis);
         runtime = await service.PrepareMatchAsync(runtime.MatchingId);
 
-        Assert.Equal(initialRoster, runtime.GetPlayerProfiles());
+        Assert.Equal(initialRoster.Select(player => (player.PlayerId, player.Name)),
+            runtime.GetPlayerProfiles().Select(player => (player.PlayerId, player.Name)));
         var human = Assert.Single(runtime.GetPlayerProfiles(), entry => entry.PlayerId == 1001);
         Assert.Equal("AtEntry", human.Name);
         Assert.Equal(new[] { 202 }, human.WearItemIdList);
-        Assert.Equal(new[] { 202 }, runtime.GetParticipant(1001)!.Profile.WearItemIdList);
+        Assert.Equal(new[] { 202 }, runtime.GetParticipant(1001)!.GameInfo.WearItemIdList);
         Assert.Equal(new[] { 303 }, (await PlayerInfo.Load(redis, 1001))!.WearItemIdList);
     }
 

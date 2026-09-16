@@ -14,9 +14,9 @@ public sealed class GroundItemLandingTests
     {
         var clock = new Clock();
         var items = new MatchGroundItemState(clock);
-        var item = Assert.Single(items.SpawnItems(AreaType.S2Corridor9, 0, 0, [itemId]));
+        var item = Assert.Single(items.SpawnItems(AreaType.S2Corridor9, TestMapPosition.In(AreaType.S2Corridor9).X, TestMapPosition.In(AreaType.S2Corridor9).Y, [itemId]));
         clock.Advance(TimeSpan.FromSeconds(1));
-        var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
+        var player = new Player(new PlayerInfo { PlayerId = 1 });
 
         var outside = new Vector3f(item.PositionX + radius + 0.01f, item.PositionY, 0);
         PlayerPickupService.AddReachableItemsInArea(player, items, AreaType.S2Corridor9, outside, outside);
@@ -32,8 +32,8 @@ public sealed class GroundItemLandingTests
     {
         var clock = new Clock();
         var items = new MatchGroundItemState(clock);
-        var item = Assert.Single(items.SpawnItems(AreaType.S2Corridor9, 0, 0, [Config.KEY_GROUND_ITEM_ID]));
-        var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
+        var item = Assert.Single(items.SpawnItems(AreaType.S2Corridor9, TestMapPosition.In(AreaType.S2Corridor9).X, TestMapPosition.In(AreaType.S2Corridor9).Y, [Config.KEY_GROUND_ITEM_ID]));
+        var player = new Player(new PlayerInfo { PlayerId = 1 });
         var at = new Vector3f(item.PositionX, item.PositionY, 0);
         float dx = item.PositionX - item.SpawnOriginX;
         float dy = item.PositionY - item.SpawnOriginY;

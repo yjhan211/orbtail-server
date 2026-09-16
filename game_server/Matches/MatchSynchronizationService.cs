@@ -105,12 +105,12 @@ internal sealed class MatchSynchronizationService
         var openDoors = runtime.Doors.GetOpenDoors().ToHashSet();
         foreach (var session in batch.Sessions)
         {
-            if (session.Player.IsEliminated || session.Player.CurrentArea == AreaType.None)
+            if (session.Player.IsEliminated || session.Player.GameInfo.ObjectInfo.Area == AreaType.None)
             {
                 continue;
             }
 
-            if (session.PublishedInteractionArea != session.Player.CurrentArea || !session.PublishedOpenDoors.SetEquals(openDoors))
+            if (session.PublishedInteractionArea != session.Player.GameInfo.ObjectInfo.Area || !session.PublishedOpenDoors.SetEquals(openDoors))
             {
                 batch.InteractableUpdates[session] = session.GetInteractableInfos();
             }
@@ -126,7 +126,7 @@ internal sealed class MatchSynchronizationService
         var areaItems = new Dictionary<AreaType, List<GroundItemInfo>>();
         foreach (var session in batch.Sessions)
         {
-            var area = session.Player.CurrentArea;
+            var area = session.Player.GameInfo.ObjectInfo.Area;
             if (session.Player.IsEliminated || area == AreaType.None) continue;
             if (!areaItems.TryGetValue(area, out var items))
             {
@@ -166,7 +166,7 @@ internal sealed class MatchSynchronizationService
                 continue;
             }
             bool isSelf = session.Player.PlayerId == player.PlayerId;
-            if (session.Player.CurrentArea != info.Area) continue;
+            if (session.Player.GameInfo.ObjectInfo.Area != info.Area) continue;
             bool known = isSelf || session.PublishedObjects.Contains((ObjectType.PLAYER, player.PlayerId));
             if (!known)
             {
@@ -204,7 +204,7 @@ internal sealed class MatchSynchronizationService
         var snapshot = monster.ToMonsterInfo();
         foreach (var session in batch.Sessions)
         {
-            if (session.Player.IsEliminated || session.Player.CurrentArea != snapshot.AreaType) continue;
+            if (session.Player.IsEliminated || session.Player.GameInfo.ObjectInfo.Area != snapshot.AreaType) continue;
             if (!session.PublishedObjects.Contains((ObjectType.MONSTER, monster.MonsterId)))
             {
                 if (!snapshot.IsAlive) continue;
@@ -253,7 +253,7 @@ internal sealed class MatchSynchronizationService
             {
                 continue;
             }
-            bool inArea = session.Player.CurrentArea == info.Area;
+            bool inArea = session.Player.GameInfo.ObjectInfo.Area == info.Area;
             if (!inArea)
             {
                 continue;
@@ -281,7 +281,7 @@ internal sealed class MatchSynchronizationService
         var areas = new Dictionary<(ObjectType Type, long Id), AreaType>();
         foreach (var player in runtime.GetAlivePlayers())
         {
-            areas[(ObjectType.PLAYER, player.PlayerId)] = player.CurrentArea;
+            areas[(ObjectType.PLAYER, player.PlayerId)] = player.GameInfo.ObjectInfo.Area;
         }
         foreach (var monster in runtime.Monsters.Entities.Values)
         {
@@ -294,7 +294,7 @@ internal sealed class MatchSynchronizationService
                 var area = identity.Type == ObjectType.ITEM
                     ? runtime.GroundItems.GetItemArea(identity.Id)
                     : areas.GetValueOrDefault(identity, AreaType.None);
-                if (!session.Player.IsEliminated && area != AreaType.None && area == session.Player.CurrentArea)
+                if (!session.Player.IsEliminated && area != AreaType.None && area == session.Player.GameInfo.ObjectInfo.Area)
                 {
                     continue;
                 }

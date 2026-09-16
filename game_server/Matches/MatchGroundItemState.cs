@@ -37,7 +37,6 @@ public sealed class MatchGroundItemState(TimeProvider? timeProvider = null)
             {
                 GroundItemUid = ++_sequence,
                 ItemId = itemIds[i],
-                AreaType = (int)area,
                 PositionX = landing.X,
                 PositionY = landing.Y,
                 SpawnOriginX = originX,
@@ -124,7 +123,6 @@ public sealed class MatchGroundItemState(TimeProvider? timeProvider = null)
         GroundItemUid = source.GroundItemUid,
         IsLanding = IsLanding(source.GroundItemUid),
         ItemId = source.ItemId,
-        AreaType = source.AreaType,
         PositionX = source.PositionX,
         PositionY = source.PositionY,
         SpawnOriginX = source.SpawnOriginX,

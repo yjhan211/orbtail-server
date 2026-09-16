@@ -25,13 +25,18 @@ public class Bot
 
     }
 
-    public Player Player { get; } = new()
-    {
-        Profile = new PlayerInfo(),
+    public Player Player { get; } = new(new PlayerInfo()) {
         Cell = new(0, 0),
         Position = new(0f, 0f, 0f)
     };
-    public long PlayerId { get => Player.PlayerId; set => Player.Profile.PlayerId = value; }
+    public long PlayerId
+    {
+        get => Player.PlayerId;
+        set
+        {
+            Player.GameInfo.ObjectInfo.ObjectId = value;
+        }
+    }
     public long LastProximityAttackerPlayerId { get; set; }
     public MovementState Movement { get; } = new();
     public (AreaType Area, Cell Cell)? ExplorationTarget { get; set; }

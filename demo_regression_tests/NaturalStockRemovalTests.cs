@@ -12,7 +12,7 @@ public sealed class NaturalStockRemovalTests
     {
         var items = new List<GroundItemInfo>
         {
-            new() { GroundItemUid = 123, ItemId = 456, AreaType = 7, PositionX = 1.5f }
+            new() { GroundItemUid = 123, ItemId = 456,  PositionX = 1.5f }
         };
         using var snapshot = PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT(7, items);
         using var spawn = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(7, items);

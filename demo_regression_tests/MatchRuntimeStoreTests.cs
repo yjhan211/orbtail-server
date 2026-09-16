@@ -14,8 +14,8 @@ public sealed class MatchRuntimeStoreTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(90000);
-        var human = new game_server.players.Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 1 } };
-        var bot = new game_server.players.Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = -1 } };
+        var human = new game_server.players.Player(new network.common.data.models.PlayerInfo { PlayerId = 1 });
+        var bot = new game_server.players.Player(new network.common.data.models.PlayerInfo { PlayerId = -1 });
         using (match.Enter())
         {
             match.RegisterParticipant(human);

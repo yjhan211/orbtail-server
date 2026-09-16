@@ -101,7 +101,7 @@ internal sealed class PlayerOrbService(
             using var packet = PacketMaker.G_TO_C_HEALTH_RECOVERY(new()
             {
                 PlayerId = playerId,
-                AreaType = player.CurrentArea,
+                AreaType = player.GameInfo.ObjectInfo.Area,
                 Amount = change.Recovered,
                 Source = HealthRecoveryKind.Orb,
                 OrbItemId = representative.WeaponItemId
@@ -176,7 +176,7 @@ internal sealed class PlayerOrbService(
             bool hasTargetInRange = false;
             foreach (var monsterTarget in monsterTargets)
             {
-                if (monsterTarget.Area != owner.CurrentArea)
+                if (monsterTarget.Area != owner.GameInfo.ObjectInfo.Area)
                 {
                     continue;
                 }
@@ -200,7 +200,7 @@ internal sealed class PlayerOrbService(
                     {
                         continue;
                     }
-                    if (participant.CurrentArea != owner.CurrentArea)
+                    if (participant.GameInfo.ObjectInfo.Area != owner.GameInfo.ObjectInfo.Area)
                     {
                         continue;
                     }
@@ -225,7 +225,7 @@ internal sealed class PlayerOrbService(
                 sunDamageMultiplier = OrbData.GetSunPveAttackMultiplier(orderedOrbs);
             }
             int damage = Math.Max(1, (int)MathF.Round(baseDamage * sunDamageMultiplier * Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER));
-            runtime.PendingWaveAttacks.Add(new PendingWaveAttack(owner.PlayerId, owner.CurrentArea, orbPosition, damage, radius, orb.ItemId, nowUtc.AddSeconds(WaveOrbDetonationDelaySeconds)));
+            runtime.PendingWaveAttacks.Add(new PendingWaveAttack(owner.PlayerId, owner.GameInfo.ObjectInfo.Area, orbPosition, damage, radius, orb.ItemId, nowUtc.AddSeconds(WaveOrbDetonationDelaySeconds)));
             using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_RING_EFFECT);
             packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_RING_EFFECT
             {
@@ -239,7 +239,7 @@ internal sealed class PlayerOrbService(
             foreach (var session in runtime.GetSessions())
             {
                 if (session is { PlayerId: not null, IsGameEnded: false } &&
-                    session.Player.CurrentArea == owner.CurrentArea)
+                    session.Player.GameInfo.ObjectInfo.Area == owner.GameInfo.ObjectInfo.Area)
                 {
                     session.TrySend(packet);
                 }
@@ -469,7 +469,7 @@ internal sealed class PlayerOrbService(
         }));
         foreach (var session in runtime.GetSessions())
         {
-            if (session is { PlayerId: not null, Player.IsEliminated: false } && session.Player.CurrentArea == attack.Area)
+            if (session is { PlayerId: not null, Player.IsEliminated: false } && session.Player.GameInfo.ObjectInfo.Area == attack.Area)
             {
                 session.TrySend(packet);
             }
@@ -525,7 +525,7 @@ internal sealed class PlayerOrbService(
             List<Monster>? monstersInRadius = null;
             foreach (var monster in monsterTargets)
             {
-                if (monster.Area != owner.CurrentArea)
+                if (monster.Area != owner.GameInfo.ObjectInfo.Area)
                 {
                     continue;
                 }
@@ -546,7 +546,7 @@ internal sealed class PlayerOrbService(
                     continue;
                 }
 
-                if (participant.PlayerId == owner.PlayerId || participant.CurrentArea != owner.CurrentArea)
+                if (participant.PlayerId == owner.PlayerId || participant.GameInfo.ObjectInfo.Area != owner.GameInfo.ObjectInfo.Area)
                 {
                     continue;
                 }
@@ -581,7 +581,7 @@ internal sealed class PlayerOrbService(
                 foreach (var monster in monstersInRadius)
                 {
                     int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, damage, out bool critical);
-                    combatDamage.ApplySwarmMonsterHitNow(runtime, monster.CombatTargetId, monster.MonsterId, owner.PlayerId, orb.ItemId, owner.CurrentArea, monsterDamage, critical, nowUtc, activeSessions);
+                    combatDamage.ApplySwarmMonsterHitNow(runtime, monster.CombatTargetId, monster.MonsterId, owner.PlayerId, orb.ItemId, owner.GameInfo.ObjectInfo.Area, monsterDamage, critical, nowUtc, activeSessions);
                 }
             }
 
@@ -589,18 +589,18 @@ internal sealed class PlayerOrbService(
             {
                 foreach (var participant in playersInRadius)
                 {
-                    if (!participant.TryClaimWindShock(nowUtc, SwarmWindBladeVictimImmuneSeconds))
+                    if (!participant.StatusEffects.TryApply(PlayerStatusEffectKind.WindShockImmunity, nowUtc, SwarmWindBladeVictimImmuneSeconds))
                     {
                         continue;
                     }
 
-                    combatDamage.ApplySwarmShock(runtime, healthService, owner.PlayerId, orb.ItemId, owner.CurrentArea, participant.PlayerId, alivePlayers);
+                    combatDamage.ApplySwarmShock(runtime, healthService, owner.PlayerId, orb.ItemId, owner.GameInfo.ObjectInfo.Area, participant.PlayerId, alivePlayers);
                     if (runtime.IsEnded)
                     {
                         return;
                     }
 
-                    participant.ApplyWound(nowUtc.AddSeconds(Config.SWARM_WIND_WOUND_SECONDS));
+                    participant.StatusEffects.Apply(PlayerStatusEffectKind.Wound, nowUtc.AddSeconds(Config.SWARM_WIND_WOUND_SECONDS));
                     var victimSession = participant.Session;
                     if (victimSession is not { PlayerId: not null })
                     {
@@ -611,7 +611,7 @@ internal sealed class PlayerOrbService(
                     {
                         SourcePlayerId = owner.PlayerId,
                         TargetPlayerId = participant.PlayerId,
-                        AreaType = owner.CurrentArea,
+                        AreaType = owner.GameInfo.ObjectInfo.Area,
                         Effect = CombatStatusEffectKind.WindOrbWound,
                         DurationMs = (int)(Config.SWARM_WIND_WOUND_SECONDS * 1000f)
                     });

@@ -1,3 +1,4 @@
+using game_server.players;
 using network.common;
 
 namespace game_server.matches.monsters;
@@ -41,13 +42,13 @@ internal sealed class MonsterCombatService
             }
 
             var player = runtime.GetParticipant(participant.PlayerId);
-            if (player == null || now < player.MonsterContactImmuneUntilUtc)
+            if (player == null || player.StatusEffects.IsActive(PlayerStatusEffectKind.MonsterContactImmunity, now))
             {
                 continue;
             }
 
             monster.NextContactAtUtc = now.AddSeconds(monster.AttackCooldownValue);
-            player.MonsterContactImmuneUntilUtc = now.AddSeconds(Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS);
+            player.StatusEffects.Apply(PlayerStatusEffectKind.MonsterContactImmunity, now.AddSeconds(Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS));
             monster.ChaseTargetPlayerId = participant.PlayerId;
             contacts.Add(new MonsterContactDamage(monster.MonsterId, participant.PlayerId, monster.Area, monster.ContactDamageValue));
             if (monster.Insignia == MonsterInsignia.Wave)
@@ -67,11 +68,11 @@ internal sealed class MonsterCombatService
                     }
 
                     var splashedPlayer = runtime.GetParticipant(splashed.PlayerId);
-                    if (splashedPlayer == null || now < splashedPlayer.MonsterContactImmuneUntilUtc)
+                    if (splashedPlayer == null || splashedPlayer.StatusEffects.IsActive(PlayerStatusEffectKind.MonsterContactImmunity, now))
                     {
                         continue;
                     }
-                    splashedPlayer.MonsterContactImmuneUntilUtc = now.AddSeconds(Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS);
+                    splashedPlayer.StatusEffects.Apply(PlayerStatusEffectKind.MonsterContactImmunity, now.AddSeconds(Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS));
                     contacts.Add(new MonsterContactDamage(monster.MonsterId, splashed.PlayerId, monster.Area, monster.ContactDamageValue));
                 }
             }

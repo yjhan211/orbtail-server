@@ -129,8 +129,8 @@ public sealed class MatchStartCountdownPublicationTests
         // 구성 확정 전에도 등록할 세션은 매치의 실제 참가자를 가리켜야 한다.
         if (!hasComposition)
         {
-            runtime.RegisterParticipant(new Player { Profile = new PlayerInfo { PlayerId = 101 } });
-            runtime.RegisterParticipant(new Player { Profile = new PlayerInfo { PlayerId = 202 } });
+            runtime.RegisterParticipant(new Player(new PlayerInfo { PlayerId = 101 }));
+            runtime.RegisterParticipant(new Player(new PlayerInfo { PlayerId = 202 }));
             Assert.False(runtime.IsSetupComplete);
         }
         var anchor = new RecordingEntrySession();

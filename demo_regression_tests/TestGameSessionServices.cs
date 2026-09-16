@@ -108,13 +108,15 @@ internal static class TestGameSessionServices
         }
     }
 
-    public static int GetPeriodicBuffCount(Player player) =>
-        ((System.Collections.ICollection)typeof(Player)
-            .GetField("_periodicBuffs", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .GetValue(player)!).Count;
 
     public static void SetMovementProperty(GameClientSession session, string name, object? value) =>
         typeof(Player).GetProperty(name)!.SetValue(session.Player, value);
+
+    public static void SpawnInArea(GameClientSession session, network.common.AreaType area)
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        session.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, area));
+    }
 
     // 입장 프로토콜을 생략하는 단위 테스트에서도 실제 입장과 같은 런타임을 세션에 연결한다.
     public static void BindMatch(GameClientSession session, long matchingId, MatchRuntimeStore? store = null)
@@ -124,7 +126,7 @@ internal static class TestGameSessionServices
         typeof(GameClientSession).GetField("_match", flags)!.SetValue(session,
             matchingId > 0 ? (store?.GetOrCreate(matchingId) ?? ((MatchRuntimeStore)typeof(GameMatchEntryService).GetField("<matchRuntimes>P", flags)!.GetValue(entry)!).GetOrCreate(matchingId)) : null);
         session.Player = (matchingId > 0 ? session.Match.GetParticipant(session.PlayerId ?? 0) : null)
-            ?? new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = session.PlayerId ?? 0 } };
+            ?? new Player(new network.common.data.models.PlayerInfo { PlayerId = session.PlayerId ?? 0 });
     }
 
     public static GameMatchEntryService CreateEntryService(
@@ -143,7 +145,7 @@ internal static class TestGameSessionServices
         var player = match.GetParticipant(playerId) ?? match.Bots.GetBot(playerId)?.Player;
         if (player != null)
             return player;
-        player = new Player { Profile = new PlayerInfo { PlayerId = playerId } };
+        player = new Player(new PlayerInfo { PlayerId = playerId });
         match.RegisterParticipant(player);
         return player;
     }

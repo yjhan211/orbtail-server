@@ -226,7 +226,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
             AttackerId = monsterId,
             AttackerKind = CombatEntityKind.Monster,
             TargetId = victim.PlayerId,
-            AreaType = victim.CurrentArea,
+            AreaType = victim.GameInfo.ObjectInfo.Area,
             Damage = damage,
             TargetHealth = victim.Health
         };
@@ -323,7 +323,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         {
             return;
         }
-        if (victim.IsWounded(DateTime.UtcNow) && RollCritical(runtime, Config.SWARM_WIND_WOUND_CRIT_CHANCE))
+        if (victim.StatusEffects.IsActive(PlayerStatusEffectKind.Wound, DateTime.UtcNow) && RollCritical(runtime, Config.SWARM_WIND_WOUND_CRIT_CHANCE))
         {
             shock = Math.Max(shock + 1, (int)MathF.Round(shock * SwarmCriticalMultiplier));
         }
@@ -440,7 +440,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
 
         foreach (var session in allSessions)
         {
-            if (!session.PlayerId.HasValue || session.Player.CurrentArea != area)
+            if (!session.PlayerId.HasValue || session.Player.GameInfo.ObjectInfo.Area != area)
             {
                 continue;
             }
@@ -456,7 +456,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
     {
         foreach (var observer in sessions)
         {
-            if (!observer.PlayerId.HasValue || observer.PlayerId.Value == attack.AttackerPlayerId || observer.Player.CurrentArea != attack.Area)
+            if (!observer.PlayerId.HasValue || observer.PlayerId.Value == attack.AttackerPlayerId || observer.Player.GameInfo.ObjectInfo.Area != attack.Area)
             {
                 continue;
             }

@@ -290,6 +290,11 @@ namespace network.common.data
         // 현재 위치의 Area 가져오기
         public static AreaType GetCurrentArea(MapId mapId, Cell position)
         {
+            return GetCurrentArea(mapId, position.X, position.Y);
+        }
+
+        public static AreaType GetCurrentArea(MapId mapId, int cellX, int cellY)
+        {
             if (!_areaRegions.TryGetValue(mapId, out var areas))
             {
                 return AreaType.None;
@@ -297,39 +302,14 @@ namespace network.common.data
 
             foreach (var area in areas)
             {
-                if (area.Contains(position))
+                if (cellX >= area.Start.X && cellX <= area.End.X &&
+                    cellY >= area.Start.Y && cellY <= area.End.Y)
                 {
                     return area.AreaType;
                 }
             }
 
             return AreaType.None;
-        }
-
-        /// <summary>
-        /// Keeps coordinate-driven movement from repeatedly changing areas while a player
-        /// is standing on a shared one-cell boundary. Explicit area transitions should use
-        /// GetCurrentArea so their destination is applied immediately.
-        /// </summary>
-        public static AreaType GetStableCurrentArea(MapId mapId, Cell position, AreaType currentArea)
-        {
-            var resolvedArea = GetCurrentArea(mapId, position);
-            if (currentArea == AreaType.None ||
-                resolvedArea == AreaType.None ||
-                resolvedArea == currentArea)
-            {
-                return resolvedArea;
-            }
-
-            if (GetCurrentArea(mapId, new Cell(position.X - 1, position.Y)) == currentArea ||
-                GetCurrentArea(mapId, new Cell(position.X + 1, position.Y)) == currentArea ||
-                GetCurrentArea(mapId, new Cell(position.X, position.Y - 1)) == currentArea ||
-                GetCurrentArea(mapId, new Cell(position.X, position.Y + 1)) == currentArea)
-            {
-                return currentArea;
-            }
-
-            return resolvedArea;
         }
 
         // 특정 맵의 모든 Area 가져오기

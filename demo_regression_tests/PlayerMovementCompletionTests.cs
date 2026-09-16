@@ -14,7 +14,7 @@ public sealed class PlayerMovementCompletionTests
     {
         var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(987640);
         using var scope = runtime.Enter();
-        var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
+        var player = new Player(new PlayerInfo { PlayerId = 1 });
         player.State = PlayerState.EXPLORE_1;
         player.GameInfo.ObjectInfo.Position = new Vector3f(10, 10, 0);
         player.GameInfo.ObjectInfo.Velocity = new Vector3f(speed, 0, 0);
@@ -28,7 +28,7 @@ public sealed class PlayerMovementCompletionTests
     public void CompletionRequiresMatchLock()
     {
         var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(987641);
-        var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
+        var player = new Player(new PlayerInfo { PlayerId = 1 });
         Assert.Throws<InvalidOperationException>(() => PlayerMovementService.CompleteMovement(runtime, player));
     }
 }

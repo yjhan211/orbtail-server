@@ -19,7 +19,7 @@ public sealed class SharedMovementPlanningTests
         var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
         return new GameObjectInfo
         {
-            Area = AreaType.S2Corridor9, Cell = cell,
+            MapId = network.common.Config.SWARM_MATCH_MAP, Cell = cell,
             Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell)
         };
     }
@@ -118,7 +118,7 @@ public sealed class SharedMovementPlanningTests
         var startCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Library1);
         var info = new GameObjectInfo
         {
-            Area = AreaType.S2Library1, Cell = startCell,
+            MapId = network.common.Config.SWARM_MATCH_MAP, Cell = startCell,
             Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, startCell)
         };
         var destination = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);

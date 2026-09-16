@@ -46,7 +46,7 @@ public partial class GameClientSession
                 }
 
                 long timestamp = Stopwatch.GetTimestamp();
-                float deltaTime = Player.CalculateMoveDeltaTime(timestamp);
+                float deltaTime = _movement.CalculateMoveDeltaTime(Player, timestamp);
 
                 match.SynchronizedObjects.TryAdd((ObjectType.PLAYER, Player.PlayerId), new MatchObjectSnapshot(Player.GameInfo.ObjectInfo));
                 bool requiresCorrection = _movement.ProcessMovement(match, Player, msg, deltaTime);
@@ -127,7 +127,7 @@ public partial class GameClientSession
         var visibleIds = new HashSet<long>();
         foreach (var (area, monsters) in snapshotsByArea)
         {
-            if (Player.CurrentArea != area) continue;
+            if (Player.GameInfo.ObjectInfo.Area != area) continue;
             foreach (var monster in monsters)
             {
                 visibleIds.Add(monster.MonsterId);
@@ -157,7 +157,7 @@ public partial class GameClientSession
 
     internal bool HasMonsterStateChanged(MonsterInfo monster)
     {
-        if (monster.AreaType != Player.CurrentArea)
+        if (monster.AreaType != Player.GameInfo.ObjectInfo.Area)
         {
             return false;
         }

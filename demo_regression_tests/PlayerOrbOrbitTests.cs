@@ -12,7 +12,7 @@ public sealed class PlayerOrbOrbitTests
     [InlineData(-17)]
     public void FirstEventWithoutOriginOnlyRecordsTheBaseline(long playerId)
     {
-        var player = new Player { Profile = new PlayerInfo { PlayerId = playerId } };
+        var player = new Player(new PlayerInfo { PlayerId = playerId });
         float initial = SwarmOrbOrbit.InitialPhaseDegrees(playerId);
         Assert.Equal(initial, player.OrbOrbitPhaseDegrees);
         player.AdvanceOrbOrbit(new Vector3f(10, 20, 0));
@@ -24,7 +24,7 @@ public sealed class PlayerOrbOrbitTests
     [Fact]
     public void SpawnOriginCountsFirstMovementAndIsCopied()
     {
-        var player = new Player { Profile = new PlayerInfo { PlayerId = 17 } };
+        var player = new Player(new PlayerInfo { PlayerId = 17 });
         var spawn = new Vector3f(10, 20, 0);
         player.ResetOrbOrbit(spawn);
         spawn.X = 100;
@@ -40,7 +40,7 @@ public sealed class PlayerOrbOrbitTests
     [Fact]
     public void StandingAndTeleportDoNotRotateButTeleportUpdatesBaseline()
     {
-        var player = new Player { Profile = new PlayerInfo { PlayerId = -17 } };
+        var player = new Player(new PlayerInfo { PlayerId = -17 });
         player.ResetOrbOrbit(new Vector3f());
         float initial = player.OrbOrbitPhaseDegrees;
         player.AdvanceOrbOrbit(new Vector3f());

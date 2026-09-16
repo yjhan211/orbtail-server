@@ -25,7 +25,7 @@ public sealed class BotEscapeTargetTests
         using var scope = runtime.Enter();
         runtime.Bots.RegisterBots(runtime.MatchingId, [-1L], new Dictionary<long, Cell> { [-1L] = currentCell });
         var bot = runtime.Bots.GetBot(-1)!;
-        bot.Player.CurrentArea = area;
+        bot.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(area)));
         var now = DateTime.UtcNow;
         double boundary = SwarmPressureField.GetDistance(currentCell) + boundaryOffset + 0.25d;
         double elapsed = SwarmPressureField.HoldSeconds + SwarmPressureField.GetProgressAtSafeDistance(boundary) * SwarmPressureField.ShrinkSeconds;
@@ -93,7 +93,7 @@ public sealed class BotEscapeTargetTests
         using var scope = runtime.Enter();
         runtime.Bots.RegisterBots(runtime.MatchingId, [-1L], new Dictionary<long, Cell> { [-1L] = currentCell });
         var bot = runtime.Bots.GetBot(-1)!;
-        bot.Player.CurrentArea = area;
+        bot.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(area)));
         return BotBehaviorService.SelectThreatEscapeTarget(runtime, bot, threatCell, DateTime.UtcNow);
     }
 
@@ -113,12 +113,10 @@ public sealed class BotEscapeTargetTests
             runtime.RegisterParticipant(bot.Player);
             var position = bot.Player.Position!;
             var threatPosition = new Vector3f(position.X + threatOffset, position.Y, 0f);
-            var rival = new Player
-            {
-                Profile = new PlayerInfo { PlayerId = 1 },
+            var rival = new Player(new PlayerInfo { PlayerId = 1 }) {
                 Position = threatPosition,
                 Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, threatPosition),
-                CurrentArea = bot.Player.CurrentArea,
+
                 Health = Config.MAX_HEALTH
             };
             rival.Orbs.TryAddItemWithCapacity(107000020, 8, out _);
@@ -136,7 +134,7 @@ public sealed class BotEscapeTargetTests
             Assert.True(GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, target));
             if (target.GetDistance(cell) > 0)
             {
-                var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.CurrentArea,
+                var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.GameInfo.ObjectInfo.Area,
                     cell, GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, target!), target);
                 Assert.NotNull(path);
                 Assert.NotEmpty(path!);

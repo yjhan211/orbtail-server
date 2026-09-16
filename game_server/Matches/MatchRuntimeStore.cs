@@ -100,12 +100,17 @@ internal sealed class MatchRuntimeStore
             }
             foreach (long botPlayerId in botPlayerIds)
             {
-                var botProfile = runtime.Bots.GetPlayerProfile(botPlayerId);
-                if (botProfile == null)
+                var bot = runtime.Bots.GetBot(botPlayerId);
+                if (bot == null)
                 {
                     throw new InvalidOperationException($"Bot {botPlayerId} was not initialized.");
                 }
-                roster.Add(botProfile);
+                roster.Add(new PlayerInfo
+                {
+                    PlayerId = bot.PlayerId,
+                    Name = bot.Player.GameInfo.Name,
+                    WearItemIdList = new List<int>(bot.Player.GameInfo.WearItemIdList)
+                });
             }
             runtime.Doors.Initialize();
             runtime.InitializeMatch(mode, spawnCells, roster);

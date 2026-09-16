@@ -85,7 +85,7 @@ internal sealed class MatchEntryFailureHandler(
             var affectedPlayerIds = new HashSet<long>();
             if (runtime.IsSetupComplete)
             {
-                foreach (var participant in runtime.GetPlayerProfiles())
+                foreach (var participant in runtime.GetPlayers())
                 {
                     affectedPlayerIds.Add(participant.PlayerId);
                 }

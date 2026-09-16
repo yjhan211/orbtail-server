@@ -76,7 +76,7 @@ public sealed class CommonMovementTraversalTests
                     Assert.Equal(from, MapCoordinateConverter.WorldToCell(map, start));
                     Assert.False(MatchMoveService.CanTraverse(runtime, from, horizontal, true));
                     var state = new MovementState();
-                    var info = new GameObjectInfo { Cell = from, Area = area, Position = start };
+                    var info = new GameObjectInfo { MapId = network.common.Config.SWARM_MATCH_MAP, Cell = from,  Position = start };
                     var now = DateTime.UtcNow;
                     var request = new MovementRequest(to, 1f);
                     MatchMoveService.PrepareMovement(runtime, info, state, request, now, true);
@@ -88,7 +88,7 @@ public sealed class CommonMovementTraversalTests
                     {
                         info.Position = current;
                         info.Cell = MapCoordinateConverter.WorldToCell(map, current);
-                        info.Area = GameMapData.GetCurrentArea(map, info.Cell);
+                        info.Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(GameMapData.GetCurrentArea(map, info.Cell)));
                         MatchMoveService.PrepareMovement(runtime, info, state, request, now.AddSeconds(tick * 0.01), true);
                         var next = MatchMoveService.MoveAlongPath(runtime, state, current, 0.01f, now, true);
                         Assert.NotEqual(current, next);
@@ -171,7 +171,7 @@ public sealed class CommonMovementTraversalTests
         var end = MapCoordinateConverter.CellToWorld(map, blockedCell);
         var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(987631);
         using var scope = runtime.Enter();
-        var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
+        var player = new Player(new PlayerInfo { PlayerId = 1 });
         player.InitializeSpawn(startCell);
         runtime.RegisterParticipant(player);
         var service = new PlayerMovementService(NullLogger<PlayerMovementService>.Instance);

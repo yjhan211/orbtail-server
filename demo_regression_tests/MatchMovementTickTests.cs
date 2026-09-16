@@ -25,7 +25,7 @@ public sealed class MatchMovementTickTests
             new Dictionary<long, Cell> { [1] = cell }, [new PlayerInfo { PlayerId = 1 }]);
         var player = runtime.GetParticipant(1)!;
         player.Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
-        player.CurrentArea = AreaType.S2Corridor9;
+        player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Corridor9)));
         if (started) runtime.StartGameplay();
         bool moved = false;
         var loop = TestMatchTickServices.CreateLoop(runtime, store, NullLogger.Instance,
@@ -86,15 +86,13 @@ public sealed class MatchMovementTickTests
         var monster = new Monster
         {
             MonsterId = 1, Alive = true, Position = position,
-            Area = AreaType.S2Corridor9, Health = 10
+             Health = 10
         };
         monster.Movement.LastProcessedAtUtc = start.AddSeconds(-10);
         monster.Movement.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, new Vector3f(position.X + 1f, position.Y, 0f)));
         runtime.Monsters.Entities[1] = monster;
-        runtime.RegisterParticipant(new game_server.players.Player
-        {
-            Profile = new PlayerInfo { PlayerId = 1 }, Health = 100,
-            CurrentArea = monster.Area, Position = new Vector3f(position.X + 1f, position.Y, 0f)
+        runtime.RegisterParticipant(new game_server.players.Player(new PlayerInfo { PlayerId = 1 }) { Health = 100,
+             Position = new Vector3f(position.X + 1f, position.Y, 0f)
         });
         var service = new MatchMoveService(null!, new MonsterBehaviorService());
 
@@ -185,14 +183,12 @@ public sealed class MatchMovementTickTests
         var now = DateTime.UtcNow;
         var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
         var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
-        runtime.RegisterParticipant(new game_server.players.Player
-        {
-            Profile = new PlayerInfo { PlayerId = 1 }, Health = 100,
-            Position = new Vector3f(position.X + 1f, position.Y, 0f), CurrentArea = AreaType.S2Corridor9
+        runtime.RegisterParticipant(new game_server.players.Player(new PlayerInfo { PlayerId = 1 }) { Health = 100,
+            Position = new Vector3f(position.X + 1f, position.Y, 0f)
         });
         var monster = new Monster
         {
-            MonsterId = 1, Position = position, Area = AreaType.S2Corridor9,
+            MonsterId = 1, Position = position,
             Alive = true, Health = 100
         };
         var behavior = new MonsterBehaviorService();

@@ -19,8 +19,8 @@ public class MatchAutoAttackServiceTests
         var second = store.GetOrCreate(502);
         foreach (var match in new[] { first, second })
         {
-            match.RegisterParticipant(new Player { Profile = new PlayerInfo { PlayerId = 1 } });
-            match.RegisterParticipant(new Player { Profile = new PlayerInfo { PlayerId = 2 } });
+            match.RegisterParticipant(new Player(new PlayerInfo { PlayerId = 1 }));
+            match.RegisterParticipant(new Player(new PlayerInfo { PlayerId = 2 }));
         }
         var now = DateTime.UtcNow;
         var actors = new[] { Actor(1, 0, 0, 107000003), Actor(2, 1, 0) };
@@ -387,7 +387,7 @@ public class MatchAutoAttackServiceTests
             Match = store.GetOrCreate(matchingId);
             foreach (long playerId in playerIds)
             {
-                Match.RegisterParticipant(new Player { Profile = new PlayerInfo { PlayerId = playerId } });
+                Match.RegisterParticipant(new Player(new PlayerInfo { PlayerId = playerId }));
             }
             _lock = MatchRuntimeStore.Enter(Match);
         }

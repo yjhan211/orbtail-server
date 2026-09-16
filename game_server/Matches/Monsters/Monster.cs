@@ -14,7 +14,11 @@ public sealed class Monster
     public static float GetContactRadius(MonsterKind kind) => BaseContactRadius * (SwarmMonsterData.Get((int)kind)?.ContactRadiusScale ?? 1f);
 
     // 공통 값은 Info에만 보관하고, 전송할 때는 별도 스냅샷으로 복사한다.
-    public MonsterInfo Info { get; } = new() { RewardItemId = 107000010 };
+    public MonsterInfo Info { get; } = new()
+    {
+        ObjectInfo = new GameObjectInfo { ObjectType = ObjectType.MONSTER, MapId = Config.SWARM_MATCH_MAP },
+        RewardItemId = 107000010
+    };
 
     public int MonsterId { get => Info.MonsterId; init => Info.MonsterId = value; }
     public long CombatTargetId { get; init; }
@@ -32,7 +36,7 @@ public sealed class Monster
             };
         }
     }
-    public AreaType Area { get => Info.AreaType; set => Info.AreaType = value; }
+    public AreaType Area => Info.AreaType;
     public Vector3f Position
     {
         get => Info.ObjectInfo.Position;

@@ -45,7 +45,7 @@ public class SwarmDamagePathTests
         Assert.Contains("SwarmConfigData.GetDouble(\"SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS\", 8d)", source);
         Assert.Equal("35", ReadSwarmConfigValue("SWARM_SINGLE_CUT_HEALTH_COST"));
         Assert.Equal("8", ReadSwarmConfigValue("SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS"));
-        Assert.Contains("BlockHealingUntil(healLockUntil)", cutBody);
+        Assert.Contains("StatusEffects.Apply(PlayerStatusEffectKind.HealingBlocked, healLockUntil)", cutBody);
         // 0.8초 재접촉 억제 시작값.
         Assert.Contains("SwarmConfigData.GetDouble(\"SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS\", 0.8d)", source);
         Assert.Equal("0.8", ReadSwarmConfigValue("SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS"));
@@ -142,11 +142,12 @@ public class SwarmDamagePathTests
             Path.Combine(root, "game_server", "Players", "Player.cs"));
 
         // 수치 계약: 1초 준비 · 1초 틱당 최대 HP 5% · 가해·피해 뒤 3초 진입 잠금.
-        Assert.Contains("SwarmSleepWarmupSeconds = 1d", condition);
-        Assert.Contains("SwarmSleepRecoveryRatioPerSecond = 0.05f", condition);
+        string health = File.ReadAllText(Path.Combine(root, "game_server", "Players", "PlayerStatusEffects.cs"));
+        Assert.Contains("SwarmSleepWarmupSeconds = 1d", health);
+        Assert.Contains("SwarmSleepRecoveryRatioPerSecond = 0.05f", health);
         Assert.Contains("SwarmSleepCombatLockSeconds = 3d", condition);
         // 회복은 연속 이월이 아니라 1초 단위 틱으로 센다.
-        Assert.Contains("_swarmSleepGrantedTicks", condition);
+        Assert.Contains("ProcessedRecoveryCount", health);
 
         // 중단 경로는 이동 하나뿐이다.
         string movement = File.ReadAllText(

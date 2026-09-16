@@ -28,6 +28,15 @@ internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logge
         return Math.Clamp((float)elapsedSeconds, MinimumReceiptDeltaSeconds, MaximumReceiptDeltaSeconds);
     }
 
+    /// <summary>플레이어별 수신 시각을 갱신하고 이동 검증에 사용할 경과 시간을 제한한다.</summary>
+    public float CalculateMoveDeltaTime(Player player, long timestamp)
+    {
+        long previous = player.LastMoveProcessedTimestamp;
+        player.LastMoveProcessedTimestamp = timestamp;
+        if (previous == 0) return InitialReceiptDeltaSeconds;
+        double elapsedSeconds = (timestamp - previous) / (double)System.Diagnostics.Stopwatch.Frequency;
+        return ClampMoveDeltaTime(elapsedSeconds);
+    }
     private static Vector3f ClampVelocity(Vector3f velocity)
     {
         float speed = velocity.Magnitude();
@@ -103,8 +112,8 @@ internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logge
         var validation = new ValidatedMovement(clientPos, validatedVelocity, lastValidCell, requiresClientCorrection);
         var validatedPosition = validation.Position;
         var currentCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, validatedPosition);
-        var oldArea = player.CurrentArea;
-        var newArea = GameMapData.GetStableCurrentArea(Config.SWARM_MATCH_MAP, currentCell, oldArea);
+        var oldArea = player.GameInfo.ObjectInfo.Area;
+        var newArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, currentCell);
         var previousCell = player.Position != null ? MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, player.Position) : currentCell;
 
         if (newArea != oldArea && newArea != AreaType.None)
@@ -120,14 +129,12 @@ internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logge
         }
 
         player.TryStopSleep();
-        var pickupArea = newArea == AreaType.None ? oldArea : newArea;
-        PlayerPickupService.AddReachableItemsForMovement(match, player, player.Position ?? validatedPosition, validatedPosition, pickupArea);
-        player.ApplyValidatedMovement(validation, msg.Rotation);
+        PlayerPickupService.AddReachableItemsForMovement(match, player, player.Position ?? validatedPosition, validatedPosition, newArea);
+        player.ApplyValidatedMovement(validation.ValidCell, validation.Position, validation.Velocity, msg.Rotation);
 
         if (newArea != oldArea && newArea != AreaType.None)
         {
             logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}", player.PlayerId, currentCell.X, currentCell.Y, oldArea, newArea);
-            player.CurrentArea = newArea;
         }
 
         CompleteMovement(match, player);

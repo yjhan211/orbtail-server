@@ -18,9 +18,7 @@ public sealed class MatchGameplayServiceTests
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var service = provider.GetRequiredService<game_server.matches.MatchResultService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947804);
-        var player = new game_server.players.Player
-        {
-            Profile = new PlayerInfo { PlayerId = playerId, Name = "Participant" },
+        var player = new game_server.players.Player(new PlayerInfo { PlayerId = playerId, Name = "Participant" }) {
             Health = 37
         };
         using (match.Enter())
@@ -45,9 +43,9 @@ public sealed class MatchGameplayServiceTests
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var service = provider.GetRequiredService<MatchResultService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947803);
-        var winner = new game_server.players.Player { Profile = new PlayerInfo { PlayerId = winnerId } };
-        var other = new game_server.players.Player { Profile = new PlayerInfo { PlayerId = 202 } };
-        var eliminated = new game_server.players.Player { Profile = new PlayerInfo { PlayerId = 303 } };
+        var winner = new game_server.players.Player(new PlayerInfo { PlayerId = winnerId });
+        var other = new game_server.players.Player(new PlayerInfo { PlayerId = 202 });
+        var eliminated = new game_server.players.Player(new PlayerInfo { PlayerId = 303 });
         using (match.Enter())
         {
             match.RegisterParticipant(winner);
@@ -78,7 +76,7 @@ public sealed class MatchGameplayServiceTests
         using (match.Enter())
         {
             foreach (long id in new long[] { 101, -102, 103 })
-                match.RegisterParticipant(new game_server.players.Player { Profile = new PlayerInfo { PlayerId = id } });
+                match.RegisterParticipant(new game_server.players.Player(new PlayerInfo { PlayerId = id }));
             for (int i = 0; i < 2; i++)
                 Assert.True(TestGameSessionServices.Orbs(match, 101).TryAddItemWithCapacity(107000010, 8, out _));
             Assert.True(TestGameSessionServices.Orbs(match, -102).TryAddItemWithCapacity(107000010, 8, out _));
@@ -107,7 +105,7 @@ public sealed class MatchGameplayServiceTests
         int initialHealth = health == 35 ? health : network.common.Config.MAX_HEALTH;
         var bot = new Bot { PlayerId = cutterId, Player = { Health = initialHealth } };
         var cutter = bot.Player;
-        var owner = new game_server.players.Player { Profile = new PlayerInfo { PlayerId = 202 } };
+        var owner = new game_server.players.Player(new PlayerInfo { PlayerId = 202 });
         var now = DateTime.UtcNow;
         using (match.Enter())
         {
@@ -116,11 +114,11 @@ public sealed class MatchGameplayServiceTests
             if (cutterId < 0) match.Bots.GetBots().Add(bot);
             Assert.True(TestGameSessionServices.Orbs(match, owner.PlayerId).TryAddItemWithCapacity(107000010, 1, out _));
             Assert.Single(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllItems());
-            owner.CurrentArea = network.common.AreaType.S2Ground;
-            owner.Position = new Vector3f(0, -1, 0);
-            var orbPointsByOwner = new Dictionary<long, List<Vector3f>> { [owner.PlayerId] = [new Vector3f(0, 0, 0)] };
-            service.TryPerformSwarmTrailCut(match, cutterId, network.common.AreaType.S2Ground,
-                new Vector3f(-0.7f, 0.15f, 0), new Vector3f(0.7f, 0.15f, 0), orbPointsByOwner, now,
+            owner.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Gym1)));
+            owner.Position = TestMapPosition.In(network.common.AreaType.S2Gym1, 0, -1);
+            var orbPointsByOwner = new Dictionary<long, List<Vector3f>> { [owner.PlayerId] = [TestMapPosition.In(network.common.AreaType.S2Gym1)] };
+            service.TryPerformSwarmTrailCut(match, cutterId, network.common.AreaType.S2Gym1,
+                TestMapPosition.In(network.common.AreaType.S2Gym1, -0.7f, 0.15f), TestMapPosition.In(network.common.AreaType.S2Gym1, 0.7f, 0.15f), orbPointsByOwner, now,
                 new List<game_server.sessions.GameClientSession>());
 
             if (health == 35)
@@ -131,7 +129,7 @@ public sealed class MatchGameplayServiceTests
             }
             Assert.Equal(initialHealth - 35, cutter.Health);
             Assert.Empty(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllItems());
-            Assert.True(cutter.HealLockUntilUtc >= now.AddSeconds(8));
+            Assert.True(cutter.StatusEffects.GetExpiresAt(PlayerStatusEffectKind.HealingBlocked) >= now.AddSeconds(8));
             if (cutterId < 0)
             {
                 Assert.Equal(now, bot.LastTrailCutAtUtc);
@@ -148,62 +146,25 @@ public sealed class MatchGameplayServiceTests
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var service = provider.GetRequiredService<MatchCombatService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947801);
-        var player = new game_server.players.Player
-        {
-            Profile = new PlayerInfo { PlayerId = playerId }, Health = 100
+        var player = new game_server.players.Player(new PlayerInfo { PlayerId = playerId }) { Health = 100
         };
         using (match.Enter())
         {
             match.RegisterParticipant(player);
-            player.CompleteDoor();
             player.BeginDoor(702000101, 0);
             service.ApplySwarmParticipantDamage(match,
-                new MonsterContactDamage(1, playerId, player.CurrentArea, 12), []);
+                new MonsterContactDamage(1, playerId, player.GameInfo.ObjectInfo.Area, 12), []);
             Assert.Equal(100 - network.common.Config.ScaleSwarmDamageTaken(12), player.Health);
             Assert.False(player.TryFinishDoor(702000101, 3000, TimeSpan.FromSeconds(3), out _));
 
             player.Status = network.common.PlayerMatchStatus.ELIMINATED;
             int health = player.Health;
             service.ApplySwarmParticipantDamage(match,
-                new MonsterContactDamage(1, playerId, player.CurrentArea, 12), []);
+                new MonsterContactDamage(1, playerId, player.GameInfo.ObjectInfo.Area, 12), []);
             Assert.Equal(health, player.Health);
         }
     }
 
-    [Theory]
-    [InlineData(101)]
-    [InlineData(-101)]
-    public void PeriodicBuffsHealAndEliminateParticipantsWithoutConnections(long playerId)
-    {
-        using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var service = provider.GetRequiredService<PlayerHealthService>();
-        var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947800);
-        var player = new game_server.players.Player
-        {
-            Profile = new PlayerInfo { PlayerId = playerId }, Health = 10
-        };
-        var survivor = new game_server.players.Player { Profile = new PlayerInfo { PlayerId = 202 } };
-        var now = DateTime.UtcNow;
-        using (match.Enter())
-        {
-            match.RegisterParticipant(player);
-            match.RegisterParticipant(survivor);
-            Assert.Empty(match.GetSessions());
-            player.AddPeriodicBuff(network.common.BuffSubType.HEALTH_ADD, 3, 1, 1, now);
-            service.ApplyPeriodicBuffs(match, [player, survivor], now.AddMilliseconds(999));
-            Assert.Equal(10, player.Health);
-            service.ApplyPeriodicBuffs(match, [player, survivor], now.AddSeconds(1));
-            Assert.Equal(13, player.Health);
-            Assert.Equal(3, player.RecoveryTotal);
-
-            player.AddPeriodicBuff(network.common.BuffSubType.HEALTH_DOWN, 20, 1, 10, now.AddSeconds(1));
-            service.ApplyPeriodicBuffs(match, [player, survivor], now.AddSeconds(2));
-            Assert.Equal(0, player.Health);
-            Assert.True(player.IsEliminated);
-            Assert.Equal(0, TestGameSessionServices.GetPeriodicBuffCount(player));
-            Assert.True(match.IsEnded);
-        }
-    }
 
     [Theory]
     [InlineData(12)]
@@ -216,13 +177,10 @@ public sealed class MatchGameplayServiceTests
         var bot = new Bot
         {
             PlayerId = -11,
-            Player = { Health = 10, CurrentArea = network.common.AreaType.S2Corridor9 }
+            Player = { Health = 10, Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Corridor9)) }
         };
-        var enemy = new game_server.players.Player
-        {
-            Profile = new PlayerInfo { PlayerId = enemyId },
-            Position = new Vector3f(0, 0, 0),
-            CurrentArea = bot.Player.CurrentArea
+        var enemy = new game_server.players.Player(new PlayerInfo { PlayerId = enemyId }) {
+            Position = bot.Player.Position!
         };
         using (match.Enter())
         {
@@ -246,13 +204,9 @@ public sealed class MatchGameplayServiceTests
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var growth = provider.GetRequiredService<PlayerOrbGrowthService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947798);
-        var hunter = new game_server.players.Player
-        {
-            Profile = new PlayerInfo { PlayerId = -1 }, CurrentArea = network.common.AreaType.S2Ground
+        var hunter = new game_server.players.Player(new PlayerInfo { PlayerId = -1 }) { Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Gym1))
         };
-        var prey = new game_server.players.Player
-        {
-            Profile = new PlayerInfo { PlayerId = 1 }, CurrentArea = network.common.AreaType.S2Ground
+        var prey = new game_server.players.Player(new PlayerInfo { PlayerId = 1 }) { Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Gym1))
         };
         using (match.Enter())
         {
@@ -273,26 +227,20 @@ public sealed class MatchGameplayServiceTests
         var waveAttacks = provider.GetRequiredService<game_server.matches.MatchOrbAttackService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947799);
         var now = DateTime.UtcNow;
-        var human = new game_server.players.Player
-        {
-            Profile = new PlayerInfo { PlayerId = 11 }, Position = new Vector3f(),
-            CurrentArea = network.common.AreaType.S2Ground
+        var human = new game_server.players.Player(new PlayerInfo { PlayerId = 11 }) { Position = new Vector3f()
         };
-        var bot = new game_server.players.Player
-        {
-            Profile = new PlayerInfo { PlayerId = -11 }, Position = new Vector3f(),
-            CurrentArea = network.common.AreaType.S2Ground
+        var bot = new game_server.players.Player(new PlayerInfo { PlayerId = -11 }) { Position = new Vector3f()
         };
         using (match.Enter())
         {
             match.RegisterParticipant(human);
             match.RegisterParticipant(bot);
-            match.PendingWaveAttacks.Add(new PendingWaveAttack(99, human.CurrentArea, new Vector3f(), 5, 2f, 107000030, now));
+            match.PendingWaveAttacks.Add(new PendingWaveAttack(99, human.GameInfo.ObjectInfo.Area, new Vector3f(), 5, 2f, 107000030, now));
             waveAttacks.ProcessWaveDetonations(match, now);
             Assert.True(human.Health < network.common.Config.MAX_HEALTH);
             Assert.Equal(human.Health, bot.Health);
-            Assert.Equal(now.AddSeconds(network.common.data.OrbData.WaveSlowSeconds), human.WaveSlowUntilUtc);
-            Assert.Equal(human.WaveSlowUntilUtc, bot.WaveSlowUntilUtc);
+            Assert.Equal(now.AddSeconds(network.common.data.OrbData.WaveSlowSeconds), human.StatusEffects.GetExpiresAt(PlayerStatusEffectKind.WaveSlow));
+            Assert.Equal(human.StatusEffects.GetExpiresAt(PlayerStatusEffectKind.WaveSlow), bot.StatusEffects.GetExpiresAt(PlayerStatusEffectKind.WaveSlow));
             Assert.Null(human.Session);
             Assert.Null(bot.Session);
         }
@@ -338,7 +286,7 @@ public sealed class MatchGameplayServiceTests
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var service = provider.GetRequiredService<BotBehaviorService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947705);
-        var bot = new Bot { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.AreaType.S2Corridor9 } };
+        var bot = new Bot { PlayerId = -11, Player = { Health = 10, Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Corridor9)) } };
         using (match.Enter())
         {
             match.RegisterParticipant(bot.Player);
@@ -346,7 +294,7 @@ public sealed class MatchGameplayServiceTests
             service.UpdateSleep(match, [bot], now);
             Assert.True(bot.Player.IsSleeping);
 
-            match.GroundItems.SpawnItems(bot.Player.CurrentArea, 0, 0, [network.common.Config.SUMMON_STONE_GROUND_ITEM_ID]);
+            match.GroundItems.SpawnItems(bot.Player.GameInfo.ObjectInfo.Area, bot.Player.Position!.X, bot.Player.Position.Y, [network.common.Config.SUMMON_STONE_GROUND_ITEM_ID]);
             service.UpdateSleep(match, [bot], now);
             Assert.False(bot.Player.IsSleeping);
             service.UpdateSleep(match, [bot], now.AddSeconds(1));
@@ -365,7 +313,7 @@ public sealed class MatchGameplayServiceTests
         var service = provider.GetRequiredService<BotBehaviorService>();
         var store = provider.GetRequiredService<MatchRuntimeStore>();
         var match = store.GetOrCreate(947703);
-        var bot = new Bot { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.AreaType.S2Corridor9 } };
+        var bot = new Bot { PlayerId = -11, Player = { Health = 10, Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Corridor9)) } };
         match.RegisterParticipant(bot.Player);
         var now = DateTime.UtcNow;
         using (match.Enter())
@@ -396,8 +344,9 @@ public sealed class MatchGameplayServiceTests
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var service = provider.GetRequiredService<BotBehaviorService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947704);
-        var bot = new Bot { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.AreaType.S2Corridor9 } };
+        var bot = new Bot { PlayerId = -11, Player = { Health = 10, Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Corridor9)) } };
         var enemy = new Bot { PlayerId = -12 };
+        enemy.Player.Position = bot.Player.Position!;
         match.RegisterParticipant(bot.Player);
         var now = DateTime.UtcNow;
         using (match.Enter())
@@ -408,7 +357,7 @@ public sealed class MatchGameplayServiceTests
             service.UpdateSleep(match, [bot], now);
             Assert.False(bot.Player.IsSleeping);
             enemy.Player.Position = new Vector3f(1000, 1000, 0);
-            bot.Player.BlockHealingUntil(now.AddSeconds(8));
+            bot.Player.StatusEffects.Apply(PlayerStatusEffectKind.HealingBlocked, now.AddSeconds(8));
             service.UpdateSleep(match, [bot], now.AddSeconds(7));
             Assert.False(bot.Player.IsSleeping);
             service.UpdateSleep(match, [bot], now.AddSeconds(8));
@@ -428,11 +377,11 @@ public sealed class MatchGameplayServiceTests
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947706);
-        var bot = new Bot { PlayerId = -11, Player = { Health = 10, CurrentArea = network.common.AreaType.S2Corridor9, Velocity = new Vector3f(3, 0, 0) } };
+        var bot = new Bot { PlayerId = -11, Player = { Health = 10, Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Corridor9)), Velocity = new Vector3f(3, 0, 0) } };
         match.Bots.GetBots().Add(bot);
         using (match.Enter())
         {
-            var spawnCell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, bot.Player.CurrentArea);
+            var spawnCell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, bot.Player.GameInfo.ObjectInfo.Area);
             bot.Player.Position = network.common.data.MapCoordinateConverter.CellToWorld(network.common.Config.SWARM_MATCH_MAP, spawnCell);
             var originalPosition = bot.Player.Position;
             Assert.True(bot.Player.TryStartSleep(DateTime.UtcNow));

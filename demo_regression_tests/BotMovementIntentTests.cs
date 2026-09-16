@@ -66,10 +66,10 @@ public sealed class BotMovementIntentTests
         foreach (var candidate in new[] { new Cell(cell.X + 1, cell.Y), new Cell(cell.X - 1, cell.Y),
                      new Cell(cell.X, cell.Y + 1), new Cell(cell.X, cell.Y - 1) })
         {
-            if (GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, candidate) != bot.Player.CurrentArea)
+            if (GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, candidate) != bot.Player.GameInfo.ObjectInfo.Area)
                 continue;
-            var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.CurrentArea,
-                cell, bot.Player.CurrentArea, candidate);
+            var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.GameInfo.ObjectInfo.Area,
+                cell, bot.Player.GameInfo.ObjectInfo.Area, candidate);
             if (path is not { Count: > 0 })
                 continue;
             destination = candidate;
@@ -129,8 +129,8 @@ public sealed class BotMovementIntentTests
         var now = DateTime.UtcNow;
         var deadline = now.AddSeconds(1);
         var destination = cell.GetAdjacentCells().First(candidate =>
-            GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, candidate) == bot.Player.CurrentArea &&
-            MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.CurrentArea, cell, bot.Player.CurrentArea, candidate) is { Count: > 0 });
+            GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, candidate) == bot.Player.GameInfo.ObjectInfo.Area &&
+            MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.GameInfo.ObjectInfo.Area, cell, bot.Player.GameInfo.ObjectInfo.Area, candidate) is { Count: > 0 });
         bot.Movement.Waypoints.Add(destination);
         bot.Movement.NextPathPlanAtUtc = deadline;
         bot.LastDamagedAtUtc = underFire ? now : now.AddMinutes(-1);

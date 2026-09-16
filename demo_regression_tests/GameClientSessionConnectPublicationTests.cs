@@ -173,7 +173,7 @@ public sealed class GameClientSessionConnectPublicationTests
             Assert.Equal(0f, first.Player.Velocity.Magnitude());
             Assert.Equal(0f, first.Player.Rotation);
             Assert.Same(first.Player.Position, first.Player.Position);
-            Assert.Equal(first.Player.CurrentArea, first.Player.CurrentArea);
+            Assert.Equal(first.Player.GameInfo.ObjectInfo.Area, first.Player.GameInfo.ObjectInfo.Area);
             Assert.Null(second.Player.Position);
             Assert.Null(second.Player.Cell);
         }
@@ -192,7 +192,7 @@ public sealed class GameClientSessionConnectPublicationTests
 
         using (session.Match.Enter())
         {
-            session.Player.ApplyValidatedMovement(movement, 45f);
+            session.Player.ApplyValidatedMovement(movement.ValidCell, movement.Position, movement.Velocity, 45f);
             var snapshot = session.Player.CreateGameObjectInfo();
             Assert.Equal(10.25f, snapshot.Position.X);
             Assert.Equal(20.75f, snapshot.Position.Y);
@@ -222,7 +222,7 @@ public sealed class GameClientSessionConnectPublicationTests
         velocity.X = 999;
         cell.X = 999;
         Assert.Equal(8105, snapshot.ObjectId);
-        Assert.Equal(session.Player.CurrentArea, snapshot.Area);
+        Assert.Equal(session.Player.GameInfo.ObjectInfo.Area, snapshot.Area);
         Assert.Equal(10.25f, snapshot.Position.X);
         Assert.Equal(20.75f, snapshot.Position.Y);
         Assert.Equal(2f, snapshot.Velocity.X);

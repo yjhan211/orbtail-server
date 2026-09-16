@@ -20,10 +20,10 @@ public sealed class MatchSetupTests
         using var scope = runtime.Enter();
         runtime.InitializeMatch(default, cells, roster);
         Assert.True(runtime.IsSetupComplete);
-        Assert.Equal(roster, runtime.GetPlayerProfiles());
+        Assert.Equal(roster.Select(player => player.PlayerId), runtime.GetPlayerProfiles().Select(player => player.PlayerId));
         Assert.Same(cells, runtime.SpawnCells);
         Assert.Throws<InvalidOperationException>(() => runtime.InitializeMatch(default, cells, []));
-        Assert.Equal(roster, runtime.GetPlayerProfiles());
+        Assert.Equal(roster.Select(player => player.PlayerId), runtime.GetPlayerProfiles().Select(player => player.PlayerId));
     }
 
     [Fact]

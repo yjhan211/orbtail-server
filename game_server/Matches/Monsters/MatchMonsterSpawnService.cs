@@ -131,7 +131,6 @@ internal sealed class MatchMonsterSpawnService
                 MonsterId = FirstMonsterId + serial,
                 CombatTargetId = FirstCombatTargetId - serial,
                 Insignia = insignia,
-                Area = area,
                 Position = position,
                 Health = maxHp,
                 Alive = true,

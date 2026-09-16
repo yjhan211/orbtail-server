@@ -6,7 +6,10 @@ namespace game_server.matches;
 /// <summary>이전 틱의 이동 비교 값. 가변 좌표 객체를 참조하지 않는다.</summary>
 internal readonly struct MatchObjectSnapshot(GameObjectInfo info)
 {
-    public AreaType Area { get; } = info.Area;
+    private readonly MapId _mapId = info.MapId;
+    private readonly int _cellX = info.Cell.X;
+    private readonly int _cellY = info.Cell.Y;
+    public AreaType Area => network.common.data.GameMapData.GetCurrentArea(_mapId, _cellX, _cellY);
     private readonly float _positionX = info.Position.X;
     private readonly float _positionY = info.Position.Y;
     private readonly float _positionZ = info.Position.Z;

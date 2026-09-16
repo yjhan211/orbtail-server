@@ -94,7 +94,7 @@ internal class MatchCombatService(
             {
                 continue;
             }
-            participants.Add(new PlayerPositionSnapshot(player.PlayerId, player.CurrentArea, player.Position));
+            participants.Add(new PlayerPositionSnapshot(player.PlayerId, player.GameInfo.ObjectInfo.Area, player.Position));
         }
 
         var contacts = CollectMonsterContacts(runtime, participants, nowUtc);
@@ -127,7 +127,6 @@ internal class MatchCombatService(
 
         aliveBots.RemoveAll(bot => bot.Player.IsEliminated);
         botBehavior.UpdateSleep(runtime, aliveBots, nowUtc);
-        healthService.ApplyPeriodicBuffs(runtime, players, nowUtc);
         if (runtime.IsEnded)
         {
             return;
@@ -309,7 +308,7 @@ internal class MatchCombatService(
             }));
             foreach (var vfxSession in allSessions)
             {
-                if (!vfxSession.Player.IsEliminated && vfxSession.Player.CurrentArea == damage.Area)
+                if (!vfxSession.Player.IsEliminated && vfxSession.Player.GameInfo.ObjectInfo.Area == damage.Area)
                 {
                     vfxSession.TrySend(vfxPacket);
                 }

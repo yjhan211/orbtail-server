@@ -83,7 +83,7 @@ public sealed class MovementValidationServiceTests
         int check = source.IndexOf("match.Doors.GetBlockingDoor(", StringComparison.Ordinal);
         int reject = source.IndexOf("if (transitionDoor != null)", check, StringComparison.Ordinal);
         int stop = source.IndexOf("return true;", reject, StringComparison.Ordinal);
-        int commit = source.IndexOf("player.ApplyValidatedMovement(validation, msg.Rotation);", StringComparison.Ordinal);
+        int commit = source.IndexOf("player.ApplyValidatedMovement(validation.ValidCell, validation.Position, validation.Velocity, msg.Rotation);", StringComparison.Ordinal);
         Assert.True(check >= 0 && reject > check && stop > reject && commit > stop);
         Assert.Contains("WorldToCell(Config.SWARM_MATCH_MAP, player.Position)", source);
         Assert.DoesNotContain("player.Session", source);
@@ -110,7 +110,7 @@ public sealed class MovementValidationServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948012);
-        var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
+        var player = new Player(new PlayerInfo { PlayerId = 1 });
         using (match.Enter())
         {
             player.InitializeSpawn(cell);

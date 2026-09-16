@@ -21,7 +21,6 @@ public sealed class BotDoorStateTests
         var cell = new Cell((int)door.PositionX, (int)door.PositionY);
         runtime.Bots.RegisterBots(runtime.MatchingId, [-1L], new Dictionary<long, Cell> { [-1] = cell });
         var bot = runtime.Bots.GetBot(-1)!;
-        bot.Player.CurrentArea = door.AreaType;
         foreach (var otherDoor in GameDoorData.GetByAreaType(door.AreaType))
         {
             if (otherDoor.DoorId != door.DoorId)
@@ -50,8 +49,6 @@ public sealed class BotDoorStateTests
             var cell = new Cell((int)door.PositionX, (int)door.PositionY);
             runtime.Bots.RegisterBots(runtime.MatchingId, [-1L], new Dictionary<long, Cell> { [-1] = cell });
             var bot = runtime.Bots.GetBot(-1)!;
-            bot.Player.CurrentArea = door.AreaType;
-            bot.Player.CompleteDoor(); // 첫 문은 피격 중단 보호 대상이다.
             bot.Player.BeginDoor(702000113, 0);
             bot.Player.State = PlayerState.EXPLORE_1;
             var now = DateTime.UtcNow;
@@ -79,7 +76,6 @@ public sealed class BotDoorStateTests
             var cell = new Cell((int)door.PositionX, (int)door.PositionY);
             runtime.Bots.RegisterBots(runtime.MatchingId, [-1L], new Dictionary<long, Cell> { [-1] = cell });
             var bot = runtime.Bots.GetBot(-1)!;
-            bot.Player.CurrentArea = door.AreaType;
             var service = new BotBehaviorService(null!, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
             var now = DateTime.UtcNow;
 

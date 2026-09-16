@@ -129,7 +129,7 @@ internal sealed class MatchTrailCutService(
                 continue;
             }
             var owner = runtime.GetParticipant(ownerId);
-            if (owner == null || owner.IsEliminated || owner.CurrentArea != cutterArea || owner.Position == null)
+            if (owner == null || owner.IsEliminated || owner.GameInfo.ObjectInfo.Area != cutterArea || owner.Position == null)
             {
                 continue;
             }
@@ -178,7 +178,7 @@ internal sealed class MatchTrailCutService(
                 cutOrdinal = ordinal;
                 cutOrbUid = ownerOrbs[ordinal].ItemUid;
                 cutOrbPosition = orbPoints[ordinal];
-                cutArea = owner.CurrentArea;
+                cutArea = owner.GameInfo.ObjectInfo.Area;
             }
         }
 
@@ -244,7 +244,7 @@ internal sealed class MatchTrailCutService(
             }));
             foreach (var session in allSessions)
             {
-                if (session.PlayerId.HasValue && session.Player.CurrentArea == cutArea)
+                if (session.PlayerId.HasValue && session.Player.GameInfo.ObjectInfo.Area == cutArea)
                 {
                     session.TrySend(ringPacket);
                 }
@@ -253,7 +253,7 @@ internal sealed class MatchTrailCutService(
 
         var healLockUntil = nowUtc.AddSeconds(SwarmSingleCutHealLockSeconds);
         combatDamage.ApplyProximityAutoCombatHit(runtime, healthService, cutter, cutterId, cutterArea, firstDestroyedOrb.ItemId, SwarmSingleCutHealthCost);
-        cutter.BlockHealingUntil(healLockUntil);
+        cutter.StatusEffects.Apply(PlayerStatusEffectKind.HealingBlocked, healLockUntil);
         if (cutterBot != null)
         {
             cutterBot.LastTrailCutAtUtc = nowUtc;

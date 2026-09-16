@@ -58,7 +58,7 @@ internal sealed class MonsterBehaviorService
         float nearestSameAreaDistanceSquared = float.MaxValue;
         foreach (var participant in participants)
         {
-            if (participant.CurrentArea == AreaType.None || participant.IsEliminated || participant.Position == null)
+            if (participant.GameInfo.ObjectInfo.Area == AreaType.None || participant.IsEliminated || participant.Position == null)
             {
                 continue;
             }
@@ -67,7 +67,7 @@ internal sealed class MonsterBehaviorService
             float dy = participant.Position.Y - monster.Position.Y;
             float distanceSquared = dx * dx + dy * dy;
             // 다른 구역 후보
-            if (participant.CurrentArea != monster.Area)
+            if (participant.GameInfo.ObjectInfo.Area != monster.Area)
             {
                 if (distanceSquared >= nearestOtherAreaDistanceSquared)
                 {

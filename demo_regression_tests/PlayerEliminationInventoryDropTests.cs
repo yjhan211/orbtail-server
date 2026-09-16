@@ -45,7 +45,7 @@ public sealed class PlayerEliminationInventoryDropTests
         Assert.Empty(TestGameSessionServices.Orbs(match, playerId).GetAllItems());
         Assert.Equal(
             new[] { HopeOrbT1, ForgetOrbT1 },
-            match.GroundItems.GetItemsInArea(player.CurrentArea)
+            match.GroundItems.GetItemsInArea(player.GameInfo.ObjectInfo.Area)
                 .Select(item => item.ItemId)
                 .OrderBy(itemId => itemId)
                 .ToArray());
@@ -78,7 +78,7 @@ public sealed class PlayerEliminationInventoryDropTests
         }
 
         Assert.Empty(TestGameSessionServices.Orbs(match, botPlayerId).GetAllItems());
-        Assert.Single(match.GroundItems.GetItemsInArea(player.CurrentArea));
+        Assert.Single(match.GroundItems.GetItemsInArea(player.GameInfo.ObjectInfo.Area));
     }
 
     private static Player RegisterPlayer(MatchRuntime match, long playerId)
@@ -93,11 +93,10 @@ public sealed class PlayerEliminationInventoryDropTests
         }
         else
         {
-            player = new Player { Profile = new PlayerInfo { PlayerId = playerId } };
+            player = new Player(new PlayerInfo { PlayerId = playerId });
         }
 
-        player.CurrentArea = AreaType.S2Classroom1;
-        player.Position = new Vector3f(0f, 0f, 0f);
+        player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Classroom1)));
         match.RegisterParticipant(player);
         return player;
     }

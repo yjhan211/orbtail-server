@@ -26,15 +26,11 @@ public sealed class MatchFieldServiceTests
         var service = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
             .GetRequiredService<MatchFieldService>(provider);
         var match = store.GetOrCreate(947008);
-        var first = new game_server.players.Player
-        {
-            Profile = new network.common.data.models.PlayerInfo { PlayerId = firstId },
+        var first = new game_server.players.Player(new network.common.data.models.PlayerInfo { PlayerId = firstId }) {
             Health = 1,
             Position = new network.common.data.models.Vector3f(10000, 10000, 0)
         };
-        var second = new game_server.players.Player
-        {
-            Profile = new network.common.data.models.PlayerInfo { PlayerId = secondId },
+        var second = new game_server.players.Player(new network.common.data.models.PlayerInfo { PlayerId = secondId }) {
             Health = 2,
             Position = new network.common.data.models.Vector3f(10000, 10000, 0)
         };

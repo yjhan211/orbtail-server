@@ -132,7 +132,7 @@ public sealed class MatchRosterTests
     public void EndMatch_ClearsParticipantsAndRejectsFurtherRegistration()
     {
         var roster = MatchTestServices.Runtime(1, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
-        roster.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 10, Name = "player", WearItemIdList = [1] } });
+        roster.RegisterParticipant(new Player(new network.common.data.models.PlayerInfo { PlayerId = 10, Name = "player", WearItemIdList = [1] }));
 
         using (roster.Enter())
             roster.TryMarkEnded();
@@ -140,34 +140,42 @@ public sealed class MatchRosterTests
             roster.TryMarkEnded();
 
         Assert.DoesNotContain(roster.BuildGameResult(), row => row.playerId == 10);
-        Assert.Null(roster.GetParticipant(10)?.Profile);
+        Assert.Null(roster.GetParticipant(10));
         Assert.Empty(roster.BuildGameResult());
         Assert.Equal((false, (long?)null), roster.CheckGameOver());
         Assert.False(roster.TryEliminatePlayer(10, EliminationReason.HEALTH_ZERO));
         Assert.Throws<InvalidOperationException>(() =>
-            roster.RegisterParticipant(new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 20 } }));
+            roster.RegisterParticipant(new Player(new network.common.data.models.PlayerInfo { PlayerId = 20 })));
     }
     [Fact]
-    public void Participant_OwnsTheProfileUsedByPacketsAndResults()
+    public void Participant_CopiesMatchIdentityAndPublishesIndependentRoster()
     {
         var roster = MatchTestServices.Runtime(1, NullLogger.Instance);
         var profile = new network.common.data.models.PlayerInfo
         {
             PlayerId = 10, Name = "player", WearItemIdList = [123]
         };
-        var participant = new Player { Profile = profile };
+        var participant = new Player(profile);
         roster.RegisterParticipant(participant);
 
         Assert.Same(participant, roster.GetParticipant(10));
         var profiles = roster.GetPlayerProfiles();
-        Assert.Same(profile, Assert.Single(profiles));
+        var snapshot = Assert.Single(profiles);
+        Assert.NotSame(profile, snapshot);
+        Assert.Equal(profile.PlayerId, snapshot.PlayerId);
+        Assert.Equal(profile.Name, snapshot.Name);
+        Assert.Equal(profile.WearItemIdList, snapshot.WearItemIdList);
+        snapshot.Name = "Modified snapshot";
+        snapshot.WearItemIdList.Clear();
+        profile.Name = "Modified account";
+        profile.WearItemIdList.Clear();
         profiles.Clear();
-        Assert.Same(profile, Assert.Single(roster.GetPlayerProfiles()));
+        Assert.Equal("player", Assert.Single(roster.GetPlayerProfiles()).Name);
 
         Assert.True(roster.TryEliminatePlayer(10, EliminationReason.HEALTH_ZERO));
         Assert.Equal(PlayerMatchStatus.ELIMINATED, participant.Status);
-        Assert.Same(profile, roster.GetParticipant(10)!.Profile);
-        Assert.Equal(123, Assert.Single(profile.WearItemIdList));
+        Assert.Equal("player", roster.GetParticipant(10)!.GameInfo.Name);
+        Assert.Equal(123, Assert.Single(participant.GameInfo.WearItemIdList));
         using (roster.Enter())
             roster.TryMarkEnded();
         Assert.Empty(roster.GetPlayerProfiles());
@@ -194,8 +202,5 @@ public sealed class MatchRosterTests
         Assert.Empty(match.GetPlayerProfiles());
     }
 
-    private static Player CreateLink(long playerId, long _) => new()
-    {
-        Profile = new network.common.data.models.PlayerInfo { PlayerId = playerId }
-    };
+    private static Player CreateLink(long playerId, long _) => new(new network.common.data.models.PlayerInfo { PlayerId = playerId });
 }

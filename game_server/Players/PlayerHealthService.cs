@@ -10,6 +10,17 @@ internal sealed class PlayerHealthService(
     PlayerEliminationService eliminations,
     ILogger<PlayerHealthService> logger)
 {
+    // 수면 회복은 1초 준비 후 초당 최대 체력의 5%를 지급한다.
+    public int GetSleepRecovery(Player player, DateTime nowUtc, int maxHealth)
+    {
+        if (player.IsEliminated)
+        {
+            player.TryStopSleep();
+            return 0;
+        }
+        return player.StatusEffects.GetSleepRecovery(nowUtc, player.Health, maxHealth);
+    }
+
     public void ApplyDamage(MatchRuntime match, Player player, int damage, long attackerId = 0, bool handleElimination = true)
     {
         if (!Monitor.IsEntered(match.MatchLock))
@@ -78,51 +89,6 @@ internal sealed class PlayerHealthService(
         return change;
     }
 
-    public void ApplyPeriodicBuffs(MatchRuntime runtime, IReadOnlyList<Player> players, DateTime nowUtc)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Health changes require the match lock.");
-        }
-        foreach (var player in players)
-        {
-            if (runtime.IsEnded)
-            {
-                return;
-            }
-            if (player.IsEliminated)
-            {
-                player.ClearPeriodicBuffs();
-                continue;
-            }
-
-            try
-            {
-                foreach (int delta in player.TakeDuePeriodicBuffDeltas(nowUtc, Config.MAX_HEALTH))
-                {
-                    if (delta >= 0)
-                    {
-                        Recover(runtime, player, delta);
-                    }
-                    else
-                    {
-                        ApplyDamage(runtime, player, checked(-delta));
-                    }
-
-                    if (player.IsEliminated || runtime.IsEnded)
-                    {
-                        player.ClearPeriodicBuffs();
-                        break;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                player.ClearPeriodicBuffs();
-                logger.LogWarning(ex, "Periodic buff processing failed: MatchingId={MatchingId}, PlayerId={PlayerId}", runtime.MatchingId, player.PlayerId);
-            }
-        }
-    }
 
     public void ApplySleepRecovery(MatchRuntime runtime, IEnumerable<Player> players, DateTime nowUtc)
     {
@@ -132,7 +98,7 @@ internal sealed class PlayerHealthService(
         }
         foreach (var player in players)
         {
-            int recovered = player.GetSleepRecovery(nowUtc, player.IsEliminated, Config.MAX_HEALTH);
+            int recovered = GetSleepRecovery(player, nowUtc, Config.MAX_HEALTH);
             if (recovered <= 0)
             {
                 continue;
@@ -145,7 +111,7 @@ internal sealed class PlayerHealthService(
             using var packet = PacketMaker.G_TO_C_HEALTH_RECOVERY(new G_TO_C_HEALTH_RECOVERY
             {
                 PlayerId = player.PlayerId,
-                AreaType = player.CurrentArea,
+                AreaType = player.GameInfo.ObjectInfo.Area,
                 Amount = change.Recovered,
                 Source = HealthRecoveryKind.Sleep
             });

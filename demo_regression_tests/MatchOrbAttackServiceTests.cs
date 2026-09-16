@@ -20,7 +20,7 @@ public sealed class MatchOrbAttackServiceTests
         var match = store.GetOrCreate(947604);
         var service = new MatchOrbAttackService(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService());
         var attacks = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService(), new PlayerOrbTrailService());
-        var owner = new Player { Profile = new PlayerInfo { PlayerId = 11 } };
+        var owner = new Player(new PlayerInfo { PlayerId = 11 });
         var now = DateTime.UtcNow;
         Assert.Throws<InvalidOperationException>(() => service.ProcessSunCrossfires(match, now));
         Assert.Throws<InvalidOperationException>(() => service.ProcessSunBurns(match, now));
@@ -29,13 +29,13 @@ public sealed class MatchOrbAttackServiceTests
         Assert.Throws<InvalidOperationException>(() => attacks.TryStartSunCrossfire(match, owner, default, now));
         using (match.Enter())
         {
-            var victim = new Player { Profile = new PlayerInfo { PlayerId = 12 } };
+            var victim = new Player(new PlayerInfo { PlayerId = 12 });
             match.RegisterParticipant(victim);
-            victim.SunBurn = new Player.SunBurnState(11, 107000010, AreaType.None, now.AddSeconds(5), now.AddSeconds(1));
-            var before = victim.SunBurn;
+            victim.StatusEffects.SunBurn = new PlayerStatusEffects.SunBurnState(11, 107000010, AreaType.None, now.AddSeconds(5), now.AddSeconds(1));
+            var before = victim.StatusEffects.SunBurn;
             match.TryMarkEnded();
             service.ProcessSunBurns(match, now.AddSeconds(10));
-            Assert.Equal(before, victim.SunBurn);
+            Assert.Equal(before, victim.StatusEffects.SunBurn);
             Assert.False(attacks.TryStartSunCrossfire(match, owner, default, now));
         }
     }
@@ -56,14 +56,14 @@ public sealed class MatchOrbAttackServiceTests
             var shape = new SwarmCrossfireShape
             {
                 EventId = 1, OwnerId = 11, WeaponItemId = 107000010, Damage = 10,
-                Area = AreaType.S2Ground, Origin = new Vector3f(0, 0, 0),
-                End = new Vector3f(6, 0, 0), GroundLength = 6, HalfWidth = 0.35f,
+                Area = AreaType.S2Gym1, Origin = TestMapPosition.In(AreaType.S2Gym1),
+                End = TestMapPosition.In(AreaType.S2Gym1, 6), GroundLength = 6, HalfWidth = 0.35f,
                 SweepSpeed = 5, ArmedAtUtc = now.AddSeconds(1), ExpiresAtUtc = now.AddSeconds(3),
                 LastFront = -0.35f, DetonateAtWall = false
             };
             match.SunCrossfireShapes.Add(shape);
-            owner.Player.CurrentArea = victim.Player.CurrentArea = AreaType.S2Ground;
-            owner.Player.Position = victim.Player.Position = new Vector3f(2, Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y, 0);
+            owner.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)));
+            owner.Player.Position = victim.Player.Position = TestMapPosition.In(AreaType.S2Gym1, 2, Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y);
             service.ProcessSunCrossfires(match, now);
             Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
             Assert.Empty(shape.HitVictims);
@@ -74,7 +74,7 @@ public sealed class MatchOrbAttackServiceTests
             Assert.InRange(healthAfterHit, 1, Config.MAX_HEALTH - 1);
             Assert.Equal(Config.MAX_HEALTH, owner.Player.Health);
             Assert.Equal(12L, Assert.Single(shape.HitVictims));
-            Assert.Equal(hitAt.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS), victim.Player.SunBurn!.Value.NextTickAtUtc);
+            Assert.Equal(hitAt.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS), victim.Player.StatusEffects.SunBurn!.Value.NextTickAtUtc);
 
             service.ProcessSunCrossfires(match, hitAt.AddSeconds(0.1));
             Assert.Equal(healthAfterHit, victim.Player.Health);
@@ -97,7 +97,7 @@ public sealed class MatchOrbAttackServiceTests
         using (MatchRuntimeStore.Enter(first))
         {
             first.RegisterParticipant(burned.Player);
-            burned.Player.SunBurn = new Player.SunBurnState(11, 107000010, AreaType.S2Ground,
+            burned.Player.StatusEffects.SunBurn = new PlayerStatusEffects.SunBurnState(11, 107000010, AreaType.S2Gym1,
                 now.AddSeconds(Config.SWARM_SUN_BURN_SECONDS), now.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS));
         }
         var due = now.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS);
@@ -173,18 +173,18 @@ public sealed class MatchOrbAttackServiceTests
             Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE) * Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER));
         double interval = Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS;
 
-        victim.Player.SunBurn = new Player.SunBurnState(10, 107000010, AreaType.S2Ground, NowUtc.AddSeconds(interval * 3), NowUtc.AddSeconds(interval));
+        victim.Player.StatusEffects.SunBurn = new PlayerStatusEffects.SunBurnState(10, 107000010, AreaType.S2Gym1, NowUtc.AddSeconds(interval * 3), NowUtc.AddSeconds(interval));
 
         service.ProcessSunBurns(match, NowUtc.AddSeconds(interval).AddMilliseconds(-1));
         Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
 
         service.ProcessSunBurns(match, NowUtc.AddSeconds(interval));
         Assert.Equal(Config.MAX_HEALTH - tickDamage, victim.Player.Health);
-        Assert.Equal(NowUtc.AddSeconds(interval * 2), victim.Player.SunBurn!.Value.NextTickAtUtc);
+        Assert.Equal(NowUtc.AddSeconds(interval * 2), victim.Player.StatusEffects.SunBurn!.Value.NextTickAtUtc);
 
         // 재피격은 지속·다음 틱을 새로 잡는다.
         DateTime refreshedAtUtc = NowUtc.AddSeconds(interval * 1.5);
-        victim.Player.SunBurn = new Player.SunBurnState(11, 107000011, AreaType.S2Gym1, refreshedAtUtc.AddSeconds(interval * 3), refreshedAtUtc.AddSeconds(interval));
+        victim.Player.StatusEffects.SunBurn = new PlayerStatusEffects.SunBurnState(11, 107000011, AreaType.S2Gym1, refreshedAtUtc.AddSeconds(interval * 3), refreshedAtUtc.AddSeconds(interval));
         service.ProcessSunBurns(match, NowUtc.AddSeconds(interval * 2));
         Assert.Equal(Config.MAX_HEALTH - tickDamage, victim.Player.Health);
         service.ProcessSunBurns(match, refreshedAtUtc.AddSeconds(interval));
@@ -194,7 +194,7 @@ public sealed class MatchOrbAttackServiceTests
         service.ProcessSunBurns(match, refreshedAtUtc.AddSeconds(interval * 2));
         service.ProcessSunBurns(match, refreshedAtUtc.AddSeconds(interval * 3));
         Assert.Equal(Config.MAX_HEALTH - tickDamage * 4, victim.Player.Health);
-        Assert.Null(victim.Player.SunBurn);
+        Assert.Null(victim.Player.StatusEffects.SunBurn);
     }
     private static MatchOrbAttackService CreateService(MatchRuntimeStore store) =>
         new(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService());
@@ -215,7 +215,7 @@ public sealed class MatchOrbAttackServiceTests
             OwnerId = ownerId,
             WeaponItemId = 101,
             Damage = 10,
-            Area = AreaType.S2Ground,
+            Area = AreaType.S2Gym1,
             Origin = origin ?? new Vector3f(0f, 0f, 0f),
             End = end ?? new Vector3f(6f, 0f, 0f),
             GroundLength = groundLength,
@@ -237,8 +237,8 @@ public sealed class MatchOrbAttackServiceTests
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(948501);
         var trails = provider.GetRequiredService<PlayerOrbTrailService>();
         var attacks = provider.GetRequiredService<PlayerOrbService>();
-        var owner = new Player { Profile = new PlayerInfo { PlayerId = 11 }, Position = new Vector3f(), CurrentArea = AreaType.S2Ground };
-        var victim = new Player { Profile = new PlayerInfo { PlayerId = -11 }, Position = new Vector3f(100, 100, 0), CurrentArea = AreaType.S2Ground };
+        var owner = new Player(new PlayerInfo { PlayerId = 11 }) { Position = new Vector3f() };
+        var victim = new Player(new PlayerInfo { PlayerId = -11 }) { Position = new Vector3f(100, 100, 0) };
         var now = DateTime.UtcNow;
         using (match.Enter())
         {
@@ -300,8 +300,8 @@ public sealed class MatchOrbAttackServiceTests
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var attacks = provider.GetRequiredService<PlayerOrbService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(948504);
-        var first = new Player { Profile = new PlayerInfo { PlayerId = 11 }, Position = new Vector3f() };
-        var second = new Player { Profile = new PlayerInfo { PlayerId = 12 }, Position = new Vector3f() };
+        var first = new Player(new PlayerInfo { PlayerId = 11 }) { Position = new Vector3f() };
+        var second = new Player(new PlayerInfo { PlayerId = 12 }) { Position = new Vector3f() };
         var now = DateTime.UtcNow;
         Assert.Throws<InvalidOperationException>(() => attacks.ActivateWaveOrbs(match, first, now));
         using (match.Enter())

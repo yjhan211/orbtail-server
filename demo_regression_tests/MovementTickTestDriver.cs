@@ -15,7 +15,7 @@ internal static class MovementTickTestDriver
         if (!Monitor.IsEntered(runtime.MatchLock))
             throw new InvalidOperationException("Test tick requires the match lock.");
         var before = runtime.Bots.GetBots().ToDictionary(bot => bot.PlayerId,
-            bot => (bot.Player.Position, bot.Player.Velocity, bot.Player.CurrentArea));
+            bot => (bot.Player.Position, bot.Player.Velocity, bot.Player.GameInfo.ObjectInfo.Area));
         var behavior = new BehaviorProbe(decide);
         var monsters = new MonsterBehaviorService();
         var service = new MatchMoveService(behavior, monsters);
@@ -30,9 +30,9 @@ internal static class MovementTickTestDriver
                 continue;
             movements.Add(new BotMovementResult
             {
-                BotPlayerId = bot.PlayerId, FromArea = previous.CurrentArea, ToArea = player.CurrentArea,
+                BotPlayerId = bot.PlayerId, FromArea = previous.Area, ToArea = player.GameInfo.ObjectInfo.Area,
                 Position = player.Position!, ToCell = player.Cell!, Velocity = player.Velocity,
-                Rotation = player.Rotation, IsAreaTransition = previous.CurrentArea != player.CurrentArea
+                Rotation = player.Rotation, IsAreaTransition = previous.Area != player.GameInfo.ObjectInfo.Area
             });
         }
         return (movements, behavior.RequestedBotIds);

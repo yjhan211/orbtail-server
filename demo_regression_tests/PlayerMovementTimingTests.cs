@@ -9,12 +9,12 @@ public sealed class PlayerMovementTimingTests
     [Fact]
     public void MoveDelta_UsesPreviousProcessingTimeAndClampsLongGaps()
     {
-        var player = new Player { Profile = new PlayerInfo { PlayerId = 1 } };
+        var player = new Player(new PlayerInfo { PlayerId = 1 });
         long timestamp = Stopwatch.Frequency;
-        Assert.Equal(0.05f, player.CalculateMoveDeltaTime(timestamp));
-        Assert.Equal(0.125f, player.CalculateMoveDeltaTime(timestamp + Stopwatch.Frequency / 8));
-        Assert.Equal(0f, player.CalculateMoveDeltaTime(timestamp + Stopwatch.Frequency / 8));
-        Assert.Equal(0.25f, player.CalculateMoveDeltaTime(timestamp * 3));
+        Assert.Equal(0.05f, TestGameSessionServices.CreateMovementService().CalculateMoveDeltaTime(player, timestamp));
+        Assert.Equal(0.125f, TestGameSessionServices.CreateMovementService().CalculateMoveDeltaTime(player, timestamp + Stopwatch.Frequency / 8));
+        Assert.Equal(0f, TestGameSessionServices.CreateMovementService().CalculateMoveDeltaTime(player, timestamp + Stopwatch.Frequency / 8));
+        Assert.Equal(0.25f, TestGameSessionServices.CreateMovementService().CalculateMoveDeltaTime(player, timestamp * 3));
     }
 
 

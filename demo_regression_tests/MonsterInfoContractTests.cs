@@ -20,8 +20,7 @@ public sealed class MonsterInfoContractTests
             SummonStoneReward = 2,
             Kind = MonsterKind.RunawayGoblin,
             PhaseTier = 3,
-            ChaseTargetPlayerId = 42,
-            Area = AreaType.S2Gym1
+            ChaseTargetPlayerId = 42
         };
         Assert.Same(monster.Position, monster.Info.ObjectInfo.Position);
         Assert.Equal(12, monster.Info.CurrentHealth);
@@ -45,14 +44,17 @@ public sealed class MonsterInfoContractTests
     [Fact]
     public void SpatialPropertiesUseOneStorage()
     {
-        var info = new MonsterInfo { MonsterId = 7, AreaType = AreaType.S2Gym1 };
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var info = new MonsterInfo { MonsterId = 7,
+            ObjectInfo = new GameObjectInfo(ObjectType.MONSTER, 7, Config.SWARM_MATCH_MAP,
+                network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Gym1)) };
         Assert.Equal(ObjectType.MONSTER, info.ObjectInfo.ObjectType);
         Assert.Equal(7, info.ObjectInfo.ObjectId);
         Assert.Equal(AreaType.S2Gym1, info.ObjectInfo.Area);
         info.ObjectInfo.ObjectId = 9;
-        info.ObjectInfo.Area = AreaType.S2Ground;
+        info.ObjectInfo.Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1));
         Assert.Equal(9, info.MonsterId);
-        Assert.Equal(AreaType.S2Ground, info.AreaType);
+        Assert.Equal(AreaType.S2Gym1, info.AreaType);
     }
 
     [Fact]
@@ -68,7 +70,7 @@ public sealed class MonsterInfoContractTests
                 Cell = new Cell(2, 3),
                 Velocity = new Vector3f(1, 2, 0),
                 Rotation = 180f,
-                Area = AreaType.S2Gym1,
+
                 MapId = Config.SWARM_MATCH_MAP
             },
             CurrentHealth = 12,
@@ -89,7 +91,8 @@ public sealed class MonsterInfoContractTests
         Assert.Equal(info.ObjectInfo.Velocity, copy.ObjectInfo.Velocity);
         Assert.Equal(180f, copy.ObjectInfo.Rotation);
         Assert.Equal(info.ObjectInfo.MapId, copy.ObjectInfo.MapId);
-        Assert.Equal(AreaType.S2Gym1, copy.AreaType);
+        Assert.Equal(network.common.data.GameMapData.GetCurrentArea(copy.ObjectInfo.MapId, copy.ObjectInfo.Cell), copy.AreaType);
+        Assert.DoesNotContain("\"area\"", json);
         Assert.NotSame(info.ObjectInfo.Position, copy.ObjectInfo.Position);
         Assert.Equal(12, copy.CurrentHealth);
         Assert.True(copy.IsAlive);

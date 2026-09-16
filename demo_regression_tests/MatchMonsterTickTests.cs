@@ -130,7 +130,7 @@ public class MatchMonsterTickTests
             var monster = new Monster
             {
                 MonsterId = 7000000 + index, CombatTargetId = -4000000000000000000L - index,
-                Area = AreaType.S2Corridor9, Kind = kind, Health = 10, Alive = true,
+                Position = network.common.data.MapCoordinateConverter.CellToWorld(network.common.Config.SWARM_MATCH_MAP, network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Corridor9))), Kind = kind, Health = 10, Alive = true,
                 SummonStoneReward = reward
             };
             runtime.Monsters.Entities.Add(monster.MonsterId, monster);
@@ -285,7 +285,7 @@ public class MatchMonsterTickTests
             manager.Runtime.Monsters.Entities[1] = new Monster
             {
                 MonsterId = 1, Alive = true, Health = 100, Position = roomCenter,
-                Area = startRoom, ChaseTargetPlayerId = 1
+                 ChaseTargetPlayerId = 1
             };
         }
         var roomMonsterIds = new HashSet<int> { 1 };
@@ -382,7 +382,7 @@ public class MatchMonsterTickTests
                 {
                     if (Runtime.GetParticipant(participant.PlayerId) == null)
                     {
-                        Runtime.RegisterParticipant(new Player { Profile = new PlayerInfo { PlayerId = participant.PlayerId } });
+                        Runtime.RegisterParticipant(new Player(new PlayerInfo { PlayerId = participant.PlayerId }));
                     }
                 }
                 foreach (var player in Runtime.GetAlivePlayers())
@@ -391,7 +391,8 @@ public class MatchMonsterTickTests
                 {
                     var player = Runtime.GetParticipant(participant.PlayerId)!;
                     player.Position = participant.Position;
-                    player.CurrentArea = participant.Area;
+                    if (player.GameInfo.ObjectInfo.Area != participant.Area)
+                        player.Position = TestMapPosition.In(participant.Area);
                 }
                 if (isGameplayActive) Runtime.StartGameplay(StartUtc);
                 // 운영 틱과 같은 공급 → 이동 → 접촉 순서. 빈 참가자 공급 정책도 직접 검증한다.

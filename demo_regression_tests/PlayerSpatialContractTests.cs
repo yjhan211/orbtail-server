@@ -10,6 +10,35 @@ namespace demo_regression_tests;
 public sealed class PlayerSpatialContractTests
 {
     [Fact]
+    public void AreaIsDerivedFromMapAndCellAndNeverSerialized()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var map = Config.SWARM_MATCH_MAP;
+        var cell = network.common.data.GameMapData.GetAreaSpawnCell(map, AreaType.S2Corridor9).Clone();
+        var info = new GameObjectInfo(ObjectType.PLAYER, 1, map, cell);
+        var before = new game_server.matches.MatchObjectSnapshot(info);
+        var destination = network.common.data.GameMapData.GetAreaSpawnCell(map, AreaType.S2Library1);
+        info.Cell.X = destination.X;
+        info.Cell.Y = destination.Y;
+        Assert.Equal(AreaType.S2Library1, info.Area);
+        Assert.Equal(AreaType.S2Corridor9, before.Area);
+        Assert.Null(typeof(Player).GetProperty("CurrentArea"));
+        Assert.Null(typeof(GameObjectInfo).GetProperty(nameof(GameObjectInfo.Area))!.SetMethod);
+
+        var bytes = MessagePackSerializer.Serialize(info);
+        Assert.DoesNotContain("\"area\"", MessagePackSerializer.ConvertToJson(bytes));
+        var copy = MessagePackSerializer.Deserialize<GameObjectInfo>(bytes);
+        Assert.Equal(AreaType.S2Library1, copy.Area);
+
+        info.MapId = MapId.None;
+        Assert.Equal(AreaType.None, info.Area);
+        info.MapId = map;
+        info.Cell = new Cell(-10000, -10000);
+        Assert.Equal(AreaType.None, info.Area);
+        Assert.Equal(AreaType.S2Library1, copy.Area);
+    }
+
+    [Fact]
     public async Task RedisSave_ExcludesRuntimeStateWithoutChangingLiveModel()
     {
         var redis = new InMemoryRedisOperations();
@@ -122,18 +151,23 @@ public sealed class PlayerSpatialContractTests
     [Fact]
     public void AreaUsesTheSharedSpatialObjectAndSnapshotIsIndependent()
     {
-        var player = new Player { Profile = new PlayerInfo { PlayerId = 17 } };
-        player.CurrentArea = AreaType.S2Corridor9;
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var player = new Player(new PlayerInfo { PlayerId = 17 });
+        player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Corridor9)));
         Assert.Equal(AreaType.S2Corridor9, player.GameInfo.ObjectInfo.Area);
-        player.GameInfo.ObjectInfo.Area = AreaType.S2Library1;
-        Assert.Equal(AreaType.S2Library1, player.CurrentArea);
+        player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Library1)));
+        Assert.Equal(AreaType.S2Library1, player.GameInfo.ObjectInfo.Area);
         var snapshot = player.GameInfo.ObjectInfo.Clone();
-        player.CurrentArea = AreaType.None;
+        player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.None)));
         Assert.Equal(AreaType.S2Library1, snapshot.Area);
 
-        var monster = new network.common.data.models.MonsterInfo { AreaType = AreaType.S2Corridor9 };
+        var monster = new network.common.data.models.MonsterInfo
+        {
+            ObjectInfo = new GameObjectInfo(ObjectType.MONSTER, 1, Config.SWARM_MATCH_MAP,
+                network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9))
+        };
         Assert.Equal(AreaType.S2Corridor9, monster.ObjectInfo.Area);
-        monster.ObjectInfo.Area = AreaType.S2Library1;
+        monster.ObjectInfo.Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Library1));
         Assert.Equal(AreaType.S2Library1, monster.AreaType);
         var copy = MessagePackSerializer.Deserialize<network.common.data.models.MonsterInfo>(
             MessagePackSerializer.Serialize(monster));
@@ -145,7 +179,7 @@ public sealed class PlayerSpatialContractTests
         WearItemIdList = [101000003],
         ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, 42, MapId.Camp, new Cell(3, 4))
         {
-            Area = AreaType.S2Corridor9,
+MapId = network.common.Config.SWARM_MATCH_MAP,
             Position = new Vector3f(3.25f, 4.75f, 0),
             Velocity = new Vector3f(1.5f, -0.5f, 0),
             Rotation = 75f
@@ -157,7 +191,7 @@ public sealed class PlayerSpatialContractTests
     public void MatchAppearanceAndPublishedSnapshot_DoNotShareProfileLists()
     {
         var profile = new PlayerInfo { PlayerId = 7, Name = "MatchName", WearItemIdList = [101000003] };
-        var player = new Player { Profile = profile, Position = new Vector3f(1, 2, 0) };
+        var player = new Player(profile) { Position = new Vector3f(1, 2, 0) };
         profile.Name = "LobbyName";
         profile.WearItemIdList.Clear();
         var snapshot = player.CreatePlayerObjectInfo();
@@ -173,7 +207,7 @@ public sealed class PlayerSpatialContractTests
         Assert.Equal(new[] { 101000003 }, player.WearItemIdList);
         var info = player.ObjectInfo;
         Assert.Equal(42, info.ObjectId);
-        Assert.Equal(AreaType.S2Corridor9, info.Area);
+        Assert.Equal(network.common.data.GameMapData.GetCurrentArea(info.MapId, info.Cell), info.Area);
         Assert.Null(typeof(GameObjectInfo).GetProperty("MapSubId"));
         Assert.Equal(3.25f, info.Position.X);
         Assert.Equal(4.75f, info.Position.Y);
@@ -189,12 +223,16 @@ public sealed class PlayerSpatialContractTests
     [Fact]
     public void PlayerStateBeforeSpawn_KeepsPositionEmptyAndBlocksSnapshot()
     {
-        var player = new Player { Profile = new PlayerInfo { PlayerId = 7 } };
+        var player = new Player(new PlayerInfo { PlayerId = 7 });
         player.State = PlayerState.SLEEP;
+        Assert.False(player.IsSpawned);
         Assert.Null(player.Position);
+        Assert.Null(player.Cell);
         Assert.Throws<InvalidOperationException>(() => player.CreateGameObjectInfo());
 
         player.Position = new Vector3f(1f, 2f, 0f);
+        Assert.True(player.IsSpawned);
+        Assert.NotNull(player.Cell);
         var snapshot = player.CreatePlayerObjectInfo();
         Assert.Equal(PlayerState.SLEEP, snapshot.State);
         Assert.Equal(7, snapshot.ObjectInfo.ObjectId);
@@ -207,6 +245,18 @@ public sealed class PlayerSpatialContractTests
         Assert.Equal(1f, player.Position!.X);
 
         player.Position = null;
+        Assert.False(player.IsSpawned);
         Assert.Null(player.Position);
+        Assert.Null(player.Cell);
+        Assert.Throws<InvalidOperationException>(() => player.CreateGameObjectInfo());
+
+        player.Cell = new Cell(3, 4);
+        Assert.True(player.IsSpawned);
+        Assert.NotNull(player.Position);
+        Assert.NotNull(player.Cell);
+        player.Cell = null;
+        Assert.False(player.IsSpawned);
+        Assert.Null(player.Position);
+        Assert.Null(player.Cell);
     }
 }

@@ -93,11 +93,11 @@ public sealed class BotReplanningTests
         Assert.False(selected!.Equals(bot.Player.Cell));
         var targetArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, selected!);
         var targetCell = selected!.Clone();
-        Assert.Equal(bot.Player.CurrentArea, targetArea);
+        Assert.Equal(bot.Player.GameInfo.ObjectInfo.Area, targetArea);
         int radius = Config.SWARM_BOT_MONSTER_ROAM_DISTANCE_CELLS;
         Assert.InRange(bot.Player.Cell!.GetDistance(targetCell), Math.Max(2, radius / 2), radius);
         Assert.False(runtime.Closures.IsAreaClosed(targetArea));
-        Assert.NotEmpty(MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.CurrentArea,
+        Assert.NotEmpty(MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.GameInfo.ObjectInfo.Area,
             bot.Player.Cell!, targetArea, targetCell)!);
         for (int i = 0; i < 10; i++)
         {
@@ -112,7 +112,7 @@ public sealed class BotReplanningTests
     {
         var (runtime, bot, _) = CreateBot();
         using var scope = runtime.Enter();
-        bot.Player.CurrentArea = AreaType.None;
+        bot.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.None)));
         var selected = BotBehaviorService.SelectWanderTarget(runtime, bot, DateTime.UtcNow);
         Assert.True(selected!.Equals(bot.Player.Cell));
         Assert.Null(bot.ExplorationTarget);
@@ -124,7 +124,7 @@ public sealed class BotReplanningTests
     {
         var (runtime, bot, _) = CreateBot();
         using var scope = runtime.Enter();
-        var adjacentAreas = GameAreaConnectionData.GetConnections(Config.SWARM_MATCH_MAP, bot.Player.CurrentArea)
+        var adjacentAreas = GameAreaConnectionData.GetConnections(Config.SWARM_MATCH_MAP, bot.Player.GameInfo.ObjectInfo.Area)
             .Select(connection => connection.ToArea).Distinct().ToArray();
         Assert.NotEmpty(adjacentAreas);
         runtime.Closures.Release();
@@ -132,12 +132,12 @@ public sealed class BotReplanningTests
         runtime.Closures.CloseDueAreas();
         var selected = BotBehaviorService.SelectWanderTarget(runtime, bot, DateTime.UtcNow);
         Assert.False(selected!.Equals(bot.Player.Cell));
-        Assert.Equal(bot.Player.CurrentArea, GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, selected!));
+        Assert.Equal(bot.Player.GameInfo.ObjectInfo.Area, GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, selected!));
         int radius = Config.SWARM_BOT_MONSTER_ROAM_DISTANCE_CELLS;
         var destination = selected!.Clone();
         Assert.InRange(bot.Player.Cell!.GetDistance(destination), Math.Max(2, radius / 2), radius);
-        var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.CurrentArea,
-            bot.Player.Cell, bot.Player.CurrentArea, destination);
+        var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.GameInfo.ObjectInfo.Area,
+            bot.Player.Cell, bot.Player.GameInfo.ObjectInfo.Area, destination);
         Assert.NotNull(path);
         Assert.NotEmpty(path!);
         double safeDistance = runtime.Closures.GetSafeDistance(DateTime.UtcNow);

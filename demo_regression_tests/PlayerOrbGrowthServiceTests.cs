@@ -22,7 +22,7 @@ public sealed class PlayerOrbGrowthServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984302);
-        var player = new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 1 } };
+        var player = new Player(new network.common.data.models.PlayerInfo { PlayerId = 1 });
         runtime.RegisterParticipant(player);
         TestGameSessionServices.AddSummonStones(runtime, 1, 100);
         var service = new PlayerOrbGrowthService(NullLogger<PlayerOrbGrowthService>.Instance);
@@ -43,7 +43,7 @@ public sealed class PlayerOrbGrowthServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984301);
-        var player = new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 1 } };
+        var player = new Player(new network.common.data.models.PlayerInfo { PlayerId = 1 });
         runtime.RegisterParticipant(player);
         using (MatchRuntimeStore.Enter(runtime))
         {

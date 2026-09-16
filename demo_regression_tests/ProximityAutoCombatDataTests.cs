@@ -165,7 +165,7 @@ public class ProximityAutoCombatDataTests
         AssertInOrder(
             publish,
             "foreach (var visual in visuals)",
-            "if (Player.CurrentArea != visual.Area)",
+            "if (Player.GameInfo.ObjectInfo.Area != visual.Area)",
             "ForgetOrbVisualState(visual.ActorPlayerId);",
             "SendOrbVisualStateIfChanged(visual);");
         // 빌더는 계산만 한다. 패킷 생성·전송·캐시는 세션에 있다.

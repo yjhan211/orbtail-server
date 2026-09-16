@@ -54,9 +54,7 @@ public sealed class DoorInteractionCellTests
         var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(982015);
         using var scope = runtime.Enter();
         var info = GameInteractableData.Get(702000113)!;
-        var player = new Player
-        {
-            Profile = new PlayerInfo { PlayerId = playerId }, CurrentArea = (AreaType)info.ZoneId,
+        var player = new Player(new PlayerInfo { PlayerId = playerId }) {
             Cell = new Cell(info.CellX + 1, info.CellY)
         };
         var service = new PlayerInteractionService();

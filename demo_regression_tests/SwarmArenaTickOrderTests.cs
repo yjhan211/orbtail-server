@@ -320,7 +320,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("_swarmWindBladeVictimImmuneUntilUtc", windBlade);
         Assert.DoesNotContain("_swarmWindWoundsUntilUtc", crossfire);
         Assert.DoesNotContain("_swarmFamilyUpgradeCounts", orbBoard);
-        Assert.Contains("participant.TryClaimWindShock(", windBlade);
+        Assert.Contains("participant.StatusEffects.TryApply(PlayerStatusEffectKind.WindShockImmunity, ", windBlade);
         Assert.Contains("owner.TryBeginWindOrbTick(", windBlade);
         Assert.Contains("owner.HasCompletedWindOrbSpinup(", windBlade);
         Assert.Contains("player.GetOrbUpgradeCount(orbGroupId)", orbBoard);

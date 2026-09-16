@@ -27,7 +27,7 @@ public sealed class BotCellTargetTests
         var monsterCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, monsterArea);
         runtime.Monsters.Entities[1] = new Monster
         {
-            MonsterId = 1, Alive = true, Health = 100, Area = monsterArea,
+            MonsterId = 1, Alive = true, Health = 100,
             Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, monsterCell)
         };
         var service = new BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance);
@@ -61,13 +61,11 @@ public sealed class BotCellTargetTests
         var targetCell = SwarmPressureField.GetAreaCellsByDistance(area)
             .Select(entry => entry.Cell)
             .First(cell => origin.GetDistance(cell) >= 4 && origin.GetDistance(cell) <= 8 && GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell));
-        var attacker = new Player
-        {
-            Profile = new PlayerInfo { PlayerId = 1 },
+        var attacker = new Player(new PlayerInfo { PlayerId = 1 }) {
             Cell = targetCell,
             // 목표 선택은 이 정밀 위치가 아니라 위 셀을 사용해야 한다.
             Position = new Vector3f(10000f, 10000f, 0f),
-            CurrentArea = area,
+
             Health = Config.MAX_HEALTH
         };
         for (int i = 0; i < (stronger ? 8 : 1); i++)

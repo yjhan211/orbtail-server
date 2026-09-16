@@ -42,7 +42,6 @@ namespace network.common.data.models
             Velocity = new Vector3f(0, 0, 0);
             Rotation = 0f;
             MapId = mapId;
-            Area = GameMapData.GetCurrentArea(mapId, cell);
         }
 
         [Key("objectType")]
@@ -54,8 +53,9 @@ namespace network.common.data.models
         [Key("mapId")]
         public MapId MapId { get; set; }
 
-        [Key("area")]
-        public AreaType Area { get; set; }
+        /// <summary>구역은 맵과 셀에서 계산한다. 별도 저장하거나 전송하지 않는다.</summary>
+        [IgnoreMember]
+        public AreaType Area => GameMapData.GetCurrentArea(MapId, Cell);
 
         [Key("cell")]
         public Cell Cell { get; set; }
@@ -76,7 +76,6 @@ namespace network.common.data.models
                 ObjectType = ObjectType,
                 ObjectId = ObjectId,
                 MapId = MapId,
-                Area = Area,
                 Cell = Cell.Clone(Cell),
                 Position = new Vector3f(Position.X, Position.Y, Position.Z),
                 Velocity = new Vector3f(Velocity.X, Velocity.Y, Velocity.Z),

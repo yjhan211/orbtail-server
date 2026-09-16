@@ -46,14 +46,14 @@ internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails)
         long nowUnixMs = (long)(nowUtc - DateTime.UnixEpoch).TotalMilliseconds;
         foreach (var player in players)
         {
-            if (player.IsEliminated || player.Position == null || player.CurrentArea == AreaType.None)
+            if (player.IsEliminated || player.Position == null || player.GameInfo.ObjectInfo.Area == AreaType.None)
             {
                 continue;
             }
 
             var cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, player.Position);
             var cellArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
-            if (cellArea != player.CurrentArea || !GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell))
+            if (cellArea != player.GameInfo.ObjectInfo.Area || !GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell))
             {
                 continue;
             }

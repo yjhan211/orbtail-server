@@ -140,7 +140,7 @@ internal sealed class MatchOrbAttackService(
                     continue;
                 }
 
-                if (participant.PlayerId == shape.OwnerId || participant.CurrentArea != shape.Area || shape.HitVictims.Contains(participant.PlayerId))
+                if (participant.PlayerId == shape.OwnerId || participant.GameInfo.ObjectInfo.Area != shape.Area || shape.HitVictims.Contains(participant.PlayerId))
                 {
                     continue;
                 }
@@ -156,7 +156,7 @@ internal sealed class MatchOrbAttackService(
                 {
                     return;
                 }
-                participant.SunBurn = new Player.SunBurnState(shape.OwnerId, shape.WeaponItemId, shape.Area, nowUtc.AddSeconds(Config.SWARM_SUN_BURN_SECONDS), nowUtc.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS));
+                participant.StatusEffects.SunBurn = new PlayerStatusEffects.SunBurnState(shape.OwnerId, shape.WeaponItemId, shape.Area, nowUtc.AddSeconds(Config.SWARM_SUN_BURN_SECONDS), nowUtc.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS));
                 if (participant.Session is { PlayerId: not null } victimSession && shape.OwnerId != 0)
                 {
                     using var burnPacket = PacketMaker.G_TO_C_STATUS_EFFECT(new()
@@ -202,7 +202,7 @@ internal sealed class MatchOrbAttackService(
                 }));
                 foreach (var session in allSessions)
                 {
-                    if (session.PlayerId.HasValue && !session.Player.IsEliminated && session.Player.CurrentArea == shape.Area)
+                    if (session.PlayerId.HasValue && !session.Player.IsEliminated && session.Player.GameInfo.ObjectInfo.Area == shape.Area)
                     {
                         session.TrySend(detonationPacket);
                     }
@@ -270,7 +270,7 @@ internal sealed class MatchOrbAttackService(
         var players = runtime.GetAlivePlayers();
         foreach (var victim in runtime.GetPlayers())
         {
-            if (victim.SunBurn is not { } burn)
+            if (victim.StatusEffects.SunBurn is not { } burn)
             {
                 continue;
             }
@@ -279,12 +279,12 @@ internal sealed class MatchOrbAttackService(
             {
                 combatDamage.ApplySwarmShock(runtime, healthService, burn.OwnerId, burn.WeaponItemId, burn.Area, victim.PlayerId, players, Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER, isPeriodicDamage: true);
                 burn = burn with { NextTickAtUtc = burn.NextTickAtUtc.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS) };
-                victim.SunBurn = burn;
+                victim.StatusEffects.SunBurn = burn;
             }
 
             if (nowUtc >= burn.UntilUtc)
             {
-                victim.SunBurn = null;
+                victim.StatusEffects.SunBurn = null;
             }
         }
     }
@@ -336,7 +336,7 @@ internal sealed class MatchOrbAttackService(
             int soaked = 0;
             foreach (var participant in players)
             {
-                if (participant.IsEliminated || participant.PlayerId == vortex.OwnerId || participant.CurrentArea != vortex.Area || participant.Position == null)
+                if (participant.IsEliminated || participant.PlayerId == vortex.OwnerId || participant.GameInfo.ObjectInfo.Area != vortex.Area || participant.Position == null)
                 {
                     continue;
                 }
@@ -358,7 +358,7 @@ internal sealed class MatchOrbAttackService(
                 {
                     continue;
                 }
-                participant.WaveSlowUntilUtc = nowUtc.AddSeconds(OrbData.WaveSlowSeconds);
+                participant.StatusEffects.Apply(PlayerStatusEffectKind.WaveSlow, nowUtc.AddSeconds(OrbData.WaveSlowSeconds));
                 var victimSession = participant.Session;
                 if (victimSession != null && vortex.OwnerId != 0)
                 {

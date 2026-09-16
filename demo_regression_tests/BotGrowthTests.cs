@@ -15,7 +15,7 @@ public sealed class BotGrowthTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(949101);
-        var human = new Player { Profile = new network.common.data.models.PlayerInfo { PlayerId = 1 } };
+        var human = new Player(new network.common.data.models.PlayerInfo { PlayerId = 1 });
         match.RegisterParticipant(human);
         var growth = new PlayerOrbGrowthService(NullLogger<PlayerOrbGrowthService>.Instance);
         var decisions = new BotBehaviorService(growth, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);

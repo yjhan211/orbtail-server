@@ -251,12 +251,12 @@ internal sealed class MatchResultService(
             playerResults.Add(new GameResultPlayerInfo
             {
                 PlayerId = row.playerId,
-                Name = string.IsNullOrEmpty(player.Profile.Name) ? $"Player{Math.Abs(row.playerId)}" : player.Profile.Name,
+                Name = string.IsNullOrEmpty(player.GameInfo.Name) ? $"Player{Math.Abs(row.playerId)}" : player.GameInfo.Name,
                 EliminationReason = row.reason,
                 FinalStatus = row.finalStatus,
                 Health = player.Health,
                 MaxHealth = Config.MAX_HEALTH,
-                WearItemIdList = player.Profile.WearItemIdList is { Count: > 0 } wearItemIds ? new List<int>(wearItemIds) : new List<int>(),
+                WearItemIdList = player.GameInfo.WearItemIdList is { Count: > 0 } wearItemIds ? new List<int>(wearItemIds) : new List<int>(),
                 SurvivalTimeSeconds = Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
                 KillCount = pvpKillCount + player.MonsterKillCount,
                 TotalDamageDealt = player.PvpDamageDealt + player.MonsterDamageDealt,

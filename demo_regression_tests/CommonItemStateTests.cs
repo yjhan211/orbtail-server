@@ -9,19 +9,21 @@ public sealed class CommonItemStateTests
     [Fact]
     public void GroundItemUsesSharedSpatialDataAndPreservesWireKeys()
     {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
         var item = new GroundItemInfo
         {
-            GroundItemUid = 42, ItemId = 107000010, AreaType = (int)AreaType.S2Corridor9,
+            GroundItemUid = 42, ItemId = 107000010,
             PositionX = 12, PositionY = 34, SpawnOriginX = 1, SpawnOriginY = 2, SourcePlayerId = 7
         };
         Assert.Equal(ObjectType.ITEM, item.ObjectInfo.ObjectType);
         Assert.Equal(42, item.ObjectInfo.ObjectId);
-        Assert.Equal(AreaType.S2Corridor9, item.ObjectInfo.Area);
-        item.ObjectInfo.Position.X = 56;
+        Assert.Equal(network.common.data.GameMapData.GetCurrentArea(item.ObjectInfo.MapId, item.ObjectInfo.Cell), item.ObjectInfo.Area);
+        item.PositionX = 56;
         Assert.Equal(56, item.PositionX);
         var bytes = MessagePackSerializer.Serialize(item);
         var fields = MessagePackSerializer.Deserialize<Dictionary<string, object>>(bytes);
-        Assert.Equal(9, fields.Count);
+        Assert.Equal(8, fields.Count);
+        Assert.DoesNotContain("areaType", fields.Keys);
         Assert.Contains("isLanding", fields.Keys);
         Assert.DoesNotContain("objectInfo", fields.Keys);
         var restored = MessagePackSerializer.Deserialize<GroundItemInfo>(bytes);

@@ -232,11 +232,6 @@ internal class MatchMoveService(
 
         // 변경된 포지션에 따른 결과 반영
         objectInfo.Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, objectInfo.Position);
-        var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, objectInfo.Cell);
-        if (area != AreaType.None)
-        {
-            objectInfo.Area = area;
-        }
 
         // 속도·방향 반영
         objectInfo.Velocity = velocity;

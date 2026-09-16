@@ -266,14 +266,14 @@ public partial class GameClientSession : SessionBase
 
                 Logger.LogInformation(
                     "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
-                    PlayerId, Player.CurrentArea, Player.Position?.X, Player.Position?.Y, Player.Cell?.X,
+                    PlayerId, Player.GameInfo.ObjectInfo.Area, Player.Position?.X, Player.Position?.Y, Player.Cell?.X,
                     Player.Cell?.Y);
 
 
 
                 SendInteractableList();
 
-                SendGroundItemEntries(Player.CurrentArea);
+                SendGroundItemEntries(Player.GameInfo.ObjectInfo.Area);
                 SendMonsterSnapshot(runtime.Monsters.GetVisualStatesByArea());
                 SendOrbList();
                 SendOrbUpgradeInfo(_orbGrowth.GetOrbUpgradeInfo(runtime, Player));
@@ -359,7 +359,7 @@ public partial class GameClientSession : SessionBase
                 {
                     continue;
                 }
-                if (session.Player.IsEliminated || session.Player.CurrentArea != Player.CurrentArea)
+                if (session.Player.IsEliminated || session.Player.GameInfo.ObjectInfo.Area != Player.GameInfo.ObjectInfo.Area)
                 {
                     continue;
                 }
@@ -377,7 +377,7 @@ public partial class GameClientSession : SessionBase
                 session.SendObjectEntries(mine);
             }
 
-            var bots = match.Bots.GetBots().Where(bot => !bot.Player.IsEliminated && bot.Player.CurrentArea == Player.CurrentArea).ToList();
+            var bots = match.Bots.GetBots().Where(bot => !bot.Player.IsEliminated && bot.Player.GameInfo.ObjectInfo.Area == Player.GameInfo.ObjectInfo.Area).ToList();
             var botPlayers = bots.Select(bot => match.Bots.GetPlayerObjectInfo(bot.PlayerId)).OfType<GamePlayerInfo>().ToList();
             if (botPlayers.Count <= 0)
             {
@@ -640,21 +640,6 @@ public partial class GameClientSession : SessionBase
     {
         Logger.LogInformation("GameClient removed: PlayerId={PlayerId}", PlayerId);
 
-        var match = Volatile.Read(ref _match);
-        if (match == null)
-        {
-            Player?.ClearPeriodicBuffs();
-        }
-        else
-        {
-            using (match.Enter())
-            {
-                if (ReferenceEquals(Player?.Session, this))
-                {
-                    Player?.ClearPeriodicBuffs();
-                }
-            }
-        }
         if (!PlayerId.HasValue)
         {
             return;
@@ -673,7 +658,7 @@ public partial class GameClientSession : SessionBase
 
         Logger.LogInformation("Game client session removed: PlayerId={SessionPlayerId}", PlayerId.Value);
 
-        if (Player != null && MatchingId > 0 && Player.CurrentArea != AreaType.None)
+        if (Player != null && MatchingId > 0 && Player.GameInfo.ObjectInfo.Area != AreaType.None)
         {
             var sameAreaSessions = new List<GameClientSession>();
             foreach (var other in Match.GetSessions())
@@ -682,7 +667,7 @@ public partial class GameClientSession : SessionBase
                 {
                     continue;
                 }
-                if (other.Player.CurrentArea != Player.CurrentArea)
+                if (other.Player.GameInfo.ObjectInfo.Area != Player.GameInfo.ObjectInfo.Area)
                 {
                     continue;
                 }
@@ -698,7 +683,7 @@ public partial class GameClientSession : SessionBase
                 "Broadcasted disconnected player leave: PlayerId={PlayerId}, MatchingId={MatchingId}, Area={Area}, Receivers={ReceiverCount}",
                 PlayerId.Value,
                 MatchingId,
-                Player.CurrentArea,
+                Player.GameInfo.ObjectInfo.Area,
                 sameAreaSessions.Count);
         }
 
