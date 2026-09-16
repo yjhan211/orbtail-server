@@ -47,10 +47,10 @@ public sealed class CommonObjectMovementTests
         Assert.Equal(player.Rotation, monster.Info.ObjectInfo.Rotation);
 
         var stoppedAt = player.Position;
-        var stopped = MovementPreparationTestSteps.Advance(runtime, player.GameInfo.ObjectInfo, playerIntent, new MovementRequest(null, 1f, HoldPosition: true), 0.05f);
+        var stopped = MovementPreparationTestSteps.Advance(runtime, player.GameInfo.ObjectInfo, playerIntent, new MovementRequest(null, 0f), 0.05f);
         Assert.True(stopped.Changed);
         Assert.Same(stoppedAt, player.Position);
         Assert.Equal(0f, player.Velocity.X);
-        Assert.False(MovementPreparationTestSteps.Advance(runtime, player.GameInfo.ObjectInfo, playerIntent, new MovementRequest(null, 1f, HoldPosition: true), 0.05f).Changed);
+        Assert.False(MovementPreparationTestSteps.Advance(runtime, player.GameInfo.ObjectInfo, playerIntent, new MovementRequest(null, 0f), 0.05f).Changed);
     }
 }

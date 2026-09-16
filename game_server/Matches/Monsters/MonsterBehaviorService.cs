@@ -18,7 +18,7 @@ internal sealed class MonsterBehaviorService
         }
         if (runtime.IsEnded || !monster.Alive)
         {
-            return new MovementRequest(null, 0f, HoldPosition: true);
+            return new MovementRequest(null, 0f);
         }
 
         float speed = Config.SWARM_MONSTER_MOVE_SPEED;
@@ -37,17 +37,19 @@ internal sealed class MonsterBehaviorService
 
         if (TrySelectChaseTarget(monster, participants, out var target))
         {
-            bool hold = false;
             if (target.CurrentArea == monster.Area && monster.AttackRangeValue > Monster.BaseContactRadius)
             {
                 float radius = monster.AttackRangeValue * Config.SWARM_MONSTER_RANGED_HOLD_RANGE_RATIO;
-                hold = GroundGeometry.IsWithinGroundRadius(monster.Position, target.Position!, radius);
+                if (GroundGeometry.IsWithinGroundRadius(monster.Position, target.Position!, radius))
+                {
+                    speed = 0f;
+                }
             }
-            return new MovementRequest(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target.Position!), speed, hold);
+            return new MovementRequest(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target.Position!), speed);
         }
 
         monster.ChaseTargetPlayerId = 0;
-        return new MovementRequest(null, speed, HoldPosition: true);
+        return new MovementRequest(null, 0f);
     }
 
     internal bool TrySelectChaseTarget(Monster monster, IReadOnlyList<Player> participants, out Player target)

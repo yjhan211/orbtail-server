@@ -52,7 +52,7 @@ public sealed class BotReplanningTests
         using var scope = runtime.Enter();
         bot.Movement.Waypoints.Add(destination);
         var request = MovementPreparationTestSteps.Bot(new TargetBehavior(bot.Player.CurrentArea, bot.Player.Cell!, true), runtime, bot, DateTime.UtcNow);
-        Assert.True(request.HoldPosition);
+        Assert.Equal(0f, request.Speed);
         var position = bot.Player.Position;
         MovementPreparationTestSteps.Advance(runtime, bot.Player.GameInfo.ObjectInfo, bot.Movement, request, 0.05f);
         Assert.Equal(position, bot.Player.Position);
@@ -146,7 +146,7 @@ public sealed class BotReplanningTests
         Assert.Equal(savedArea, bot.Movement.DestinationArea);
         Assert.Same(destination, Assert.Single(bot.Movement.Waypoints));
         Assert.Equal(savedDeadline, bot.Movement.NextPathPlanAtUtc);
-        Assert.Equal(!hasTarget, request.HoldPosition);
+        Assert.Equal(hasTarget, request.Speed > 0f);
         Assert.Equal(hasTarget ? destination : null, request.DestinationCell);
     }
 

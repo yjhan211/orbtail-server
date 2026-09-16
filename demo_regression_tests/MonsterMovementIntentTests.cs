@@ -106,12 +106,19 @@ public sealed class MonsterMovementIntentTests
             Alive = true,
             WaveSlowUntilUtc = slowed ? now.AddSeconds(1) : now
         };
-        var request = new MonsterBehaviorService().CreateMovementRequest(runtime, monster, [], now);
+        var target = new game_server.players.Player
+        {
+            Profile = new PlayerInfo { PlayerId = 1 },
+            CurrentArea = AreaType.S2Corridor9,
+            Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP,
+                GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9))
+        };
+        var request = new MonsterBehaviorService().CreateMovementRequest(runtime, monster, [target], now);
         float expected = Config.SWARM_MONSTER_MOVE_SPEED;
         if (slowed) expected *= OrbData.WaveSlowMoveSpeedMultiplier;
         if (offsetSeconds >= 0) expected *= (float)Config.SWARM_MONSTER_ESCALATION_STAGE2_MOVE_SPEED_MULTIPLIER;
         Assert.Equal(expected, request.Speed);
-        Assert.True(request.HoldPosition);
+        Assert.NotNull(request.DestinationCell);
     }
 
     [Fact]
@@ -169,7 +176,7 @@ public sealed class MonsterMovementIntentTests
         Assert.True(monster.Position.X > position.X);
         Assert.Equal(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target), monster.Movement.DestinationCell);
         var after = monster.Position;
-        request = request with { HoldPosition = true };
+        request = request with { Speed = 0f };
         MovementPreparationTestSteps.Advance(runtime, monster.Info.ObjectInfo, monster.Movement, request, 0.05f, ignoreClosedDoors: true);
         Assert.Equal(after, monster.Position);
     }

@@ -91,27 +91,6 @@ public sealed class RouteMovementTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void StopsBeforeForbiddenAreaAndDoesNotSkipIt(bool ignoreClosedDoors)
-    {
-        var runtime = CreateRuntime();
-        using var scope = runtime.Enter();
-        foreach (var door in GameDoorData.GetAll()) runtime.Doors.OpenDoor(door.DoorId);
-        var map = Config.SWARM_MATCH_MAP;
-        var cell = GameMapData.GetAreaSpawnCell(map, AreaType.S2Corridor9);
-        var start = MapCoordinateConverter.CellToWorld(map, cell);
-        var targetCell = GameMapData.GetAreaSpawnCell(map, AreaType.S2Library1);
-        var steps = MapPathfinder.FindPath(map, AreaType.S2Corridor9, cell, AreaType.S2Library1, targetCell)!;
-        var path = CreatePath(steps.Select(step => MapCoordinateConverter.CellToWorld(map, step.Cell)));
-        var result = MatchMoveService.MoveAlongPath(runtime, path, start, 10000f, DateTime.UtcNow, ignoreClosedDoors, stopBeforeArea: AreaType.S2Library1);
-        Assert.True(path.WaypointIndex < path.Waypoints.Count);
-        Assert.NotEqual(AreaType.S2Library1, GameMapData.GetCurrentArea(map,
-            MapCoordinateConverter.WorldToCell(map, result)));
-        Assert.Equal(AreaType.S2Library1, GameMapData.GetCurrentArea(map,
-            path.Waypoints[path.WaypointIndex]));
-    }
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
     public void ClosedAreaBlocksBothEvenWithOpenDoors(bool ignoreClosedDoors)
     {
         var runtime = CreateRuntime();

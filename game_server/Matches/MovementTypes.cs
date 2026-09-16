@@ -23,9 +23,7 @@ public sealed class MovementState
 /// <summary>행동 판단의 결과. 개체 종류와 경로 계획 방법은 포함하지 않는다.</summary>
 public readonly record struct MovementRequest(
     Cell? DestinationCell,
-    float Speed,
-    bool HoldPosition = false,
-    AreaType? StopBeforeArea = null);
+    float Speed);
 
 /// <summary>이번 틱에 공통 이동 처리를 수행할 공간 정보·경로 상태·요청과 실행 결과.</summary>
 internal sealed record MovementActor(GameObjectInfo ObjectInfo, MovementState Movement, bool IgnoreClosedDoors, MovementRequest Request)

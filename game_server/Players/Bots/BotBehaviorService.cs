@@ -174,17 +174,20 @@ internal class BotBehaviorService(
         }
         if (runtime.IsEnded || bot.Player.IsEliminated || bot.Player.IsSleeping)
         {
-            return new MovementRequest(null, 0f, HoldPosition: true);
+            return new MovementRequest(null, 0f);
         }
         var requestedCell = SelectMovementTarget(runtime, bot, nowUtc);
         if (requestedCell == null || requestedCell.Equals(bot.Player.Cell))
         {
-            return new MovementRequest(requestedCell, 0f, HoldPosition: true);
+            return new MovementRequest(requestedCell, 0f);
         }
 
         float speed = Config.SWARM_BOT_WALK_SPEED * GetBotMovementSpeedMultiplier(bot, nowUtc);
-        bool waiting = nowUtc < bot.LoopWaitUntil;
-        return new MovementRequest(requestedCell.Clone(), speed, HoldPosition: waiting);
+        if (nowUtc < bot.LoopWaitUntil)
+        {
+            speed = 0f;
+        }
+        return new MovementRequest(requestedCell.Clone(), speed);
     }
 
     public virtual Cell? SelectMovementTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc)

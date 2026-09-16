@@ -33,7 +33,7 @@ public sealed class BotMovementIntentTests
         var request = MovementPreparationTestSteps.Bot(behavior, runtime, bot, now);
         Assert.Same(before, bot.Player.Position);
         Assert.True(request.Speed > 0f);
-        if (sleepBeforeExecution) request = request with { HoldPosition = true };
+        if (sleepBeforeExecution) request = request with { Speed = 0f };
         var result = MovementPreparationTestSteps.Advance(runtime, bot.Player.GameInfo.ObjectInfo, bot.Movement, request, 0.05f);
         if (sleepBeforeExecution)
         {
@@ -45,7 +45,7 @@ public sealed class BotMovementIntentTests
             Assert.True(bot.Player.Position!.X > before.X);
         }
         var after = bot.Player.Position;
-        request = request with { HoldPosition = true };
+        request = request with { Speed = 0f };
         MovementPreparationTestSteps.Advance(runtime, bot.Player.GameInfo.ObjectInfo, bot.Movement, request, 0.05f);
         Assert.Equal(after, bot.Player.Position);
     }

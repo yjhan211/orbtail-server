@@ -198,7 +198,7 @@ public sealed class MatchMovementTickTests
         var behavior = new MonsterBehaviorService();
         var request = behavior.CreateMovementRequest(runtime, monster, runtime.GetAlivePlayers().ToList(), now);
 
-        Assert.False(request.HoldPosition);
+        Assert.True(request.Speed > 0f);
         Assert.True(request.Speed > 0f);
     }
 

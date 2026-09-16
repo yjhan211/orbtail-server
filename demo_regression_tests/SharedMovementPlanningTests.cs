@@ -48,7 +48,7 @@ public sealed class SharedMovementPlanningTests
         var blocked = new Cell(-10000, -10000);
         state.Waypoints.Add(blocked);
         var position = info.Position;
-        var request = new MovementRequest(destination, speed, HoldPosition: hold);
+        var request = new MovementRequest(destination, hold ? 0f : speed);
 
         var result = MovementPreparationTestSteps.Advance(runtime, info, state, request, elapsed, nowUtc: now);
 
@@ -92,11 +92,11 @@ public sealed class SharedMovementPlanningTests
         Assert.Same(position, info.Position);
     }
     [Theory]
-    [InlineData(true, false)]
-    [InlineData(false, false)]
-    [InlineData(true, true)]
-    [InlineData(false, true)]
-    public void StoppedPathIsPreservedAndValidatedOnResume(bool holdPosition, bool ignoreDoors)
+    [InlineData(0f, false)]
+    [InlineData(-1f, false)]
+    [InlineData(0f, true)]
+    [InlineData(-1f, true)]
+    public void StoppedPathIsPreservedAndValidatedOnResume(float stoppedSpeed, bool ignoreDoors)
     {
         var runtime = CreateRuntime();
         using var scope = runtime.Enter();
@@ -109,7 +109,7 @@ public sealed class SharedMovementPlanningTests
         var destination = info.Cell.GetAdjacentCells().First(cell =>
             GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == info.Area &&
             MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, info.Area, info.Cell, info.Area, cell) is { Count: > 0 });
-        var request = new MovementRequest(destination, holdPosition ? 1f : 0f, HoldPosition: holdPosition);
+        var request = new MovementRequest(destination, stoppedSpeed);
 
         MatchMoveService.PrepareMovement(runtime, info, state, request, now, ignoreDoors);
 
@@ -120,7 +120,7 @@ public sealed class SharedMovementPlanningTests
         MovementPreparationTestSteps.Advance(runtime, info, state, request, 0.05f, ignoreDoors, now);
         Assert.Equal(position, info.Position);
 
-        request = request with { HoldPosition = false, Speed = 1f };
+        request = request with { Speed = 1f };
         MatchMoveService.PrepareMovement(runtime, info, state, request, now, ignoreDoors);
 
         Assert.DoesNotContain(invalidCell, state.Waypoints);
@@ -325,11 +325,11 @@ public sealed class SharedMovementPlanningTests
         var state = new MovementState();
         state.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, info.Position));
         MatchMoveService.PrepareMovement(runtime, info, state,
-            new MovementRequest(null, 10f, HoldPosition: true), DateTime.UtcNow, ignoreDoors);
+            new MovementRequest(null, 0f), DateTime.UtcNow, ignoreDoors);
         Assert.Single(state.Waypoints);
         var before = info.Position;
         var result = MovementPreparationTestSteps.Advance(runtime, info, state,
-            new MovementRequest(null, 10f, HoldPosition: true), 1f, ignoreDoors);
+            new MovementRequest(null, 0f), 1f, ignoreDoors);
         Assert.Equal(before, info.Position);
         Assert.False(result.ReachedPathEnd);
         Assert.Single(state.Waypoints);
