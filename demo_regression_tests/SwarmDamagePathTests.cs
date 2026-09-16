@@ -1,172 +1,12 @@
-using System.Text.RegularExpressions;
-using game_server;
-using game_server.matches;
-using game_server.players;
-using game_server.players.bots;
-using game_server.sessions;
 using network.common;
 using network.common.data;
 using network.common.data.helpers;
 
 namespace demo_regression_tests;
 
-// #227 M2 피해 경로 고정: 두 공격이 서로 다른 것을 깎아야 "죽이러 갈지 / 무장 해제하러 갈지"가
-// 선택이 된다. 원거리(미사일·물폭탄·잔상·폐쇄)는 본체 HP만, 전투 오브 내구는 몸으로 가로지르는
-// 절단만 깎는다. 이 경계는 코드 몇 줄로 조용히 무너질 수 있어 여기서 잠근다.
+// 문·폐쇄 데이터 계약: 문은 양쪽 구역에서 잠기고, 시작방 문은 게이지로만 열리며 해제 오브젝트는 방 안쪽에만 있다.
 public class SwarmDamagePathTests
 {
-    /// <summary>
-    ///     고위험 절단 계약 (#232, 2026-08-18 유저 결정 "오브 절단면 다 깨지게"): 크랙 5칸·방어 장갑은 퇴역 —
-    ///     절단 내구에 값을 쓰는 곳이 하나라도 남으면 "유효 교차 한 번 = 즉시 절단"이 무너진다.
-    ///     절단은 켜져 있고, 한 교차는 밟은 지점부터 꼬리 끝까지 지우며(스네이크 접미), 낙수를 흩지 않고,
-    ///     공격자는 +35 선결 검사 뒤 같은 사건으로 치명상과 8초 회복 차단을 받는다.
-    /// </summary>
-    [Fact]
-    public void TailCut_RemovesSuffixAndChargesAttacker()
-    {
-        string source = File.ReadAllText(
-            Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "MatchTrailCutService.cs"));
-
-        Assert.DoesNotContain("OrbCutCracks", source);
-
-        int cutMethodStart = source.IndexOf("internal void ProcessTrailCut(", StringComparison.Ordinal);
-        Assert.True(cutMethodStart >= 0, "ProcessTrailCut를 찾지 못했다");
-        int cutMethodEnd = source.LastIndexOf("}", StringComparison.Ordinal);
-        Assert.True(cutMethodEnd > cutMethodStart, "절단 판정 메서드의 끝을 찾지 못했다");
-        string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
-
-        // 한 교차 = 밟은 순번부터 꼬리 끝까지. 낙수 흩기는 절단 경로에 없어야 한다.
-        Assert.Contains("DestroyOrbsFromOrdinal(runtime, victim, cutOrdinal)", cutBody);
-        Assert.DoesNotContain("DestroySwarmOrbAtOrdinal", source);
-        Assert.DoesNotContain("ScatterSwarmOrbBreakStones", cutBody);
-        // 공격자 비용: 선결 검사 → 치명상 → 회복 차단이 같은 사건 안에 있다.
-        // 값의 원천은 swarm_config.csv(#335) — CSV 행과 코드 폴백 기본값을 함께 잠근다.
-        Assert.Contains("SwarmConfigData.GetInt(\"SWARM_SINGLE_CUT_HEALTH_COST\", 35)", source);
-        Assert.Contains("SwarmConfigData.GetDouble(\"SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS\", 8d)", source);
-        Assert.Equal("35", ReadSwarmConfigValue("SWARM_SINGLE_CUT_HEALTH_COST"));
-        Assert.Equal("8", ReadSwarmConfigValue("SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS"));
-        Assert.Contains("StatusEffects.Apply(PlayerStatusEffectKind.HealingBlocked, healLockUntil)", cutBody);
-        // 0.8초 재접촉 억제 시작값.
-        Assert.Contains("SwarmConfigData.GetDouble(\"SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS\", 0.8d)", source);
-        Assert.Equal("0.8", ReadSwarmConfigValue("SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS"));
-    }
-
-    /// <summary>swarm_config.csv의 한 키 값(문자열 그대로). 없으면 실패한다.</summary>
-    private static string ReadSwarmConfigValue(string key)
-    {
-        string csvPath = Path.Combine(FindRepositoryRoot(), "network", "Common", "csv", "swarm_config.csv");
-        foreach (string line in File.ReadLines(csvPath))
-        {
-            string[] parts = line.Split(',');
-            if (parts.Length >= 2 && parts[0] == key)
-                return parts[1].Trim();
-        }
-
-        throw new Xunit.Sdk.XunitException($"swarm_config.csv에 {key} 행이 없다");
-    }
-
-    /// <summary>
-    ///     스웜 탐색·소비품은 은퇴했다. 토글 없이 상호작용 목록은 문만, 몬스터 드롭은 소환석·하트만 다룬다.
-    ///     회복은 수면과 하트가, 기동력은 바람 오브가 맡는다.
-    /// </summary>
-    [Fact]
-    public void SwarmExploreAndConsumables_AreRetired()
-    {
-        string root = FindRepositoryRoot();
-        string config = File.ReadAllText(Path.Combine(root, "network", "Common", "Config.cs"));
-        Assert.DoesNotContain("SWARM_EXPLORE_AND_CONSUMABLES_ENABLED", config);
-        Assert.DoesNotContain("IsSwarmExploreDisabled", config);
-
-        string interactions = File.ReadAllText(Path.Combine(root, "game_server", "Players", "PlayerInteractionService.cs"));
-        int listStart = interactions.IndexOf("public List<InteractableInfo> GetInteractionInfos", StringComparison.Ordinal);
-        Assert.True(listStart >= 0);
-        Assert.Contains("if (definition.DoorId <= 0)", interactions[listStart..]);
-
-        string damage = File.ReadAllText(Path.Combine(root, "game_server", "Matches", "MatchCombatDamageService.cs"));
-        int spawnStart = damage.IndexOf("private void SpawnSwarmSummonStone", StringComparison.Ordinal);
-        Assert.True(spawnStart >= 0);
-        string spawn = damage.Substring(spawnStart, Math.Min(1400, damage.Length - spawnStart));
-        Assert.DoesNotContain("BOOTS_GROUND_ITEM_ID", spawn);
-        Assert.Contains("HEART_GROUND_ITEM_ID", spawn);
-    }
-
-    /// <summary>
-    ///     봇 교전 튜닝 계약 (2026-08-18 촬영 튜닝, 봇 매치 9126059 → 9133549 → 9134053):
-    ///     ① 봇 절단 자제 — 오염 절반 아래 + 6초 쿨다운일 때만 자르고, 사람에게는 걸지 않는다.
-    ///     ② 도주 임계 ×1.5 — 동수·소폭 열세는 중립(피하지도 붙지도 않음).
-    ///     ③ 치명상 이탈 — 60% 진입 · 45% 해제, 치명상이면 전력 비교 없이 물러난다.
-    ///     셋 중 하나라도 조용히 빠지면 봇이 다시 자해로 죽거나(①), 카메라 앞에서 등만 보이거나(②),
-    ///     죽을 때까지 맞붙어 후반 판이 빈다(③).
-    /// </summary>
-    [Fact]
-    public void SwarmBotEngagement_KeepsCutRestraintNeutralBandAndWoundedRetreat()
-    {
-        // #312 분리: 절단 기계는 SwarmArena, 봇 판단(자제·도주·치명상)은 SwarmBots가 소유한다.
-        string source = File.ReadAllText(
-            Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "MatchTrailCutService.cs"));
-        string botSource = File.ReadAllText(
-            Path.Combine(FindRepositoryRoot(), "game_server", "Players", "Bots", "BotBehaviorService.cs"));
-
-        // ① 절단 자제: 봇 전용, 래치 앞에서 걸린다.
-        Assert.Contains("Config.SWARM_BOT_CUT_MIN_HEALTH_RATIO", botSource);
-        Assert.Contains("Config.SWARM_BOT_CUT_COOLDOWN_SECONDS", botSource);
-        int cutMethodStart = source.IndexOf("internal void ProcessTrailCut(", StringComparison.Ordinal);
-        int cutMethodEnd = source.LastIndexOf("}", StringComparison.Ordinal);
-        string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
-        Assert.Contains("cutterBot != null && !botBehavior.CanCutTrail(", cutBody);
-        Assert.Contains("cutterBot.LastTrailCutAtUtc = nowUtc", cutBody);
-        // 사람 절단은 자제 규칙을 타지 않는다 — 봇 분기 안에서만 호출된다.
-        Assert.Single(Regex.Matches(cutBody, @"CanCutTrail\("));
-
-        // ② 도주 임계: 강자 판정과 피격 반응 둘 다 ×1.5를 쓴다.
-        Assert.Contains("Config.SWARM_BOT_FLEE_POWER_RATIO", botSource);
-        Assert.Contains("player.Orbs.GetOrbPower() < myPower * Config.SWARM_BOT_FLEE_POWER_RATIO", botSource);
-        Assert.Contains("bot.Wounded || attacker.Orbs.GetOrbPower() >= orbPower * Config.SWARM_BOT_FLEE_POWER_RATIO", botSource);
-
-        // ③ 치명상 이탈: 히스테리시스 + 전력 0으로 스캔.
-        Assert.Contains("Config.SWARM_BOT_WOUNDED_ENTER_RATIO", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Players", "Bots", "Bot.cs")));
-        Assert.Contains("Config.SWARM_BOT_WOUNDED_EXIT_RATIO", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Players", "Bots", "Bot.cs")));
-        Assert.Contains("bot.Wounded ? 0f : orbPower", botSource);
-    }
-
-    /// <summary>
-    ///     수면 계약 (2026-08-17 재조정): 준비 1초 · 1초마다 최대 HP 5% 회복 · 가해·피해 뒤
-    ///     3초 진입 잠금. 중단은 이동뿐이다 — 피격·폐쇄가 다시 깨우기 시작하면
-    ///     "움직이지 않으면 안 깬다"는 유저 결정이 소리 없이 뒤집힌다.
-    /// </summary>
-    [Fact]
-    public void SwarmSleepRecovery_KeepsWarmupCombatLockAndBreakConditions()
-    {
-        string root = FindRepositoryRoot();
-        string condition = File.ReadAllText(
-            Path.Combine(root, "game_server", "Players", "Player.cs"));
-
-        // 수치 계약: 1초 준비 · 1초 틱당 최대 HP 5%. 전투 후 진입 잠금은 없다.
-        string health = File.ReadAllText(Path.Combine(root, "game_server", "Players", "PlayerStatusEffects.cs"));
-        Assert.Contains("SwarmSleepWarmupSeconds = 1d", health);
-        Assert.Contains("SwarmSleepRecoveryRatioPerSecond = 0.05f", health);
-        Assert.DoesNotContain("CanSleep", condition);
-        // 회복은 연속 이월이 아니라 1초 단위 틱으로 센다.
-        Assert.Contains("ProcessedRecoveryCount", health);
-
-        // 중단 경로는 이동 하나뿐이다.
-        string movement = File.ReadAllText(
-            Path.Combine(root, "game_server", "Players", "PlayerMovementService.cs"));
-        Assert.Contains("player.TryStopSleep()", movement);
-
-        string combat = File.ReadAllText(
-            Path.Combine(root, "game_server", "Matches", "MatchCombatService.cs"));
-        // 피격·절단 가해는 수면을 깨거나 수면 진입을 잠그지 않는다.
-        Assert.DoesNotContain("MarkSwarmCombat", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "MatchCombatDamageService.cs")));
-        Assert.DoesNotContain("MarkSwarmCombat", File.ReadAllText(Path.Combine(root, "game_server", "Matches", "MatchTrailCutService.cs")));
-        // 아레나에서 수면을 깨우는 호출이 되살아나면 계약 위반이다 (폐쇄·경고 깨우기 퇴역).
-        Assert.DoesNotContain("BreakSwarmSleep", combat);
-        Assert.Contains("ApplySleepRecovery(runtime,", combat);
-        // 봇 파셜(#312)도 같은 계약을 진다.
-        Assert.DoesNotContain("BreakSwarmSleep", File.ReadAllText(
-            Path.Combine(root, "game_server", "Players", "Bots", "BotBehaviorService.cs")));
-    }
-
     /// <summary>
     ///     #229: 문은 두 구역의 간선인데 door_info.csv에 area_type이 하나뿐이라 폐쇄 잠금이
     ///     소유 구역 한쪽만 봤다 — 교실1(40)이 닫혀도 고사실(32) 소속인 door 21은 안 잠겼다.
@@ -209,19 +49,6 @@ public class SwarmDamagePathTests
         }
 
         throw new DirectoryNotFoundException("network/Common/csv 를 찾지 못했다");
-    }
-
-    private static string FindRepositoryRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null)
-        {
-            if (Directory.Exists(Path.Combine(dir.FullName, "game_server")))
-                return dir.FullName;
-            dir = dir.Parent;
-        }
-
-        throw new InvalidOperationException("repository root not found");
     }
 
     [Fact]

@@ -126,18 +126,6 @@ public sealed class GameServerDependencyInjectionTests
             parameter => parameter.ParameterType == typeof(PlayerHealthService) || parameter.ParameterType == typeof(PlayerEliminationService));
     }
 
-    [Fact]
-    public void MatchResultServiceDoesNotOwnAConnectionOrDependOnGameServer()
-    {
-        using var provider = CreateProvider();
-        var results = provider.GetRequiredService<game_server.matches.MatchResultService>();
-        Assert.Same(results, provider.GetRequiredService<game_server.matches.MatchResultService>());
-
-        var fields = typeof(game_server.matches.MatchResultService)
-            .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        Assert.DoesNotContain(fields, field => field.FieldType == typeof(GameServer));
-        Assert.DoesNotContain(fields, field => field.FieldType == typeof(game_server.sessions.GameClientSession));
-    }
     internal static ServiceProvider CreateProvider(network.infrastructure.messaging.INatsClient? natsClient = null,
         Action<IServiceCollection>? configure = null)
     {

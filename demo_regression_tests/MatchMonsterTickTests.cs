@@ -259,14 +259,6 @@ public class MatchMonsterTickTests
         AreaType area = AreaType.None) =>
         [new ParticipantInput(1, ResolveArea(area), position)];
 
-    private static IReadOnlyCollection<ParticipantInput> ManyParticipants(
-        int count,
-        Vector3f position,
-        AreaType area = AreaType.None) =>
-        Enumerable.Range(1, count)
-            .Select(id => new ParticipantInput(id, ResolveArea(area), position))
-            .ToList();
-
     // 기본 구역 = 매치 맵 운동장 (기본 매개변수는 컴파일 상수만 허용 — None을 센티널로 쓴다).
     private static AreaType ResolveArea(AreaType area) =>
         area == AreaType.None ? AreaType.S2Corridor9 : area;
@@ -285,7 +277,7 @@ public class MatchMonsterTickTests
             manager.Runtime.Monsters.Entities[1] = new Monster
             {
                 MonsterId = 1, Alive = true, Health = 100, Position = roomCenter,
-                 ChaseTargetPlayerId = 1
+                ChaseTargetPlayerId = 1
             };
         }
         var roomMonsterIds = new HashSet<int> { 1 };

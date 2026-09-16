@@ -89,7 +89,6 @@ public sealed class GameMatchEntryServiceTests
         var restoredBot = Assert.Single(restored.PlayerRoster, profile => profile.PlayerId == botId);
         Assert.Equal(bot.Name, restoredBot.Name);
         Assert.Equal(bot.WearItemIdList, restoredBot.WearItemIdList);
-        Assert.DoesNotContain("G_TO_C_PLAYER_APPEARANCE", Enum.GetNames<Protocol>());
     }
 
     [Fact]

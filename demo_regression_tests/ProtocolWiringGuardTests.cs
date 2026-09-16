@@ -90,34 +90,10 @@ public class ProtocolWiringGuardTests
         Assert.True(roster >= 0 && roster < area && roster < join);
         string entry = File.ReadAllText(Path.Combine(root, "game_server", "Matches", "GameMatchEntryService.cs"));
         Assert.Contains("matchRuntimes.GetOrCreateAsync(matchingId, manifest)", entry);
-        Assert.DoesNotContain("_botIdCounter", entry);
         string store = File.ReadAllText(Path.Combine(root, "game_server", "Matches", "MatchRuntimeStore.cs"));
         int initialize = store.IndexOf("runtime.InitializeMatch(mode, spawnCells, roster)", StringComparison.Ordinal);
         int register = store.IndexOf("return Register(runtime);", StringComparison.Ordinal);
         Assert.True(initialize >= 0 && register > initialize);
-    }
-
-    [Fact]
-    public void GameConnectionLivenessUsesNetworkTimeoutOnly()
-    {
-        string root = FindRepositoryRoot();
-        string gameServer = File.ReadAllText(Path.Combine(root, "game_server", "GameServer.cs"));
-        string gameSession = File.ReadAllText(Path.Combine(
-            root, "game_server", "Sessions", "GameClientSession.cs"));
-        string gameConnection = File.ReadAllText(Path.Combine(
-            root, "game_server", "Sessions", "GameClientSession.cs"));
-
-        Assert.DoesNotContain("HeartbeatCheckIntervalSeconds", gameServer);
-        Assert.DoesNotContain("StartHeartbeatChecker", gameServer);
-        Assert.DoesNotContain("CheckHeartbeatTimeouts", gameServer);
-        Assert.DoesNotContain("HeartbeatTimeoutSeconds", gameSession);
-        Assert.DoesNotContain("_lastHeartbeatTime", gameSession);
-        Assert.DoesNotContain("IsHeartbeatTimedOut", gameConnection);
-
-        // Heartbeat packets remain ordinary inbound traffic. TcpConnection touches the shared
-        // ConnectionTimeouts idle window before dispatching them to this response handler.
-        Assert.Contains("RegisterHandler(Protocol.C_TO_G_HEART_BEAT", gameSession);
-        Assert.Contains("PacketMaker.G_TO_C_HEART_BEAT", gameConnection);
     }
 
     [Fact]

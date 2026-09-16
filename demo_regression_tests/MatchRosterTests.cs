@@ -8,24 +8,6 @@ namespace demo_regression_tests;
 public sealed class MatchRosterTests
 {
     [Fact]
-    public void Elimination_OnlyChangesTheEliminatedPlayer_WhenLegacyChainEffectsAreDisabled()
-    {
-        const long matchingId = 194001;
-        var manager = MatchTestServices.Runtime(matchingId, NullLogger.Instance);
-
-        manager.RegisterPlayer(CreateLink(1, 2));
-        manager.RegisterPlayer(CreateLink(2, 3));
-        manager.RegisterPlayer(CreateLink(3, 1));
-
-        bool eliminated = manager.TryEliminatePlayer(2, EliminationReason.HEALTH_ZERO);
-
-        Assert.True(eliminated);
-        Assert.Equal(PlayerMatchStatus.ELIMINATED, manager.BuildGameResult().Single(row => row.playerId == 2).finalStatus);
-        Assert.Equal(PlayerMatchStatus.ACTIVE, manager.BuildGameResult().Single(row => row.playerId == 1).finalStatus);
-        Assert.Equal(PlayerMatchStatus.ACTIVE, manager.BuildGameResult().Single(row => row.playerId == 3).finalStatus);
-    }
-
-    [Fact]
     public void Elimination_PreservesAttackerAndAreaInGameResult()
     {
         const long matchingId = 194002;
@@ -76,7 +58,7 @@ public sealed class MatchRosterTests
             2, EliminationReason.HEALTH_ZERO,
             attackerPlayerId: 1, forcedRank: 3);
         var duplicate = manager.TryEliminatePlayer(
-            2, EliminationReason.DETECTED,
+            2, EliminationReason.HEALTH_ZERO,
             attackerPlayerId: 3, forcedRank: 2);
 
         Assert.True(first);

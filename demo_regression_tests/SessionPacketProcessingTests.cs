@@ -53,29 +53,10 @@ public sealed class SessionPacketProcessingTests
     }
 
     [Fact]
-    public void MovementValidationStaysInHandler()
+    public void MovementWireContracts_CarryServerTimeAndOrbPhase()
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null && !File.Exists(Path.Combine(directory.FullName, "server.sln")))
-            directory = directory.Parent;
-        string root = directory!.FullName;
-        string main = File.ReadAllText(Path.Combine(root, "game_server", "Sessions", "GameClientSession.cs"));
-        string move = File.ReadAllText(Path.Combine(root, "game_server", "Sessions", "GameClientSession.Movement.cs"));
-        Assert.DoesNotContain("ScheduleMessageAsync", main);
-        Assert.DoesNotContain("ScheduleMessageAsync", move);
-        int check = move.IndexOf("!PlayerMovementService.IsFinite(msg.Position)", StringComparison.Ordinal);
-        int apply = move.IndexOf("_movement.ProcessMovement(match, Player, msg, deltaTime)", StringComparison.Ordinal);
-        Assert.True(check >= 0 && check < apply);
-    }
-    [Fact]
-    public void MovementWireContracts_DoNotContainInputSequence()
-    {
-        string request = MessagePackSerializer.ConvertToJson(MessagePackSerializer.Serialize(
-            new C_TO_G_MOVE { Position = new Vector3f(), Velocity = new Vector3f() }));
         string response = MessagePackSerializer.ConvertToJson(MessagePackSerializer.Serialize(
             new G_TO_C_MOVE { Objects = [new GameObjectInfo()] }));
-        Assert.DoesNotContain("inputSeq", request);
-        Assert.DoesNotContain("lastProcessedInput", response);
         Assert.Contains("serverTime", response);
         Assert.Contains("orbPhase", response);
     }

@@ -1,4 +1,3 @@
-using System.Reflection;
 using game_server.matches;
 using game_server.players;
 using game_server.sessions;
@@ -33,9 +32,6 @@ public sealed class MatchPlayerStateTests
             Assert.True(match.TryEliminatePlayer(10, EliminationReason.PRESSURE_FIELD));
             Assert.True(session.Player.IsEliminated);
         }
-
-        foreach (string name in new[] { "CurrentHealth", "Health", "CurrentArea", "CurrentMapId", "Position", "Condition", "Movement", "PlayerMatchStatus", "IsEliminated" })
-            Assert.Null(typeof(GameClientSession).GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic));
     }
 
     [Fact]
@@ -76,7 +72,6 @@ public sealed class MatchPlayerStateTests
         var bot = new Player(new PlayerInfo { PlayerId = -1 });
         match.RegisterPlayer(human);
         match.RegisterPlayer(bot);
-        Assert.Null(typeof(Player).GetProperty("MapId"));
         Assert.Null(human.Session);
         Assert.Null(bot.Session);
         Assert.Empty(match.GetSessions());

@@ -105,25 +105,6 @@ public sealed class GameClientSessionConnectPublicationTests
     }
 
     [Fact]
-    public void SessionSource_KeepsConnectionLifecycleTogetherAndSeparatesGameplayMethods()
-    {
-        string directory = Path.Combine(FindRepositoryRoot(), "game_server", "Sessions");
-        string main = File.ReadAllText(Path.Combine(directory, "GameClientSession.cs"));
-        Assert.False(File.Exists(Path.Combine(directory, "GameClientSession.Connection.cs")));
-        Assert.Contains("private async Task HandleConnect(", main);
-        Assert.Contains("public override void OnDisconnect()", main);
-        Assert.Contains("public override void OnRemoved()", main);
-        Assert.DoesNotContain("private Task HandleSocialAction(", main);
-        Assert.DoesNotContain("private void AdvanceOrbOrbit(", main);
-        Assert.Contains("internal Action? MarkGameEndedAndPrepareLifecyclePublication()", main);
-        Assert.Contains("private void SyncPlayersOnEntry()", main);
-        Assert.Contains("private Task HandleSocialAction(", File.ReadAllText(Path.Combine(directory, "GameClientSession.Social.cs")));
-        Assert.Contains("public void AdvanceOrbit(", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Players", "PlayerOrbState.cs")));
-        Assert.False(File.Exists(Path.Combine(directory, "GameClientSession.MatchEnd.cs")));
-        Assert.False(File.Exists(Path.Combine(directory, "GameClientSession.Snapshots.cs")));
-    }
-
-    [Fact]
     public async Task SessionKeepsOriginalRuntime_AndRejectsItAfterCleanupEvenIfIdIsRecreated()
     {
         using var fixture = new ConnectFixture();
@@ -172,13 +153,9 @@ public sealed class GameClientSessionConnectPublicationTests
             Assert.Equal(10, first.Player.Cell!.X);
             Assert.Equal(0f, first.Player.Velocity.Magnitude());
             Assert.Equal(0f, first.Player.Rotation);
-            Assert.Same(first.Player.Position, first.Player.Position);
-            Assert.Equal(first.Player.GameInfo.ObjectInfo.Area, first.Player.GameInfo.ObjectInfo.Area);
             Assert.Null(second.Player.Position);
             Assert.Null(second.Player.Cell);
         }
-        Assert.Null(typeof(GameClientSession).GetProperty("Position"));
-        Assert.Null(typeof(GameClientSession).GetProperty("CurrentArea"));
     }
 
     [Fact]
@@ -409,50 +386,28 @@ public sealed class GameClientSessionConnectPublicationTests
     }
 
     [Fact]
-    public void ConnectHandler_WiresConnectProtocol_AndQueuesCountdownBeforeCommittedAck()
+    public async Task Connect_QueuesStartCountdownBeforeCommittedSuccessAck()
     {
-        string root = FindRepositoryRoot();
-        string sessionSource = File.ReadAllText(
-            Path.Combine(root, "game_server", "Sessions", "GameClientSession.cs"));
-        string connectionSource = File.ReadAllText(
-            Path.Combine(root, "game_server", "Sessions", "GameClientSession.cs"));
+        using var fixture = new ConnectFixture();
+        var order = new List<Protocol>();
+        var session = fixture.CreateSession(74012, 8112, _ =>
+        {
+            order.Add(Protocol.G_TO_C_CONNECT_RESULT);
+            return true;
+        }, prepareMatch: false);
+        ((AcceptingConnection)fixture.Connection).BeforeSend = packet =>
+        {
+            using var wire = Packet.Create(packet.ToBytes());
+            var protocol = (Protocol)wire.PopProtocolId();
+            if (protocol == Protocol.G_TO_C_MATCH_START_COUNTDOWN)
+                order.Add(protocol);
+        };
 
-        Assert.Contains("ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CONNECT", sessionSource);
-        Assert.Contains("async bytes => await HandleMessage<C_TO_G_CONNECT>(bytes, HandleConnect)", sessionSource);
-        Assert.Contains("trySendConnectSuccessResponse ?? Connection.TrySend", sessionSource);
-        Assert.Contains("Connection.TryMarkAuthenticated(() => Volatile.Write(ref _entryCompleted, 1))", connectionSource);
+        await fixture.ConnectAsync(session, 74012, 8112);
 
-        // 세션 등록·초기화 블록·인증 커밋은 매치 잠금 안에서, 성공 ACK 큐 적재는 잠금 밖에서.
-        int registration = connectionSource.IndexOf("await _matchEntry.PrepareMatchAsync(matchingId)", StringComparison.Ordinal);
-        int registerCallback = connectionSource.IndexOf("_registerSessionCallback(playerId, this)", registration, StringComparison.Ordinal);
-        // 등록 콜백은 이전 세션을 반환하고, 매치·연결 잠금을 벗어난 뒤 이전 연결을 끊는다.
-        string normalized = connectionSource.Replace("\r\n", "\n");
-        Assert.Contains(
-            "registered = true;\n            }\n\n            if (previousSession != null)",
-            normalized);
-        int disconnect = connectionSource.IndexOf("previousSession.ForceDisconnect();", registerCallback, StringComparison.Ordinal);
-        int markServerDisconnect = connectionSource.IndexOf("previousSession.MarkDisconnectedByServer();", registerCallback, StringComparison.Ordinal);
-        Assert.True(registerCallback < markServerDisconnect && markServerDisconnect < disconnect);
-        Assert.Contains("sessions.Register,", File.ReadAllText(Path.Combine(root, "game_server", "GameServer.cs")));
-        int countdown = connectionSource.IndexOf("SendMatchStartCountdown(matchingId);", disconnect, StringComparison.Ordinal);
-        int response = connectionSource.IndexOf("CreateConnectResultPacket(", countdown, StringComparison.Ordinal);
-        int commitScope = connectionSource.IndexOf("using (runtime.Enter())", response, StringComparison.Ordinal);
-        int authentication = connectionSource.IndexOf("Connection.TryMarkAuthenticated", commitScope, StringComparison.Ordinal);
-        int publication = connectionSource.IndexOf("_trySendConnectSuccessResponse(successResponse)", authentication, StringComparison.Ordinal);
-        Assert.True(registration >= 0 && registration < registerCallback && registerCallback < countdown &&
-                    countdown < response && response < commitScope && commitScope < authentication &&
-                    authentication < publication);
-
-        int registeredFailure = connectionSource.IndexOf("if (registered)", publication, StringComparison.Ordinal);
-        int deferredAbort = connectionSource.IndexOf("HandleEntryFailureOnce()", registeredFailure, StringComparison.Ordinal);
-        int earlyFailureResponse = connectionSource.IndexOf(
-            "SendConnectFailure(ErrorCode.GAME_ENTRY_FAILED",
-            deferredAbort,
-            StringComparison.Ordinal);
-        Assert.True(registeredFailure >= 0 &&
-                    registeredFailure < deferredAbort &&
-                    deferredAbort < earlyFailureResponse);
-        Assert.Contains("throw new OperationCanceledException(\"Match became terminal during game entry.\")", connectionSource);
+        // 시작 시각은 인증 커밋 전에 큐에 들어가고, 성공 ACK는 커밋 뒤 잠금 밖에서 나간다.
+        Assert.Equal(new[] { Protocol.G_TO_C_MATCH_START_COUNTDOWN, Protocol.G_TO_C_CONNECT_RESULT }, order);
+        Assert.Equal(1, GetIntField(session, "_entryCompleted"));
     }
 
     private static bool CommitAuthentication(
@@ -501,60 +456,6 @@ public sealed class GameClientSessionConnectPublicationTests
 
         using var makerPacket = PacketMaker.G_TO_C_CONNECT_RESULT(false, errorCode);
         Assert.Equal(errorCode, DeserializeConnectResult(makerPacket).Body.ErrorCode);
-    }
-
-    [Fact]
-    public void CompositionLoad_ChecksConnectionAndSessionDoesNotReloadProfile()
-    {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(), "game_server", "Sessions", "GameClientSession.cs"));
-        Assert.DoesNotContain("await PlayerInfo.Load(", source);
-        int load = source.IndexOf("await _matchEntry.PrepareMatchAsync(", StringComparison.Ordinal);
-        Assert.True(load >= 0);
-        int statementEnd = source.IndexOf(';', load);
-        Assert.StartsWith("Volatile.Write(ref _match, runtime);", source[(statementEnd + 1)..].TrimStart());
-        int inventorySnapshot = source.IndexOf("SendOrbList();", statementEnd, StringComparison.Ordinal);
-        Assert.True(inventorySnapshot > statementEnd);
-        string initialization = source[statementEnd..inventorySnapshot];
-        Assert.Equal(2, initialization.Split("EnsureConnectionActive();").Length - 1);
-        Assert.Contains("using (runtime.Enter())", initialization);
-        Assert.Contains("if (runtime.IsEnded)", initialization);
-        int synchronization = source.IndexOf("SyncPlayersOnEntry();", inventorySnapshot, StringComparison.Ordinal);
-        int commit = source.IndexOf("await _matchEntry.RecordEntryAsync(", synchronization, StringComparison.Ordinal);
-        Assert.True(synchronization > inventorySnapshot && commit > synchronization);
-        Assert.DoesNotContain("await ", source[inventorySnapshot..commit]);
-        Assert.EndsWith("}", source[synchronization..commit].TrimEnd());
-        Assert.DoesNotContain("UpdatePlayerProfile(", initialization);
-    }
-
-    [Fact]
-    public void ClientMatchAppearanceUsesRosterAndIgnoresLateLobbyWearForGameCharacter()
-    {
-        string scripts = Path.Combine(FindRepositoryRoot(), "client", "Assets", "Scripts");
-        string packets = File.ReadAllText(Path.Combine(scripts, "Managers", "Map", "MapManager.Packets.cs"));
-        Assert.Contains("playerId != GameUser.Instance.PlayerInfo.PlayerId &&", packets);
-        Assert.Contains("resetExistingPosition || existingPlayer.ObjectInfo.Area != objectInfo.Area", packets);
-        Assert.Contains("ApplyPlayerState(playerId, gameInfo.State)", packets);
-        Assert.Contains("ShouldDeferLocalExploreState(playerId)", packets);
-        Assert.Contains("existingPlayer.SetGameObject(gameInfo, this)", packets);
-        string map = File.ReadAllText(Path.Combine(scripts, "Managers", "Map", "MapManager.cs"));
-        Assert.Contains("SetPlayer(GameUser.Instance.PlayerInfo)", map);
-        string inventory = File.ReadAllText(Path.Combine(scripts, "GameUser.Inventory.cs"));
-        Assert.Contains("playerComponent && ObjectInfo?.MapId == MapId.Camp", inventory);
-        string network = File.ReadAllText(Path.Combine(scripts, "GameUser.Network.cs"));
-        Assert.Contains("WearItemIdList = new List<int>(ownProfile.Wear)", network);
-    }
-
-    [Fact]
-    public void EntrySnapshotPublishesOnlyPressureFieldClock()
-    {
-        string directory = Path.Combine(FindRepositoryRoot(), "game_server", "Sessions");
-        string source = File.ReadAllText(Path.Combine(directory, "GameClientSession.cs"));
-        string field = source[source.IndexOf("private void SendPressureFieldState()", StringComparison.Ordinal)..];
-        Assert.Contains("Protocol.G_TO_C_SWARM_FIELD_STATE", field);
-        Assert.Contains("Closures.GameStartTime", field);
-        Assert.DoesNotContain("Protocol.G_TO_C_AREA_CLOSED", field);
-        Assert.Contains("SendPressureFieldState();", File.ReadAllText(Path.Combine(directory, "GameClientSession.cs")));
     }
 
     private static Packet CreateSuccessPacket(GameClientSession session) =>
@@ -627,19 +528,6 @@ public sealed class GameClientSessionConnectPublicationTests
             "StateActive",
             BindingFlags.Static | BindingFlags.NonPublic)!.GetRawConstantValue()!;
         SetIntField(connection, "_state", active);
-    }
-
-    private static string FindRepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null)
-        {
-            if (Directory.Exists(Path.Combine(directory.FullName, "game_server", "Sessions")))
-                return directory.FullName;
-            directory = directory.Parent;
-        }
-
-        throw new DirectoryNotFoundException("Could not locate repository root from test output path.");
     }
 
     private sealed class ConnectFixture : IDisposable

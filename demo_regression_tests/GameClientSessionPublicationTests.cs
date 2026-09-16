@@ -979,76 +979,6 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(1, TestGameSessionServices.SummonStones(first.Match, first.PlayerId!.Value).StoneCount);
     }
 
-    [Fact]
-    public void SourceScope_ActivatesOnlySelectedPlayerOuterHandlers()
-    {
-        string root = FindRepositoryRoot();
-        string session = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
-        Assert.False(File.Exists(Path.Combine(root, "game_server", "Sessions", "GameClientSession.RngCollect.cs")));
-        Assert.False(File.Exists(Path.Combine(root, "game_server", "Sessions", "GameClientSession.GroundItem.cs")));
-        string orbSummon = ReadNormalizedSource(
-            root,
-            "game_server",
-            "Sessions",
-            "GameClientSession.Orb.cs");
-        string doors = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Interactions.cs");
-        string connection = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
-        string combat = ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatService.cs");
-        string bots = ReadNormalizedSource(root, "game_server", "Players", "Bots", "BotBehaviorService.cs");
-        string botPickup = ReadNormalizedSource(root, "game_server", "Players", "PlayerPickupService.cs");
-
-        Assert.DoesNotContain("AsyncLocal", session);
-        Assert.DoesNotContain("IsMessageLifecycleActive", session);
-        Assert.DoesNotContain("IsMessageLifecycleActive",
-            ReadNormalizedSource(root, "network", "Core", "SessionBase.cs"));
-        Assert.DoesNotContain("RunWithMatchLock", session);
-        Assert.DoesNotContain(Enum.GetNames<Protocol>(), name => name.Contains("RNG_COLLECT") || name.Contains("INTERACT_COOLDOWN"));
-        var autoPickup = ReadNormalizedSource(root, "game_server", "Players", "PlayerPickupService.cs");
-        Assert.Contains("Monitor.IsEntered(match.MatchLock)", autoPickup);
-        Assert.Contains("match.IsEnded", autoPickup);
-        Assert.DoesNotContain("RunWithMatchLock", orbSummon);
-        Assert.Equal(2, CountOccurrences(orbSummon, "using (match.Enter())"));
-        Assert.Equal(2, CountOccurrences(orbSummon, "if (match.IsEnded"));
-        Assert.DoesNotContain("SwarmGrowthPickCallback", session);
-        Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
-        Assert.DoesNotContain("SwarmGrowthPickCallback", combat);
-        Assert.DoesNotContain("SwarmOrbDecisionCallback", combat);
-        string playerState = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.PlayerState.cs");
-        Assert.DoesNotContain("RunWithMatchLock", playerState);
-        Assert.DoesNotContain("ProcessPlayerState", playerState);
-        Assert.DoesNotContain("new Timer(", playerState);
-        Assert.Equal(2, CountOccurrences(playerState, "_interactions.CancelPendingInteractions(match, Player)"));
-
-        Assert.DoesNotContain("ProcessUseInGameItem", playerState);
-        Assert.DoesNotContain("HandleUseInGameItem", playerState);
-        Assert.DoesNotContain("HandleHealthChanged", playerState);
-        Assert.DoesNotContain("SendInGameInventory", playerState);
-        Assert.DoesNotContain("HandleUseInGameItem", session);
-        Assert.DoesNotContain("C_TO_G_USE_INGAME_ITEM", Enum.GetNames<Protocol>());
-        Assert.DoesNotContain("G_TO_C_USE_INGAME_ITEM_RESULT", Enum.GetNames<Protocol>());
-        Assert.DoesNotContain("HandleRestStateRequest", playerState);
-        Assert.DoesNotContain("await ", playerState);
-        Assert.Equal(1, CountOccurrences(playerState, "using (match.Enter())"));
-        Assert.Equal(1, CountOccurrences(playerState, "if (match.IsEnded"));
-        Assert.DoesNotContain("RunWithMatchLock(", doors);
-        Assert.Contains("using (match.Enter())", doors);
-        Assert.DoesNotContain("ProcessDoorOpenRequest", doors);
-        Assert.DoesNotContain("RunWithMatchLock(", ReadMethodSlice(connection,
-            "private async Task HandleConnect(", "private void SyncPlayersOnEntry("));
-        Assert.DoesNotContain("RunWithMatchLock", combat);
-        Assert.DoesNotContain("RunWithMatchLock", bots);
-        Assert.DoesNotContain("RunWithMatchLock", botPickup);
-        Assert.Contains("victim.Interactions.Cancel()", ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatDamageService.cs"));
-        Assert.Contains("victim.Session?.SendDoorOpenInterrupted(interactId);", ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatDamageService.cs"));
-
-        Assert.DoesNotContain(
-            "RunWithMatchLock",
-            ReadMethodSlice(
-                doors,
-                "internal void SendDoorOpenInterrupted(int interactId)",
-                "private void SendInteractableList("));
-    }
-
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -1152,31 +1082,6 @@ public sealed class GameClientSessionPublicationTests
         }
 
         await session.OnMessageFromClient(wireBytes);
-    }
-
-    private static string ReadNormalizedSource(string repositoryRoot, params string[] parts) =>
-        File.ReadAllText(Path.Combine([repositoryRoot, .. parts]))
-            .Replace("\r\n", "\n", StringComparison.Ordinal);
-
-    private static int CountOccurrences(string source, string marker)
-    {
-        int count = 0;
-        int offset = 0;
-        while ((offset = source.IndexOf(marker, offset, StringComparison.Ordinal)) >= 0)
-        {
-            count++;
-            offset += marker.Length;
-        }
-        return count;
-    }
-
-    private static string ReadMethodSlice(string source, string startMarker, string endMarker)
-    {
-        int start = source.IndexOf(startMarker, StringComparison.Ordinal);
-        Assert.True(start >= 0, $"Could not find '{startMarker}'.");
-        int end = source.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
-        Assert.True(end > start, $"Could not find '{endMarker}' after '{startMarker}'.");
-        return source[start..end];
     }
 
     private static string FindRepositoryRoot()
@@ -1536,12 +1441,6 @@ public sealed class GameClientSessionPublicationTests
         {
             SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
             TestGameSessionServices.BindMatch(session, matchingId);
-        }
-
-        public void SeedPendingFinish(RecordingSession session, int interactId)
-        {
-            var pending = session.Player;
-            pending.Interactions.Begin(interactId, 0);
         }
 
         public void Dispose()

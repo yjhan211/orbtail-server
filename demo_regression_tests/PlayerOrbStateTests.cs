@@ -1,6 +1,4 @@
 using game_server.players;
-using network.common.data;
-using network.common.data.helpers;
 
 namespace demo_regression_tests;
 
@@ -15,7 +13,7 @@ public sealed class PlayerOrbStateTests
     public PlayerOrbStateTests()
     {
         // 오브 판별에 필요한 데이터를 직접 준비해 다른 테스트의 실행 순서에 의존하지 않는다.
-        InitializeBattleCombatData();
+        TestGameData.EnsureBattleItemCombatLoaded();
     }
 
     [Fact]
@@ -54,24 +52,4 @@ public sealed class PlayerOrbStateTests
         Assert.True(orbs.TryAddOrbWithCapacity(107000010, 1, out var next));
         Assert.NotEqual(orb.ItemUid, next!.ItemUid);
     }
-
-    private static void InitializeBattleCombatData()
-    {
-        BattleItemCombatData.Initialize(CsvHelper.LoadCsv(Path.Combine(
-            FindRepositoryRoot(), "network", "Common", "csv", "battle_item_combat.csv")));
-    }
-
-    private static string FindRepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null &&
-               !Directory.Exists(Path.Combine(directory.FullName, "network", "Common", "csv")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName ??
-               throw new DirectoryNotFoundException("Could not locate repository root from test output path.");
-    }
-
 }

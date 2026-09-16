@@ -80,20 +80,6 @@ public sealed class MovementValidationServiceTests
     }
 
     [Fact]
-    public void SessionCommitsCellOnlyAfterDoorRejectionPath()
-    {
-        string source = File.ReadAllText(Path.Combine(FindRoot(), "game_server", "Players", "PlayerMovementService.cs"));
-        int check = source.IndexOf("match.Doors.GetBlockingDoor(", StringComparison.Ordinal);
-        int reject = source.IndexOf("if (transitionDoor != null)", check, StringComparison.Ordinal);
-        int stop = source.IndexOf("return true;", reject, StringComparison.Ordinal);
-        int commit = source.IndexOf("player.ApplyValidatedMovement(validation.Position, validation.Velocity, msg.Rotation);", StringComparison.Ordinal);
-        Assert.True(check >= 0 && reject > check && stop > reject && commit > stop);
-        Assert.Contains("WorldToCell(Config.SWARM_MATCH_MAP, player.Position)", source);
-        Assert.DoesNotContain("player.Session", source);
-        Assert.DoesNotContain("PacketMaker", source);
-    }
-
-    [Fact]
     public void BroadcastVelocityCannotExceedAuthoritativeSpeed()
     {
         var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, MatchSpawnData.GetPhaseRoomCandidates()[0]);

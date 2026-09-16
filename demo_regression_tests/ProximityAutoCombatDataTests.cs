@@ -1,63 +1,7 @@
-using System.Collections.Immutable;
-using System.Reflection;
-using System.Text.Json;
-using game_server;
-using game_server.matches;
-using game_server.players;
-using game_server.sessions;
-using network.common.data;
-using network.common.data.helpers;
-
 namespace demo_regression_tests;
 
 public class ProximityAutoCombatDataTests
 {
-    [Fact]
-    public void ChalkWeaponVariantsHaveDistinctDamage()
-    {
-        string csvRoot = Path.Combine(FindRepositoryRoot(), "network", "Common", "csv");
-        var damageByItemId = CsvHelper.LoadCsv(Path.Combine(csvRoot, "item_info_consumable.csv"))
-            .Where(row => row["item_id"] is "201000015" or "201000016" or "201000017")
-            .ToDictionary(
-                row => int.Parse(row["item_id"]),
-                row => JsonSerializer.Deserialize<List<List<int>>>(row["buff_list"])![0][1]);
-
-        Assert.Equal(6, damageByItemId[201000015]);
-        Assert.Equal(10, damageByItemId[201000016]);
-        Assert.Equal(14, damageByItemId[201000017]);
-    }
-
-    [Fact]
-    public void GuardianCombatDataDefinesLegacyAndThreeColoredOrbTierLines()
-    {
-        string csvRoot = Path.Combine(FindRepositoryRoot(), "network", "Common", "csv");
-        BattleItemCombatData.Initialize(
-            CsvHelper.LoadCsv(Path.Combine(csvRoot, "battle_item_combat.csv")));
-
-        var definitions = BattleItemCombatData.GetAll()
-            .Where(definition => definition.Family == "orb")
-            .ToArray();
-        int[][] orbLines =
-        [
-            [107000003, 107000004, 107000006],
-            [107000010, 107000011, 107000012],
-            [107000020, 107000021, 107000022],
-            [107000030, 107000031, 107000032]
-        ];
-
-        Assert.Equal(orbLines.SelectMany(line => line), definitions.Select(definition => definition.ItemId));
-        Assert.All(definitions, definition =>
-        {
-            Assert.Equal("orb", definition.Family);
-            Assert.InRange(definition.Tier, 1, 3);
-            Assert.True(definition.AttackRange > 0f);
-            Assert.True(definition.Damage > 0);
-            Assert.True(definition.AttackIntervalSeconds > 0f);
-        });
-        foreach (int[] orbLine in orbLines)
-            AssertGuardianTierGrowth(definitions.Where(definition => orbLine.Contains(definition.ItemId)).ToArray());
-    }
-
     [Fact]
     public void GuardianCombatDataMatchesBothUnityMirrors()
     {
@@ -104,100 +48,6 @@ public class ProximityAutoCombatDataTests
     }
 
     [Fact]
-    public void AuthoritativeProximityDamageFeedsNumericWorldPopup()
-    {
-        string repoRoot = FindRepositoryRoot();
-        string gameServerSource = ReadNormalizedSource(
-            repoRoot, "game_server", "Matches", "MatchCombatService.cs");
-        string sessionSource = ReadNormalizedSource(
-            repoRoot, "game_server", "Matches", "MatchCombatDamageService.cs");
-        string mapSource = ReadMapManagerSources(repoRoot);
-        string playerSource = ReadNormalizedSource(
-            repoRoot, "client", "Assets", "Scripts", "Components", "Player", "Player.cs");
-
-        Assert.Contains("ApplyProximityAutoCombatHit(runtime, healthService, target,", sessionSource);
-        Assert.Contains("attack.WeaponItemId,", gameServerSource);
-        Assert.Contains("WeaponItemId = weaponItemId", sessionSource);
-        Assert.Contains("Damage = damage", sessionSource);
-        // 명중 전용 연출로 리팩터링되어 단일 호출 형태를 검사한다.
-        Assert.Contains(
-            "PlayGuardianHitOnly(packet.AttackerId, localPlayerIsAttacker: false, packet.Damage);",
-            mapSource);
-        Assert.Contains(
-            "int damageValue = authoritativeDamageValue > 0 ? authoritativeDamageValue : 0;",
-            mapSource);
-        // 수치 팝업은 MonsterDamageLabel/DamageComboDisplay 경로가 맡는다 (Player.ShowGuardianHitDisplay는 호출자 0으로 #252에서 삭제).
-        Assert.DoesNotContain("오염 +", playerSource);
-    }
-
-    [Fact]
-    public void OrbVisualPublicationCapture_DeepCopiesItemIds()
-    {
-        var payload = typeof(MatchOrbVisual).GetProperty("OrbItemIds");
-        Assert.NotNull(payload);
-        Assert.Equal(typeof(ImmutableArray<int>), payload.PropertyType);
-    }
-
-    [Fact]
-    public void OrbVisualPublication_ComputesEachActorOnceAndDelegatesSendToObserverSessions()
-    {
-        string root = FindRepositoryRoot();
-        string builder = ReadNormalizedSource(root, "game_server", "Matches", "MatchOrbVisual.cs");
-        string combat = ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatService.cs");
-        string publish = ReadMethodSlice(
-            ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Orb.cs"),
-            "internal void SendOrbVisualStates(",
-            "internal void SendOrbVisualStateIfChanged(");
-
-        AssertInOrder(
-            combat,
-            "var orbVisuals = MatchOrbVisual.Build(runtime, actors);",
-            "session.SendOrbVisualStates(orbVisuals);");
-        AssertInOrder(
-            publish,
-            "foreach (var visual in visuals)",
-            "if (Player.GameInfo.ObjectInfo.Area != visual.Area)",
-            "ForgetOrbVisualState(visual.ActorPlayerId);",
-            "SendOrbVisualStateIfChanged(visual);");
-        // 빌더는 계산만 한다. 패킷 생성·전송·캐시는 세션에 있다.
-        Assert.DoesNotContain("Packet.Create", builder);
-        Assert.DoesNotContain(".TrySend(", builder);
-        Assert.DoesNotContain("_lastSentOrbVisualStates", builder);
-        Assert.DoesNotContain("catch", builder);
-    }
-
-    [Fact]
-    public void OrbVisualState_IsCommittedOnTheSessionRightBeforeSend()
-    {
-        string session = ReadNormalizedSource(
-            FindRepositoryRoot(), "game_server", "Sessions", "GameClientSession.Orb.cs");
-        string send = ReadMethodSlice(
-            session,
-            "internal void SendOrbVisualStateIfChanged(",
-            "internal void ForgetOrbVisualState(");
-
-        AssertInOrder(
-            send,
-            "_lastSentOrbVisualStates.TryGetValue(visual.ActorPlayerId, out var previousState)",
-            "_lastSentOrbVisualStates[visual.ActorPlayerId] = visual;",
-            "Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE)",
-            "OrbItemIds = visual.OrbItemIds.ToList()",
-            "TrySend(packet);");
-        Assert.DoesNotContain("catch", send);
-        Assert.Contains("internal void ForgetOrbVisualState(long actorPlayerId) => _lastSentOrbVisualStates.Remove(actorPlayerId);", session);
-    }
-
-    [Fact]
-    public void NeutralAfterimageMonstersDisableTheirOrbGlyphWhenReusedFromThePool()
-    {
-        string source = ReadNormalizedSource(
-            FindRepositoryRoot(), "client", "Assets", "Scripts", "Components", "MapObject",
-            "SwarmAfterimageOrbTheme.cs");
-
-        Assert.Contains("private int _itemId = -1;", source);
-        Assert.Contains("_core.enabled = itemId > 0;", source);
-    }
-    [Fact]
     public void OrbEffectStatesArePrunedWhenTheTargetLeavesTheCurrentArea()
     {
         string source = ReadMapManagerSources(FindRepositoryRoot());
@@ -222,32 +72,6 @@ public class ProximityAutoCombatDataTests
             "if (packet.TargetPlayerId < 0 && !_playerMap.ContainsKey(packet.TargetPlayerId))",
             mapSource);
         Assert.Contains("PlayObservedGuardianProjectileAtMonster(attacker, monster, packet.WeaponItemId);", mapSource);
-    }
-    // #229: 화면 구석 누적 표시(DamageComboDisplay)를 퇴역하고 숫자를 사건이 난 자리에 띄운다.
-    // 세 갈래가 색·부호로 갈려야 "누가 누구를"이 읽힌다 — 하나로 합치면 원래 문제로 돌아간다.
-    [Fact]
-    public void FloatingValuePopup_SplitsDealtTakenAndRecovery()
-    {
-        string root = FindRepositoryRoot();
-        // 클래스·파일명은 MonsterDamageLabel로 바뀌었다 (CI의 ~Popup 네이밍 금지).
-        // 프리팹 에셋 경로는 그대로 두었으므로 아래 PrefabPath 단언은 유지한다.
-        string source = ReadNormalizedSource(
-            root, "client", "Assets", "Scripts", "Components", "MapObject", "MonsterDamageLabel.cs");
-
-        Assert.Contains("public static void ShowDamageDealt(", source);
-        Assert.Contains("public static void ShowDamageTaken(", source);
-        Assert.Contains("public static void ShowRecovery(", source);
-        // 부호는 색맹 대비 축이다 — 색만으로 방향을 읽게 두지 않는다.
-        Assert.Contains("TakenColor, \"-\"", source);
-        Assert.Contains("RecoveryColor, \"+\"", source);
-        // 생김새는 프리팹이 소유한다 — 런타임 조립으로 되돌아가면 인스펙터 조절이 사라진다.
-        Assert.Contains("PrefabPath = \"Prefabs/MonsterDamagePopup\"", source);
-
-        Assert.False(
-            File.Exists(Path.Combine(
-                root, "client", "Assets", "Scripts", "UserInterfaces", "InGame", "Display",
-                "DamageComboDisplay.cs")),
-            "DamageComboDisplay가 되살아났다 — 피해 숫자는 사건이 난 자리에만 뜬다 (#229).");
     }
 
     private static string FindRepositoryRoot()
@@ -278,47 +102,5 @@ public class ProximityAutoCombatDataTests
         string[] fullPathParts = [repositoryRoot, .. pathParts];
         return File.ReadAllText(Path.Combine(fullPathParts))
             .Replace("\r\n", "\n");
-    }
-
-    private static string ReadMethodSlice(string source, string startMarker, string endMarker)
-    {
-        int start = source.IndexOf(startMarker, StringComparison.Ordinal);
-        Assert.True(start >= 0, $"Could not find '{startMarker}'.");
-        int end = source.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
-        Assert.True(end > start, $"Could not find '{endMarker}' after '{startMarker}'.");
-        return source[start..end];
-    }
-
-    private static void AssertInOrder(string source, params string[] markers)
-    {
-        int previousIndex = -1;
-        foreach (string marker in markers)
-        {
-            int currentIndex = source.IndexOf(marker, previousIndex + 1, StringComparison.Ordinal);
-            Assert.True(currentIndex > previousIndex, $"Expected '{marker}' after index {previousIndex}.");
-            previousIndex = currentIndex;
-        }
-    }
-
-    // 티어 값어치 = 발당 피해 성장. 공속은 단축 금지 (#268, 2026-08-24: 티어 주기 단축 퇴역 —
-    // 현행 오브는 전 티어 0.8 고정, 레거시 가디언 라인만 옛 단축 값을 유지한다).
-    private static void AssertGuardianTierGrowth(
-        IReadOnlyCollection<BattleItemCombatDefinition> definitions)
-    {
-        var tiers = definitions
-            .GroupBy(definition => definition.Tier)
-            .ToDictionary(group => group.Key, group => group.ToList());
-        var tierOne = Assert.Single(tiers[1]);
-
-        Assert.All(tiers[2], tierTwo =>
-        {
-            Assert.True(tierTwo.Damage > tierOne.Damage);
-            Assert.True(tierTwo.AttackIntervalSeconds <= tierOne.AttackIntervalSeconds);
-        });
-        Assert.All(tiers[3], tierThree =>
-        {
-            Assert.True(tierThree.Damage > tiers[2].Max(tierTwo => tierTwo.Damage));
-            Assert.True(tierThree.AttackIntervalSeconds <= tiers[2].Min(tierTwo => tierTwo.AttackIntervalSeconds));
-        });
     }
 }

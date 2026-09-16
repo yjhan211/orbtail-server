@@ -46,6 +46,5 @@ public sealed class MatchManifestSerializationTests
         Assert.Equal(new long[] { 1, -1 }, restored.PlayerRoster.Select(p => p.PlayerId));
         Assert.Equal("Bot", restored.PlayerRoster[1].Name);
         Assert.Equal(new[] { 456 }, restored.PlayerRoster[1].WearItemIdList);
-        Assert.Null(typeof(U_TO_C_MATCHING_SUCCESS).GetProperty("PlayerRoster"));
     }
 }

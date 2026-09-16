@@ -200,10 +200,12 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var cell = GameMapData.GetMapInfo(Config.SWARM_MATCH_MAP)!.GetInitialPosition().Item1;
         var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
         var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
-        var human = new game_server.players.Player(new PlayerInfo { PlayerId = FirstPlayerId }) {
+        var human = new game_server.players.Player(new PlayerInfo { PlayerId = FirstPlayerId })
+        {
             Position = position
         };
-        var bot = new game_server.players.Player(new PlayerInfo { PlayerId = -1 }) {
+        var bot = new game_server.players.Player(new PlayerInfo { PlayerId = -1 })
+        {
             Position = position
         };
         using var scope = runtime.Enter();
@@ -557,43 +559,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(secondPacketCount, fixture.ConnectionFor(second).DeliveredProtocols.Count);
     }
 
-    [Fact]
-    public void SourceScope_UsesMatchLocksAndHasNoGrowthPickHandler()
-    {
-        string root = FindRepositoryRoot();
-        string session = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
-        string orbSummon = ReadNormalizedSource(
-            root,
-            "game_server",
-            "Sessions",
-            "GameClientSession.Orb.cs");
-        string combat = ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatService.cs");
-        string orbBoard = ReadNormalizedSource(root, "game_server", "Players", "PlayerOrbGrowthService.cs");
-
-        Assert.Contains("PlayerOrbGrowthService _orbGrowth", session);
-        Assert.Contains("_orbGrowth.UpgradeOrb(", orbSummon);
-        Assert.DoesNotContain("SwarmGrowthPickCallback", session);
-        Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
-        Assert.DoesNotContain("SwarmGrowthPickCallback", combat);
-        Assert.DoesNotContain("SwarmOrbDecisionCallback", combat);
-        Assert.DoesNotContain("RunWithMatchLock", orbSummon);
-        Assert.Equal(2, CountOccurrences(orbSummon, "using (match.Enter())"));
-        Assert.Equal(2, CountOccurrences(orbSummon, "if (match.IsEnded"));
-        Assert.DoesNotContain("HandleSwarmGrowthPick", orbSummon);
-        Assert.DoesNotContain("C_TO_G_SWARM_GROWTH_PICK", session);
-        Assert.Contains("IsEliminated", ReadMethodSlice(
-            orbSummon,
-            "private Task HandleUpgradeOrb(",
-            "internal void SendOrbUpgradeInfo("));
-        Assert.Contains("using (match.Enter())", ReadMethodSlice(orbSummon,
-            "private Task HandleSummonOrb(",
-            "private Task HandleUpgradeOrb("));
-        Assert.DoesNotContain("HandleDestroyOrb", orbSummon);
-        Assert.DoesNotContain("C_TO_G_DESTROY_ORB", session);
-        Assert.DoesNotContain("RunWithMatchLock", combat);
-        Assert.DoesNotContain("RunWithMatchLock", orbBoard);
-    }
-
     private static async Task SendAsync<T>(
         GameClientSession session,
         Protocol protocol,
@@ -608,31 +573,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         }
 
         await session.OnMessageFromClient(wireBytes);
-    }
-
-    private static string ReadNormalizedSource(string repositoryRoot, params string[] parts) =>
-        File.ReadAllText(Path.Combine([repositoryRoot, .. parts]))
-            .Replace("\r\n", "\n", StringComparison.Ordinal);
-
-    private static int CountOccurrences(string source, string marker)
-    {
-        int count = 0;
-        int offset = 0;
-        while ((offset = source.IndexOf(marker, offset, StringComparison.Ordinal)) >= 0)
-        {
-            count++;
-            offset += marker.Length;
-        }
-        return count;
-    }
-
-    private static string ReadMethodSlice(string source, string startMarker, string endMarker)
-    {
-        int start = source.IndexOf(startMarker, StringComparison.Ordinal);
-        Assert.True(start >= 0, $"Could not find '{startMarker}'.");
-        int end = source.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
-        Assert.True(end > start, $"Could not find '{endMarker}' after '{startMarker}'.");
-        return source[start..end];
     }
 
     private static string FindRepositoryRoot()
@@ -652,11 +592,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
     {
         private readonly List<GameClientSession> _sessions = [];
         private readonly Dictionary<GameClientSession, RecordingTcpConnection> _connections = [];
-        private readonly string _summaryDirectory = Path.Combine(
-            Path.GetTempPath(),
-            "orbtail-growth-orb-publication-tests",
-            Guid.NewGuid().ToString("N"));
-
 
         public SessionFixture()
         {
@@ -729,8 +664,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
         public void Dispose()
         {
-            if (Directory.Exists(_summaryDirectory))
-                Directory.Delete(_summaryDirectory, recursive: true);
         }
 
         private static void SetIdentity(GameClientSession session, long matchingId, long playerId)
@@ -746,11 +679,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             typeof(GameClientSession).GetProperty(
                 name,
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.SetValue(session, value);
-
-        private static T GetField<T>(object owner, string name) where T : class =>
-            Assert.IsType<T>(owner.GetType().GetField(
-                name,
-                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner));
 
         private static void Activate(TcpConnection connection)
         {

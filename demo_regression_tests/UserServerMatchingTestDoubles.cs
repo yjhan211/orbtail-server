@@ -436,13 +436,8 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
 /// </summary>
 internal sealed class FakeRedLockFactory : IRedLockFactory
 {
-    public ConcurrentQueue<string> AcquiredResources { get; } = new();
-
-    public Task<IRedLock> AcquireLockAsync(string resource, TimeSpan expiryTime)
-    {
-        AcquiredResources.Enqueue(resource);
-        return Task.FromResult<IRedLock>(new FakeRedLock(resource));
-    }
+    public Task<IRedLock> AcquireLockAsync(string resource, TimeSpan expiryTime) =>
+        Task.FromResult<IRedLock>(new FakeRedLock(resource));
 
     public async Task ExecuteWithLockAsync(string resource, TimeSpan expiryTime, Func<Task> action)
     {

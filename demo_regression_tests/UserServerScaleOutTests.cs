@@ -223,6 +223,7 @@ public sealed class UserServerScaleOutTests
         Assert.False(await store.TryReleaseAsync(first));
         Assert.True(await store.TryRenewAsync(second));
         Assert.True(await store.TryReleaseAsync(second));
+        Assert.False(await store.TryRenewAsync(second));
         Assert.Null(cache.GetString(RedisPlayerSessionLeaseStore.OwnerKey(7)));
     }
 

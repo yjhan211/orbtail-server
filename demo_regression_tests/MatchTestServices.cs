@@ -10,7 +10,6 @@ namespace demo_regression_tests;
 /// </summary>
 internal static class MatchTestServices
 {
-    public static MatchGroundItemState GroundItems(TimeProvider? timeProvider = null) => new(timeProvider);
     public static MatchRuntime Runtime(long matchingId, ILogger logger) => TestGameSessionServices.CreateMatchRuntimeStore(logger).GetOrCreate(matchingId);
     public static MatchAreaClosureState Closures(Func<DateTime>? utcNow = null) => new(utcNow);
 }

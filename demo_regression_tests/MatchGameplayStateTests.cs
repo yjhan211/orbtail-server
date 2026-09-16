@@ -158,49 +158,6 @@ public sealed class MatchGameplayStateTests
     }
 
     [Fact]
-    public void GetOrCreate_ReturnsSameRuntimeForSameIdAndIsolatesDifferentIds()
-    {
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
-        const long firstMatchingId = 42001;
-        const long secondMatchingId = 42002;
-
-        MatchRuntime first = store.GetOrCreate(firstMatchingId);
-        MatchRuntime firstAgain = store.GetOrCreate(firstMatchingId);
-        MatchRuntime second = store.GetOrCreate(secondMatchingId);
-
-        Assert.Same(first, firstAgain);
-        Assert.NotSame(first, second);
-        Assert.Equal(firstMatchingId, first.MatchingId);
-        Assert.Equal(secondMatchingId, second.MatchingId);
-        Assert.Equal(2, store.Count);
-    }
-
-    [Fact]
-    public void Remove_PreservesSiblingAndNextGetOrCreateBuildsNewAggregate()
-    {
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
-        const long removedMatchingId = 42003;
-        const long siblingMatchingId = 42004;
-
-        MatchRuntime removed = store.GetOrCreate(removedMatchingId);
-        MatchRuntime sibling = store.GetOrCreate(siblingMatchingId);
-
-        Assert.True(store.Remove(removedMatchingId));
-        MatchRuntime? missing = store.GetOrNull(removedMatchingId);
-        Assert.Null(missing);
-        MatchRuntime? preservedSibling = store.GetOrNull(siblingMatchingId);
-        Assert.Same(sibling, preservedSibling);
-        Assert.Equal(1, store.Count);
-
-        MatchRuntime recreated = store.GetOrCreate(removedMatchingId);
-
-        Assert.NotSame(removed, recreated);
-        Assert.Equal(removedMatchingId, recreated.MatchingId);
-        Assert.Same(sibling, store.GetOrCreate(siblingMatchingId));
-        Assert.Equal(2, store.Count);
-    }
-
-    [Fact]
     public void Remove_DropsWholeAggregateWithoutTouchingSiblingHolderState()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);

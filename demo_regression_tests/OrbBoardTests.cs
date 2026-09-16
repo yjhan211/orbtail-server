@@ -2,7 +2,6 @@ using game_server.matches;
 using game_server.players;
 using network.common;
 using network.common.data;
-using network.common.data.helpers;
 using network.common.data.models;
 
 namespace demo_regression_tests;
@@ -30,22 +29,27 @@ public sealed class OrbBoardTests
         Assert.Equal(interval, BattleItemCombatData.Get(itemId)!.AttackIntervalSeconds);
     }
 
+    // 공명 보너스는 그 색이 판의 과반일 때만 붙고, 크기는 오브 수로 정한다(티어 무관).
     [Fact]
-    public void SunPassiveCountsLivingOrbsWithoutTierWeight()
+    public void SunPassiveRequiresMajorityAndCountsLivingOrbsWithoutTierWeight()
     {
         Assert.Equal(1f, OrbData.GetSunPveAttackMultiplier([]));
-        Assert.Equal(1.15f, OrbData.GetSunPveAttackMultiplier(Items(107000012)));
+        Assert.Equal(1f, OrbData.GetSunPveAttackMultiplier(Items(107000012))); // 오브 하나는 과반이 아니다
+        Assert.Equal(1f, OrbData.GetSunPveAttackMultiplier(Items(107000010, 107000020))); // 1:1은 과반이 아니다
         Assert.Equal(1.20f, OrbData.GetSunPveAttackMultiplier(Items(107000010, 107000012)));
+        Assert.Equal(1.20f, OrbData.GetSunPveAttackMultiplier(Items(107000010, 107000012, 107000020)));
         Assert.Equal(1.40f, OrbData.GetSunPveAttackMultiplier(
             Items(107000010, 107000010, 107000010, 107000010, 107000010, 107000010, 107000010)));
     }
 
     [Fact]
-    public void WindPassiveCountsLivingOrbsWithoutTierWeight()
+    public void WindPassiveRequiresMajorityAndCountsLivingOrbsWithoutTierWeight()
     {
         Assert.Equal(1f, OrbData.GetWindMoveSpeedMultiplier([]));
-        Assert.Equal(1.06f, OrbData.GetWindMoveSpeedMultiplier(Items(107000022)));
+        Assert.Equal(1f, OrbData.GetWindMoveSpeedMultiplier(Items(107000022)));
+        Assert.Equal(1f, OrbData.GetWindMoveSpeedMultiplier(Items(107000020, 107000010)));
         Assert.Equal(1.08f, OrbData.GetWindMoveSpeedMultiplier(Items(107000020, 107000022)));
+        Assert.Equal(1.08f, OrbData.GetWindMoveSpeedMultiplier(Items(107000020, 107000022, 107000030)));
         Assert.Equal(1.14f, OrbData.GetWindMoveSpeedMultiplier(
             Items(107000020, 107000020, 107000020, 107000020, 107000020, 107000020)));
     }
@@ -78,16 +82,6 @@ public sealed class OrbBoardTests
 
 
 
-
-    [Theory]
-    [InlineData(107000040)]
-    [InlineData(107000041)]
-    [InlineData(107000042)]
-    public void RetiredRecoveryOrbsHaveNoCombatDefinition(int itemId)
-    {
-        Assert.Null(BattleItemCombatData.Get(itemId));
-        Assert.False(OrbData.IsOrbItem(itemId));
-    }
 
     [Fact]
     public void LegacyGuardianOrbDoesNotEnterColoredBoardRules()
@@ -173,7 +167,6 @@ public sealed class OrbBoardTests
     [Fact]
     public void PickedUpOrbsJoinTheTailInUidOrderWithoutEquipmentSelection()
     {
-        InitializeBattleCombatData();
         var inventory = new PlayerOrbState();
         Assert.True(inventory.TryAddOrbWithCapacity(107000010, 6, out var first));
         Assert.True(inventory.TryAddOrbWithCapacity(107000020, 6, out var second));
@@ -190,7 +183,6 @@ public sealed class OrbBoardTests
     [Fact]
     public void ReconnectRecomputesTheSameSingleResonanceFromTheAuthoritativeBoard()
     {
-        InitializeBattleCombatData();
         var reconnectedInventory = new PlayerOrbState();
         Assert.True(reconnectedInventory.TryAddOrbWithCapacity(107000010, 6, out _));
         Assert.True(reconnectedInventory.TryAddOrbWithCapacity(107000010, 6, out _));
@@ -202,19 +194,6 @@ public sealed class OrbBoardTests
         Assert.Equal(1, supportTier);
     }
 
-
-    private static void InitializeBattleCombatData()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null && !Directory.Exists(Path.Combine(directory.FullName, "network", "Common", "csv")))
-            directory = directory.Parent;
-
-        if (directory == null)
-            throw new DirectoryNotFoundException("Could not locate repository root from test output path.");
-
-        BattleItemCombatData.Initialize(CsvHelper.LoadCsv(Path.Combine(
-            directory.FullName, "network", "Common", "csv", "battle_item_combat.csv")));
-    }
 
     private static IReadOnlyList<InGameItemInfo> Items(params int[] itemIds) =>
         itemIds.Select((itemId, index) => new InGameItemInfo

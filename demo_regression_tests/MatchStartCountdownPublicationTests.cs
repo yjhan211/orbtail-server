@@ -47,7 +47,7 @@ public sealed class MatchStartCountdownPublicationTests
         {
             typeof(MatchRuntime).GetField("_entryDeadlineUtc", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .SetValue(runtime, DateTime.UtcNow - TimeSpan.FromSeconds(1));
-            InvokeEntryTimeoutCheck(server, [matchingId], [session]);
+            InvokeEntryTimeoutCheck(server, [matchingId]);
             Assert.True(runtime.IsEnded);
             Assert.Null(server.GetMatchRuntimes().GetOrNull(matchingId));
         }
@@ -64,10 +64,10 @@ public sealed class MatchStartCountdownPublicationTests
         server.GetMatchRuntimes().GetOrThrow(matchingId).PrepareEntry(301);
         try
         {
-            InvokeEntryTimeoutCheck(server, [matchingId], [session]);
+            InvokeEntryTimeoutCheck(server, [matchingId]);
             server.GetMatchRuntimes().GetOrThrow(matchingId).MarkPlayerReady(301);
-            InvokeEntryTimeoutCheck(server, [matchingId], [session]);
-            InvokeEntryTimeoutCheck(server, [matchingId], [session]);
+            InvokeEntryTimeoutCheck(server, [matchingId]);
+            InvokeEntryTimeoutCheck(server, [matchingId]);
             Assert.Equal(0, session.SendCount);
         }
         finally { }
@@ -226,32 +226,6 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.Equal(1, completedSession.DisconnectCount);
     }
 
-    [Fact]
-    public void EntryDisconnect_StillBuildsFatalPacketAndRequestsGracefulClose()
-    {
-        string repositoryRoot = FindRepositoryRoot();
-        string session = ReadNormalizedSource(
-            repositoryRoot,
-            "game_server",
-            "Sessions",
-            "GameClientSession.cs");
-        string method = ReadMethodSlice(
-            session,
-            "internal virtual void DisconnectForEntryFailure()",
-            "MarkMatchEndHandledExternally()");
-
-        AssertInOrder(
-            method,
-            "Interlocked.Exchange(ref _entryDisconnectIssued, 1) != 0",
-            "MarkDisconnectedByServer();",
-            "PacketMaker.G_TO_C_ERROR(ErrorCode.GAME_ENTRY_FAILED)",
-            "Connection.TrySendAndDisconnect(packet);",
-            "catch (Exception ex)",
-            "Connection.Disconnect();");
-        Assert.Equal(1, CountOccurrences(method, "Connection.TrySendAndDisconnect(packet);"));
-        Assert.DoesNotContain("게임 입장 초기화에 실패했습니다", method);
-    }
-
     private static GameServer CreateEntryTestServer() => GameServerTestAccess.Create();
 
     internal sealed class NoOpNatsClient : network.infrastructure.messaging.INatsClient
@@ -264,10 +238,7 @@ public sealed class MatchStartCountdownPublicationTests
         public void Close() { }
     }
 
-    private static void InvokeEntryTimeoutCheck(
-        GameServer server,
-        IReadOnlyCollection<long> matchingIds,
-        IReadOnlyCollection<GameClientSession> sessions)
+    private static void InvokeEntryTimeoutCheck(GameServer server, IReadOnlyCollection<long> matchingIds)
     {
         foreach (long matchingId in matchingIds)
             GameServerTestAccess.GetLoop(server, matchingId).ProcessTick();
@@ -316,48 +287,6 @@ public sealed class MatchStartCountdownPublicationTests
         TestGameSessionServices.BindMatch(session, matchingId, store);
     }
 
-    private static void AssertInOrder(string source, params string[] markers)
-    {
-        int previousIndex = -1;
-        foreach (string marker in markers)
-        {
-            int index = source.IndexOf(marker, previousIndex + 1, StringComparison.Ordinal);
-            Assert.True(index > previousIndex, $"Expected '{marker}' after index {previousIndex}.");
-            previousIndex = index;
-        }
-    }
-
-    private static int CountOccurrences(string source, string marker)
-    {
-        int count = 0;
-        int start = 0;
-        while ((start = source.IndexOf(marker, start, StringComparison.Ordinal)) >= 0)
-        {
-            count++;
-            start += marker.Length;
-        }
-
-        return count;
-    }
-
-    private static string ReadMethodSlice(string source, string startMarker, string endMarker)
-    {
-        int start = source.IndexOf(startMarker, StringComparison.Ordinal);
-        Assert.True(start >= 0, $"Could not find '{startMarker}'.");
-        int end = source.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
-        Assert.True(end > start, $"Could not find '{endMarker}' after '{startMarker}'.");
-        return source[start..end];
-    }
-
-    private static string ReadNormalizedSource(string repositoryRoot, params string[] parts)
-    {
-        return File.ReadAllText(Path.Combine([repositoryRoot, .. parts]))
-            .Replace("\r\n", "\n", StringComparison.Ordinal).Replace("public virtual void ", "public void ", StringComparison.Ordinal)
-            // 명시 타입과 var 표기는 같은 잠금 호출로 취급한다.
-            .Replace("matchRuntimes.Enter(matchingId, out var scope)",
-                "matchRuntimes.Enter(matchingId, out MatchLockScope scope)", StringComparison.Ordinal);
-    }
-
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -377,9 +306,7 @@ public sealed class MatchStartCountdownPublicationTests
             typeof(GameClientSession).GetField(
                 "_entryDisconnectIssued",
                 BindingFlags.Instance | BindingFlags.NonPublic)!;
-        private readonly bool _throwOnSend;
-
-        public RecordingEntrySession(bool throwOnSend = false)
+        public RecordingEntrySession()
             : base(
                 new TcpConnection(),
                 NullLogger.Instance,
@@ -395,7 +322,6 @@ public sealed class MatchStartCountdownPublicationTests
                 null!,
                 null!)
         {
-            _throwOnSend = throwOnSend;
         }
 
         public int FatalCount { get; private set; }
@@ -418,8 +344,6 @@ public sealed class MatchStartCountdownPublicationTests
         public override bool TrySend(Packet packet)
         {
             SendCount++;
-            if (_throwOnSend)
-                throw new InvalidOperationException("countdown transport failed");
             DeliveredWireBytes.Add(packet.ToBytes());
             return true;
         }

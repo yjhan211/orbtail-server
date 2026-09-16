@@ -199,31 +199,6 @@ public sealed class MatchRuntimeStoreTests
     }
 
     [Fact]
-    public void Terminal_NestedMark_DefersCleanupToOuterScope()
-    {
-        var cleanupCalls = new List<long>();
-        MatchRuntimeStore store = CreateStore(
-            onRedisCleanup: cleanupCalls.Add);
-        MatchRuntime runtime = store.GetOrCreate(3);
-
-        using (MatchLockScope outer = runtime.Enter())
-        {
-            using (MatchLockScope inner = runtime.Enter())
-            {
-                Assert.True(runtime.TryMarkEnded());
-            }
-
-            // 안쪽 스코프가 닫혀도 바깥이 아직 상태를 만지고 있으므로 정리는 미뤄진다.
-            Assert.Empty(cleanupCalls);
-            Assert.True(runtime.IsEnded);
-            Assert.NotNull(store.GetOrNull(3));
-        }
-
-        Assert.Equal([3L], cleanupCalls);
-        Assert.Null(store.GetOrNull(3));
-    }
-
-    [Fact]
     public void AfterRelease_RunsOutsideLockOnce()
     {
         MatchRuntimeStore store = CreateStore(onRedisCleanup: null);

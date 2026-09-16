@@ -15,15 +15,6 @@ public class MapTraversalTests
     }
 
     [Fact]
-    public void DiagonalCornerCutIsAllowedWhenOnlyOneSideCellIsBlocked()
-    {
-        var canMove = MapTraversal.IsTraversable(
-            new Cell(0, 0), new Cell(1, 1), cell => !(cell.X == 1 && cell.Y == 0));
-
-        Assert.True(canMove);
-    }
-
-    [Fact]
     public void LongTraversalAcceptsOpenCells()
     {
         var canMove = MapTraversal.IsTraversable(

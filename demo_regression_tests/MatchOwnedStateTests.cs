@@ -1,9 +1,7 @@
-using game_server;
 using game_server.matches;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
-using game_server.sessions;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data;
@@ -96,25 +94,6 @@ public sealed class MatchOwnedStateTests
     }
 
     [Fact]
-    public void ServerAndSession_DoNotRetainMatchComponentFieldsOrConstructorArguments()
-    {
-        Type[] components = [typeof(MatchGroundItemState),
-            typeof(MatchAreaClosureState)];
-        foreach (Type owner in new[] { typeof(game_server.GameServer), typeof(game_server.sessions.GameClientSession) })
-        {
-            var fields = owner.GetFields(System.Reflection.BindingFlags.Instance |
-                                         System.Reflection.BindingFlags.Public |
-                                         System.Reflection.BindingFlags.NonPublic);
-            Assert.DoesNotContain(fields, field => components.Contains(field.FieldType));
-            var parameters = owner.GetConstructors(System.Reflection.BindingFlags.Instance |
-                                                  System.Reflection.BindingFlags.Public |
-                                                  System.Reflection.BindingFlags.NonPublic)
-                .SelectMany(constructor => constructor.GetParameters());
-            Assert.DoesNotContain(parameters, parameter => components.Contains(parameter.ParameterType));
-        }
-    }
-
-    [Fact]
     public void BotElimination_RemovesInventoryOnce_AndKeepsOtherMatchesUntouched()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
@@ -193,7 +172,8 @@ public sealed class MatchOwnedStateTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(941104);
-        var player = new Player(new PlayerInfo { PlayerId = 42 }) {
+        var player = new Player(new PlayerInfo { PlayerId = 42 })
+        {
 
             Position = TestMapPosition.In(AreaType.S2Corridor9)
         };

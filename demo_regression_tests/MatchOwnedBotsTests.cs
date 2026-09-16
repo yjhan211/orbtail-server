@@ -17,7 +17,7 @@ public sealed class MatchOwnedBotsTests
 
         Assert.Equal(1f, BotBehaviorService.GetBotMovementSpeedMultiplier(bot));
         Assert.True(bot.Player.Orbs.TryAddOrbWithCapacity(107000020, 8, out _));
-        Assert.Equal(1.06f, BotBehaviorService.GetBotMovementSpeedMultiplier(bot));
+        Assert.Equal(1f, BotBehaviorService.GetBotMovementSpeedMultiplier(bot)); // 오브 하나는 공명(과반)이 아니다
         Assert.True(bot.Player.Orbs.TryAddOrbWithCapacity(107000022, 8, out _));
         Assert.Equal(1.08f, BotBehaviorService.GetBotMovementSpeedMultiplier(bot));
 
@@ -164,7 +164,6 @@ public sealed class MatchOwnedBotsTests
             match.InitializeMatch(MatchMode.Normal, cells, [new PlayerInfo { PlayerId = 1 }, profile]);
             Assert.Same(bot.Player, match.GetPlayer(-1));
             Assert.Equal(profile.PlayerId, bot.Player.PlayerId);
-            Assert.Null(typeof(Bot).GetProperty("Health"));
             Assert.Equal(Config.MAX_HEALTH - 20, match.GetPlayer(-1)!.Health);
             match.GetPlayer(-1)!.Recover(5);
             Assert.Equal(Config.MAX_HEALTH - 15, bot.Player.Health);
@@ -204,8 +203,6 @@ public sealed class MatchOwnedBotsTests
             Assert.Equal(network.common.data.GameMapData.GetCurrentArea(network.common.Config.SWARM_MATCH_MAP, player.Cell!), bot.Player.GameInfo.ObjectInfo.Area);
             Assert.NotSame(player.Position, snapshot.Position);
             Assert.Null(match.GetPlayer(1)!.Position);
-            foreach (string field in new[] { "Position", "Cell", "WalkVelocity", "Rotation", "CurrentArea" })
-                Assert.Null(typeof(Bot).GetProperty(field));
         }
     }
     [Fact]
