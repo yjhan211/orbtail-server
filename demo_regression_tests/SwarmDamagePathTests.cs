@@ -29,8 +29,8 @@ public class SwarmDamagePathTests
 
         Assert.DoesNotContain("OrbCutCracks", source);
 
-        int cutMethodStart = source.IndexOf("internal void TryPerformSwarmTrailCut(", StringComparison.Ordinal);
-        Assert.True(cutMethodStart >= 0, "TryPerformSwarmTrailCut를 찾지 못했다");
+        int cutMethodStart = source.IndexOf("internal void ProcessTrailCut(", StringComparison.Ordinal);
+        Assert.True(cutMethodStart >= 0, "ProcessTrailCut를 찾지 못했다");
         int cutMethodEnd = source.LastIndexOf("}", StringComparison.Ordinal);
         Assert.True(cutMethodEnd > cutMethodStart, "절단 판정 메서드의 끝을 찾지 못했다");
         string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
@@ -110,7 +110,7 @@ public class SwarmDamagePathTests
         // ① 절단 자제: 봇 전용, 래치 앞에서 걸린다.
         Assert.Contains("Config.SWARM_BOT_CUT_MIN_HEALTH_RATIO", botSource);
         Assert.Contains("Config.SWARM_BOT_CUT_COOLDOWN_SECONDS", botSource);
-        int cutMethodStart = source.IndexOf("internal void TryPerformSwarmTrailCut(", StringComparison.Ordinal);
+        int cutMethodStart = source.IndexOf("internal void ProcessTrailCut(", StringComparison.Ordinal);
         int cutMethodEnd = source.LastIndexOf("}", StringComparison.Ordinal);
         string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
         Assert.Contains("cutterBot != null && !botBehavior.CanCutTrail(", cutBody);

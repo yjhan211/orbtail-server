@@ -228,7 +228,7 @@ public class MatchMonsterTickTests
         var manager = CreateManager();
         // 다른 구역 참가자는 도서관1에 세운다. 몹은 자기장 경계 띠에서 태어나므로 위치는 실제 스폰 규칙을 따른다.
         Vector3f corridor = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, new Cell(126, 90));
-        manager.Tick([new PlayerPositionSnapshot(1, AreaType.S2Corridor9, AreaCenter(AreaType.S2Corridor9))], true, now);
+        manager.Tick([new ParticipantInput(1, AreaType.S2Corridor9, AreaCenter(AreaType.S2Corridor9))], true, now);
 
         var monster = manager.GetVisualStates().First(state => state.IsAlive);
         var onMonster = new Vector3f(monster.ObjectInfo.Position.X, monster.ObjectInfo.Position.Y, 0f);
@@ -239,8 +239,8 @@ public class MatchMonsterTickTests
             now = StartUtc.AddSeconds(elapsed);
             var participants = new[]
             {
-                new PlayerPositionSnapshot(1, monster.AreaType, onMonster),
-                new PlayerPositionSnapshot(2, AreaType.S2Library1, corridor)
+                new ParticipantInput(1, monster.AreaType, onMonster),
+                new ParticipantInput(2, AreaType.S2Library1, corridor)
             };
             damageEvents.AddRange(manager.Tick(participants, true, now).PlayerDamage);
         }
@@ -254,17 +254,17 @@ public class MatchMonsterTickTests
             damage.Area));
     }
 
-    private static IReadOnlyCollection<PlayerPositionSnapshot> Participants(
+    private static IReadOnlyCollection<ParticipantInput> Participants(
         Vector3f position,
         AreaType area = AreaType.None) =>
-        [new PlayerPositionSnapshot(1, ResolveArea(area), position)];
+        [new ParticipantInput(1, ResolveArea(area), position)];
 
-    private static IReadOnlyCollection<PlayerPositionSnapshot> ManyParticipants(
+    private static IReadOnlyCollection<ParticipantInput> ManyParticipants(
         int count,
         Vector3f position,
         AreaType area = AreaType.None) =>
         Enumerable.Range(1, count)
-            .Select(id => new PlayerPositionSnapshot(id, ResolveArea(area), position))
+            .Select(id => new ParticipantInput(id, ResolveArea(area), position))
             .ToList();
 
     // 기본 구역 = 매치 맵 운동장 (기본 매개변수는 컴파일 상수만 허용 — None을 센티널로 쓴다).
@@ -352,6 +352,9 @@ public class MatchMonsterTickTests
     /// <summary>틱이 만든 접촉 피해와 그 틱에 새로 태어난 개체.</summary>
     private sealed record TickResult(IReadOnlyList<MonsterContactDamage> PlayerDamage, IReadOnlyList<Monster> SpawnedMonsters);
 
+    // 운영 계약이 아니라 테스트에서 참가자의 위치를 지정하기 위한 입력 자료다.
+    private readonly record struct ParticipantInput(long PlayerId, AreaType Area, Vector3f Position);
+
     /// <summary>운영 전투 조율자의 몬스터 단계를 매치 잠금 안에서 실행한다. 마지막 틱 시각을 피해 정산·표적 조회에 쓴다.</summary>
     private sealed class Arena
     {
@@ -371,13 +374,13 @@ public class MatchMonsterTickTests
 
         public MatchRuntime Runtime { get; }
 
-        public TickResult Tick(IReadOnlyCollection<PlayerPositionSnapshot> participants, bool isGameplayActive, DateTime nowUtc)
+        public TickResult Tick(IReadOnlyCollection<ParticipantInput> participants, bool isGameplayActive, DateTime nowUtc)
         {
             _lastNow = nowUtc;
             var known = Runtime.Monsters.Entities.Keys.ToHashSet();
             using (Runtime.Enter())
             {
-                // 접촉 면역은 Player가 들므로 스냅샷의 참가자를 매치에 등록해 둔다.
+                // 테스트 입력을 매치의 실제 Player에 반영한다.
                 foreach (var participant in participants)
                 {
                     if (Runtime.GetPlayer(participant.PlayerId) == null)
@@ -401,9 +404,10 @@ public class MatchMonsterTickTests
                 {
                     _movement.ProcessTick(Runtime, nowUtc);
                 }
-                var contacts = _combat.CollectMonsterContacts(Runtime, participants, nowUtc);
+                var contactPlayers = participants.Select(participant => Runtime.GetPlayer(participant.PlayerId)!).ToList();
+                var monsterContactDamages = _combat.CollectMonsterContactDamages(Runtime, contactPlayers, nowUtc);
                 var spawned = Runtime.Monsters.Entities.Values.Where(monster => !known.Contains(monster.MonsterId)).ToList();
-                return new TickResult(contacts, spawned);
+                return new TickResult(monsterContactDamages, spawned);
             }
         }
 

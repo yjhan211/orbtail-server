@@ -27,25 +27,17 @@ internal class MatchCombatService(
     BotBehaviorService botBehavior,
     MonsterCombatService monsterCombat)
 {
-    internal List<MonsterContactDamage> CollectMonsterContacts(MatchRuntime runtime, IReadOnlyCollection<PlayerPositionSnapshot> participants, DateTime nowUtc)
+    internal List<MonsterContactDamage> CollectMonsterContactDamages(MatchRuntime runtime, IReadOnlyList<Player> players, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Match monster service requires the match lock.");
         }
-        var contacts = new List<MonsterContactDamage>();
+        var monsterContactDamages = new List<MonsterContactDamage>();
         var state = runtime.Monsters;
         if (!state.IsInitialized)
         {
-            return contacts;
-        }
-
-        var now = nowUtc;
-        var snapshot = new PlayerPositionSnapshot[participants.Count];
-        int snapshotIndex = 0;
-        foreach (var participant in participants)
-        {
-            snapshot[snapshotIndex++] = participant;
+            return monsterContactDamages;
         }
 
         foreach (var monster in state.Entities.Values)
@@ -55,9 +47,9 @@ internal class MatchCombatService(
                 continue;
             }
 
-            monsterCombat.CollectContactDamage(runtime, monster, snapshot, now, contacts);
+            monsterCombat.CollectContactDamage(runtime, monster, players, nowUtc, monsterContactDamages);
         }
-        return contacts;
+        return monsterContactDamages;
     }
 
     public virtual void ProcessTick(MatchRuntime runtime)
@@ -87,25 +79,14 @@ internal class MatchCombatService(
 
         var nowUtc = DateTime.UtcNow;
         var aliveBots = bots.Where(bot => !bot.Player.IsEliminated).ToList();
-        var participants = new List<PlayerPositionSnapshot>();
-        foreach (var player in players)
-        {
-            if (player.Position == null)
-            {
-                continue;
-            }
-            participants.Add(new PlayerPositionSnapshot(player.PlayerId, player.GameInfo.ObjectInfo.Area, player.Position));
-        }
-
-        var contacts = CollectMonsterContacts(runtime, participants, nowUtc);
-
+        var monsterContactDamages = CollectMonsterContactDamages(runtime, players, nowUtc);
         if (!runtime.IsGameplayActive())
         {
             return;
         }
 
-        orbTrails.UpdateTrails(runtime, participants);
-        trailCuts.ProcessTick(runtime, nowUtc, participants, sessions);
+        orbTrails.UpdateTrails(runtime, players);
+        trailCuts.ProcessTick(runtime, nowUtc, players, sessions);
         orbAttacks.ProcessWaveDetonations(runtime, nowUtc);
         foreach (var player in runtime.GetAlivePlayers())
         {
@@ -116,7 +97,7 @@ internal class MatchCombatService(
             playerOrbs.ActivateWindOrbs(runtime, player, nowUtc);
         }
         orbAttacks.ProcessSunBurns(runtime, nowUtc);
-        foreach (var damage in contacts)
+        foreach (var damage in monsterContactDamages)
         {
             ApplySwarmParticipantDamage(runtime, damage, sessions);
         }
@@ -222,6 +203,17 @@ internal class MatchCombatService(
                 }
                 return true;
             });
+        ExecuteAttacks(runtime, attacks, actors, crossfireAnchoredTargets, sessions, nowUtc);
+    }
+
+    private void ExecuteAttacks(
+        MatchRuntime runtime,
+        IReadOnlyList<ProximityCombatAttack> attacks,
+        IReadOnlyList<ProximityCombatActor> actors,
+        HashSet<(long OwnerId, long CombatTargetId)> crossfireAnchoredTargets,
+        List<GameClientSession> sessions,
+        DateTime nowUtc)
+    {
         Dictionary<long, ProximityCombatActor>? actorById = null;
         foreach (var attack in attacks)
         {

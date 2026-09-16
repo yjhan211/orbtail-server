@@ -381,8 +381,6 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         var nowUtc = DateTime.UtcNow;
         if (runtime.CutRetaliationWindows.TryGetValue((attack.AttackerPlayerId, attack.TargetPlayerId), out var guardWindow) && nowUtc < guardWindow.ExpiresAtUtc)
         {
-            guardWindow.BlockedHits++;
-            guardWindow.BlockedDamage += attack.Damage;
             SendSwarmRetaliationVfx(runtime, attack.AttackerPlayerId, attack.TargetPlayerId, attack.Area, SwarmRingVfxKindRetaliationBlocked, 0f, allSessions);
             return;
         }

@@ -152,39 +152,31 @@ internal sealed class PlayerOrbTrailService
         return destroyed;
     }
 
-    public void UpdateTrails(MatchRuntime runtime, List<PlayerPositionSnapshot> participants)
+    /// 이동 궤적을 기록하여 오브 좌표 계산과 꼬리 절단 판정에 사용
+    public void UpdateTrails(MatchRuntime runtime, IReadOnlyList<Player> players)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Orb trail operations require the match lock.");
         }
-        foreach (var participant in participants)
+        foreach (var player in players)
         {
-            var player = runtime.GetPlayer(participant.PlayerId);
-            if (player == null)
+            var position = player.Position;
+            if (position == null)
             {
                 continue;
             }
+
             var points = player.Orbs.OrbTrail;
-
-            var center = participant.Position;
-            if (points.Count == 0)
-            {
-                points.Add(new Vector3f(center.X, center.Y, 0f));
-                continue;
-            }
-
-            float moved = Vector3f.Distance(center, points[0]);
+            float moved = points.Count > 0 ? Vector3f.Distance(position, points[0]) : 0f;
             if (moved >= SwarmTrailTeleportResetDistance)
             {
                 points.Clear();
-                points.Add(new Vector3f(center.X, center.Y, 0f));
-                continue;
             }
 
-            if (moved >= SwarmTrailSampleMinDistance)
+            if (points.Count == 0 || moved >= SwarmTrailSampleMinDistance)
             {
-                points.Insert(0, new Vector3f(center.X, center.Y, 0f));
+                points.Insert(0, new Vector3f(position.X, position.Y, 0f));
             }
 
             int trailOrbCount = Math.Max(CountOrbs(runtime, player) + 2, 4);

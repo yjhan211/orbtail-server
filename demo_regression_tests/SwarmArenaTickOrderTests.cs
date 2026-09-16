@@ -105,7 +105,7 @@ public sealed class SwarmArenaTickOrderTests
 
         AssertInOrder(
             arenaCode,
-            "CollectMonsterContacts(runtime,",
+            "CollectMonsterContactDamages(runtime,",
             "if (!runtime.IsGameplayActive())");
 
         string inactiveGameplayBranch = MaskCommentsAndLiterals(
@@ -139,7 +139,7 @@ public sealed class SwarmArenaTickOrderTests
 
         AssertInOrder(
             arenaTick,
-            "CollectMonsterContacts(runtime,",
+            "CollectMonsterContactDamages(runtime,",
             "if (!runtime.IsGameplayActive())",
             "orbTrails.UpdateTrails(",
             "trailCuts.ProcessTick(",

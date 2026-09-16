@@ -15,7 +15,7 @@ internal readonly record struct MonsterDamageResult(bool Applied, bool Killed, M
 /// </summary>
 internal sealed class MonsterCombatService
 {
-    public void CollectContactDamage(MatchRuntime runtime, Monster monster, IReadOnlyList<PlayerPositionSnapshot> snapshot, DateTime now, List<MonsterContactDamage> contacts)
+    public void CollectContactDamage(MatchRuntime runtime, Monster monster, IReadOnlyList<Player> players, DateTime now, List<MonsterContactDamage> contacts)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -28,29 +28,29 @@ internal sealed class MonsterCombatService
 
         float attackRange = monster.AttackRangeValue > Monster.BaseContactRadius ? monster.AttackRangeValue : Monster.GetContactRadius(monster.Kind);
         const float verticalScale = 2f;
-        foreach (var participant in snapshot)
+        foreach (var player in players)
         {
-            if (participant.Area != monster.Area)
+            var position = player.Position;
+            if (position == null || player.GameInfo.ObjectInfo.Area != monster.Area)
             {
                 continue;
             }
-            float dx = monster.Position.X - participant.Position.X;
-            float dy = (monster.Position.Y - participant.Position.Y) * verticalScale;
+            float dx = monster.Position.X - position.X;
+            float dy = (monster.Position.Y - position.Y) * verticalScale;
             if (dx * dx + dy * dy > attackRange * attackRange)
             {
                 continue;
             }
 
-            var player = runtime.GetPlayer(participant.PlayerId);
-            if (player == null || player.StatusEffects.IsActive(PlayerStatusEffectKind.MonsterContactImmunity, now))
+            if (player.StatusEffects.IsActive(PlayerStatusEffectKind.MonsterContactImmunity, now))
             {
                 continue;
             }
 
             monster.NextContactAtUtc = now.AddSeconds(monster.AttackCooldownValue);
             player.StatusEffects.Apply(PlayerStatusEffectKind.MonsterContactImmunity, now.AddSeconds(Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS));
-            monster.ChaseTargetPlayerId = participant.PlayerId;
-            contacts.Add(new MonsterContactDamage(monster.MonsterId, participant.PlayerId, monster.Area, monster.ContactDamageValue));
+            monster.ChaseTargetPlayerId = player.PlayerId;
+            contacts.Add(new MonsterContactDamage(monster.MonsterId, player.PlayerId, monster.Area, monster.ContactDamageValue));
             break;
         }
     }

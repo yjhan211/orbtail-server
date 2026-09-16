@@ -117,7 +117,8 @@ public sealed class MatchGameplayServiceTests
             owner.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Gym1)));
             owner.Position = TestMapPosition.In(network.common.AreaType.S2Gym1, 0, -1);
             var orbPointsByOwner = new Dictionary<long, List<Vector3f>> { [owner.PlayerId] = [TestMapPosition.In(network.common.AreaType.S2Gym1)] };
-            service.TryPerformSwarmTrailCut(match, cutterId, network.common.AreaType.S2Gym1,
+            cutter.Position = TestMapPosition.In(network.common.AreaType.S2Gym1, 0.7f, 0.15f);
+            service.ProcessTrailCut(match, cutter,
                 TestMapPosition.In(network.common.AreaType.S2Gym1, -0.7f, 0.15f), TestMapPosition.In(network.common.AreaType.S2Gym1, 0.7f, 0.15f), orbPointsByOwner, now,
                 new List<game_server.sessions.GameClientSession>());
 

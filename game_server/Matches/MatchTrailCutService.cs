@@ -30,7 +30,7 @@ internal sealed class MatchTrailCutService(
     private static double SwarmSingleCutHealLockSeconds => SwarmConfigData.GetDouble("SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS", 8d);
     private static double SwarmCutRetaliationWindowSeconds => SwarmConfigData.GetDouble("SWARM_CUT_RETALIATION_WINDOW_SECONDS", 1.2d);
 
-    public void ProcessTick(MatchRuntime runtime, DateTime nowUtc, List<PlayerPositionSnapshot> participants, List<GameClientSession> sessions)
+    public void ProcessTick(MatchRuntime runtime, DateTime nowUtc, IReadOnlyList<Player> players, List<GameClientSession> sessions)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -38,14 +38,18 @@ internal sealed class MatchTrailCutService(
         }
 
         var orbPointsByOwner = new Dictionary<long, List<Vector3f>>();
-        foreach (var owner in participants)
+        foreach (var owner in players)
         {
-            var orbs = runtime.GetOrbs(owner.PlayerId).GetOrderedOrbs();
+            var position = owner.Position;
+            if (position == null)
+            {
+                continue;
+            }
+            var orbs = owner.Orbs.GetOrderedOrbs();
             if (orbs.Count == 0)
             {
                 continue;
             }
-            var ownerPlayer = runtime.GetPlayer(owner.PlayerId)!;
             var orbTiers = new List<int>(orbs.Count);
             foreach (var orb in orbs)
             {
@@ -54,25 +58,25 @@ internal sealed class MatchTrailCutService(
             var orbPoints = new List<Vector3f>(orbs.Count);
             for (int ordinal = 0; ordinal < orbs.Count; ordinal++)
             {
-                orbPoints.Add(orbTrails.GetOrbPosition(runtime, ownerPlayer, ordinal, owner.Position, orbTiers));
+                orbPoints.Add(orbTrails.GetOrbPosition(runtime, owner, ordinal, position, orbTiers));
             }
             orbPointsByOwner[owner.PlayerId] = orbPoints;
         }
 
-        foreach (var cutter in participants)
+        foreach (var cutter in players)
         {
-            var cutterPlayer = runtime.GetPlayer(cutter.PlayerId);
-            if (cutterPlayer == null)
+            var position = cutter.Position;
+            if (position == null)
             {
                 continue;
             }
-            var previousPosition = cutterPlayer.TrailLastTickPosition;
-            cutterPlayer.TrailLastTickPosition = new Vector3f(cutter.Position.X, cutter.Position.Y, 0f);
+            var previousPosition = cutter.TrailLastTickPosition;
+            cutter.TrailLastTickPosition = new Vector3f(position.X, position.Y, 0f);
             if (previousPosition == null || !orbPointsByOwner.ContainsKey(cutter.PlayerId))
             {
                 continue;
             }
-            TryPerformSwarmTrailCut(runtime, cutter.PlayerId, cutter.Area, previousPosition, cutter.Position, orbPointsByOwner, nowUtc, sessions);
+            ProcessTrailCut(runtime, cutter, previousPosition, position, orbPointsByOwner, nowUtc, sessions);
         }
 
         var expiredPairs = new List<(long CutterId, long VictimId)>();
@@ -90,7 +94,7 @@ internal sealed class MatchTrailCutService(
         }
     }
 
-    internal void TryPerformSwarmTrailCut(MatchRuntime runtime, long cutterId, AreaType cutterArea,
+    internal void ProcessTrailCut(MatchRuntime runtime, Player cutter,
         Vector3f previousPosition,
         Vector3f currentPosition,
         Dictionary<long, List<Vector3f>> orbPointsByOwner,
@@ -102,12 +106,13 @@ internal sealed class MatchTrailCutService(
             throw new InvalidOperationException("Trail cuts require the match lock.");
         }
 
-        var cutter = runtime.GetPlayer(cutterId);
-        if (runtime.IsEnded || cutter == null || cutter.IsEliminated)
+        if (runtime.IsEnded || cutter.IsEliminated)
         {
             return;
         }
 
+        long cutterId = cutter.PlayerId;
+        var cutterArea = cutter.GameInfo.ObjectInfo.Area;
         float segmentDx = currentPosition.X - previousPosition.X;
         float segmentDy = currentPosition.Y - previousPosition.Y;
         float segmentLengthSquared = segmentDx * segmentDx + segmentDy * segmentDy;
@@ -165,7 +170,6 @@ internal sealed class MatchTrailCutService(
                 }
                 if (cutBlocked)
                 {
-                    guardOnOwner!.BlockedCuts++;
                     break;
                 }
 
@@ -210,15 +214,10 @@ internal sealed class MatchTrailCutService(
         }
 
         var firstDestroyedOrb = destroyedOrbs[0];
-        if (runtime.CutRetaliationWindows.TryGetValue((victimId, cutterId), out var guardOnCutter) && nowUtc < guardOnCutter.ExpiresAtUtc)
-        {
-            guardOnCutter.Retaliated = true;
-        }
-
         var guardKey = (cutterId, victimId);
         if (!runtime.CutRetaliationWindows.TryGetValue(guardKey, out var guardOnVictim))
         {
-            guardOnVictim = new CutRetaliationWindow { OpenedArea = cutArea };
+            guardOnVictim = new CutRetaliationWindow();
             runtime.CutRetaliationWindows[guardKey] = guardOnVictim;
         }
         guardOnVictim.ExpiresAtUtc = nowUtc.AddSeconds(SwarmCutRetaliationWindowSeconds);
@@ -259,6 +258,5 @@ internal sealed class MatchTrailCutService(
         }
 
         combatDamage.RecordCombatContact(runtime, victim, cutterId, nowUtc);
-
     }
 }
