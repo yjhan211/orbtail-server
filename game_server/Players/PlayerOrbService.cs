@@ -9,8 +9,8 @@ using network.packets;
 namespace game_server.players;
 
 /// <summary>
-///     매치 잠금 안에서 플레이어가 보유한 오브의 공격 발동·회복을 처리한다.
-///     플레이어별 발동 시각은 Player가, 지속 중인 공격과 오브별 회복 시각은 MatchRuntime이 소유한다.
+///     매치 잠금 안에서 플레이어가 보유한 오브의 공격 발동을 처리한다.
+///     발동 시각은 PlayerOrbState가, 지속 중인 공격은 MatchRuntime이 소유한다.
 /// </summary>
 internal sealed class PlayerOrbService(
     PlayerHealthService healthService,
@@ -19,107 +19,10 @@ internal sealed class PlayerOrbService(
 {
     private const float SwarmGroundYScale = GroundGeometry.GroundYScale;
     private const float SwarmCrossfireMonsterRadius = GroundGeometry.MonsterRadius;
-    private const float SwarmCrossfireMonsterBodyHeight = 0.6f;
-    private const int OrbRingEffectKindWaveOrb = 2;
-    private const float SwarmCrossfireWallProbeStep = 0.2f;
-    private const float SwarmCrossfireMaxGroundLength = 40f;
+    private const float AreaBoundaryProbeStep = 0.2f;
     private static double SwarmWindBladeVictimImmuneSeconds => SwarmConfigData.GetDouble("SWARM_WIND_BLADE_VICTIM_IMMUNE_SECONDS", 0.9d);
     private static double WaveOrbAttackIntervalSeconds => SwarmConfigData.GetDouble("SWARM_WAVE_VORTEX_INTERVAL_SECONDS", 2d);
     private static double WaveOrbDetonationDelaySeconds => SwarmConfigData.GetDouble("SWARM_WAVE_VORTEX_FUSE_SECONDS", 0.65d);
-
-    public void ProcessOrbRecovery(MatchRuntime runtime, IReadOnlyCollection<ProximityCombatActor> orbActors, DateTime nowUtc)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Orb recovery requires the match lock.");
-        }
-
-        if (runtime.IsEnded)
-        {
-            return;
-        }
-
-        var activeRecoveryOrbs = new HashSet<(long PlayerId, long ItemUid, int StackIndex)>();
-        var recoveryByPlayer = new Dictionary<long, List<(ProximityCombatActor OrbActor, int Amount)>>();
-
-        foreach (var orbActor in orbActors)
-        {
-            int requestedRecovery = OrbData.GetRecoveryAmount(orbActor.WeaponItemId);
-            if (requestedRecovery <= 0)
-            {
-                continue;
-            }
-
-            var owner = runtime.GetParticipant(orbActor.PlayerId);
-            if (owner == null)
-            {
-                continue;
-            }
-
-            var recoveryKey = (orbActor.WeaponItemUid, orbActor.WeaponStackIndex);
-            activeRecoveryOrbs.Add((orbActor.PlayerId, recoveryKey.WeaponItemUid, recoveryKey.WeaponStackIndex));
-            if (!owner.OrbRecoveryReadyAtUtc.TryGetValue(recoveryKey, out var nextRecoveryAtUtc))
-            {
-                owner.OrbRecoveryReadyAtUtc[recoveryKey] = nowUtc.AddSeconds(OrbData.RecoveryTickSeconds);
-                continue;
-            }
-
-            if (nowUtc < nextRecoveryAtUtc)
-            {
-                continue;
-            }
-
-            owner.OrbRecoveryReadyAtUtc[recoveryKey] = nowUtc.AddSeconds(OrbData.RecoveryTickSeconds);
-            if (!recoveryByPlayer.TryGetValue(orbActor.PlayerId, out var dueRecoveries))
-            {
-                dueRecoveries = [];
-                recoveryByPlayer[orbActor.PlayerId] = dueRecoveries;
-            }
-
-            dueRecoveries.Add((orbActor, requestedRecovery));
-        }
-
-        foreach (var (playerId, dueRecoveries) in recoveryByPlayer)
-        {
-            var player = runtime.GetParticipant(playerId);
-            if (player == null || player.IsEliminated)
-            {
-                continue;
-            }
-
-            int requestedRecovery = dueRecoveries.Sum(entry => entry.Amount);
-            var representative = dueRecoveries
-                .OrderByDescending(entry => entry.Amount)
-                .ThenBy(entry => entry.OrbActor.WeaponItemUid)
-                .First().OrbActor;
-            var change = healthService.Recover(runtime, player, requestedRecovery);
-            if (change.Recovered <= 0)
-            {
-                continue;
-            }
-
-            using var packet = PacketMaker.G_TO_C_HEALTH_RECOVERY(new()
-            {
-                PlayerId = playerId,
-                AreaType = player.GameInfo.ObjectInfo.Area,
-                Amount = change.Recovered,
-                Source = HealthRecoveryKind.Orb,
-                OrbItemId = representative.WeaponItemId
-            });
-            player.Session?.TrySend(packet);
-        }
-
-        foreach (var player in runtime.GetPlayers())
-        {
-            foreach (var recoveryKey in player.OrbRecoveryReadyAtUtc.Keys.ToArray())
-            {
-                if (!activeRecoveryOrbs.Contains((player.PlayerId, recoveryKey.ItemUid, recoveryKey.StackIndex)))
-                {
-                    player.OrbRecoveryReadyAtUtc.Remove(recoveryKey);
-                }
-            }
-        }
-    }
 
     public void ActivateWaveOrbs(MatchRuntime runtime, Player owner, DateTime nowUtc)
     {
@@ -158,7 +61,7 @@ internal sealed class PlayerOrbService(
 
             long orbUid = orb.ItemUid;
             double firstPhase = 0.5d + orb.ItemUid % 977 / 977d;
-            if (!owner.IsWaveOrbDue(orbUid, nowUtc, WaveOrbAttackIntervalSeconds, firstPhase))
+            if (!owner.Orbs.UpdateWaveOrbAttackReadiness(orbUid, nowUtc, WaveOrbAttackIntervalSeconds, firstPhase))
             {
                 continue;
             }
@@ -218,7 +121,7 @@ internal sealed class PlayerOrbService(
                 continue;
             }
 
-            owner.ScheduleNextWaveOrbAttack(orbUid, nowUtc, WaveOrbAttackIntervalSeconds);
+            owner.Orbs.ScheduleNextWaveOrbAttack(orbUid, nowUtc, WaveOrbAttackIntervalSeconds);
 
             if (sunDamageMultiplier < 0f)
             {
@@ -233,7 +136,7 @@ internal sealed class PlayerOrbService(
                 CenterX = orbPosition.X,
                 CenterY = orbPosition.Y,
                 Radius = radius,
-                Kind = OrbRingEffectKindWaveOrb,
+                Kind = (int)OrbRingEffectKind.WaveOrb,
                 FromOrdinal = ordinal
             }));
             foreach (var session in runtime.GetSessions())
@@ -314,6 +217,7 @@ internal sealed class PlayerOrbService(
         float halfWidth = width * 0.5f;
         float blastRadius = Config.SWARM_CROSSFIRE_SUN_BLAST_RADIUS_BY_TIER[tierIndex];
         float sweepSpeed = Config.SWARM_CROSSFIRE_SUN_SWEEP_SPEED;
+        float maxGroundLength = Config.SWARM_CROSSFIRE_SUN_MAX_GROUND_LENGTH;
 
         const float diagonalUnit = 0.70710677f;
         ReadOnlySpan<float> directionX = [diagonalUnit, -diagonalUnit, -diagonalUnit, diagonalUnit];
@@ -329,9 +233,9 @@ internal sealed class PlayerOrbService(
         bool hasTargetedDirection = false;
         for (int direction = 0; direction < 4; direction++)
         {
-            float candidateLength = SwarmCrossfireMaxGroundLength;
-            for (float along = SwarmCrossfireWallProbeStep; along < SwarmCrossfireMaxGroundLength;
-                 along += SwarmCrossfireWallProbeStep)
+            float candidateLength = maxGroundLength;
+            for (float along = AreaBoundaryProbeStep; along < maxGroundLength;
+                 along += AreaBoundaryProbeStep)
             {
                 var probe = new Vector3f(
                     origin.X + directionX[direction] * along,
@@ -355,7 +259,7 @@ internal sealed class PlayerOrbService(
             float nearest = float.MaxValue;
             float reach = halfWidth + SwarmCrossfireMonsterRadius;
             float bodyStart = -Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
-            float bodyEnd = SwarmCrossfireMonsterBodyHeight - Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
+            float bodyEnd = GroundGeometry.MonsterBodyHeight - Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
             foreach (var monsterTarget in monsterTargets)
             {
                 if (monsterTarget.Area != attack.Area)
@@ -423,7 +327,7 @@ internal sealed class PlayerOrbService(
             return false;
         }
 
-        bool detonateAtWall = selectedLength < SwarmCrossfireMaxGroundLength - 0.01f;
+        bool detonateAtWall = selectedLength < maxGroundLength - 0.01f;
         var endPosition = new Vector3f(origin.X + selectedDirectionX * selectedLength, origin.Y + selectedDirectionY * selectedLength / SwarmGroundYScale, 0f);
 
         float sweepSeconds = (selectedLength + width) / sweepSpeed;
@@ -513,7 +417,7 @@ internal sealed class PlayerOrbService(
                 continue;
             }
 
-            if (!owner.TryBeginWindOrbTick(orb.ItemUid, nowUtc, Config.SWARM_WIND_BLADE_TICK_SECONDS))
+            if (!owner.Orbs.TryBeginWindOrbAttack(orb.ItemUid, nowUtc, Config.SWARM_WIND_BLADE_TICK_SECONDS))
             {
                 continue;
             }
@@ -561,11 +465,11 @@ internal sealed class PlayerOrbService(
 
             if (monstersInRadius == null && playersInRadius == null)
             {
-                owner.ResetWindOrbEngagement(orb.ItemUid);
+                owner.Orbs.ResetWindOrbEngagement(orb.ItemUid);
                 continue;
             }
 
-            if (!owner.HasCompletedWindOrbSpinup(orb.ItemUid, nowUtc, Config.SWARM_WIND_BLADE_SPINUP_SECONDS))
+            if (!owner.Orbs.UpdateWindOrbSpinup(orb.ItemUid, nowUtc, Config.SWARM_WIND_BLADE_SPINUP_SECONDS))
             {
                 continue;
             }

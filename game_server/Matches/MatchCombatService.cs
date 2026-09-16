@@ -136,7 +136,6 @@ internal class MatchCombatService(
         botBehavior.ProcessDoorInteractions(runtime, aliveBots, sessions, nowUtc);
 
         var actors = actorBuilder.Build(runtime, players, nowUtc);
-        playerOrbs.ProcessOrbRecovery(runtime, actors, nowUtc);
         var orbVisuals = MatchOrbVisual.Build(runtime, actors);
         foreach (var session in sessions)
         {

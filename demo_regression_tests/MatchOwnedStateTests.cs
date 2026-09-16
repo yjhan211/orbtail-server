@@ -36,12 +36,12 @@ public sealed class MatchOwnedStateTests
 
         roster.RegisterParticipant(new Player(new network.common.data.models.PlayerInfo { PlayerId = 11 }));
         TestGameSessionServices.AddSummonStones(first, 11, 9);
-        TestGameSessionServices.Orbs(first, 11).AddItem(107000010);
+        TestGameSessionServices.Orbs(first, 11).AddOrb(107000010);
 
         Assert.Same(first.GetParticipant(11)!.Orbs,
             TestGameSessionServices.Orbs(store.GetOrThrow(first.MatchingId), 11));
         Assert.Null(second.GetParticipant(11));
-        Assert.Empty(second.GetOrbs(11).GetAllItems());
+        Assert.Empty(second.GetOrbs(11).GetAllOrbs());
         Assert.Equal(9, TestGameSessionServices.SummonStones(store.GetOrThrow(first.MatchingId), 11).StoneCount);
         Assert.Equal(0, TestGameSessionServices.SummonStones(second, 11).StoneCount);
         Assert.DoesNotContain(second.BuildGameResult(), row => row.playerId == 11);
@@ -63,7 +63,7 @@ public sealed class MatchOwnedStateTests
         ground.SpawnItems(area, 0, 0, [107000010]);
         roster.RegisterParticipant(new Player(new network.common.data.models.PlayerInfo { PlayerId = 11 }));
         TestGameSessionServices.AddSummonStones(runtime, 11, 5);
-        TestGameSessionServices.Orbs(runtime, 11).AddItem(107000010);
+        TestGameSessionServices.Orbs(runtime, 11).AddOrb(107000010);
         closures.InitializeMatching([]);
 
         using (MatchRuntimeStore.Enter(runtime))
@@ -127,7 +127,7 @@ public sealed class MatchOwnedStateTests
                 [botId], new Dictionary<long, Cell> { [botId] = network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9) });
             runtime.RegisterParticipant(runtime.Bots.GetBot(botId)!.Player);
             runtime.RegisterParticipant(new Player(new network.common.data.models.PlayerInfo { PlayerId = 11 }));
-            TestGameSessionServices.Orbs(runtime, botId).AddItem(107000010);
+            TestGameSessionServices.Orbs(runtime, botId).AddOrb(107000010);
         }
         var bot = match.Bots.GetBot(botId)!;
         var service = TestGameSessionServices.CreateEliminationService(store, NullLogger.Instance);
@@ -140,7 +140,7 @@ public sealed class MatchOwnedStateTests
             Assert.True(bot.Player.IsEliminated);
             Assert.Same(bot.Player, match.GetParticipant(botId));
             Assert.Equal(0, bot.Movement.WaypointIndex);
-            Assert.Empty(TestGameSessionServices.Orbs(match, botId).GetAllItems());
+            Assert.Empty(TestGameSessionServices.Orbs(match, botId).GetAllOrbs());
             int drops = match.GroundItems.GetItemsInArea(bot.Player.GameInfo.ObjectInfo.Area).Count;
             var eliminatedAt = entry.eliminatedAt;
 
@@ -150,7 +150,7 @@ public sealed class MatchOwnedStateTests
             Assert.Equal(11, match.BuildGameResult().Single(row => row.playerId == botId).attackerPlayerId);
         }
         Assert.False(sibling.Bots.GetBot(botId)!.Player.IsEliminated);
-        Assert.NotEmpty(TestGameSessionServices.Orbs(sibling, botId).GetAllItems());
+        Assert.NotEmpty(TestGameSessionServices.Orbs(sibling, botId).GetAllOrbs());
         Assert.NotEqual(PlayerMatchStatus.ELIMINATED, sibling.BuildGameResult().Single(row => row.playerId == botId).finalStatus);
     }
     [Theory]
@@ -201,12 +201,12 @@ public sealed class MatchOwnedStateTests
         var service = TestGameSessionServices.CreateEliminationService(store, NullLogger.Instance);
         using (match.Enter())
         {
-            TestGameSessionServices.Orbs(match, player.PlayerId).AddItem(107000010);
+            TestGameSessionServices.Orbs(match, player.PlayerId).AddOrb(107000010);
             service.EliminatePlayer(match, player, EliminationReason.HEALTH_ZERO, deferGameOver: true);
             service.EliminatePlayer(match, player, EliminationReason.HEALTH_ZERO, deferGameOver: true);
             Assert.Null(player.Session);
             Assert.Equal(player.GameInfo.ObjectInfo.Area, player.EliminatedArea);
-            Assert.Empty(TestGameSessionServices.Orbs(match, player.PlayerId).GetAllItems());
+            Assert.Empty(TestGameSessionServices.Orbs(match, player.PlayerId).GetAllOrbs());
             Assert.Single(match.GroundItems.GetItemsInArea(player.GameInfo.ObjectInfo.Area));
         }
     }

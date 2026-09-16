@@ -31,7 +31,7 @@ namespace network.common.data.models
     }
 
     public enum CombatEntityKind { Player = 0, Monster = 1 }
-    public enum HealthRecoveryKind { Orb = 0, Sleep = 1 }
+    public enum HealthRecoveryKind { Sleep = 1 }
     public enum CombatStatusEffectKind { WaveOrbSlow = 0, SunBurn = 1, WindOrbWound = 2 }
 
     /// <summary>사람·봇·몬스터의 이동 공간 정보. 오브 위상은 플레이어에게만 적용한다.</summary>
@@ -66,8 +66,7 @@ namespace network.common.data.models
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("areaType")] public AreaType AreaType { get; set; }
         [Key("amount")] public int Amount { get; set; }
-        [Key("source")] public HealthRecoveryKind Source { get; set; }
-        [Key("orbItemId")] public int OrbItemId { get; set; }
+        [Key("source")] public HealthRecoveryKind Source { get; set; } = HealthRecoveryKind.Sleep;
     }
 
     [MessagePackObject]
@@ -136,6 +135,12 @@ namespace network.common.data.models
         // 본체 체력: 같은 구역 상대의 머리 위 게이지를 상시 구동한다 —
         // "때리면 닳는 게 보인다". -1 = 미동기(표시 유지).
         [Key("gauge")] public int BodyHealth { get; set; } = -1;
+    }
+
+    /// <summary>오브 링 연출의 공통 식별값. 기존 패킷 번호를 유지한다.</summary>
+    public enum OrbRingEffectKind
+    {
+        WaveOrb = 2
     }
 
     /// <summary>

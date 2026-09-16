@@ -706,7 +706,7 @@ public sealed class BotMovementDeliveryTests
         var recipient = AddRecipient(store, match.MatchingId, 1, AreaType.S2Gym1, timeline);
         var bot = new Bot { PlayerId = -20 };
         bot.Player.State = PlayerState.EXPLORE_1;
-        bot.Player.BeginDoor(213, 0);
+        bot.Player.Interactions.Begin(213, 0);
         using (match.Enter())
         {
             match.Bots.GetBots().Add(bot);
@@ -717,7 +717,7 @@ public sealed class BotMovementDeliveryTests
                 Position = TestMapPosition.In(AreaType.S2Gym1), Velocity = new Vector3f(1, 0, 0),
                 ToCell = network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Gym1)
             }]);
-            Assert.Null(bot.Player.PendingDoorInteractionId);
+            Assert.Null(bot.Player.Interactions.PendingInteractId);
             Assert.Equal(PlayerState.IDLE, bot.Player.State);
         }
         Assert.Equal(new[] { (1L, Protocol.G_TO_C_PLAYER_INFO), (1L, Protocol.G_TO_C_MOVE) }, timeline);
@@ -756,9 +756,9 @@ public sealed class BotMovementDeliveryTests
         {
             match.Bots.GetBots().Add(bot);
             match.RegisterParticipant(bot.Player);
-            float phase = bot.Player.OrbOrbitPhaseDegrees;
+            float phase = bot.Player.Orbs.OrbitPhaseDegrees;
             SendMovements(match, [movement]);
-            Assert.Equal(phase, bot.Player.OrbOrbitPhaseDegrees);
+            Assert.Equal(phase, bot.Player.Orbs.OrbitPhaseDegrees);
         }
 
         if (changesArea)
@@ -881,7 +881,7 @@ public sealed class BotMovementDeliveryTests
         Assert.Equal(2, packet.Objects.Count);
         Assert.Equal(ObjectType.PLAYER, packet.Objects[0].ObjectType);
         Assert.Equal(ObjectType.MONSTER, packet.Objects[1].ObjectType);
-        Assert.Equal(bot.Player.OrbOrbitPhaseDegrees, packet.OrbPhases[-20]);
+        Assert.Equal(bot.Player.Orbs.OrbitPhaseDegrees, packet.OrbPhases[-20]);
         Assert.True(packet.ServerTimestamp > 0);
         Assert.Equal(Protocol.G_TO_C_OBJECT_ENTER, recipient.Packets[0].Protocol);
         recipient.Packets.Clear();

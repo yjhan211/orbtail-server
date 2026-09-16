@@ -225,20 +225,7 @@ internal sealed class MatchResultService(
         {
             throw new InvalidOperationException("Building player results requires the match lock.");
         }
-        var endedAtUtc = DateTime.UtcNow;
-        var startedAtUtc = runtime.StartsAtUtc ?? endedAtUtc;
         var resultRows = runtime.BuildGameResult();
-
-        var killCountsByPlayerId = new Dictionary<long, int>();
-        foreach (var row in resultRows)
-        {
-            if (row.attackerPlayerId == 0 || row.reason != EliminationReason.HEALTH_ZERO)
-            {
-                continue;
-            }
-            killCountsByPlayerId.TryGetValue(row.attackerPlayerId, out int killCount);
-            killCountsByPlayerId[row.attackerPlayerId] = killCount + 1;
-        }
 
         var playerResults = new List<GameResultPlayerInfo>();
         foreach (var row in resultRows)
@@ -246,8 +233,6 @@ internal sealed class MatchResultService(
             var player = runtime.GetParticipant(row.playerId)!;
             var orbs = runtime.GetOrbs(row.playerId);
             bool isWinner = row.playerId == winnerId;
-            killCountsByPlayerId.TryGetValue(row.playerId, out int pvpKillCount);
-            var survivalEndUtc = row.eliminatedAt ?? endedAtUtc;
             playerResults.Add(new GameResultPlayerInfo
             {
                 PlayerId = row.playerId,
@@ -257,14 +242,9 @@ internal sealed class MatchResultService(
                 Health = player.Health,
                 MaxHealth = Config.MAX_HEALTH,
                 WearItemIdList = player.GameInfo.WearItemIdList is { Count: > 0 } wearItemIds ? new List<int>(wearItemIds) : new List<int>(),
-                SurvivalTimeSeconds = Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
-                KillCount = pvpKillCount + player.MonsterKillCount,
-                TotalDamageDealt = player.PvpDamageDealt + player.MonsterDamageDealt,
-                TotalRecovery = player.RecoveryTotal,
                 AttackerPlayerId = row.attackerPlayerId,
                 EliminatedArea = row.eliminatedArea,
                 Rank = isWinner ? 1 : row.eliminationRank,
-                FinalOrbTier = isWinner ? orbs.GetHighestOrbTier() : row.finalOrbTier,
                 OrbCount = orbs.GetOrbScore().OrbCount
             });
         }
@@ -279,10 +259,6 @@ internal sealed class MatchResultService(
             .OrderByDescending(player => winnerId != 0 && player.PlayerId == winnerId)
             .ThenBy(player => player.Rank > 0 ? player.Rank : 0)
             .ThenByDescending(player => player.OrbCount)
-            .ThenByDescending(player => player.SurvivalTimeSeconds)
-            .ThenByDescending(player => player.KillCount)
-            .ThenByDescending(player => player.TotalDamageDealt)
-            .ThenByDescending(player => player.TotalRecovery)
             .ThenBy(player => player.PlayerId)
             .ToList();
 

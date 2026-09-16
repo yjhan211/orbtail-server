@@ -13,12 +13,12 @@ internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails)
 {
     private static float SwarmOrbCadenceJitterRatio => SwarmConfigData.GetFloat("SWARM_ORB_CADENCE_JITTER_RATIO", 0.12f);
 
-    public static void AddOrbActors(ICollection<ProximityCombatActor> actors, ProximityCombatActor bodyActor, PlayerOrbCollection orbs)
+    public static void AddOrbActors(ICollection<ProximityCombatActor> actors, ProximityCombatActor bodyActor, PlayerOrbState orbs)
     {
-        foreach (var orb in orbs.GetAllItems().Where(item => item.Count > 0).OrderBy(item => item.ItemUid))
+        foreach (var orb in orbs.GetAllOrbs().Where(item => item.Count > 0).OrderBy(item => item.ItemUid))
         {
             bool attackOrb = OrbData.TryGetColorAndTier(orb.ItemId, out _, out _) && BattleItemCombatData.Get(orb.ItemId) != null;
-            if (!OrbData.IsRecoveryOrb(orb.ItemId) && !attackOrb)
+            if (!attackOrb)
             {
                 continue;
             }
@@ -71,7 +71,7 @@ internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails)
                 continue;
             }
 
-            float sunAttackMultiplier = OrbData.GetSunPveAttackMultiplier(orbCollection.GetAllItems());
+            float sunAttackMultiplier = OrbData.GetSunPveAttackMultiplier(orbCollection.GetAllOrbs());
             var orbTiers = orbTrails.GetOrbTiersInOrder(runtime, player);
             for (int ordinal = 0; ordinal < orbCount; ordinal++)
             {

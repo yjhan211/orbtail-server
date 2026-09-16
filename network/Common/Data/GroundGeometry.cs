@@ -17,6 +17,9 @@ namespace network.common.data
 
         public const float MonsterRadius = 0.3f;
 
+        /// <summary>태양 공격의 몬스터 몸통 판정 높이(월드 Y 단위).</summary>
+        public const float MonsterBodyHeight = 0.6f;
+
         /// <summary>꼬리 절단의 오브 판정 타원 반경(바닥면 단위). 이웃 오브 오차와 부양 스프라이트를 보정한다.</summary>
         private const float OrbHitRadius = 0.42f;
 

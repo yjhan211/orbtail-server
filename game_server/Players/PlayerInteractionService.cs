@@ -16,8 +16,8 @@ internal sealed class PlayerInteractionService
         {
             throw new InvalidOperationException("Interaction changes require the match lock.");
         }
-        int[] canceledIds = state.GetPendingInteractionIds();
-        state.ClearPendingInteractions();
+        int[] canceledIds = state.Interactions.GetPendingIds();
+        state.Interactions.Cancel();
         return canceledIds;
     }
 
@@ -73,7 +73,7 @@ internal sealed class PlayerInteractionService
         var error = CheckDoorGauge(runtime, player, interactId, doorId);
         if (error == ErrorCode.SUCCESS)
         {
-            player.BeginDoor(interactId, now);
+            player.Interactions.Begin(interactId, now);
         }
         return error;
     }
@@ -88,11 +88,11 @@ internal sealed class PlayerInteractionService
         error = runtime.IsEnded || player.IsEliminated ? ErrorCode.INVALID_GAME_STATE : CheckDoorGauge(runtime, player, interactId, doorId);
         if (error != ErrorCode.SUCCESS)
         {
-            player.TryFinishInteraction(interactId);
+            player.Interactions.Cancel(interactId);
             return false;
         }
 
-        if (!player.TryFinishDoor(interactId, now, TimeSpan.FromSeconds(Config.GetSwarmDoorGaugeSeconds(doorId)), out error))
+        if (!player.Interactions.TryComplete(interactId, now, TimeSpan.FromSeconds(Config.GetSwarmDoorGaugeSeconds(doorId)), out error))
         {
             return false;
         }

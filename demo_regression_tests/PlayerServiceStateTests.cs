@@ -65,7 +65,7 @@ public sealed class PlayerServiceStateTests
     }
 
     [Fact]
-    public void HealthChange_RecordsRecoveryWithoutConnection_AndKeepsPlayersSeparate()
+    public void HealthChange_AppliesWithoutConnection_AndKeepsPlayersSeparate()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948010);
@@ -84,8 +84,6 @@ public sealed class PlayerServiceStateTests
             Assert.Null(other.Session);
             Assert.Equal(60, player.Health);
             Assert.Equal(35, other.Health);
-            Assert.Equal(10, player.RecoveryTotal);
-            Assert.Equal(0, other.RecoveryTotal);
         }
     }
 }

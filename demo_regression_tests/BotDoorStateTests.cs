@@ -34,7 +34,7 @@ public sealed class BotDoorStateTests
 
         service.ProcessDoorInteractions(runtime, [bot], [], DateTime.UtcNow);
 
-        Assert.Equal(canOpen, bot.Player.PendingDoorInteractionId == 702000113);
+        Assert.Equal(canOpen, bot.Player.Interactions.PendingInteractId == 702000113);
         Assert.Equal(canOpen ? PlayerState.EXPLORE_1 : PlayerState.IDLE, bot.Player.State);
     }
 
@@ -49,17 +49,17 @@ public sealed class BotDoorStateTests
             var cell = new Cell((int)door.PositionX, (int)door.PositionY);
             runtime.Bots.RegisterBots(runtime.MatchingId, [-1L], new Dictionary<long, Cell> { [-1] = cell });
             var bot = runtime.Bots.GetBot(-1)!;
-            bot.Player.BeginDoor(702000113, 0);
+            bot.Player.Interactions.Begin(702000113, 0);
             bot.Player.State = PlayerState.EXPLORE_1;
             var now = DateTime.UtcNow;
             new game_server.matches.MatchCombatDamageService(null!).RecordCombatContact(runtime, bot.Player, 1, now);
 
             Assert.Equal(PlayerState.IDLE, bot.Player.State);
-            Assert.Null(bot.Player.PendingDoorInteractionId);
+            Assert.Null(bot.Player.Interactions.PendingInteractId);
             var service = new BotBehaviorService(null!, new PlayerInteractionService(), NullLogger<BotBehaviorService>.Instance);
             service.ProcessDoorInteractions(runtime, [bot], [], now.AddMilliseconds(100));
             Assert.Equal(PlayerState.EXPLORE_1, bot.Player.State);
-            Assert.Equal(702000113, bot.Player.PendingDoorInteractionId);
+            Assert.Equal(702000113, bot.Player.Interactions.PendingInteractId);
         }
     }
 
@@ -81,7 +81,7 @@ public sealed class BotDoorStateTests
 
             service.ProcessDoorInteractions(runtime, [bot], [], now);
             Assert.Equal(PlayerState.EXPLORE_1, bot.Player.State);
-            Assert.Equal(702000113, bot.Player.PendingDoorInteractionId);
+            Assert.Equal(702000113, bot.Player.Interactions.PendingInteractId);
 
             service.ProcessDoorInteractions(runtime, [bot], [], now.AddMilliseconds(100));
             Assert.Equal(PlayerState.EXPLORE_1, bot.Player.State);
@@ -90,7 +90,7 @@ public sealed class BotDoorStateTests
                 runtime.Doors.OpenDoor(213);
             service.ProcessDoorInteractions(runtime, [bot], [], now.AddSeconds(Config.GetSwarmDoorGaugeSeconds(213) + 1));
             Assert.Equal(PlayerState.IDLE, bot.Player.State);
-            Assert.Null(bot.Player.PendingDoorInteractionId);
+            Assert.Null(bot.Player.Interactions.PendingInteractId);
         }
     }
 }

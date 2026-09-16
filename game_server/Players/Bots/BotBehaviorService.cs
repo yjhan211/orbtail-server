@@ -32,7 +32,7 @@ internal class BotBehaviorService(
                 continue;
             }
 
-            if (bot.Player.SummonStones.StoneCount < growth.GetNextOrbGrowthCost(runtime, bot.Player))
+            if (bot.Player.Orbs.SummonStones.StoneCount < growth.GetNextOrbGrowthCost(runtime, bot.Player))
             {
                 continue;
             }
@@ -124,7 +124,7 @@ internal class BotBehaviorService(
             {
                 continue;
             }
-            if (player.PendingDoorInteractionId is { } interactId)
+            if (player.Interactions.PendingInteractId is { } interactId)
             {
                 int doorId = GameInteractableData.Get(interactId)?.DoorId ?? 0;
                 if (interactions.TryFinishDoor(runtime, player, interactId, doorId, now, out var error))
@@ -575,7 +575,7 @@ internal class BotBehaviorService(
             }
             else
             {
-                player.TryStartSleep(nowUtc);
+                player.TryStartSleep();
             }
         }
     }
@@ -585,7 +585,7 @@ internal class BotBehaviorService(
         var player = bot.Player;
         var position = player.Position!;
 
-        if (player.IsEliminated || player.Health <= 0 || !player.CanSleep(nowUtc) || player.PendingDoorInteractionId.HasValue)
+        if (player.IsEliminated || player.Health <= 0 || player.Interactions.PendingInteractId.HasValue)
         {
             return true;
         }
@@ -628,7 +628,7 @@ internal class BotBehaviorService(
     internal static float GetBotMovementSpeedMultiplier(Bot bot, DateTime? nowUtc = null)
     {
         var now = nowUtc ?? DateTime.UtcNow;
-        var orbs = bot.Player.Orbs.GetAllItems();
+        var orbs = bot.Player.Orbs.GetAllOrbs();
         bool bootsActive = now < bot.BootsSpeedUntilUtc;
         bool bareSpeedActive = !bot.Player.Orbs.HasAnyOrb() && now < bot.SwarmBareSpeedUntilUtc;
         bool waveSlowActive = bot.Player.StatusEffects.IsActive(PlayerStatusEffectKind.WaveSlow, now);

@@ -32,8 +32,7 @@ internal sealed class PlayerEliminationService(
         var eliminatedArea = eliminatedPlayer.GameInfo.ObjectInfo.Area;
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
 
-        int finalOrbTier = eliminatedPlayer.Orbs.GetHighestOrbTier();
-        bool eliminated = runtime.TryEliminatePlayer(eliminatedPlayerId, reason, resolvedAttackerPlayerId, eliminatedArea, forcedRank, finalOrbTier);
+        bool eliminated = runtime.TryEliminatePlayer(eliminatedPlayerId, reason, resolvedAttackerPlayerId, eliminatedArea, forcedRank);
         if (!eliminated)
         {
             logger.LogDebug("Duplicate elimination ignored: matchingId={MatchingId}, PlayerId={PlayerId}, Reason={Reason}", matchingId, eliminatedPlayerId, reason);
@@ -50,8 +49,8 @@ internal sealed class PlayerEliminationService(
         var position = eliminatedPlayer.Position;
         if (position != null && eliminatedArea != AreaType.None)
         {
-            var removedItems = eliminatedPlayer.Orbs.TakeAllItems();
-            eliminatedPlayer.ClearOrbTimers();
+            var removedItems = eliminatedPlayer.Orbs.TakeAllOrbs();
+            eliminatedPlayer.Orbs.ClearAttackTimers();
             var droppedItemIds = new List<int>();
             foreach (var item in removedItems)
             {

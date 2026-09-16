@@ -525,6 +525,7 @@ namespace network.common
         // 서버 앞머리 속도. 클라 투사체는 패킷의 ActiveSeconds(= 실제 벽까지 거리/속도)를 그대로 써
         // 표시와 판정의 도착 시간을 맞춘다.
         public static float SWARM_CROSSFIRE_SUN_SWEEP_SPEED => SwarmConfigData.GetFloat("SWARM_CROSSFIRE_SUN_SWEEP_SPEED", 7.5f);
+        public static float SWARM_CROSSFIRE_SUN_MAX_GROUND_LENGTH => SwarmConfigData.GetFloat("SWARM_CROSSFIRE_SUN_MAX_GROUND_LENGTH", 40f);
 
         /// <summary>
         ///     큰 공격 한 번 = 유도탄 두 발 몫. 주기 ×2, 피해 ×2 — 총 화력은 같고 한 번의 무게가 커진다.

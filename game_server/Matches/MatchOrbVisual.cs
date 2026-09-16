@@ -31,7 +31,7 @@ internal sealed record MatchOrbVisual(long ActorPlayerId, AreaType Area, int Wea
                 orbActorsByPlayer[actor.PlayerId] = new List<ProximityCombatActor>();
             }
 
-            if (!actor.IsMonsterTarget && PlayerOrbCollection.GetOrbTier(actor.WeaponItemId) > 0)
+            if (!actor.IsMonsterTarget && PlayerOrbState.GetOrbTier(actor.WeaponItemId) > 0)
             {
                 orbActorsByPlayer[actor.PlayerId].Add(actor);
             }

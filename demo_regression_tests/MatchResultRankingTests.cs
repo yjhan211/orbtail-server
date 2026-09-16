@@ -6,15 +6,15 @@ namespace demo_regression_tests;
 public sealed class MatchResultRankingTests
 {
     [Fact]
-    public void AssignRankings_OrdersBySurvivalKillsDamageAndRecovery()
+    public void AssignRankings_OrdersByOrbCount()
     {
         var result = MatchResultService.AssignRankings(new[]
         {
-            CreatePlayer(1, survival: 100, kills: 9, damage: 900, recovery: 900),
-            CreatePlayer(2, survival: 200, kills: 1, damage: 100, recovery: 100),
-            CreatePlayer(3, survival: 200, kills: 2, damage: 100, recovery: 100),
-            CreatePlayer(4, survival: 200, kills: 2, damage: 200, recovery: 100),
-            CreatePlayer(5, survival: 200, kills: 2, damage: 200, recovery: 200)
+            CreatePlayer(1, orbCount: 1),
+            CreatePlayer(2, orbCount: 2),
+            CreatePlayer(3, orbCount: 3),
+            CreatePlayer(4, orbCount: 4),
+            CreatePlayer(5, orbCount: 5)
         });
 
         Assert.Equal(new long[] { 5, 4, 3, 2, 1 }, result.Select(player => player.PlayerId));
@@ -22,12 +22,12 @@ public sealed class MatchResultRankingTests
     }
 
     [Fact]
-    public void AssignRankings_PutsWinnerFirstEvenWhenStatisticsSortLower()
+    public void AssignRankings_PutsWinnerFirstEvenWhenOrbCountIsLower()
     {
         var result = MatchResultService.AssignRankings(new[]
         {
-            CreatePlayer(10, survival: 99, kills: 1, damage: 100, recovery: 10),
-            CreatePlayer(20, survival: 100, kills: 3, damage: 300, recovery: 30)
+            CreatePlayer(10, orbCount: 1),
+            CreatePlayer(20, orbCount: 5)
         }, winnerId: 10);
 
         Assert.Equal(new long[] { 10, 20 }, result.Select(player => player.PlayerId));
@@ -39,20 +39,20 @@ public sealed class MatchResultRankingTests
     {
         var result = MatchResultService.AssignRankings(new[]
         {
-            CreatePlayer(20, survival: 100, kills: 1, damage: 10, recovery: 5),
-            CreatePlayer(10, survival: 100, kills: 1, damage: 10, recovery: 5)
+            CreatePlayer(20, orbCount: 5),
+            CreatePlayer(10, orbCount: 5)
         });
 
         Assert.Equal(new long[] { 10, 20 }, result.Select(player => player.PlayerId));
     }
 
     [Fact]
-    public void AssignRankings_UsesAuthoritativeEliminationRankBeforeStatistics()
+    public void AssignRankings_UsesAuthoritativeEliminationRankBeforeOrbCount()
     {
         var result = MatchResultService.AssignRankings(new[]
         {
-            CreatePlayer(10, survival: 200, kills: 9, damage: 900, recovery: 900, rank: 2),
-            CreatePlayer(20, survival: 1, kills: 0, damage: 0, recovery: 0, rank: 0)
+            CreatePlayer(10, orbCount: 5, rank: 2),
+            CreatePlayer(20, orbCount: 5, rank: 0)
         });
 
         Assert.Equal(new long[] { 20, 10 }, result.Select(player => player.PlayerId));
@@ -61,19 +61,13 @@ public sealed class MatchResultRankingTests
 
     private static GameResultPlayerInfo CreatePlayer(
         long playerId,
-        int survival,
-        int kills,
-        int damage,
-        int recovery,
+        int orbCount,
         int rank = 0)
     {
         return new GameResultPlayerInfo
         {
             PlayerId = playerId,
-            SurvivalTimeSeconds = survival,
-            KillCount = kills,
-            TotalDamageDealt = damage,
-            TotalRecovery = recovery,
+            OrbCount = orbCount,
             Rank = rank
         };
     }
@@ -85,9 +79,9 @@ public sealed class MatchResultRankingTests
         // 스웜에서 그 셋은 상시 0이라 동순위가 PlayerId 순으로 잘렸다.
         var result = MatchResultService.AssignRankings(new[]
         {
-            new GameResultPlayerInfo { PlayerId = 1, Rank = 0, OrbCount = 3, SurvivalTimeSeconds = 200 },
-            new GameResultPlayerInfo { PlayerId = 2, Rank = 0, OrbCount = 8, SurvivalTimeSeconds = 200 },
-            new GameResultPlayerInfo { PlayerId = 3, Rank = 0, OrbCount = 5, SurvivalTimeSeconds = 200 }
+            new GameResultPlayerInfo { PlayerId = 1, Rank = 0, OrbCount = 3 },
+            new GameResultPlayerInfo { PlayerId = 2, Rank = 0, OrbCount = 8 },
+            new GameResultPlayerInfo { PlayerId = 3, Rank = 0, OrbCount = 5 }
         });
 
         Assert.Equal(new long[] { 2, 3, 1 }, result.Select(player => player.PlayerId).ToArray());

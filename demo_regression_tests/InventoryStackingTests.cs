@@ -10,12 +10,12 @@ public sealed class InventoryStackingTests
     [Fact]
     public void OrbsKeepSeparateSlotsWithoutRecipes()
     {
-        var inventory = new PlayerOrbCollection();
-        var first = inventory.AddItem(107000010);
-        var second = inventory.AddItem(107000010);
+        var inventory = new PlayerOrbState();
+        var first = inventory.AddOrb(107000010);
+        var second = inventory.AddOrb(107000010);
         Assert.NotEqual(first.ItemUid, second.ItemUid);
-        Assert.Equal(2, inventory.GetAllItems().Count);
-        Assert.All(inventory.GetAllItems(), item => Assert.Equal(1, item.Count));
+        Assert.Equal(2, inventory.GetAllOrbs().Count);
+        Assert.All(inventory.GetAllOrbs(), item => Assert.Equal(1, item.Count));
     }
 
     [Fact]

@@ -12,6 +12,24 @@ public sealed class PlayerInteractionServiceTests
 {
     private readonly PlayerInteractionService _interactions = new();
 
+    [Fact]
+    public void InteractionStateClearsPendingAndUsesNewStartTime()
+    {
+        var state = new PlayerInteractState();
+        state.Begin(10, 1000);
+        Assert.False(state.Cancel(11));
+        Assert.False(state.TryComplete(10, 3999, TimeSpan.FromSeconds(3), out _));
+        Assert.True(state.TryComplete(10, 4000, TimeSpan.FromSeconds(3), out var error));
+        Assert.Equal(ErrorCode.SUCCESS, error);
+        Assert.Null(state.PendingInteractId);
+        state.Begin(20, 5000);
+        Assert.Equal(20, state.Cancel());
+        Assert.Null(state.PendingInteractId);
+        state.Begin(30, 9000);
+        Assert.False(state.TryComplete(30, 11999, TimeSpan.FromSeconds(3), out _));
+        Assert.True(state.TryComplete(30, 12000, TimeSpan.FromSeconds(3), out _));
+    }
+
     public PlayerInteractionServiceTests()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -26,26 +44,26 @@ public sealed class PlayerInteractionServiceTests
     public void FinishIsSingleUseAndCancellationInvalidatesPending()
     {
         var state = new Player(new PlayerInfo { PlayerId = 1 });
-        state.BeginDoor(10, 0);
-        Assert.True(state.TryFinishInteraction(10));
-        Assert.False(state.TryFinishInteraction(10));
-        state.BeginDoor(11, 0);
-        state.ClearPendingInteractions();
-        Assert.False(state.TryFinishInteraction(11));
-        Assert.Empty(state.GetPendingInteractionIds());
+        state.Interactions.Begin(10, 0);
+        Assert.True(state.Interactions.Cancel(10));
+        Assert.False(state.Interactions.Cancel(10));
+        state.Interactions.Begin(11, 0);
+        state.Interactions.Cancel();
+        Assert.False(state.Interactions.Cancel(11));
+        Assert.Empty(state.Interactions.GetPendingIds());
     }
 
     [Fact]
     public void AnyPendingDoorIsInterruptedByHit()
     {
         var state = new Player(new PlayerInfo { PlayerId = 1 });
-        state.BeginDoor(10, 0);
-        Assert.Equal(10, state.InterruptDoor());
-        Assert.False(state.TryFinishDoor(10, 3000, TimeSpan.FromSeconds(3), out _));
-        Assert.Null(state.InterruptDoor());
-        state.BeginDoor(11, 3000);
-        Assert.Equal(11, state.InterruptDoor());
-        Assert.False(state.TryFinishInteraction(11));
+        state.Interactions.Begin(10, 0);
+        Assert.Equal(10, state.Interactions.Cancel());
+        Assert.False(state.Interactions.TryComplete(10, 3000, TimeSpan.FromSeconds(3), out _));
+        Assert.Null(state.Interactions.Cancel());
+        state.Interactions.Begin(11, 3000);
+        Assert.Equal(11, state.Interactions.Cancel());
+        Assert.False(state.Interactions.Cancel(11));
     }
 
     [Theory]
@@ -55,16 +73,16 @@ public sealed class PlayerInteractionServiceTests
     {
         var state = new Player(new PlayerInfo { PlayerId = 1 });
         var duration = TimeSpan.FromSeconds(seconds);
-        state.BeginDoor(10, 1000);
-        Assert.False(state.TryFinishDoor(10, 1000, duration, out var error));
+        state.Interactions.Begin(10, 1000);
+        Assert.False(state.Interactions.TryComplete(10, 1000, duration, out var error));
         Assert.Equal(ErrorCode.DOOR_OPEN_TOO_EARLY, error);
-        Assert.False(state.TryFinishDoor(10, 1000 + seconds * 1000 - 1, duration, out error));
+        Assert.False(state.Interactions.TryComplete(10, 1000 + seconds * 1000 - 1, duration, out error));
         Assert.Equal(ErrorCode.DOOR_OPEN_TOO_EARLY, error);
-        Assert.False(state.TryFinishDoor(11, 1000 + seconds * 1000, duration, out error));
+        Assert.False(state.Interactions.TryComplete(11, 1000 + seconds * 1000, duration, out error));
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, error);
-        Assert.True(state.TryFinishDoor(10, 1000 + seconds * 1000, duration, out error));
+        Assert.True(state.Interactions.TryComplete(10, 1000 + seconds * 1000, duration, out error));
         Assert.Equal(ErrorCode.SUCCESS, error);
-        Assert.False(state.TryFinishDoor(10, 1000 + seconds * 1000, duration, out error));
+        Assert.False(state.Interactions.TryComplete(10, 1000 + seconds * 1000, duration, out error));
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, error);
     }
 
@@ -73,16 +91,16 @@ public sealed class PlayerInteractionServiceTests
     {
         var state = new Player(new PlayerInfo { PlayerId = 1 });
         var duration = TimeSpan.FromSeconds(3);
-        state.BeginDoor(10, 0);
-        state.BeginDoor(10, 2000);
-        Assert.False(state.TryFinishDoor(10, 3000, duration, out var error));
+        state.Interactions.Begin(10, 0);
+        state.Interactions.Begin(10, 2000);
+        Assert.False(state.Interactions.TryComplete(10, 3000, duration, out var error));
         Assert.Equal(ErrorCode.DOOR_OPEN_TOO_EARLY, error);
-        state.BeginDoor(11, 3000);
-        Assert.Equal(new[] { 11 }, state.GetPendingInteractionIds());
-        Assert.False(state.TryFinishDoor(10, 6000, duration, out error));
+        state.Interactions.Begin(11, 3000);
+        Assert.Equal(new[] { 11 }, state.Interactions.GetPendingIds());
+        Assert.False(state.Interactions.TryComplete(10, 6000, duration, out error));
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, error);
-        state.ClearPendingInteractions();
-        Assert.False(state.TryFinishDoor(11, 6000, duration, out error));
+        state.Interactions.Cancel();
+        Assert.False(state.Interactions.TryComplete(11, 6000, duration, out error));
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, error);
     }
 
@@ -94,15 +112,15 @@ public sealed class PlayerInteractionServiceTests
         var state = new Player(new PlayerInfo { PlayerId = 1 });
         using (MatchRuntimeStore.Enter(runtime))
         {
-            state.BeginDoor(10, 0);
-            state.BeginDoor(11, 0);
+            state.Interactions.Begin(10, 0);
+            state.Interactions.Begin(11, 0);
 
             int[] canceled = _interactions.CancelPendingInteractions(runtime, state);
 
             Assert.Equal(new[] { 11 }, canceled);
-            Assert.Empty(state.GetPendingInteractionIds());
-            Assert.False(state.TryFinishInteraction(10));
-            Assert.False(state.TryFinishDoor(11, 6000, TimeSpan.FromSeconds(3), out _));
+            Assert.Empty(state.Interactions.GetPendingIds());
+            Assert.False(state.Interactions.Cancel(10));
+            Assert.False(state.Interactions.TryComplete(11, 6000, TimeSpan.FromSeconds(3), out _));
 
             Assert.Empty(_interactions.CancelPendingInteractions(runtime, state));
             runtime.TryMarkEnded();
@@ -115,11 +133,11 @@ public sealed class PlayerInteractionServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984404);
         var state = new Player(new PlayerInfo { PlayerId = 1 });
-        state.BeginDoor(10, 0);
+        state.Interactions.Begin(10, 0);
 
         Assert.Throws<InvalidOperationException>(() =>
             _interactions.CancelPendingInteractions(runtime, state));
-        Assert.Single(state.GetPendingInteractionIds());
+        Assert.Single(state.Interactions.GetPendingIds());
 
         using (MatchRuntimeStore.Enter(runtime))
         {
@@ -162,7 +180,7 @@ public sealed class PlayerInteractionServiceTests
         {
             Assert.False(_interactions.TryFinishDoor(match, player, info.Id, door.DoorId, duration, out _));
             Assert.Equal(ErrorCode.SUCCESS, _interactions.StartDoor(match, player, info.Id, door.DoorId, 0));
-            Assert.Equal(info.Id, player.InterruptDoor());
+            Assert.Equal(info.Id, player.Interactions.Cancel());
             Assert.False(_interactions.TryFinishDoor(match, player, info.Id, door.DoorId, duration, out _));
             Assert.Equal(ErrorCode.SUCCESS, _interactions.StartDoor(match, player, info.Id, door.DoorId, 0));
             Assert.False(_interactions.TryFinishDoor(match, player, info.Id, door.DoorId, duration - 1, out var error));
@@ -172,7 +190,7 @@ public sealed class PlayerInteractionServiceTests
             Assert.False(_interactions.TryFinishDoor(match, player, info.Id, door.DoorId, duration, out _));
             match.Doors.CloseDoorsForAreas([door.AreaType]);
             Assert.Equal(ErrorCode.SUCCESS, _interactions.StartDoor(match, player, info.Id, door.DoorId, duration));
-            Assert.Equal(info.Id, player.InterruptDoor());
+            Assert.Equal(info.Id, player.Interactions.Cancel());
             Assert.False(_interactions.TryFinishDoor(match, player, info.Id, door.DoorId, duration * 2, out _));
             Assert.False(match.Doors.IsDoorOpen(door.DoorId));
         }

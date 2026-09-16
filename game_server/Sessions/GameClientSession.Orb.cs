@@ -42,7 +42,7 @@ public partial class GameClientSession
         {
             if (match.IsEnded || IsGameplayActionBlocked(out _))
             {
-                var state = Player.SummonStones;
+                var state = Player.Orbs.SummonStones;
                 using var failurePacket = Packet.Create((int)Protocol.G_TO_C_SUMMON_ORB_RESULT, PlayerId ?? 0);
                 failurePacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SUMMON_ORB_RESULT
                 {
@@ -127,7 +127,7 @@ public partial class GameClientSession
                     Success = false,
                     ResultItemId = 0,
                     TargetItemId = request.TargetItemId,
-                    StoneCount = Player.SummonStones.StoneCount,
+                    StoneCount = Player.Orbs.SummonStones.StoneCount,
                     TargetOrdinal = -1
                 }));
                 TrySend(packet);
@@ -153,7 +153,7 @@ public partial class GameClientSession
                 Success = result.Success,
                 ResultItemId = result.ResultItemId,
                 TargetItemId = request.TargetItemId,
-                StoneCount = Player.SummonStones.StoneCount,
+                StoneCount = Player.Orbs.SummonStones.StoneCount,
                 TargetOrdinal = result.TargetOrdinal
             }));
             TrySend(resultPacket);
@@ -182,7 +182,7 @@ public partial class GameClientSession
         }
 
         var match = Volatile.Read(ref _match);
-        var state = Player != null ? Player.SummonStones : SummonStoneStateInfo.Empty;
+        var state = Player != null ? Player.Orbs.SummonStones : SummonStoneStateInfo.Empty;
         using var packet = Packet.Create((int)Protocol.G_TO_C_SUMMON_STONE_STATE, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SUMMON_STONE_STATE
         {
@@ -201,7 +201,7 @@ public partial class GameClientSession
             return;
         }
 
-        var items = Player.Orbs.GetAllItems();
+        var items = Player.Orbs.GetAllOrbs();
         using var packet = PacketMaker.G_TO_C_ORB_LIST(items);
         TrySend(packet);
 

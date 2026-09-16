@@ -141,11 +141,11 @@ public class SwarmDamagePathTests
         string condition = File.ReadAllText(
             Path.Combine(root, "game_server", "Players", "Player.cs"));
 
-        // 수치 계약: 1초 준비 · 1초 틱당 최대 HP 5% · 가해·피해 뒤 3초 진입 잠금.
+        // 수치 계약: 1초 준비 · 1초 틱당 최대 HP 5%. 전투 후 진입 잠금은 없다.
         string health = File.ReadAllText(Path.Combine(root, "game_server", "Players", "PlayerStatusEffects.cs"));
         Assert.Contains("SwarmSleepWarmupSeconds = 1d", health);
         Assert.Contains("SwarmSleepRecoveryRatioPerSecond = 0.05f", health);
-        Assert.Contains("SwarmSleepCombatLockSeconds = 3d", condition);
+        Assert.DoesNotContain("CanSleep", condition);
         // 회복은 연속 이월이 아니라 1초 단위 틱으로 센다.
         Assert.Contains("ProcessedRecoveryCount", health);
 
@@ -156,9 +156,9 @@ public class SwarmDamagePathTests
 
         string combat = File.ReadAllText(
             Path.Combine(root, "game_server", "Matches", "MatchCombatService.cs"));
-        // 피격·절단 가해는 수면을 깨지 않고 교전 잠금만 찍는다.
-        Assert.Contains("victim.MarkSwarmCombat(nowUtc)", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "MatchCombatDamageService.cs")));
-        Assert.Contains("MarkSwarmCombat(nowUtc)", File.ReadAllText(Path.Combine(root, "game_server", "Matches", "MatchTrailCutService.cs")));
+        // 피격·절단 가해는 수면을 깨거나 수면 진입을 잠그지 않는다.
+        Assert.DoesNotContain("MarkSwarmCombat", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Matches", "MatchCombatDamageService.cs")));
+        Assert.DoesNotContain("MarkSwarmCombat", File.ReadAllText(Path.Combine(root, "game_server", "Matches", "MatchTrailCutService.cs")));
         // 아레나에서 수면을 깨우는 호출이 되살아나면 계약 위반이다 (폐쇄·경고 깨우기 퇴역).
         Assert.DoesNotContain("BreakSwarmSleep", combat);
         Assert.Contains("ApplySleepRecovery(runtime,", combat);

@@ -34,7 +34,7 @@ public sealed class PlayerOrbTrailServiceTests
         var anchor = new Vector3f(0, 0, 0);
         using (MatchRuntimeStore.Enter(first))
         {
-            firstPlayer.OrbTrail.AddRange([new Vector3f(2, 0, 0), new Vector3f(4, 0, 0)]);
+            firstPlayer.Orbs.OrbTrail.AddRange([new Vector3f(2, 0, 0), new Vector3f(4, 0, 0)]);
             var middle = service.GetPositionAtDistance(first, firstPlayer, 3, anchor);
             var beyond = service.GetPositionAtDistance(first, firstPlayer, 6, anchor);
             Assert.Equal(3f, middle.X);
@@ -63,15 +63,15 @@ public sealed class PlayerOrbTrailServiceTests
         using (MatchRuntimeStore.Enter(match))
         {
             var inventory = TestGameSessionServices.Orbs(match, 11);
-            inventory.AddItem(107000010);
-            inventory.AddItem(107000020);
-            inventory.AddItem(107000030);
-            var original = inventory.GetAllItems().OrderBy(item => item.ItemUid).ToArray();
+            inventory.AddOrb(107000010);
+            inventory.AddOrb(107000020);
+            inventory.AddOrb(107000030);
+            var original = inventory.GetAllOrbs().OrderBy(item => item.ItemUid).ToArray();
             Assert.Empty(service.DestroyOrbsFromOrdinal(match, player, -1));
             Assert.Empty(service.DestroyOrbsFromOrdinal(match, player, 3));
             var removed = service.DestroyOrbsFromOrdinal(match, player, 1);
             Assert.Equal(original.Skip(1).Select(item => item.ItemUid), removed.Select(item => item.ItemUid));
-            Assert.Equal(original[0].ItemUid, Assert.Single(inventory.GetAllItems()).ItemUid);
+            Assert.Equal(original[0].ItemUid, Assert.Single(inventory.GetAllOrbs()).ItemUid);
             match.TryMarkEnded();
         }
     }

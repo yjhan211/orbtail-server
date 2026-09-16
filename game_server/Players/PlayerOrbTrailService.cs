@@ -26,9 +26,9 @@ internal sealed class PlayerOrbTrailService
 
         var inventory = player.Orbs;
         int orbCount = 0;
-        foreach (var item in inventory.GetAllItems())
+        foreach (var item in inventory.GetAllOrbs())
         {
-            if (item.Count <= 0 || PlayerOrbCollection.GetOrbTier(item.ItemId) <= 0)
+            if (item.Count <= 0 || PlayerOrbState.GetOrbTier(item.ItemId) <= 0)
             {
                 continue;
             }
@@ -46,7 +46,7 @@ internal sealed class PlayerOrbTrailService
             throw new InvalidOperationException("Orb trail operations require the match lock.");
         }
 
-        var items = player.Orbs.GetAllItems().ToList();
+        var items = player.Orbs.GetAllOrbs().ToList();
         items.Sort((left, right) => left.ItemUid.CompareTo(right.ItemUid));
 
         var tiers = new List<int>();
@@ -57,7 +57,7 @@ internal sealed class PlayerOrbTrailService
                 continue;
             }
 
-            int tier = PlayerOrbCollection.GetOrbTier(item.ItemId);
+            int tier = PlayerOrbState.GetOrbTier(item.ItemId);
             if (tier > 0)
             {
                 tiers.Add(tier);
@@ -85,7 +85,7 @@ internal sealed class PlayerOrbTrailService
             throw new InvalidOperationException("Orb trail operations require the match lock.");
         }
 
-        var points = player.OrbTrail;
+        var points = player.Orbs.OrbTrail;
         if (points.Count == 0)
         {
             return new Vector3f(anchor.X, anchor.Y - targetDistance * 0.2f, 0f);
@@ -131,7 +131,7 @@ internal sealed class PlayerOrbTrailService
 
         var destroyed = new List<InGameItemInfo>();
         var inventory = player.Orbs;
-        var orbs = inventory.GetAllItems().Where(item => item.Count > 0 && PlayerOrbCollection.GetOrbTier(item.ItemId) > 0).OrderBy(item => item.ItemUid).ToList();
+        var orbs = inventory.GetAllOrbs().Where(item => item.Count > 0 && PlayerOrbState.GetOrbTier(item.ItemId) > 0).OrderBy(item => item.ItemUid).ToList();
         if (fromOrdinal < 0 || fromOrdinal >= orbs.Count)
         {
             return destroyed;
@@ -139,9 +139,9 @@ internal sealed class PlayerOrbTrailService
 
         for (int ordinal = fromOrdinal; ordinal < orbs.Count; ordinal++)
         {
-            if (inventory.TryRemoveItem(orbs[ordinal].ItemUid, 1, out var destroyedItem) && destroyedItem != null)
+            if (inventory.TryRemoveOrb(orbs[ordinal].ItemUid, 1, out var destroyedItem) && destroyedItem != null)
             {
-                player.ForgetOrbTimers(destroyedItem.ItemUid);
+                player.Orbs.RemoveAttackTimers(destroyedItem.ItemUid);
                 destroyed.Add(destroyedItem);
             }
         }
@@ -165,7 +165,7 @@ internal sealed class PlayerOrbTrailService
             {
                 continue;
             }
-            var points = player.OrbTrail;
+            var points = player.Orbs.OrbTrail;
 
             var center = participant.Position;
             if (points.Count == 0)

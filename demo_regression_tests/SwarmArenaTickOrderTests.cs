@@ -152,7 +152,6 @@ public sealed class SwarmArenaTickOrderTests
             "ApplySleepRecovery(",
             "ProcessDoorInteractions(",
             "actorBuilder.Build(",
-            "playerOrbs.ProcessOrbRecovery(",
             "MatchOrbVisual.Build(",
             "matchResults.BroadcastOrbRankings(",
             "botBehavior.ProcessOrbGrowth(",
@@ -219,7 +218,7 @@ public sealed class SwarmArenaTickOrderTests
             elimination,
             "TryEliminatePlayer(",
             "eliminatedBot.Movement.Clear();",
-            "eliminatedPlayer.Orbs.TakeAllItems(",
+            "eliminatedPlayer.Orbs.TakeAllOrbs(",
             "session.TrySend(eliminatedPacket);",
             "CheckGameOver()");
 
@@ -229,7 +228,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             humanElimination,
             "TryEliminatePlayer(",
-            "eliminatedPlayer.Orbs.TakeAllItems(",
+            "eliminatedPlayer.Orbs.TakeAllOrbs(",
             "session.TrySend(eliminatedPacket);",
             "CheckGameOver(",
             "FinalizeMatch(");
@@ -321,9 +320,9 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("_swarmWindWoundsUntilUtc", crossfire);
         Assert.DoesNotContain("_swarmFamilyUpgradeCounts", orbBoard);
         Assert.Contains("participant.StatusEffects.TryApply(PlayerStatusEffectKind.WindShockImmunity, ", windBlade);
-        Assert.Contains("owner.TryBeginWindOrbTick(", windBlade);
-        Assert.Contains("owner.HasCompletedWindOrbSpinup(", windBlade);
-        Assert.Contains("player.GetOrbUpgradeCount(orbGroupId)", orbBoard);
+        Assert.Contains("owner.Orbs.TryBeginWindOrbAttack(", windBlade);
+        Assert.Contains("owner.Orbs.UpdateWindOrbSpinup(", windBlade);
+        Assert.Contains("player.Orbs.GetUpgradeCount(orbGroupId)", orbBoard);
         Assert.DoesNotContain("MatchRuntimeStore", orbBoard);
     }
 

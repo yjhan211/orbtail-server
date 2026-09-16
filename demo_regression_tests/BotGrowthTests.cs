@@ -51,12 +51,12 @@ public sealed class BotGrowthTests
         using (match.Enter())
         {
             for (int i = 0; i < Config.SWARM_ORB_CAPACITY; i++)
-                Assert.True(TestGameSessionServices.Orbs(match, -1).TryAddItemWithCapacity(itemId, Config.SWARM_ORB_CAPACITY, out _));
+                Assert.True(TestGameSessionServices.Orbs(match, -1).TryAddOrbWithCapacity(itemId, Config.SWARM_ORB_CAPACITY, out _));
             int cost = growth.GetNextOrbGrowthCost(match, bot.Player);
             TestGameSessionServices.AddSummonStones(match, -1, cost);
             decisions.ProcessOrbGrowth(match, [bot]);
             Assert.Equal(0, TestGameSessionServices.SummonStones(match, -1).StoneCount);
-            Assert.Single(TestGameSessionServices.Orbs(match, -1).GetAllItems(), item => item.ItemId == upgradedItemId);
+            Assert.Single(TestGameSessionServices.Orbs(match, -1).GetAllOrbs(), item => item.ItemId == upgradedItemId);
             Assert.Equal(Config.SWARM_ORB_CAPACITY, TestGameSessionServices.Orbs(match, -1).GetOrbScore().OrbCount);
         }
     }
@@ -74,11 +74,11 @@ public sealed class BotGrowthTests
         using (match.Enter())
         {
             decisions.ProcessOrbGrowth(match, [bot]);
-            Assert.Empty(TestGameSessionServices.Orbs(match, -1).GetAllItems());
+            Assert.Empty(TestGameSessionServices.Orbs(match, -1).GetAllOrbs());
             TestGameSessionServices.AddSummonStones(match, -1, 100);
             bot.Player.Status = PlayerMatchStatus.ELIMINATED;
             decisions.ProcessOrbGrowth(match, [bot]);
-            Assert.Empty(TestGameSessionServices.Orbs(match, -1).GetAllItems());
+            Assert.Empty(TestGameSessionServices.Orbs(match, -1).GetAllOrbs());
             Assert.Equal(100, TestGameSessionServices.SummonStones(match, -1).StoneCount);
         }
     }

@@ -85,7 +85,6 @@ public sealed class GameClientSessionPublicationTests
             var change = health.Recover(session.Match, session.Player, 10);
             Assert.Equal(10, change.Recovered);
             Assert.Equal(Config.MAX_HEALTH, session.Player.Health);
-            Assert.Equal(10, session.Player.RecoveryTotal);
         }
     }
 
@@ -295,8 +294,8 @@ public sealed class GameClientSessionPublicationTests
         }
         Assert.Equal(before - 5, bot.Player.Health);
         Assert.Equal(session.Player.Health, bot.Player.Health);
-        Assert.False(session.Player.CanSleep(DateTime.UtcNow));
-        Assert.False(bot.Player.CanSleep(DateTime.UtcNow));
+        Assert.True(session.Player.TryStartSleep());
+        Assert.True(bot.Player.TryStartSleep());
         Assert.Equal(101, bot.LastProximityAttackerPlayerId);
         Assert.True(bot.LastDamagedAtUtc > DateTime.MinValue);
         Assert.NotEqual(DateTime.MinValue, bot.LastDamagedAtUtc);
@@ -326,8 +325,8 @@ public sealed class GameClientSessionPublicationTests
         }
         Assert.Equal(before - 5, bot.Player.Health);
         Assert.Equal(session.Player.Health, bot.Player.Health);
-        Assert.False(session.Player.CanSleep(DateTime.UtcNow));
-        Assert.False(bot.Player.CanSleep(DateTime.UtcNow));
+        Assert.True(session.Player.TryStartSleep());
+        Assert.True(bot.Player.TryStartSleep());
         Assert.True(bot.LastDamagedAtUtc > DateTime.MinValue);
         Assert.Equal(0, bot.LastProximityAttackerPlayerId);
         using (session.Match.Enter())
@@ -416,40 +415,6 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(37, hit.AttackerHealth);
     }
 
-    [Fact]
-    public void RecoveryAndStatusEffect_HaveSeparateTypedPackets()
-    {
-        using var fixture = new SessionFixture();
-        var session = fixture.CreateSession(70001, 101, (AreaType)50);
-        fixture.SetHealth(session, Config.MAX_HEALTH - 3);
-        var recoveryService = new PlayerOrbService(TestGameSessionServices.CreateHealthService(fixture.Store), TestGameSessionServices.CreateCombatDamageService(), new PlayerOrbTrailService());
-        var actor = new ProximityCombatActor(101, (AreaType)50, new Vector3f(0, 0, 0),
-            107000040, 0, 0, 0, WeaponItemUid: 1);
-        var now = DateTime.UtcNow;
-        using (session.Match.Enter())
-        {
-            recoveryService.ProcessOrbRecovery(session.Match, [actor], now);
-            recoveryService.ProcessOrbRecovery(session.Match, [actor], now.AddSeconds(OrbData.RecoveryTickSeconds));
-        }
-        using var packet = PacketMaker.G_TO_C_STATUS_EFFECT(new()
-        {
-            SourcePlayerId = 102,
-            TargetPlayerId = 101,
-            AreaType = (AreaType)50,
-            Effect = CombatStatusEffectKind.WaveOrbSlow,
-            DurationMs = 1500
-        });
-        Assert.True(session.TrySend(packet));
-        var recovery = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_HEALTH_RECOVERY>(Protocol.G_TO_C_HEALTH_RECOVERY);
-        Assert.Equal(HealthRecoveryKind.Orb, recovery.Source);
-        Assert.Equal(actor.WeaponItemId, recovery.OrbItemId);
-        Assert.Equal(Math.Min(3, OrbData.GetRecoveryAmount(actor.WeaponItemId)), recovery.Amount);
-        var effect = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_STATUS_EFFECT>(Protocol.G_TO_C_STATUS_EFFECT);
-        Assert.Equal(102, effect.SourcePlayerId);
-        Assert.Equal(101, effect.TargetPlayerId);
-        Assert.Equal(CombatStatusEffectKind.WaveOrbSlow, effect.Effect);
-        Assert.Equal(1500, effect.DurationMs);
-    }
 
     [Fact]
     public void SleepRecoverySendsRecoveryNotificationFromTick()
@@ -460,7 +425,7 @@ public sealed class GameClientSessionPublicationTests
         var now = DateTime.UtcNow;
         using (session.Match.Enter())
         {
-            Assert.True(session.Player.TryStartSleep(now));
+            Assert.True(session.Player.TryStartSleep());
             TestGameSessionServices.CreateHealthService(fixture.Store).ApplySleepRecovery(session.Match, [session.Player], now);
             TestGameSessionServices.CreateHealthService(fixture.Store).ApplySleepRecovery(session.Match, [session.Player], now.AddSeconds(1));
         }
@@ -683,7 +648,7 @@ public sealed class GameClientSessionPublicationTests
 
         // 실제로 잠들지 않고 서버가 기록한 시작 시각만 앞당긴다.
         var interactions = session.Player;
-        interactions.BeginDoor(702000101, Environment.TickCount64 - 3000);
+        interactions.Interactions.Begin(702000101, Environment.TickCount64 - 3000);
 
         fixture.ConnectionFor(session).ClearPackets();
         await SendAsync(
@@ -738,7 +703,7 @@ public sealed class GameClientSessionPublicationTests
             Assert.Equal(stonesBefore + 1, TestGameSessionServices.SummonStones(fixture.Store.GetOrThrow(70001), 101).StoneCount);
         else if (itemId == 107000010)
             Assert.Contains(
-                TestGameSessionServices.Orbs(fixture.Store.GetOrThrow(70001), 101).GetAllItems(),
+                TestGameSessionServices.Orbs(fixture.Store.GetOrThrow(70001), 101).GetAllOrbs(),
                 inventoryItem => inventoryItem.ItemId == itemId);
     }
 
@@ -776,7 +741,7 @@ public sealed class GameClientSessionPublicationTests
         await RunPickupTickAsync(session, fixture.Store);
         Assert.Empty(fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.NotNull(fixture.Store.GetOrThrow(70001).GroundItems.GetItem(item.GroundItemUid));
-        Assert.DoesNotContain(TestGameSessionServices.Orbs(fixture.Store.GetOrThrow(70001), 101).GetAllItems(),
+        Assert.DoesNotContain(TestGameSessionServices.Orbs(fixture.Store.GetOrThrow(70001), 101).GetAllOrbs(),
             inventoryItem => inventoryItem.ItemId == itemId);
     }
 
@@ -1073,7 +1038,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("RunWithMatchLock", combat);
         Assert.DoesNotContain("RunWithMatchLock", bots);
         Assert.DoesNotContain("RunWithMatchLock", botPickup);
-        Assert.Contains("victim.InterruptDoor()", ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatDamageService.cs"));
+        Assert.Contains("victim.Interactions.Cancel()", ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatDamageService.cs"));
         Assert.Contains("victim.Session?.SendDoorOpenInterrupted(interactId);", ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatDamageService.cs"));
 
         Assert.DoesNotContain(
@@ -1122,10 +1087,10 @@ public sealed class GameClientSessionPublicationTests
         var interactions = session.Player;
         using (session.Match.Enter())
         {
-            interactions.BeginDoor(702000101, 0);
-            int interactId = Assert.IsType<int>(interactions.InterruptDoor());
+            interactions.Interactions.Begin(702000101, 0);
+            int interactId = Assert.IsType<int>(interactions.Interactions.Cancel());
             session.SendDoorOpenInterrupted(interactId);
-            Assert.False(interactions.TryFinishDoor(702000101, 3000, TimeSpan.FromSeconds(3), out var error));
+            Assert.False(interactions.Interactions.TryComplete(702000101, 3000, TimeSpan.FromSeconds(3), out var error));
             Assert.Equal(ErrorCode.INVALID_GAME_STATE, error);
         }
         var ack = fixture.ConnectionFor(session)
@@ -1157,7 +1122,7 @@ public sealed class GameClientSessionPublicationTests
         fixture.Store.GetOrThrow(70001).StartGameplay();
         var interactions = session.Player;
         using (session.Match.Enter())
-            interactions.BeginDoor(702000101, 0);
+            interactions.Interactions.Begin(702000101, 0);
 
         await SendAsync(session, Protocol.C_TO_G_PLAYER_STATE,
             new C_TO_G_PLAYER_STATE { State = PlayerState.IDLE });
@@ -1170,7 +1135,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(ErrorCode.DOOR_OPEN_INTERRUPTED, ack.ErrorCode);
         Assert.False(ack.Completed);
         using (session.Match.Enter())
-            Assert.False(interactions.TryFinishDoor(702000101, 3000, TimeSpan.FromSeconds(3), out _));
+            Assert.False(interactions.Interactions.TryComplete(702000101, 3000, TimeSpan.FromSeconds(3), out _));
         Assert.False(session.Match.Doors.IsDoorOpen(201));
     }
     private static async Task SendAsync<T>(
@@ -1360,12 +1325,12 @@ public sealed class GameClientSessionPublicationTests
         var match = eliminated.Match;
         using (match.Enter())
         {
-            Assert.True(TestGameSessionServices.Orbs(match, 101).TryAddItemWithCapacity(107000010, Config.GetOrbCapacity(), out _));
+            Assert.True(TestGameSessionServices.Orbs(match, 101).TryAddOrbWithCapacity(107000010, Config.GetOrbCapacity(), out _));
             var eliminations = TestGameSessionServices.CreateEliminationService(fixture.Store, NullLogger.Instance);
             eliminations.EliminatePlayer(match, eliminated.Player, EliminationReason.HEALTH_ZERO, deferGameOver: true);
             eliminations.EliminatePlayer(match, eliminated.Player, EliminationReason.HEALTH_ZERO, deferGameOver: true);
 
-            Assert.Empty(TestGameSessionServices.Orbs(match, 101).GetAllItems());
+            Assert.Empty(TestGameSessionServices.Orbs(match, 101).GetAllOrbs());
             Assert.Single(match.GroundItems.GetItemsInArea(eliminated.Player.GameInfo.ObjectInfo.Area));
         }
         Assert.Equal([Protocol.G_TO_C_ORB_UPDATE, Protocol.G_TO_C_PLAYER_ELIMINATED, Protocol.G_TO_C_OBJECT_LEAVE], fixture.ConnectionFor(eliminated).DeliveredProtocols);
@@ -1576,7 +1541,7 @@ public sealed class GameClientSessionPublicationTests
         public void SeedPendingFinish(RecordingSession session, int interactId)
         {
             var pending = session.Player;
-            pending.BeginDoor(interactId, 0);
+            pending.Interactions.Begin(interactId, 0);
         }
 
         public void Dispose()

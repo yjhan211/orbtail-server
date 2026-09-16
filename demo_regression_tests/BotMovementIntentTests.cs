@@ -159,9 +159,9 @@ public sealed class BotMovementIntentTests
         health.Recover(runtime, bot.Player, Config.MAX_HEALTH);
         Assert.False(bot.Wounded);
 
-        bot.Player.Orbs.TakeAllItems();
-        bot.Player.Orbs.AddItem(107000020);
-        bot.Player.Orbs.AddItem(107000020);
+        bot.Player.Orbs.TakeAllOrbs();
+        bot.Player.Orbs.AddOrb(107000020);
+        bot.Player.Orbs.AddOrb(107000020);
         var trails = new game_server.players.PlayerOrbTrailService();
         trails.DestroyOrbsFromOrdinal(runtime, bot.Player, 1);
         Assert.Equal(DateTime.MinValue, bot.SwarmBareSpeedUntilUtc);

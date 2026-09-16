@@ -119,7 +119,7 @@ public sealed class BotEscapeTargetTests
 
                 Health = Config.MAX_HEALTH
             };
-            rival.Orbs.TryAddItemWithCapacity(107000020, 8, out _);
+            rival.Orbs.TryAddOrbWithCapacity(107000020, 8, out _);
             runtime.RegisterParticipant(rival);
             var service = new BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance);
 

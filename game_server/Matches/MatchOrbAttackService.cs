@@ -20,7 +20,6 @@ internal sealed class MatchOrbAttackService(
     private const float SwarmCrossfirePlayerRadius = GroundGeometry.PlayerRadius;
     private const float SwarmCrossfirePlayerBodyHeight = 0.9f;
     private const float SwarmCrossfireMonsterRadius = GroundGeometry.MonsterRadius;
-    private const float SwarmCrossfireMonsterBodyHeight = 0.6f;
     private static readonly bool SwarmCrossfireEnabled = true;
     private static long _lastEventId;
 
@@ -123,7 +122,7 @@ internal sealed class MatchOrbAttackService(
                     continue;
                 }
 
-                if (!IsSunCrossfireSweptBody(shape, monster.Position, lastFront, front, SwarmCrossfireMonsterRadius, SwarmCrossfireMonsterBodyHeight))
+                if (!IsSunCrossfireSweptBody(shape, monster.Position, lastFront, front, SwarmCrossfireMonsterRadius, GroundGeometry.MonsterBodyHeight))
                 {
                     continue;
                 }

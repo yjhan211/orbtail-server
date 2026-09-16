@@ -56,12 +56,10 @@ public sealed class MatchRosterTests
         manager.TryEliminatePlayer(
             2,
             EliminationReason.PRESSURE_FIELD,
-            forcedRank: 3,
-            finalOrbTier: 2);
+            forcedRank: 3);
 
         var result = Assert.Single(manager.BuildGameResult(), row => row.playerId == 2);
         Assert.Equal(3, result.eliminationRank);
-        Assert.Equal(2, result.finalOrbTier);
         Assert.Equal(EliminationReason.PRESSURE_FIELD, result.reason);
     }
     [Fact]
@@ -76,10 +74,10 @@ public sealed class MatchRosterTests
 
         var first = manager.TryEliminatePlayer(
             2, EliminationReason.HEALTH_ZERO,
-            attackerPlayerId: 1, forcedRank: 3, finalOrbTier: 2);
+            attackerPlayerId: 1, forcedRank: 3);
         var duplicate = manager.TryEliminatePlayer(
             2, EliminationReason.DETECTED,
-            attackerPlayerId: 3, forcedRank: 2, finalOrbTier: 3);
+            attackerPlayerId: 3, forcedRank: 2);
 
         Assert.True(first);
         Assert.False(duplicate);
@@ -88,7 +86,6 @@ public sealed class MatchRosterTests
         Assert.Equal(EliminationReason.HEALTH_ZERO, result.reason);
         Assert.Equal(1, result.attackerPlayerId);
         Assert.Equal(3, result.eliminationRank);
-        Assert.Equal(2, result.finalOrbTier);
     }
 
     // #227 1단계: 본체 HP 0과 전투·자기장가 같은 틱에 겹쳐도 탈락은 한 번만 확정되어야 한다.

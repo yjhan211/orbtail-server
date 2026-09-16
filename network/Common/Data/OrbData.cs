@@ -14,8 +14,7 @@ namespace network.common.data
         None = 0,
         Red = 1,
         Green = 2,
-        Blue = 3,
-        Recovery = 4
+        Blue = 3
     }
 
     public enum OrbAttackPattern
@@ -28,7 +27,6 @@ namespace network.common.data
 
     public static class OrbData
     {
-        public const float RecoveryTickSeconds = 5f;
         // 침수 (#268, 2026-08-25): 소용돌이 피격 시 5초 25% 감속 — 서버(봇·몹)·클라 공용.
         public const float WaveSlowSeconds = 5f;
         public const float WaveSlowMoveSpeedMultiplier = 0.75f;
@@ -189,12 +187,10 @@ namespace network.common.data
 
         /// <summary>
         ///     색·티어 원본은 battle_item_combat.csv color/tier 컬럼 (#292 CSV 이전).
-        ///     회복 오브(color=4)는 여기서 제외 — TryGetRecoveryTier가 담당한다.
         /// </summary>
         public static bool TryGetColorAndTier(int itemId, out OrbColor color, out int tier)
         {
-            if (!BattleItemCombatData.TryGetColorAndTier(itemId, out color, out tier) ||
-                color == OrbColor.Recovery)
+            if (!BattleItemCombatData.TryGetColorAndTier(itemId, out color, out tier))
             {
                 color = OrbColor.None;
                 tier = 0;
@@ -293,7 +289,6 @@ namespace network.common.data
         /// <summary>
         /// Resolves the board-wide PvE affinity only when one attack colour owns a
         /// strict majority of every occupied orb slot. Tiers do not affect resonance.
-        /// Recovery orbs count as occupied slots but never become an attack affinity.
         /// </summary>
         public static bool TryGetDominantPveColor(
             IEnumerable<int> boardItemIds,
@@ -312,12 +307,6 @@ namespace network.common.data
 
             foreach (int itemId in boardItemIds)
             {
-                if (IsRecoveryOrb(itemId))
-                {
-                    occupiedOrbCount++;
-                    continue;
-                }
-
                 if (!TryGetColorAndTier(itemId, out OrbColor color, out _) ||
                     !orbCounts.ContainsKey(color))
                 {
@@ -375,26 +364,11 @@ namespace network.common.data
                            GetPveDamageMultiplier(attackerColor, monsterRewardItemId);
             return Math.Max(1, (int)Math.Ceiling(damage));
         }
-        public static bool TryGetRecoveryTier(int itemId, out int tier)
-        {
-            if (BattleItemCombatData.TryGetColorAndTier(itemId, out OrbColor color, out tier) &&
-                color == OrbColor.Recovery)
-            {
-                return true;
-            }
 
-            tier = 0;
-            return false;
-        }
-
-        public static bool IsRecoveryOrb(int itemId) => TryGetRecoveryTier(itemId, out _);
-
-        public static int GetRecoveryAmount(int itemId) =>
-            IsRecoveryOrb(itemId) ? BattleItemCombatData.Get(itemId)?.RecoveryAmount ?? 0 : 0;
 
         public static bool TryGetItemId(OrbColor color, int tier, out int itemId)
         {
-            if (color is OrbColor.None or OrbColor.Recovery)
+            if (color == OrbColor.None)
             {
                 itemId = 0;
                 return false;

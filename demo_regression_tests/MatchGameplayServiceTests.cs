@@ -53,9 +53,9 @@ public sealed class MatchGameplayServiceTests
             match.RegisterParticipant(eliminated);
             match.TryEliminatePlayer(303, network.common.EliminationReason.HEALTH_ZERO);
             for (int i = 0; i < 2; i++)
-                Assert.True(TestGameSessionServices.Orbs(match, winnerId).TryAddItemWithCapacity(107000010, 8, out _));
+                Assert.True(TestGameSessionServices.Orbs(match, winnerId).TryAddOrbWithCapacity(107000010, 8, out _));
             for (int i = 0; i < 6; i++)
-                Assert.True(TestGameSessionServices.Orbs(match, 303).TryAddItemWithCapacity(107000010, 8, out _));
+                Assert.True(TestGameSessionServices.Orbs(match, 303).TryAddOrbWithCapacity(107000010, 8, out _));
             match.StartGameplay();
             var deadline = match.StartsAtUtc!.Value.AddSeconds(network.common.Config.SWARM_MATCH_DURATION_SECONDS);
             Assert.Empty(match.GetSessions());
@@ -78,10 +78,10 @@ public sealed class MatchGameplayServiceTests
             foreach (long id in new long[] { 101, -102, 103 })
                 match.RegisterParticipant(new game_server.players.Player(new PlayerInfo { PlayerId = id }));
             for (int i = 0; i < 2; i++)
-                Assert.True(TestGameSessionServices.Orbs(match, 101).TryAddItemWithCapacity(107000010, 8, out _));
-            Assert.True(TestGameSessionServices.Orbs(match, -102).TryAddItemWithCapacity(107000010, 8, out _));
+                Assert.True(TestGameSessionServices.Orbs(match, 101).TryAddOrbWithCapacity(107000010, 8, out _));
+            Assert.True(TestGameSessionServices.Orbs(match, -102).TryAddOrbWithCapacity(107000010, 8, out _));
             for (int i = 0; i < 6; i++)
-                Assert.True(TestGameSessionServices.Orbs(match, 103).TryAddItemWithCapacity(107000010, 8, out _));
+                Assert.True(TestGameSessionServices.Orbs(match, 103).TryAddOrbWithCapacity(107000010, 8, out _));
             match.TryEliminatePlayer(103, network.common.EliminationReason.HEALTH_ZERO);
             Assert.Empty(match.GetSessions());
             service.BroadcastOrbRankings(match,
@@ -112,8 +112,8 @@ public sealed class MatchGameplayServiceTests
             match.RegisterParticipant(cutter);
             match.RegisterParticipant(owner);
             if (cutterId < 0) match.Bots.GetBots().Add(bot);
-            Assert.True(TestGameSessionServices.Orbs(match, owner.PlayerId).TryAddItemWithCapacity(107000010, 1, out _));
-            Assert.Single(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllItems());
+            Assert.True(TestGameSessionServices.Orbs(match, owner.PlayerId).TryAddOrbWithCapacity(107000010, 1, out _));
+            Assert.Single(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllOrbs());
             owner.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Gym1)));
             owner.Position = TestMapPosition.In(network.common.AreaType.S2Gym1, 0, -1);
             var orbPointsByOwner = new Dictionary<long, List<Vector3f>> { [owner.PlayerId] = [TestMapPosition.In(network.common.AreaType.S2Gym1)] };
@@ -124,11 +124,11 @@ public sealed class MatchGameplayServiceTests
             if (health == 35)
             {
                 Assert.Equal(health, cutter.Health);
-                Assert.Single(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllItems());
+                Assert.Single(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllOrbs());
                 return;
             }
             Assert.Equal(initialHealth - 35, cutter.Health);
-            Assert.Empty(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllItems());
+            Assert.Empty(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllOrbs());
             Assert.True(cutter.StatusEffects.GetExpiresAt(PlayerStatusEffectKind.HealingBlocked) >= now.AddSeconds(8));
             if (cutterId < 0)
             {
@@ -151,11 +151,11 @@ public sealed class MatchGameplayServiceTests
         using (match.Enter())
         {
             match.RegisterParticipant(player);
-            player.BeginDoor(702000101, 0);
+            player.Interactions.Begin(702000101, 0);
             service.ApplySwarmParticipantDamage(match,
                 new MonsterContactDamage(1, playerId, player.GameInfo.ObjectInfo.Area, 12), []);
             Assert.Equal(100 - network.common.Config.ScaleSwarmDamageTaken(12), player.Health);
-            Assert.False(player.TryFinishDoor(702000101, 3000, TimeSpan.FromSeconds(3), out _));
+            Assert.False(player.Interactions.TryComplete(702000101, 3000, TimeSpan.FromSeconds(3), out _));
 
             player.Status = network.common.PlayerMatchStatus.ELIMINATED;
             int health = player.Health;
@@ -212,7 +212,7 @@ public sealed class MatchGameplayServiceTests
         {
             match.RegisterParticipant(hunter);
             match.RegisterParticipant(prey);
-            Assert.True(TestGameSessionServices.Orbs(match, hunter.PlayerId).TryAddItemWithCapacity(107000010, 6, out _));
+            Assert.True(TestGameSessionServices.Orbs(match, hunter.PlayerId).TryAddOrbWithCapacity(107000010, 6, out _));
             Assert.Equal(1, growth.GetTopOrbCount(match));
             match.TryEliminatePlayer(prey.PlayerId, network.common.EliminationReason.HEALTH_ZERO);
             match.TryEliminatePlayer(hunter.PlayerId, network.common.EliminationReason.HEALTH_ZERO);
@@ -307,7 +307,7 @@ public sealed class MatchGameplayServiceTests
     }
 
     [Fact]
-    public void BotSleepUsesSharedWarmupRecoveryAndCombatLock()
+    public void BotSleepUsesSharedWarmupRecovery()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var service = provider.GetRequiredService<BotBehaviorService>();
@@ -318,11 +318,6 @@ public sealed class MatchGameplayServiceTests
         var now = DateTime.UtcNow;
         using (match.Enter())
         {
-            bot.Player.MarkSwarmCombat(now);
-            service.UpdateSleep(match, [bot], now.AddSeconds(2));
-            Assert.False(bot.Player.IsSleeping);
-            TestGameSessionServices.CreateHealthService(store).ApplySleepRecovery(match, [bot.Player], now.AddSeconds(2));
-            Assert.Equal(10, bot.Player.Health);
             service.UpdateSleep(match, [bot], now.AddSeconds(3));
             Assert.True(bot.Player.IsSleeping);
             TestGameSessionServices.CreateHealthService(store).ApplySleepRecovery(match, [bot.Player], now.AddSeconds(3));
@@ -332,14 +327,13 @@ public sealed class MatchGameplayServiceTests
             Assert.Equal(expected, bot.Player.Health);
             TestGameSessionServices.CreateHealthService(store).ApplySleepRecovery(match, [bot.Player], now.AddSeconds(4));
             Assert.Equal(expected, bot.Player.Health);
-            bot.Player.MarkSwarmCombat(now.AddSeconds(4));
             service.UpdateSleep(match, [bot], now.AddSeconds(4));
-            Assert.False(bot.Player.IsSleeping);
+            Assert.True(bot.Player.IsSleeping);
         }
     }
 
     [Fact]
-    public void BotSleepWakesForDangerAndFullHealthAndRespectsHealingLock()
+    public void BotSleepWakesForDangerAndFullHealthButIgnoresHealingLock()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var service = provider.GetRequiredService<BotBehaviorService>();
@@ -359,14 +353,14 @@ public sealed class MatchGameplayServiceTests
             enemy.Player.Position = new Vector3f(1000, 1000, 0);
             bot.Player.StatusEffects.Apply(PlayerStatusEffectKind.HealingBlocked, now.AddSeconds(8));
             service.UpdateSleep(match, [bot], now.AddSeconds(7));
-            Assert.False(bot.Player.IsSleeping);
+            Assert.True(bot.Player.IsSleeping);
             service.UpdateSleep(match, [bot], now.AddSeconds(8));
             Assert.True(bot.Player.IsSleeping);
             bot.Player.Recover(network.common.Config.MAX_HEALTH);
             service.UpdateSleep(match, [bot], now.AddSeconds(9));
             Assert.False(bot.Player.IsSleeping);
             bot.Player.ApplyDamage(1);
-            bot.Player.BeginDoor(10, 0);
+            bot.Player.Interactions.Begin(10, 0);
             service.UpdateSleep(match, [bot], now.AddSeconds(10));
             Assert.False(bot.Player.IsSleeping);
         }
@@ -384,7 +378,7 @@ public sealed class MatchGameplayServiceTests
             var spawnCell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, bot.Player.GameInfo.ObjectInfo.Area);
             bot.Player.Position = network.common.data.MapCoordinateConverter.CellToWorld(network.common.Config.SWARM_MATCH_MAP, spawnCell);
             var originalPosition = bot.Player.Position;
-            Assert.True(bot.Player.TryStartSleep(DateTime.UtcNow));
+            Assert.True(bot.Player.TryStartSleep());
             var result = MovementTickTestDriver.RunBotTick(match,
                 _ => throw new InvalidOperationException("A sleeping bot must not request a movement plan."));
             Assert.Single(result.Movements);

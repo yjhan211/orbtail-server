@@ -16,10 +16,9 @@ internal sealed class PlayerOrbGrowthService(
     public const int NormalMonsterReward = 1;
     public const int CoreMonsterReward = 3;
 
-    // 회복 오브(107000040)는 퇴역했다. 회복은 새 오브 영입이 맡는다 (#219).
     // 공급 차단 토글(SWARM_SUN/WAVE_ORB_ENABLED=false)이면 소환 풀에서 그 색이 빠진다.
     private static readonly int[] SummonPool = BuildSummonPool();
-    private static readonly int[] OpeningAttackPool = SummonPool.Where(itemId => !OrbData.IsRecoveryOrb(itemId)).ToArray();
+    private static readonly int[] OpeningAttackPool = SummonPool;
 
     /// <summary>시작 소환석 5 — 첫 개봉(비용 5) 한 번을 보장해 개전 직후 드래프트를 먼저 보여준다. 이후는 몹 처치로 번다.</summary>
     public static int InitialSummonStoneCount => 5;
@@ -44,9 +43,9 @@ internal sealed class PlayerOrbGrowthService(
 
         if (amount > 0)
         {
-            player.SummonStones = new SummonStoneStateInfo(checked(player.SummonStones.StoneCount + amount), player.SummonStones.SuccessfulSummonCount);
+            player.Orbs.SummonStones = new SummonStoneStateInfo(checked(player.Orbs.SummonStones.StoneCount + amount), player.Orbs.SummonStones.SuccessfulSummonCount);
         }
-        return player.SummonStones;
+        return player.Orbs.SummonStones;
     }
 
     /// <summary>오브 강화 비용을 차감한다. 잔액이 부족하면 변경하지 않는다.</summary>
@@ -57,12 +56,12 @@ internal sealed class PlayerOrbGrowthService(
             throw new InvalidOperationException("Summon stone changes require the match lock.");
         }
 
-        if (amount < 0 || player.SummonStones.StoneCount < amount)
+        if (amount < 0 || player.Orbs.SummonStones.StoneCount < amount)
         {
             return false;
         }
 
-        player.SummonStones = new SummonStoneStateInfo(player.SummonStones.StoneCount - amount, player.SummonStones.SuccessfulSummonCount);
+        player.Orbs.SummonStones = new SummonStoneStateInfo(player.Orbs.SummonStones.StoneCount - amount, player.Orbs.SummonStones.SuccessfulSummonCount);
         return true;
     }
 
@@ -77,21 +76,21 @@ internal sealed class PlayerOrbGrowthService(
         }
         ArgumentNullException.ThrowIfNull(grantItem);
 
-        int cost = SummonStoneStateInfo.CostAfter(player.SummonStones.SuccessfulSummonCount);
-        if (player.SummonStones.StoneCount < cost)
+        int cost = SummonStoneStateInfo.CostAfter(player.Orbs.SummonStones.SuccessfulSummonCount);
+        if (player.Orbs.SummonStones.StoneCount < cost)
         {
-            return SummonResult.Failed(ErrorCode.INSUFFICIENT_CURRENCY, player.SummonStones);
+            return SummonResult.Failed(ErrorCode.INSUFFICIENT_CURRENCY, player.Orbs.SummonStones);
         }
 
-        int itemId = DrawSummonOrb(player.SummonStones.SuccessfulSummonCount);
+        int itemId = DrawSummonOrb(player.Orbs.SummonStones.SuccessfulSummonCount);
         var item = grantItem(itemId);
         if (item == null)
         {
-            return SummonResult.Failed(ErrorCode.INVENTORY_FULL, player.SummonStones);
+            return SummonResult.Failed(ErrorCode.INVENTORY_FULL, player.Orbs.SummonStones);
         }
 
-        player.SummonStones = new SummonStoneStateInfo(player.SummonStones.StoneCount - cost, player.SummonStones.SuccessfulSummonCount + 1);
-        return new SummonResult(true, ErrorCode.SUCCESS, itemId, item, player.SummonStones);
+        player.Orbs.SummonStones = new SummonStoneStateInfo(player.Orbs.SummonStones.StoneCount - cost, player.Orbs.SummonStones.SuccessfulSummonCount + 1);
+        return new SummonResult(true, ErrorCode.SUCCESS, itemId, item, player.Orbs.SummonStones);
     }
 
     /// <summary>개전 직후에는 잔상과 싸울 수단이 바로 필요하다. 첫 소환만 공격 오브 풀에서 뽑는다.</summary>
@@ -124,7 +123,7 @@ internal sealed class PlayerOrbGrowthService(
         }
 
         long playerId = player.PlayerId;
-        var attempt = TrySummon(runtime, player, itemId => player.Orbs.TryAddItemWithCapacity(itemId, Config.SWARM_ORB_CAPACITY, out var added) ? added : null);
+        var attempt = TrySummon(runtime, player, itemId => player.Orbs.TryAddOrbWithCapacity(itemId, Config.SWARM_ORB_CAPACITY, out var added) ? added : null);
         return attempt;
     }
 
@@ -148,7 +147,7 @@ internal sealed class PlayerOrbGrowthService(
             return (false, 0, -1);
         }
 
-        int cost = Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(player.GetOrbUpgradeCount(orbGroupId)));
+        int cost = Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(player.Orbs.GetUpgradeCount(orbGroupId)));
         if (cost <= 0 || !OrbData.TryGetOrbGroupAndTier(target.ItemId, out _, out int tier) || !OrbData.TryGetOrbItemId(orbGroupId, tier + 1, out int upgradedItemId))
         {
             return (false, 0, -1);
@@ -159,7 +158,7 @@ internal sealed class PlayerOrbGrowthService(
             return (false, 0, -1);
         }
 
-        player.IncrementOrbUpgradeCount(orbGroupId);
+        player.Orbs.IncrementUpgradeCount(orbGroupId);
         var inventory = player.Orbs;
         bool replaced = inventory.TryReplaceOrb(target.ItemUid, upgradedItemId, out _);
 
@@ -210,7 +209,7 @@ internal sealed class PlayerOrbGrowthService(
         {
             return 0;
         }
-        int purchases = player.GetOrbUpgradeCount(orbGroupId);
+        int purchases = player.Orbs.GetUpgradeCount(orbGroupId);
         return Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(purchases));
     }
 
@@ -243,7 +242,7 @@ internal sealed class PlayerOrbGrowthService(
             throw new InvalidOperationException("Orb growth operations require the match lock.");
         }
 
-        int cost = player.Orbs.GetOrbScore().OrbCount < Config.SWARM_ORB_CAPACITY ? player.SummonStones.NextCost : int.MaxValue;
+        int cost = player.Orbs.GetOrbScore().OrbCount < Config.SWARM_ORB_CAPACITY ? player.Orbs.SummonStones.NextCost : int.MaxValue;
         var upgrades = GetOrbUpgradeInfo(runtime, player);
         foreach (int upgradeCost in new[] { upgrades.SunCost, upgrades.WindCost, upgrades.WaveCost })
         {

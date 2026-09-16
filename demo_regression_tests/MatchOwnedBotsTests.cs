@@ -16,15 +16,15 @@ public sealed class MatchOwnedBotsTests
         var bot = new Bot { PlayerId = -1 };
 
         Assert.Equal(1f, BotBehaviorService.GetBotMovementSpeedMultiplier(bot));
-        Assert.True(bot.Player.Orbs.TryAddItemWithCapacity(107000020, 8, out _));
+        Assert.True(bot.Player.Orbs.TryAddOrbWithCapacity(107000020, 8, out _));
         Assert.Equal(1.06f, BotBehaviorService.GetBotMovementSpeedMultiplier(bot));
-        Assert.True(bot.Player.Orbs.TryAddItemWithCapacity(107000022, 8, out _));
+        Assert.True(bot.Player.Orbs.TryAddOrbWithCapacity(107000022, 8, out _));
         Assert.Equal(1.08f, BotBehaviorService.GetBotMovementSpeedMultiplier(bot));
 
         bot.BootsSpeedUntilUtc = DateTime.UtcNow.AddMinutes(1);
         Assert.Equal(1.08f * Config.BOOTS_MOVE_SPEED_MULTIPLIER,
             BotBehaviorService.GetBotMovementSpeedMultiplier(bot));
-        bot.Player.Orbs.TakeAllItems();
+        bot.Player.Orbs.TakeAllOrbs();
         Assert.Equal(Config.BOOTS_MOVE_SPEED_MULTIPLIER,
             BotBehaviorService.GetBotMovementSpeedMultiplier(bot));
     }

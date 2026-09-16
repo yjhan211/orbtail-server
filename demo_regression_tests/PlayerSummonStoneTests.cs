@@ -61,7 +61,7 @@ public class PlayerSummonStoneTests
                     PlayerOrbGrowthService.AddSummonStones(match, player, PlayerOrbGrowthService.InitialSummonStoneCount);
                     var summon = PlayerOrbGrowthService.TrySummon(match, player, Grant(1));
                     Assert.True(summon.Success);
-                    Assert.False(OrbData.IsRecoveryOrb(summon.ItemId));
+                    Assert.True(OrbData.IsOrbItem(summon.ItemId));
                 }
             }
         }
@@ -100,7 +100,7 @@ public class PlayerSummonStoneTests
                 Assert.Contains(attempt.ItemId, PlayerOrbGrowthService.SummonPoolItemIds);
             }
 
-            Assert.Equal(43, player.SummonStones.StoneCount);
+            Assert.Equal(43, player.Orbs.SummonStones.StoneCount);
         }
     }
 
@@ -153,12 +153,12 @@ public class PlayerSummonStoneTests
         var (match, player) = Create(205);
         using var scope = match.Enter();
         PlayerOrbGrowthService.AddSummonStones(match, player, 1);
-        player.SummonStones.NextCost = 0;
+        player.Orbs.SummonStones.NextCost = 0;
         var result = PlayerOrbGrowthService.TrySummon(match, player, _ =>
             throw new InvalidOperationException("Insufficient balance must not grant an orb."));
         Assert.False(result.Success);
         Assert.Equal(ErrorCode.INSUFFICIENT_CURRENCY, result.ErrorCode);
-        Assert.Equal(1, player.SummonStones.StoneCount);
+        Assert.Equal(1, player.Orbs.SummonStones.StoneCount);
     }
     [Fact]
     public void StoneChanges_RequireTheMatchLock()
@@ -167,7 +167,7 @@ public class PlayerSummonStoneTests
         Assert.Throws<InvalidOperationException>(() => PlayerOrbGrowthService.AddSummonStones(match, player, 1));
         Assert.Throws<InvalidOperationException>(() => PlayerOrbGrowthService.TrySpendSummonStones(match, player, 1));
         Assert.Throws<InvalidOperationException>(() => PlayerOrbGrowthService.TrySummon(match, player, Grant(1)));
-        Assert.Equivalent(SummonStoneStateInfo.Empty, player.SummonStones);
+        Assert.Equivalent(SummonStoneStateInfo.Empty, player.Orbs.SummonStones);
     }
 
     [Fact]

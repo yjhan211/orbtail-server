@@ -26,10 +26,10 @@ public sealed class MatchPlayerStateTests
         {
             participant.Health = 42;
             participant.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Library1)));
-            participant.BeginDoor(123, 0);
+            participant.Interactions.Begin(123, 0);
             Assert.Equal(42, session.Player.Health);
             Assert.Equal(AreaType.S2Library1, session.Player.GameInfo.ObjectInfo.Area);
-            Assert.True(session.Player.TryFinishInteraction(123));
+            Assert.True(session.Player.Interactions.Cancel(123));
             Assert.True(match.TryEliminatePlayer(10, EliminationReason.PRESSURE_FIELD));
             Assert.True(session.Player.IsEliminated);
         }

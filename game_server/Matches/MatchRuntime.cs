@@ -166,7 +166,7 @@ internal sealed class MatchRuntime
         }
     }
 
-    public PlayerOrbCollection GetOrbs(long playerId) => GetParticipant(playerId)?.Orbs ?? new PlayerOrbCollection();
+    public PlayerOrbState GetOrbs(long playerId) => GetParticipant(playerId)?.Orbs ?? new PlayerOrbState();
 
     public Player? GetParticipant(long playerId)
     {
@@ -217,7 +217,7 @@ internal sealed class MatchRuntime
     }
 
     public bool TryEliminatePlayer(long playerId, EliminationReason reason,
-        long attackerPlayerId = 0, AreaType eliminatedArea = AreaType.None, int forcedRank = 0, int finalOrbTier = 0)
+        long attackerPlayerId = 0, AreaType eliminatedArea = AreaType.None, int forcedRank = 0)
     {
         using (Enter())
         {
@@ -233,7 +233,6 @@ internal sealed class MatchRuntime
             participant.EliminatedAt = DateTime.UtcNow;
             participant.AttackerPlayerId = attackerPlayerId;
             participant.EliminatedArea = eliminatedArea;
-            participant.FinalOrbTier = finalOrbTier;
             participant.EliminationRank = forcedRank > 0 ? forcedRank : _aliveCount;
             _aliveCount--;
 
@@ -284,7 +283,7 @@ internal sealed class MatchRuntime
 
     public List<(long playerId,
         EliminationReason reason, PlayerMatchStatus finalStatus, DateTime? eliminatedAt,
-        long attackerPlayerId, AreaType eliminatedArea, int eliminationRank, int finalOrbTier)> BuildGameResult()
+        long attackerPlayerId, AreaType eliminatedArea, int eliminationRank)> BuildGameResult()
     {
         using (Enter())
         {
@@ -292,14 +291,14 @@ internal sealed class MatchRuntime
                 return new();
 
             var result = new List<(long, EliminationReason, PlayerMatchStatus, DateTime?, long,
-                AreaType, int, int)>();
+                AreaType, int)>();
 
             foreach (var participant in _participants.Values)
             {
                 result.Add((participant.PlayerId,
                     participant.EliminationReason, participant.Status, participant.EliminatedAt, participant.AttackerPlayerId,
                     participant.EliminatedArea,
-                    participant.EliminationRank, participant.FinalOrbTier));
+                    participant.EliminationRank));
             }
 
             return result;

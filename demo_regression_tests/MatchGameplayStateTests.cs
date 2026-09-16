@@ -49,7 +49,7 @@ public sealed class MatchGameplayStateTests
             onRedisCleanup: _ => throw new InvalidOperationException());
         var ended = store.GetOrCreate(91001);
         var sibling = store.GetOrCreate(91002);
-        GetOrRegisterPlayer(ended, 1).IncrementOrbUpgradeCount(SunOrbGroupId);
+        GetOrRegisterPlayer(ended, 1).Orbs.IncrementUpgradeCount(SunOrbGroupId);
         using (var scope = MatchRuntimeStore.Enter(ended))
         {
             Assert.Same(ended, scope.Runtime);
@@ -68,15 +68,15 @@ public sealed class MatchGameplayStateTests
         var player = new Player(new PlayerInfo { PlayerId = 10 });
         DateTime nowUtc = new(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc);
 
-        Assert.True(player.TryBeginWindOrbTick(100, nowUtc, 1d));
-        Assert.False(player.TryBeginWindOrbTick(100, nowUtc.AddMilliseconds(999), 1d));
-        Assert.True(player.TryBeginWindOrbTick(100, nowUtc.AddSeconds(1), 1d));
+        Assert.True(player.Orbs.TryBeginWindOrbAttack(100, nowUtc, 1d));
+        Assert.False(player.Orbs.TryBeginWindOrbAttack(100, nowUtc.AddMilliseconds(999), 1d));
+        Assert.True(player.Orbs.TryBeginWindOrbAttack(100, nowUtc.AddSeconds(1), 1d));
 
-        Assert.False(player.HasCompletedWindOrbSpinup(100, nowUtc, 0.2f));
-        Assert.False(player.HasCompletedWindOrbSpinup(100, nowUtc.AddMilliseconds(200), 0.2f));
-        Assert.True(player.HasCompletedWindOrbSpinup(100, nowUtc.AddMilliseconds(200).AddTicks(1), 0.2f));
-        player.ResetWindOrbEngagement(100);
-        Assert.False(player.HasCompletedWindOrbSpinup(100, nowUtc.AddSeconds(1), 0.2f));
+        Assert.False(player.Orbs.UpdateWindOrbSpinup(100, nowUtc, 0.2f));
+        Assert.False(player.Orbs.UpdateWindOrbSpinup(100, nowUtc.AddMilliseconds(200), 0.2f));
+        Assert.True(player.Orbs.UpdateWindOrbSpinup(100, nowUtc.AddMilliseconds(200).AddTicks(1), 0.2f));
+        player.Orbs.ResetWindOrbEngagement(100);
+        Assert.False(player.Orbs.UpdateWindOrbSpinup(100, nowUtc.AddSeconds(1), 0.2f));
 
         var victim = new Player(new PlayerInfo { PlayerId = 20 });
         Assert.True(victim.StatusEffects.TryApply(PlayerStatusEffectKind.WindShockImmunity, nowUtc, 0.9d));
@@ -97,12 +97,12 @@ public sealed class MatchGameplayStateTests
         var state = new Player(new PlayerInfo { PlayerId = 10 });
         var bot = new Player(new PlayerInfo { PlayerId = -20 });
 
-        Assert.Equal(0, state.GetOrbUpgradeCount(SunOrbGroupId));
-        Assert.Equal(1, state.IncrementOrbUpgradeCount(SunOrbGroupId));
-        Assert.Equal(2, state.IncrementOrbUpgradeCount(SunOrbGroupId));
-        Assert.Equal(0, state.GetOrbUpgradeCount(WindOrbGroupId));
-        Assert.Equal(1, bot.IncrementOrbUpgradeCount(SunOrbGroupId));
-        Assert.Equal(2, state.GetOrbUpgradeCount(SunOrbGroupId));
+        Assert.Equal(0, state.Orbs.GetUpgradeCount(SunOrbGroupId));
+        Assert.Equal(1, state.Orbs.IncrementUpgradeCount(SunOrbGroupId));
+        Assert.Equal(2, state.Orbs.IncrementUpgradeCount(SunOrbGroupId));
+        Assert.Equal(0, state.Orbs.GetUpgradeCount(WindOrbGroupId));
+        Assert.Equal(1, bot.Orbs.IncrementUpgradeCount(SunOrbGroupId));
+        Assert.Equal(2, state.Orbs.GetUpgradeCount(SunOrbGroupId));
     }
 
     [Fact]
@@ -118,20 +118,20 @@ public sealed class MatchGameplayStateTests
         GetOrRegisterPlayer(first, playerId).StatusEffects.Apply(PlayerStatusEffectKind.Wound, nowUtc.AddMinutes(1));
         Assert.True(GetOrRegisterPlayer(first, playerId).StatusEffects.IsActive(PlayerStatusEffectKind.Wound, nowUtc));
         Assert.False(GetOrRegisterPlayer(second, playerId).StatusEffects.IsActive(PlayerStatusEffectKind.Wound, nowUtc));
-        Assert.False(GetOrRegisterPlayer(first, playerId).HasCompletedWindOrbSpinup(itemUid, nowUtc, 1d));
-        Assert.False(GetOrRegisterPlayer(second, playerId).HasCompletedWindOrbSpinup(itemUid, nowUtc.AddSeconds(2), 1d));
+        Assert.False(GetOrRegisterPlayer(first, playerId).Orbs.UpdateWindOrbSpinup(itemUid, nowUtc, 1d));
+        Assert.False(GetOrRegisterPlayer(second, playerId).Orbs.UpdateWindOrbSpinup(itemUid, nowUtc.AddSeconds(2), 1d));
 
-        Assert.True(GetOrRegisterPlayer(first, playerId).TryBeginWindOrbTick(itemUid, nowUtc, 1d));
-        Assert.False(GetOrRegisterPlayer(first, playerId).TryBeginWindOrbTick(itemUid, nowUtc, 1d));
-        Assert.True(GetOrRegisterPlayer(second, playerId).TryBeginWindOrbTick(itemUid, nowUtc, 1d));
+        Assert.True(GetOrRegisterPlayer(first, playerId).Orbs.TryBeginWindOrbAttack(itemUid, nowUtc, 1d));
+        Assert.False(GetOrRegisterPlayer(first, playerId).Orbs.TryBeginWindOrbAttack(itemUid, nowUtc, 1d));
+        Assert.True(GetOrRegisterPlayer(second, playerId).Orbs.TryBeginWindOrbAttack(itemUid, nowUtc, 1d));
         Assert.True(GetOrRegisterPlayer(first, playerId).StatusEffects.TryApply(PlayerStatusEffectKind.WindShockImmunity, nowUtc, 1d));
         Assert.False(GetOrRegisterPlayer(first, playerId).StatusEffects.TryApply(PlayerStatusEffectKind.WindShockImmunity, nowUtc, 1d));
         Assert.True(GetOrRegisterPlayer(second, playerId).StatusEffects.TryApply(PlayerStatusEffectKind.WindShockImmunity, nowUtc, 1d));
 
-        Assert.Equal(1, GetOrRegisterPlayer(first, playerId).IncrementOrbUpgradeCount(SunOrbGroupId));
-        Assert.Equal(0, GetOrRegisterPlayer(second, playerId).GetOrbUpgradeCount(SunOrbGroupId));
-        Assert.Equal(1, GetOrRegisterPlayer(second, playerId).IncrementOrbUpgradeCount(SunOrbGroupId));
-        Assert.Equal(1, GetOrRegisterPlayer(first, playerId).GetOrbUpgradeCount(SunOrbGroupId));
+        Assert.Equal(1, GetOrRegisterPlayer(first, playerId).Orbs.IncrementUpgradeCount(SunOrbGroupId));
+        Assert.Equal(0, GetOrRegisterPlayer(second, playerId).Orbs.GetUpgradeCount(SunOrbGroupId));
+        Assert.Equal(1, GetOrRegisterPlayer(second, playerId).Orbs.IncrementUpgradeCount(SunOrbGroupId));
+        Assert.Equal(1, GetOrRegisterPlayer(first, playerId).Orbs.GetUpgradeCount(SunOrbGroupId));
 
         first.SunCrossfireShapes.Add(CreateCrossfireShape(
             eventId: 11,
@@ -213,9 +213,9 @@ public sealed class MatchGameplayStateTests
         MatchRuntime removed = store.GetOrCreate(removedMatchingId);
         MatchRuntime sibling = store.GetOrCreate(siblingMatchingId);
 
-        GetOrRegisterPlayer(removed, removedPlayerId).OrbTrail.Add(new Vector3f(0f, 0f, 0f));
+        GetOrRegisterPlayer(removed, removedPlayerId).Orbs.OrbTrail.Add(new Vector3f(0f, 0f, 0f));
         GetOrRegisterPlayer(removed, removedPlayerId).StatusEffects.Apply(PlayerStatusEffectKind.Wound, DateTime.MaxValue);
-        GetOrRegisterPlayer(removed, removedPlayerId).IncrementOrbUpgradeCount(WindOrbGroupId);
+        GetOrRegisterPlayer(removed, removedPlayerId).Orbs.IncrementUpgradeCount(WindOrbGroupId);
         removed.SunCrossfireShapes.Add(CreateCrossfireShape(
             eventId: 11,
             ownerId: removedPlayerId,
@@ -223,9 +223,9 @@ public sealed class MatchGameplayStateTests
             armedAtUtc: crossfireNowUtc.AddSeconds(1)));
         GetOrRegisterPlayer(removed, removedPlayerId).StatusEffects.SunBurn = new PlayerStatusEffects.SunBurnState(removedPlayerId, 101, AreaType.S2Gym1, crossfireNowUtc.AddSeconds(3d), crossfireNowUtc.AddSeconds(1d));
 
-        GetOrRegisterPlayer(sibling, siblingPlayerId).OrbTrail.Add(new Vector3f(0f, 0f, 0f));
+        GetOrRegisterPlayer(sibling, siblingPlayerId).Orbs.OrbTrail.Add(new Vector3f(0f, 0f, 0f));
         GetOrRegisterPlayer(sibling, siblingPlayerId).StatusEffects.Apply(PlayerStatusEffectKind.Wound, DateTime.MaxValue);
-        GetOrRegisterPlayer(sibling, siblingPlayerId).IncrementOrbUpgradeCount(WaveOrbGroupId);
+        GetOrRegisterPlayer(sibling, siblingPlayerId).Orbs.IncrementUpgradeCount(WaveOrbGroupId);
         sibling.SunCrossfireShapes.Add(CreateCrossfireShape(
             eventId: 12,
             ownerId: siblingPlayerId,
@@ -239,18 +239,18 @@ public sealed class MatchGameplayStateTests
         Assert.Null(missing);
         MatchRuntime? preservedSibling = store.GetOrNull(siblingMatchingId);
         Assert.Same(sibling, preservedSibling);
-        Assert.Single(GetOrRegisterPlayer(sibling, siblingPlayerId).OrbTrail);
+        Assert.Single(GetOrRegisterPlayer(sibling, siblingPlayerId).Orbs.OrbTrail);
         Assert.True(GetOrRegisterPlayer(sibling, siblingPlayerId).StatusEffects.IsActive(PlayerStatusEffectKind.Wound, DateTime.UtcNow));
-        Assert.Equal(1, GetOrRegisterPlayer(sibling, siblingPlayerId).GetOrbUpgradeCount(WaveOrbGroupId));
+        Assert.Equal(1, GetOrRegisterPlayer(sibling, siblingPlayerId).Orbs.GetUpgradeCount(WaveOrbGroupId));
         Assert.Single(sibling.SunCrossfireShapes);
         Assert.Equal(siblingPlayerId, GetOrRegisterPlayer(sibling, siblingPlayerId).StatusEffects.SunBurn!.Value.OwnerId);
         Assert.Equal(1, store.Count);
 
         MatchRuntime replacement = store.GetOrCreate(removedMatchingId);
         Assert.NotSame(removed, replacement);
-        Assert.Empty(GetOrRegisterPlayer(replacement, removedPlayerId).OrbTrail);
+        Assert.Empty(GetOrRegisterPlayer(replacement, removedPlayerId).Orbs.OrbTrail);
         Assert.False(GetOrRegisterPlayer(replacement, removedPlayerId).StatusEffects.IsActive(PlayerStatusEffectKind.Wound, DateTime.UtcNow));
-        Assert.Equal(0, GetOrRegisterPlayer(replacement, removedPlayerId).GetOrbUpgradeCount(WindOrbGroupId));
+        Assert.Equal(0, GetOrRegisterPlayer(replacement, removedPlayerId).Orbs.GetUpgradeCount(WindOrbGroupId));
         Assert.NotSame(removed.SunCrossfireShapes, replacement.SunCrossfireShapes);
         Assert.Empty(replacement.SunCrossfireShapes);
     }

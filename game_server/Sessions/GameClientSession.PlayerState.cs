@@ -40,7 +40,7 @@ public partial class GameClientSession
             }
 
             bool isExploreState = msg.State == PlayerState.EXPLORE_1;
-            if (!isExploreState && msg.State != PlayerState.IDLE && Player.GetPendingInteractionIds().Length > 0)
+            if (!isExploreState && msg.State != PlayerState.IDLE && Player.Interactions.GetPendingIds().Length > 0)
             {
                 Logger.LogWarning("Ignored state change while door opening is pending: PlayerId={PlayerId}, State={State}", PlayerId, msg.State);
                 return Task.CompletedTask;
@@ -50,7 +50,7 @@ public partial class GameClientSession
             {
                 int[] canceledIds = _interactions.CancelPendingInteractions(match, Player);
                 SendInteractionCanceled(canceledIds, "PlayerState:SLEEP");
-                Player.TryStartSleep(DateTime.UtcNow);
+                Player.TryStartSleep();
                 return Task.CompletedTask;
             }
 
@@ -71,5 +71,4 @@ public partial class GameClientSession
         using var packet = PacketMaker.G_TO_C_PLAYER_STATS_UPDATE(change.After, change.RequestedDelta);
         TrySend(packet);
     }
-
 }

@@ -69,7 +69,10 @@ internal sealed class PlayerStatusEffects
 
     public bool TryApply(PlayerStatusEffectKind kind, DateTime nowUtc, double durationSeconds)
     {
-        if (IsActive(kind, nowUtc)) return false;
+        if (IsActive(kind, nowUtc))
+        {
+            return false;
+        }
         Apply(kind, nowUtc.AddSeconds(durationSeconds));
         return true;
     }

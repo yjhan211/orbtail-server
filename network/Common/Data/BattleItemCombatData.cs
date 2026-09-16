@@ -92,7 +92,6 @@ namespace network.common.data
         public int OrbMaxHp { get; private set; }
         public float TierScale { get; private set; }
         public float StatTierWeight { get; private set; }
-        public int RecoveryAmount { get; private set; }
 
         public static BattleItemCombatDefinition CreateFromData(CsvRow row)
         {
@@ -115,25 +114,17 @@ namespace network.common.data
                     : 1f,
                 StatTierWeight = row.ContainsKey("stat_tier_weight")
                     ? float.Parse(row["stat_tier_weight"], CultureInfo.InvariantCulture)
-                    : 1f,
-                RecoveryAmount = row.ContainsKey("recovery_amount")
-                    ? int.Parse(row["recovery_amount"], CultureInfo.InvariantCulture)
-                    : 0
+                    : 1f
             };
 
-            bool isCombatRow = definition.Color != OrbColor.Recovery;
             if (definition.ItemId <= 0 || string.IsNullOrWhiteSpace(definition.Family) ||
-                definition.Tier is < 1 or > 3 ||
-                definition.RecoveryAmount < 0)
+                definition.Tier is < 1 or > 3)
             {
                 throw new ArgumentException($"Invalid battle item combat data: item_id={definition.ItemId}");
             }
 
-            // 회복 오브는 전투값이 0이고 회복량이 양수여야 한다. 전투 행은 그 반대.
-            if (isCombatRow
-                    ? definition.AttackRange <= 0f || definition.Damage <= 0 ||
-                      definition.AttackIntervalSeconds <= 0f
-                    : definition.RecoveryAmount <= 0)
+            if (definition.AttackRange <= 0f || definition.Damage <= 0 ||
+                definition.AttackIntervalSeconds <= 0f)
             {
                 throw new ArgumentException($"Invalid battle item combat data: item_id={definition.ItemId}");
             }

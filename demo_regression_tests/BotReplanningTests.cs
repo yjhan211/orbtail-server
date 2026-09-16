@@ -87,7 +87,7 @@ public sealed class BotReplanningTests
     {
         var (runtime, bot, _) = CreateBot();
         using var scope = runtime.Enter();
-        bot.Player.Orbs.TakeAllItems();
+        bot.Player.Orbs.TakeAllOrbs();
         var behavior = new BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance);
         var selected = behavior.SelectMovementTarget(runtime, bot, DateTime.UtcNow);
         Assert.False(selected!.Equals(bot.Player.Cell));

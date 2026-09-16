@@ -49,7 +49,7 @@ internal sealed class MatchTrailCutService(
             var orbTiers = new List<int>(orbs.Count);
             foreach (var orb in orbs)
             {
-                orbTiers.Add(PlayerOrbCollection.GetOrbTier(orb.ItemId));
+                orbTiers.Add(PlayerOrbState.GetOrbTier(orb.ItemId));
             }
             var orbPoints = new List<Vector3f>(orbs.Count);
             for (int ordinal = 0; ordinal < orbs.Count; ordinal++)
@@ -201,7 +201,6 @@ internal sealed class MatchTrailCutService(
         }
 
         cutter.OrbCutLatches[cutOrbUid] = nowUtc;
-        cutter.MarkSwarmCombat(nowUtc);
 
         var victim = runtime.GetParticipant(victimId)!;
         var destroyedOrbs = orbTrails.DestroyOrbsFromOrdinal(runtime, victim, cutOrdinal);

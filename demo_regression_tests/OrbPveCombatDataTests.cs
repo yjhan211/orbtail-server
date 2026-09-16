@@ -18,7 +18,6 @@ public class OrbPveCombatDataTests
     [InlineData(107000020, 107000010)]
     [InlineData(107000030, 107000020)]
     [InlineData(107000010, 107000011)]
-    [InlineData(107000010, 107000040)]
     public void PveAffinity_IsAlwaysNeutralAfterUnification(int attackerItemId, int monsterRewardItemId)
     {
         // 색 상성(1.5/0.5) 퇴역 — 클론 비목표(상성 금지).
@@ -52,10 +51,10 @@ public class OrbPveCombatDataTests
     }
 
     [Fact]
-    public void DominantPveColor_RequiresAMajorityAcrossRecoverySlotsToo()
+    public void DominantPveColor_RequiresAMajorityAcrossAllOrbColors()
     {
         Assert.False(OrbData.TryGetDominantPveColor(
-            [107000010, 107000010, 107000020, 107000040, 107000040], out _));
+            [107000010, 107000010, 107000020, 107000030, 107000030], out _));
     }
     [Fact]
     public void BoardWidePveAffinity_AppliesToEveryOrbAttack()

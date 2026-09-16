@@ -100,7 +100,7 @@ public partial class GameClientSession
             bool completed = false;
             if (error != ErrorCode.SUCCESS)
             {
-                Player.TryFinishInteraction(msg.InteractId);
+                Player.Interactions.Cancel(msg.InteractId);
             }
             else if (_interactions.TryFinishDoor(match, Player, msg.InteractId, doorId, Environment.TickCount64, out error))
             {
@@ -127,7 +127,7 @@ public partial class GameClientSession
                 {
                     return Task.CompletedTask;
                 }
-                if (Player.PendingDoorInteractionId.HasValue)
+                if (Player.Interactions.PendingInteractId.HasValue)
                 {
                     return Task.CompletedTask;
                 }

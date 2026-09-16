@@ -35,6 +35,7 @@ public class Bot
         set
         {
             Player.GameInfo.ObjectInfo.ObjectId = value;
+            Player.Orbs.ResetOrbit(Player.Position, value);
         }
     }
     public long LastProximityAttackerPlayerId { get; set; }

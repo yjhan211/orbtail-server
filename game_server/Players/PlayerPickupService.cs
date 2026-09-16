@@ -200,7 +200,7 @@ internal sealed class PlayerPickupService(PlayerHealthService healthService, ILo
                 return false;
             }
             autoUsed = healthRecovery > 0 && IsImmediateUseItem(item.ItemId);
-            if (!autoUsed && !match.GetOrbs(player.PlayerId).TryAddItemWithCapacity(item.ItemId, Config.GetOrbCapacity(), out addedItem))
+            if (!autoUsed && !match.GetOrbs(player.PlayerId).TryAddOrbWithCapacity(item.ItemId, Config.GetOrbCapacity(), out addedItem))
             {
                 return false;
             }

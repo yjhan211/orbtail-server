@@ -131,15 +131,6 @@ public class ProximityAutoCombatDataTests
     }
 
     [Fact]
-    public void RecoveryOrbUsesSharedParticipantHealthRecording()
-    {
-        string source = ReadNormalizedSource(
-            FindRepositoryRoot(), "game_server", "Players", "PlayerOrbService.cs");
-        Assert.Contains("MatchRuntime runtime", source);
-        Assert.Contains("var change = healthService.Recover(runtime, player, requestedRecovery);", source);
-        Assert.DoesNotContain("matchingBots", source);
-    }
-    [Fact]
     public void OrbVisualPublicationCapture_DeepCopiesItemIds()
     {
         var payload = typeof(MatchOrbVisual).GetProperty("OrbItemIds");

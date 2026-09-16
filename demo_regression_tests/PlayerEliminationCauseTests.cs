@@ -28,13 +28,13 @@ public sealed class PlayerEliminationCauseTests
     }
 
     [Fact]
-    public void GameResultPlayerInfo_RoundTripsRankTierAndEnvironmentalCause()
+    public void GameResultPlayerInfo_RoundTripsRankOrbCountAndEnvironmentalCause()
     {
         var source = new GameResultPlayerInfo
         {
             PlayerId = 20,
             Rank = 4,
-            FinalOrbTier = 3,
+            OrbCount = 3,
             EliminationReason = EliminationReason.PRESSURE_FIELD
         };
 
@@ -42,8 +42,13 @@ public sealed class PlayerEliminationCauseTests
         var result = MessagePackSerializer.Deserialize<GameResultPlayerInfo>(bytes);
 
         Assert.Equal(4, result.Rank);
-        Assert.Equal(3, result.FinalOrbTier);
+        Assert.Equal(3, result.OrbCount);
         Assert.Equal(EliminationReason.PRESSURE_FIELD, result.EliminationReason);
+        string json = MessagePackSerializer.ConvertToJson(bytes);
+        foreach (string key in new[] { "killCount", "totalDamageDealt", "totalRecovery", "survivalTimeSeconds", "finalOrbTier" })
+        {
+            Assert.DoesNotContain($"\"{key}\"", json);
+        }
     }
     [Fact]
     public void BotDamageEliminatesImmediatelyAndKeepsLethalAttacker()
@@ -66,7 +71,6 @@ public sealed class PlayerEliminationCauseTests
             combat.ApplyProximityAutoCombatHit(match, healthService, bot.Player, 103, AreaType.None, 123, 10);
             Assert.Equal(102, bot.Player.AttackerPlayerId);
             Assert.Equal(rank, bot.Player.EliminationRank);
-            Assert.False(bot.Player.CanSleep(DateTime.UtcNow));
         }
     }
 

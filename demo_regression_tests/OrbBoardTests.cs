@@ -75,24 +75,19 @@ public sealed class OrbBoardTests
         Assert.Equal(expectedTier, groupTier);
         Assert.Equal(itemId, roundTripItemId);
     }
+
+
+
+
     [Theory]
-    [InlineData(107000040, 1, 5)]
-    [InlineData(107000041, 2, 10)]
-    [InlineData(107000042, 3, 20)]
-    public void RecoveryOrbTierDefinesFiveSecondRecoveryAmount(
-        int itemId,
-        int expectedTier,
-        int expectedRecovery)
+    [InlineData(107000040)]
+    [InlineData(107000041)]
+    [InlineData(107000042)]
+    public void RetiredRecoveryOrbsHaveNoCombatDefinition(int itemId)
     {
-        Assert.Equal(5f, OrbData.RecoveryTickSeconds);
-        Assert.True(OrbData.TryGetRecoveryTier(itemId, out int tier));
-        Assert.Equal(expectedTier, tier);
-        Assert.Equal(expectedRecovery, OrbData.GetRecoveryAmount(itemId));
+        Assert.Null(BattleItemCombatData.Get(itemId));
         Assert.False(OrbData.IsOrbItem(itemId));
     }
-
-
-
 
     [Fact]
     public void LegacyGuardianOrbDoesNotEnterColoredBoardRules()
@@ -166,9 +161,9 @@ public sealed class OrbBoardTests
     [Fact]
     public void InventoryResonanceUsesAllOwnedOrbs()
     {
-        var inventory = new PlayerOrbCollection();
-        inventory.AddItem(107000030);
-        inventory.AddItem(107000032);
+        var inventory = new PlayerOrbState();
+        inventory.AddOrb(107000030);
+        inventory.AddOrb(107000032);
 
         Assert.True(OrbData.TryGetActivePair(inventory.GetOrderedOrbs().Select(item => item.ItemId), out var color, out int supportTier));
         Assert.Equal(OrbColor.Blue, color);
@@ -179,9 +174,9 @@ public sealed class OrbBoardTests
     public void PickedUpOrbsJoinTheTailInUidOrderWithoutEquipmentSelection()
     {
         InitializeBattleCombatData();
-        var inventory = new PlayerOrbCollection();
-        Assert.True(inventory.TryAddItemWithCapacity(107000010, 6, out var first));
-        Assert.True(inventory.TryAddItemWithCapacity(107000020, 6, out var second));
+        var inventory = new PlayerOrbState();
+        Assert.True(inventory.TryAddOrbWithCapacity(107000010, 6, out var first));
+        Assert.True(inventory.TryAddOrbWithCapacity(107000020, 6, out var second));
         Assert.Equal(new[] { first!.ItemUid, second!.ItemUid },
             inventory.GetOrderedOrbs().Select(item => item.ItemUid));
         var actors = new List<ProximityCombatActor>();
@@ -196,11 +191,11 @@ public sealed class OrbBoardTests
     public void ReconnectRecomputesTheSameSingleResonanceFromTheAuthoritativeBoard()
     {
         InitializeBattleCombatData();
-        var reconnectedInventory = new PlayerOrbCollection();
-        Assert.True(reconnectedInventory.TryAddItemWithCapacity(107000010, 6, out _));
-        Assert.True(reconnectedInventory.TryAddItemWithCapacity(107000010, 6, out _));
-        Assert.True(reconnectedInventory.TryAddItemWithCapacity(107000020, 6, out _));
-        Assert.True(reconnectedInventory.TryAddItemWithCapacity(107000020, 6, out _));
+        var reconnectedInventory = new PlayerOrbState();
+        Assert.True(reconnectedInventory.TryAddOrbWithCapacity(107000010, 6, out _));
+        Assert.True(reconnectedInventory.TryAddOrbWithCapacity(107000010, 6, out _));
+        Assert.True(reconnectedInventory.TryAddOrbWithCapacity(107000020, 6, out _));
+        Assert.True(reconnectedInventory.TryAddOrbWithCapacity(107000020, 6, out _));
 
         Assert.True(OrbData.TryGetActivePair(reconnectedInventory.GetOrderedOrbs().Select(item => item.ItemId), out var color, out int supportTier));
         Assert.Equal(OrbColor.Red, color);

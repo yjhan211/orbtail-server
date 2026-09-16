@@ -244,20 +244,20 @@ public sealed class MatchOrbAttackServiceTests
         {
             match.RegisterParticipant(owner);
             match.RegisterParticipant(victim);
-            var orb = owner.Orbs.AddItem(107000030);
+            var orb = owner.Orbs.AddOrb(107000030);
             attacks.ActivateWaveOrbs(match, owner, now);
             Assert.Empty(match.PendingWaveAttacks);
             long key = orb.ItemUid;
-            var readyAt = owner.WaveOrbNextAttackAt(key)!.Value;
+            var readyAt = owner.Orbs.GetNextWaveOrbAttackAtUtc(key)!.Value;
             Assert.True(readyAt > now);
             attacks.ActivateWaveOrbs(match, owner, readyAt);
             Assert.Empty(match.PendingWaveAttacks);
-            Assert.Equal(readyAt, owner.WaveOrbNextAttackAt(key)!.Value);
+            Assert.Equal(readyAt, owner.Orbs.GetNextWaveOrbAttackAtUtc(key)!.Value);
             victim.Position = trails.GetOrbPosition(match, owner, 0, owner.Position);
             attacks.ActivateWaveOrbs(match, owner, readyAt);
             var pending = Assert.Single(match.PendingWaveAttacks);
             Assert.True(pending.ExplodeAtUtc > readyAt);
-            owner.Orbs.TakeAllItems();
+            owner.Orbs.TakeAllOrbs();
             owner.Status = PlayerMatchStatus.ELIMINATED;
             service.ProcessWaveDetonations(match, pending.ExplodeAtUtc.AddTicks(-1));
             Assert.Equal(Config.MAX_HEALTH, victim.Health);
@@ -309,12 +309,12 @@ public sealed class MatchOrbAttackServiceTests
             Assert.Throws<InvalidOperationException>(() => attacks.ActivateWaveOrbs(match, first, now));
             match.RegisterParticipant(first);
             match.RegisterParticipant(second);
-            var orb = first.Orbs.AddItem(107000030);
+            var orb = first.Orbs.AddOrb(107000030);
             attacks.ActivateWaveOrbs(match, first, now);
-            Assert.NotNull(first.WaveOrbNextAttackAt(orb.ItemUid));
-            Assert.Null(second.WaveOrbNextAttackAt(orb.ItemUid));
+            Assert.NotNull(first.Orbs.GetNextWaveOrbAttackAtUtc(orb.ItemUid));
+            Assert.Null(second.Orbs.GetNextWaveOrbAttackAtUtc(orb.ItemUid));
             first.Status = PlayerMatchStatus.ELIMINATED;
-            var readyAt = first.WaveOrbNextAttackAt(orb.ItemUid)!.Value;
+            var readyAt = first.Orbs.GetNextWaveOrbAttackAtUtc(orb.ItemUid)!.Value;
             attacks.ActivateWaveOrbs(match, first, readyAt);
             Assert.Empty(match.PendingWaveAttacks);
         }

@@ -118,7 +118,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Contains("internal Action? MarkGameEndedAndPrepareLifecyclePublication()", main);
         Assert.Contains("private void SyncPlayersOnEntry()", main);
         Assert.Contains("private Task HandleSocialAction(", File.ReadAllText(Path.Combine(directory, "GameClientSession.Social.cs")));
-        Assert.Contains("public void AdvanceOrbOrbit(", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Players", "Player.cs")));
+        Assert.Contains("public void AdvanceOrbit(", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Players", "PlayerOrbState.cs")));
         Assert.False(File.Exists(Path.Combine(directory, "GameClientSession.MatchEnd.cs")));
         Assert.False(File.Exists(Path.Combine(directory, "GameClientSession.Snapshots.cs")));
     }

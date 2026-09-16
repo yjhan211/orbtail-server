@@ -11,7 +11,7 @@ public sealed class MatchRuntimeInitializationTests
 
     [Theory]
     [InlineData(107000010, true)]
-    [InlineData(107000040, true)]
+    [InlineData(107000040, false)]
     [InlineData(-1, false)]
     public void OrbOwnershipUsesOnlyOwnMatchInventory(int itemId, bool isOrb)
     {
@@ -20,7 +20,7 @@ public sealed class MatchRuntimeInitializationTests
         var second = store.GetOrCreate(940004);
         const long playerId = 10;
         Assert.False(TestGameSessionServices.Orbs(first, playerId).HasAnyOrb());
-        Assert.Equal(isOrb, TestGameSessionServices.Orbs(first, playerId).TryAddItemWithCapacity(itemId, 8, out var item));
+        Assert.Equal(isOrb, TestGameSessionServices.Orbs(first, playerId).TryAddOrbWithCapacity(itemId, 8, out var item));
         Assert.Equal(isOrb, TestGameSessionServices.Orbs(first, playerId).HasAnyOrb());
         Assert.Equal(!isOrb, !first.GetOrbs(playerId).HasAnyOrb());
         Assert.False(TestGameSessionServices.Orbs(second, playerId).HasAnyOrb());
@@ -28,7 +28,7 @@ public sealed class MatchRuntimeInitializationTests
         Assert.Equal(isOrb ? 1 : 0, TestGameSessionServices.Orbs(first, playerId).GetOrbScore().OrbCount);
         Assert.Equal((0, 0), TestGameSessionServices.Orbs(second, playerId).GetOrbScore());
         if (item != null)
-            TestGameSessionServices.Orbs(first, playerId).TryRemoveItem(item.ItemUid, 1, out _);
+            TestGameSessionServices.Orbs(first, playerId).TryRemoveOrb(item.ItemUid, 1, out _);
         Assert.Equal((0, 0), TestGameSessionServices.Orbs(first, playerId).GetOrbScore());
         Assert.False(TestGameSessionServices.Orbs(first, playerId).HasAnyOrb());
         Assert.True(!first.GetOrbs(playerId).HasAnyOrb());

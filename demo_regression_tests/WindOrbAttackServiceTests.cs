@@ -42,7 +42,7 @@ public sealed class WindOrbAttackServiceTests
         match.RegisterParticipant(victim.Player);
         using (MatchRuntimeStore.Enter(match))
         {
-            TestGameSessionServices.Orbs(match, 11).AddItem(107000020);
+            TestGameSessionServices.Orbs(match, 11).AddOrb(107000020);
             var origin = trails.GetOrbPosition(match, owner.Player, 0, new Vector3f(0, 0, 0));
             owner.Player.Position = new Vector3f(0, 0, 0);
             victim.Player.Position = origin;
@@ -80,7 +80,7 @@ public sealed class WindOrbAttackServiceTests
         match.RegisterParticipant(victim.Player);
         using (MatchRuntimeStore.Enter(match))
         {
-            TestGameSessionServices.Orbs(match, 11).AddItem(itemId);
+            TestGameSessionServices.Orbs(match, 11).AddOrb(itemId);
             var origin = trails.GetOrbPosition(match, owner.Player, 0, new Vector3f(0, 0, 0));
             owner.Player.Position = new Vector3f(0, 0, 0);
             victim.Player.Position = origin;

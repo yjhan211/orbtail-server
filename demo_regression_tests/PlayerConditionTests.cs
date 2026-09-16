@@ -45,7 +45,7 @@ public sealed class PlayerConditionTests
     {
         var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var condition = new Player(new PlayerInfo { PlayerId = 1 }) { Health = 50 };
-        Assert.True(condition.TryStartSleep(now));
+        Assert.True(condition.TryStartSleep());
         Assert.Equal(PlayerState.SLEEP, condition.State);
         _health.GetSleepRecovery(condition, now, 100);
         Assert.Equal(5, _health.GetSleepRecovery(condition, now.AddSeconds(1), 100));
@@ -56,7 +56,7 @@ public sealed class PlayerConditionTests
         Assert.Equal(0, _health.GetSleepRecovery(condition, now.AddSeconds(10), 100));
         Assert.Equal(50, condition.Health);
 
-        Assert.True(condition.TryStartSleep(now.AddSeconds(10)));
+        Assert.True(condition.TryStartSleep());
         Assert.Equal(0, _health.GetSleepRecovery(condition, now.AddSeconds(10), 100));
         Assert.Equal(5, _health.GetSleepRecovery(condition, now.AddSeconds(11), 100));
     }
@@ -78,17 +78,15 @@ public sealed class PlayerConditionTests
     }
 
     [Fact]
-    public void StartSleepChecksCombatAndHealingLocksAndDoesNotRestartSleep()
+    public void StartSleepIgnoresHealingLockAndDoesNotRestartSleep()
     {
         var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var condition = new Player(new PlayerInfo { PlayerId = 1 }) { Health = 50, LastCombatAtUtc = now };
-        Assert.False(condition.TryStartSleep(now.AddSeconds(2)));
+        var condition = new Player(new PlayerInfo { PlayerId = 1 }) { Health = 50 };
         condition.StatusEffects.Apply(PlayerStatusEffectKind.HealingBlocked, now.AddSeconds(5));
-        Assert.False(condition.TryStartSleep(now.AddSeconds(4)));
-        Assert.True(condition.TryStartSleep(now.AddSeconds(5)));
+        Assert.True(condition.TryStartSleep());
         Assert.True(condition.IsSleeping);
         Assert.Equal(0, _health.GetSleepRecovery(condition, now.AddSeconds(5), Config.MAX_HEALTH));
-        Assert.False(condition.TryStartSleep(now.AddSeconds(6)));
+        Assert.False(condition.TryStartSleep());
         Assert.True(_health.GetSleepRecovery(condition, now.AddSeconds(6), Config.MAX_HEALTH) > 0);
     }
 
@@ -178,9 +176,6 @@ public sealed class PlayerConditionTests
         state.StatusEffects.Apply(PlayerStatusEffectKind.HealingBlocked, start.AddSeconds(4));
         Assert.Equal(0, _health.GetSleepRecovery(state, start.AddSeconds(3), 100));
         Assert.Equal(5, _health.GetSleepRecovery(state, start.AddSeconds(4), 100));
-        state.LastCombatAtUtc = start.AddSeconds(4);
-        Assert.False(state.CanSleep(start.AddSeconds(6)));
-        Assert.True(state.CanSleep(start.AddSeconds(7)));
     }
 
 }

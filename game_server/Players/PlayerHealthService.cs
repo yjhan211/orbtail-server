@@ -38,10 +38,6 @@ internal sealed class PlayerHealthService(
         if (change.Changed)
         {
             logger.LogInformation("Player {PlayerId} Health: {OldHealth}→{Health} ({Delta:+#;-#;0})", player.PlayerId, change.Before, change.After, change.RequestedDelta);
-            if (change.Recovered > 0)
-            {
-                player.RecoveryTotal += change.Recovered;
-            }
             try
             {
                 player.Session?.SendHealth(change);
@@ -73,10 +69,6 @@ internal sealed class PlayerHealthService(
         if (change.Changed)
         {
             logger.LogInformation("Player {PlayerId} Health: {OldHealth}→{Health} ({Delta:+#;-#;0})", player.PlayerId, change.Before, change.After, change.RequestedDelta);
-            if (change.Recovered > 0)
-            {
-                player.RecoveryTotal += change.Recovered;
-            }
             try
             {
                 player.Session?.SendHealth(change);

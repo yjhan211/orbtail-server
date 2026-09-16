@@ -174,8 +174,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         {
             throw new InvalidOperationException("Combat damage requires the match lock.");
         }
-        victim.MarkSwarmCombat(nowUtc);
-        if (victim.InterruptDoor() is { } interactId)
+        if (victim.Interactions.Cancel() is { } interactId)
         {
             victim.State = PlayerState.IDLE;
             victim.Session?.SendDoorOpenInterrupted(interactId);
@@ -200,8 +199,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         if (runtime.IsEnded || victim.IsEliminated || monsterId <= 0 || damage <= 0) return;
 
         var nowUtc = DateTime.UtcNow;
-        victim.MarkSwarmCombat(nowUtc);
-        if (victim.InterruptDoor() is { } interactId)
+        if (victim.Interactions.Cancel() is { } interactId)
         {
             victim.State = PlayerState.IDLE;
             victim.Session?.SendDoorOpenInterrupted(interactId);
@@ -277,7 +275,6 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         }
 
         var attacker = runtime.GetParticipant(attackerId);
-        RecordMonsterHit(attacker, damage, damageResult.Killed);
         QueueMonsterHitNotification(runtime, attacker, monsterId, area, weaponItemId, damage, critical, showDamageOnly: true);
         if (damageResult.Killed && damageResult.Monster != null)
         {
@@ -357,7 +354,6 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
             var damageResult = monsters.ApplyMonsterDamage(runtime, hit.CombatTargetId, hit.AttackerId, hit.Damage, nowUtc);
             if (damageResult.Applied)
             {
-                RecordMonsterHit(runtime.GetParticipant(hit.AttackerId), hit.Damage, damageResult.Killed);
             }
 
             if (damageResult.Applied && damageResult.Killed && damageResult.Monster != null)
@@ -473,20 +469,4 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         }
     }
 
-    /// <summary>몹 피해·처치 누적. PvP 수치와 따로 세어 동시 탈락 판정에 섞이지 않게 한다.</summary>
-    private void RecordMonsterHit(Player? attacker, int damage, bool killed)
-    {
-        if (attacker == null)
-        {
-            return;
-        }
-        if (damage > 0)
-        {
-            attacker.MonsterDamageDealt += damage;
-        }
-        if (killed)
-        {
-            attacker.MonsterKillCount++;
-        }
-    }
 }

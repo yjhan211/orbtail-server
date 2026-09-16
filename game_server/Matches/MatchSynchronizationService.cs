@@ -188,7 +188,7 @@ internal sealed class MatchSynchronizationService
             snapshot ??= player.CreatePlayerObjectInfo();
             updates.Add(snapshot);
         }
-        CollectMovementUpdates(runtime, info, batch, player.OrbOrbitPhaseDegrees, stateChanged);
+        CollectMovementUpdates(runtime, info, batch, player.Orbs.OrbitPhaseDegrees, stateChanged);
     }
 
     internal void CollectMonsterUpdates(MatchRuntime runtime, Monster monster, SyncBatch batch)

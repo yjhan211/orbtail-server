@@ -22,7 +22,7 @@ public sealed class BotCellTargetTests
         runtime.Bots.RegisterBots(runtime.MatchingId, [-1], new Dictionary<long, Cell> { [-1] = origin });
         var bot = runtime.Bots.GetBot(-1)!;
         runtime.RegisterParticipant(bot.Player);
-        bot.Player.Orbs.AddItem(107000020);
+        bot.Player.Orbs.AddOrb(107000020);
         var monsterArea = AreaType.S2Library1;
         var monsterCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, monsterArea);
         runtime.Monsters.Entities[1] = new Monster
@@ -53,10 +53,10 @@ public sealed class BotCellTargetTests
         runtime.Bots.RegisterBots(runtime.MatchingId, [-1], new Dictionary<long, Cell> { [-1] = origin });
         var bot = runtime.Bots.GetBot(-1)!;
         runtime.RegisterParticipant(bot.Player);
-        bot.Player.Orbs.TakeAllItems();
+        bot.Player.Orbs.TakeAllOrbs();
         for (int i = 0; i < 4; i++)
         {
-            bot.Player.Orbs.AddItem(107000020);
+            bot.Player.Orbs.AddOrb(107000020);
         }
         var targetCell = SwarmPressureField.GetAreaCellsByDistance(area)
             .Select(entry => entry.Cell)
@@ -70,7 +70,7 @@ public sealed class BotCellTargetTests
         };
         for (int i = 0; i < (stronger ? 8 : 1); i++)
         {
-            attacker.Orbs.AddItem(107000020);
+            attacker.Orbs.AddOrb(107000020);
         }
         runtime.RegisterParticipant(attacker);
         bot.Wounded = wounded;

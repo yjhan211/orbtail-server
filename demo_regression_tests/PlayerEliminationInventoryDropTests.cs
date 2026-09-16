@@ -30,8 +30,8 @@ public sealed class PlayerEliminationInventoryDropTests
         var player = RegisterPlayer(match, playerId);
         var service = TestGameSessionServices.CreateEliminationService(store, NullLogger.Instance);
 
-        TestGameSessionServices.Orbs(match, playerId).AddItem(HopeOrbT1);
-        TestGameSessionServices.Orbs(match, playerId).AddItem(ForgetOrbT1);
+        TestGameSessionServices.Orbs(match, playerId).AddOrb(HopeOrbT1);
+        TestGameSessionServices.Orbs(match, playerId).AddOrb(ForgetOrbT1);
 
         using (match.Enter())
         {
@@ -42,7 +42,7 @@ public sealed class PlayerEliminationInventoryDropTests
                 deferGameOver: true);
         }
 
-        Assert.Empty(TestGameSessionServices.Orbs(match, playerId).GetAllItems());
+        Assert.Empty(TestGameSessionServices.Orbs(match, playerId).GetAllOrbs());
         Assert.Equal(
             new[] { HopeOrbT1, ForgetOrbT1 },
             match.GroundItems.GetItemsInArea(player.GameInfo.ObjectInfo.Area)
@@ -61,7 +61,7 @@ public sealed class PlayerEliminationInventoryDropTests
         var player = RegisterPlayer(match, botPlayerId);
         var service = TestGameSessionServices.CreateEliminationService(store, NullLogger.Instance);
 
-        TestGameSessionServices.Orbs(match, botPlayerId).AddItem(HopeOrbT1);
+        TestGameSessionServices.Orbs(match, botPlayerId).AddOrb(HopeOrbT1);
 
         using (match.Enter())
         {
@@ -77,7 +77,7 @@ public sealed class PlayerEliminationInventoryDropTests
                 deferGameOver: true);
         }
 
-        Assert.Empty(TestGameSessionServices.Orbs(match, botPlayerId).GetAllItems());
+        Assert.Empty(TestGameSessionServices.Orbs(match, botPlayerId).GetAllOrbs());
         Assert.Single(match.GroundItems.GetItemsInArea(player.GameInfo.ObjectInfo.Area));
     }
 
