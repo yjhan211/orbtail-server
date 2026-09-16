@@ -238,9 +238,7 @@ namespace network.common
     public enum MonsterKind
     {
         Skeleton = 0,
-        DartGoblin = 1,
-        RunawayGoblin = 2,
-        Bowler = 3
+        RunawayGoblin = 2
     }
 
     // 잔상 몬스터 문양. 처치 보상 오브 계열과 파도 문양의 스플래시 접촉을 정한다.

@@ -50,10 +50,9 @@ internal sealed class MonsterCombatService
             player.MonsterContactImmuneUntilUtc = now.AddSeconds(Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS);
             monster.ChaseTargetPlayerId = participant.PlayerId;
             contacts.Add(new MonsterContactDamage(monster.MonsterId, participant.PlayerId, monster.Area, monster.ContactDamageValue));
-            bool waveInsignia = monster.Insignia == MonsterInsignia.Wave;
-            if (waveInsignia || monster.Kind == MonsterKind.Bowler)
+            if (monster.Insignia == MonsterInsignia.Wave)
             {
-                float splashRadius = waveInsignia ? Config.SWARM_MONSTER_WAVE_SPLASH_RADIUS : Config.SWARM_MONSTER_BOWLER_SPLASH_RADIUS;
+                float splashRadius = Config.SWARM_MONSTER_WAVE_SPLASH_RADIUS;
                 foreach (var splashed in snapshot)
                 {
                     if (splashed.PlayerId == participant.PlayerId || splashed.Area != monster.Area)

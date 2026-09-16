@@ -54,7 +54,7 @@ public sealed class SharedMovementPlanningTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void SameCellWithoutPathDoesNotPlanOrMoveToCellCenter(bool ignoreDoors)
+    public void StopRequestDoesNotPlanOrMoveToCellCenter(bool ignoreDoors)
     {
         var runtime = CreateRuntime();
         using var scope = runtime.Enter();
@@ -64,7 +64,7 @@ public sealed class SharedMovementPlanningTests
         var position = info.Position;
         var state = new MovementState();
         var now = DateTime.UtcNow;
-        var request = new MovementRequest(info.Cell.Clone(), 1f);
+        var request = new MovementRequest(info.Cell.Clone(), 0f);
 
         MatchMoveService.PrepareMovement(runtime, info, state, request, now, ignoreDoors);
 

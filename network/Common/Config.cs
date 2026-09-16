@@ -259,7 +259,6 @@ namespace network.common
         public static double SWARM_MONSTER_IDLE_PATROL_ANGULAR_SPEED => SwarmConfigData.GetDouble("SWARM_MONSTER_IDLE_PATROL_ANGULAR_SPEED", 0.5d);
 
         /// <summary>원거리 몹이 멈춰 서는 사거리 비율</summary>
-        public static float SWARM_MONSTER_RANGED_HOLD_RANGE_RATIO => SwarmConfigData.GetFloat("SWARM_MONSTER_RANGED_HOLD_RANGE_RATIO", 0.8f);
 
         /// <summary>행군 웨이포인트 도착 판정 거리</summary>
         public static float SWARM_MONSTER_MARCH_WAYPOINT_ARRIVE_DISTANCE => SwarmConfigData.GetFloat("SWARM_MONSTER_MARCH_WAYPOINT_ARRIVE_DISTANCE", 0.6f);
@@ -280,7 +279,6 @@ namespace network.common
         public static float SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS => SwarmConfigData.GetFloat("SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS", 0.6f);
 
         /// <summary>볼러 접촉 스플래시 반경</summary>
-        public static float SWARM_MONSTER_BOWLER_SPLASH_RADIUS => SwarmConfigData.GetFloat("SWARM_MONSTER_BOWLER_SPLASH_RADIUS", 1.5f);
 
         /// <summary>파도 문양 잔상 접촉 스플래시 반경</summary>
         public static float SWARM_MONSTER_WAVE_SPLASH_RADIUS => SwarmConfigData.GetFloat("SWARM_MONSTER_WAVE_SPLASH_RADIUS", 2.2f);

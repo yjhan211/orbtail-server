@@ -106,13 +106,6 @@ internal class MatchMoveService(
             movement.NextPathPlanAtUtc = DateTime.MinValue;
         }
 
-        bool hasPath = movement.WaypointIndex < movement.Waypoints.Count;
-        if (!hasPath && objectInfo.Cell.Equals(destination))
-        {
-            // 목적지 도착
-            return;
-        }
-
         // 재탐색 시점 전에는 기존 경로를 유지한다.
         if (nowUtc < movement.NextPathPlanAtUtc)
         {

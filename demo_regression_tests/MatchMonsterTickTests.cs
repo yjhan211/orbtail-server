@@ -186,12 +186,8 @@ public class MatchMonsterTickTests
         // 한쪽만 바뀌면 스프라이트와 판정이 어긋난다 — 여기서 잠근다.
         Assert.Equal(Monster.BaseContactRadius,
             Monster.GetContactRadius(MonsterKind.Skeleton), 3);
-        Assert.Equal(Monster.BaseContactRadius * 1.4f,
-            Monster.GetContactRadius(MonsterKind.DartGoblin), 3);
         Assert.Equal(Monster.BaseContactRadius * 2.4f,
             Monster.GetContactRadius(MonsterKind.RunawayGoblin), 3);
-        Assert.Equal(Monster.BaseContactRadius * 1.8f,
-            Monster.GetContactRadius(MonsterKind.Bowler), 3);
 
         // 셀 중심에 도착하면 같은 셀 내부의 플레이어까지 접촉 반경이 닿는다.
         Assert.Equal(0.5f, Monster.GetContactRadius(MonsterKind.Skeleton));

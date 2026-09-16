@@ -37,15 +37,12 @@ internal sealed class MonsterBehaviorService
 
         if (TrySelectChaseTarget(monster, participants, out var target))
         {
-            if (target.CurrentArea == monster.Area && monster.AttackRangeValue > Monster.BaseContactRadius)
+            var destinationCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target.Position!);
+            if (destinationCell.Equals(monster.Info.ObjectInfo.Cell))
             {
-                float radius = monster.AttackRangeValue * Config.SWARM_MONSTER_RANGED_HOLD_RANGE_RATIO;
-                if (GroundGeometry.IsWithinGroundRadius(monster.Position, target.Position!, radius))
-                {
-                    speed = 0f;
-                }
+                return new MovementRequest(destinationCell, 0f);
             }
-            return new MovementRequest(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target.Position!), speed);
+            return new MovementRequest(destinationCell, speed);
         }
 
         monster.ChaseTargetPlayerId = 0;

@@ -181,7 +181,7 @@ public sealed class MonsterMovementIntentTests
     }
 
     [Fact]
-    public void DestinationPathHasNoMarchTimeoutAndCompletesAtItsEndpoint()
+    public void SameDestinationCellStopsWithoutMovingToCenterAndPreservesPath()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(987642);
@@ -202,9 +202,11 @@ public sealed class MonsterMovementIntentTests
         var request = MovementPreparationTestSteps.Monster(behavior, runtime, monster, [new game_server.players.Player { Profile = new PlayerInfo { PlayerId = 1 }, CurrentArea = monster.Area, Position = target }], now);
         Assert.True(monster.Alive);
         Assert.Single(monster.Movement.Waypoints);
+        Assert.Equal(0f, request.Speed);
+        Assert.Equal(monster.Info.ObjectInfo.Cell, request.DestinationCell);
         MovementPreparationTestSteps.Advance(runtime, monster.Info.ObjectInfo, monster.Movement, request, 1f, ignoreClosedDoors: true);
-        Assert.Equal(target, monster.Position);
-        Assert.Empty(monster.Movement.Waypoints);
+        Assert.Equal(position, monster.Position);
+        Assert.Single(monster.Movement.Waypoints);
         Assert.True(monster.Alive);
     }
     [Fact]

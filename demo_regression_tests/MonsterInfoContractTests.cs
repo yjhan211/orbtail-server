@@ -18,7 +18,7 @@ public sealed class MonsterInfoContractTests
             Alive = true,
             Insignia = MonsterInsignia.Wind,
             SummonStoneReward = 2,
-            Kind = MonsterKind.Bowler,
+            Kind = MonsterKind.RunawayGoblin,
             PhaseTier = 3,
             ChaseTargetPlayerId = 42,
             Area = AreaType.S2Gym1

@@ -188,7 +188,7 @@ public sealed class MatchMovementTickTests
         runtime.RegisterParticipant(new game_server.players.Player
         {
             Profile = new PlayerInfo { PlayerId = 1 }, Health = 100,
-            Position = position, CurrentArea = AreaType.S2Corridor9
+            Position = new Vector3f(position.X + 1f, position.Y, 0f), CurrentArea = AreaType.S2Corridor9
         });
         var monster = new Monster
         {
@@ -199,7 +199,7 @@ public sealed class MatchMovementTickTests
         var request = behavior.CreateMovementRequest(runtime, monster, runtime.GetAlivePlayers().ToList(), now);
 
         Assert.True(request.Speed > 0f);
-        Assert.True(request.Speed > 0f);
+        Assert.NotEqual(cell, request.DestinationCell);
     }
 
     private sealed class MovingBotProbe()
