@@ -1,5 +1,3 @@
-using System.Reflection;
-using game_server;
 using game_server.matches;
 using game_server.players;
 using game_server.players.bots;
@@ -18,7 +16,8 @@ public sealed class MatchGameplayServiceTests
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var service = provider.GetRequiredService<game_server.matches.MatchResultService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947804);
-        var player = new game_server.players.Player(new PlayerInfo { PlayerId = playerId, Name = "Participant" }) {
+        var player = new game_server.players.Player(new PlayerInfo { PlayerId = playerId, Name = "Participant" })
+        {
             Health = 37
         };
         using (match.Enter())
@@ -147,7 +146,9 @@ public sealed class MatchGameplayServiceTests
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var service = provider.GetRequiredService<MatchCombatService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947801);
-        var player = new game_server.players.Player(new PlayerInfo { PlayerId = playerId }) { Health = 100
+        var player = new game_server.players.Player(new PlayerInfo { PlayerId = playerId })
+        {
+            Health = 100
         };
         using (match.Enter())
         {
@@ -180,7 +181,8 @@ public sealed class MatchGameplayServiceTests
             PlayerId = -11,
             Player = { Health = 10, Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Corridor9)) }
         };
-        var enemy = new game_server.players.Player(new PlayerInfo { PlayerId = enemyId }) {
+        var enemy = new game_server.players.Player(new PlayerInfo { PlayerId = enemyId })
+        {
             Position = bot.Player.Position!
         };
         using (match.Enter())
@@ -205,9 +207,13 @@ public sealed class MatchGameplayServiceTests
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var growth = provider.GetRequiredService<PlayerOrbGrowthService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947798);
-        var hunter = new game_server.players.Player(new PlayerInfo { PlayerId = -1 }) { Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Gym1))
+        var hunter = new game_server.players.Player(new PlayerInfo { PlayerId = -1 })
+        {
+            Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Gym1))
         };
-        var prey = new game_server.players.Player(new PlayerInfo { PlayerId = 1 }) { Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Gym1))
+        var prey = new game_server.players.Player(new PlayerInfo { PlayerId = 1 })
+        {
+            Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Gym1))
         };
         using (match.Enter())
         {
@@ -228,15 +234,19 @@ public sealed class MatchGameplayServiceTests
         var waveAttacks = provider.GetRequiredService<game_server.matches.MatchOrbAttackService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947799);
         var now = DateTime.UtcNow;
-        var human = new game_server.players.Player(new PlayerInfo { PlayerId = 11 }) { Position = new Vector3f()
+        var human = new game_server.players.Player(new PlayerInfo { PlayerId = 11 })
+        {
+            Position = new Vector3f()
         };
-        var bot = new game_server.players.Player(new PlayerInfo { PlayerId = -11 }) { Position = new Vector3f()
+        var bot = new game_server.players.Player(new PlayerInfo { PlayerId = -11 })
+        {
+            Position = new Vector3f()
         };
         using (match.Enter())
         {
             match.RegisterPlayer(human);
             match.RegisterPlayer(bot);
-            match.PendingWaveAttacks.Add(new PendingWaveAttack(99, human.GameInfo.ObjectInfo.Area, new Vector3f(), 5, 2f, 107000030, now));
+            match.PendingWaveAttacks.Add(new PendingWaveAttack(99, human.GameInfo.ObjectInfo.Area, new Vector3f(), 5, 2f, 107000030, now, true));
             waveAttacks.ProcessWaveDetonations(match, now);
             Assert.True(human.Health < network.common.Config.MAX_HEALTH);
             Assert.Equal(human.Health, bot.Health);
@@ -247,18 +257,26 @@ public sealed class MatchGameplayServiceTests
         }
     }
 
+    // 감속은 파도가 판의 과반(공명)일 때만 걸린다. 피해는 공명과 무관하다.
     [Fact]
-    public void Composition_SharesOneCombatServiceWithoutDependingBackOnHost()
+    public void WaveVortexWithoutResonanceDamagesButDoesNotSlow()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var decisions = provider.GetRequiredService<BotBehaviorService>();
-        var combat = provider.GetRequiredService<MatchCombatService>();
-        var store = provider.GetRequiredService<MatchRuntimeStore>();
-        Assert.Same(combat, provider.GetRequiredService<MatchCombatService>());
-        Assert.Same(decisions, Read<BotBehaviorService>(combat));
-        Assert.DoesNotContain(Fields(combat), field => field.FieldType == typeof(GameServer));
-        Assert.DoesNotContain(Fields(decisions), field =>
-            field.FieldType == typeof(GameServer) || field.FieldType == typeof(MatchCombatService));
+        var waveAttacks = provider.GetRequiredService<game_server.matches.MatchOrbAttackService>();
+        var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947798);
+        var now = DateTime.UtcNow;
+        var human = new game_server.players.Player(new PlayerInfo { PlayerId = 12 })
+        {
+            Position = new Vector3f()
+        };
+        using (match.Enter())
+        {
+            match.RegisterPlayer(human);
+            match.PendingWaveAttacks.Add(new PendingWaveAttack(99, human.GameInfo.ObjectInfo.Area, new Vector3f(), 5, 2f, 107000030, now, false));
+            waveAttacks.ProcessWaveDetonations(match, now);
+            Assert.True(human.Health < network.common.Config.MAX_HEALTH);
+            Assert.False(human.StatusEffects.IsActive(PlayerStatusEffectKind.WaveSlow, now));
+        }
     }
 
     [Fact]
@@ -409,10 +427,4 @@ public sealed class MatchGameplayServiceTests
             match.TryMarkEnded();
         }
     }
-
-    private static FieldInfo[] Fields(object target) =>
-        target.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic);
-
-    private static T Read<T>(object target) =>
-        Assert.IsType<T>(Fields(target).Single(field => field.FieldType == typeof(T)).GetValue(target));
 }

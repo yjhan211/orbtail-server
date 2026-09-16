@@ -129,7 +129,8 @@ internal sealed class PlayerOrbService(
                 sunDamageMultiplier = OrbData.GetSunPveAttackMultiplier(orderedOrbs);
             }
             int damage = Math.Max(1, (int)MathF.Round(baseDamage * sunDamageMultiplier * Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER));
-            runtime.PendingWaveAttacks.Add(new PendingWaveAttack(owner.PlayerId, ownerArea, orbPosition, damage, radius, orb.ItemId, nowUtc.AddSeconds(WaveOrbDetonationDelaySeconds)));
+            bool appliesSlow = OrbData.IsResonating(orderedOrbs, OrbColor.Blue);
+            runtime.PendingWaveAttacks.Add(new PendingWaveAttack(owner.PlayerId, ownerArea, orbPosition, damage, radius, orb.ItemId, nowUtc.AddSeconds(WaveOrbDetonationDelaySeconds), appliesSlow));
             using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_RING_EFFECT);
             packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_RING_EFFECT
             {

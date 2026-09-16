@@ -304,8 +304,6 @@ internal sealed class MatchOrbAttackService(
 
             var players = runtime.GetAlivePlayers();
             var owner = runtime.GetPlayer(vortex.OwnerId);
-            int hitCount = 0;
-            int notifiedCount = 0;
             foreach (var target in runtime.Monsters.GetCombatTargets())
             {
                 if (target.Area != vortex.Area)
@@ -319,8 +317,10 @@ internal sealed class MatchOrbAttackService(
                 int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, vortex.Damage, out bool critical);
                 target.ReserveDamage(monsterDamage);
                 combatDamage.ScheduleMonsterHit(runtime, new PendingMonsterHit(target.CombatTargetId, vortex.OwnerId, monsterDamage, nowUtc));
-                target.ApplySlow(OrbData.WaveSlowSeconds, nowUtc);
-                hitCount++;
+                if (vortex.AppliesSlow)
+                {
+                    target.ApplySlow(OrbData.WaveSlowSeconds, nowUtc);
+                }
 
                 int monsterId = (runtime.Monsters.FindAliveByCombatTarget(target.CombatTargetId)?.MonsterId ?? 0);
                 if (monsterId <= 0)
@@ -328,11 +328,9 @@ internal sealed class MatchOrbAttackService(
                     continue;
                 }
 
-                notifiedCount++;
                 combatDamage.QueueMonsterHitNotification(runtime, owner, monsterId, vortex.Area, vortex.SourceItemId, monsterDamage, critical, showDamageOnly: true);
             }
 
-            int soaked = 0;
             foreach (var participant in players)
             {
                 if (participant.IsEliminated || participant.PlayerId == vortex.OwnerId || participant.GameInfo.ObjectInfo.Area != vortex.Area || participant.Position == null)
@@ -346,14 +344,13 @@ internal sealed class MatchOrbAttackService(
                     continue;
                 }
 
-                soaked++;
                 combatDamage.ApplySwarmShock(runtime, healthService, vortex.OwnerId, vortex.SourceItemId, vortex.Area, participant.PlayerId, players, Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER);
                 if (runtime.IsEnded)
                 {
                     return;
                 }
 
-                if (participant.IsEliminated)
+                if (participant.IsEliminated || !vortex.AppliesSlow)
                 {
                     continue;
                 }
@@ -371,10 +368,6 @@ internal sealed class MatchOrbAttackService(
                     });
                     victimSession.TrySend(packet);
                 }
-            }
-
-            if (hitCount > 0 || soaked > 0)
-            {
             }
         }
     }

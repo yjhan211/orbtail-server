@@ -186,10 +186,7 @@ namespace network.common
     public enum EliminationReason : short
     {
         NONE = 0,
-        DETECTED = 1,
         HEALTH_ZERO = 2,
-        RACE_LOST = 4,
-        SETTLEMENT_LOW_CONTRIBUTION = 5,
         PRESSURE_FIELD = 6,
     }
 

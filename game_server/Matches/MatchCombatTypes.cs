@@ -22,7 +22,8 @@ public readonly record struct PendingWaveAttack(
     int Damage,
     float Radius,
     int SourceItemId,
-    DateTime ExplodeAtUtc);
+    DateTime ExplodeAtUtc,
+    bool AppliesSlow);
 
 public readonly record struct ProximityCombatActor(
     long PlayerId,

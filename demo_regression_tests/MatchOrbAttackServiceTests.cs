@@ -282,7 +282,7 @@ public sealed class MatchOrbAttackServiceTests
         Assert.Throws<InvalidOperationException>(() => service.ProcessWaveDetonations(first, now));
         using (first.Enter())
         {
-            first.PendingWaveAttacks.Add(new PendingWaveAttack(1, AreaType.None, new Vector3f(), 1, 1, 107000030, now));
+            first.PendingWaveAttacks.Add(new PendingWaveAttack(1, AreaType.None, new Vector3f(), 1, 1, 107000030, now, true));
             first.TryMarkEnded();
             service.ProcessWaveDetonations(first, now);
             Assert.Single(first.PendingWaveAttacks);

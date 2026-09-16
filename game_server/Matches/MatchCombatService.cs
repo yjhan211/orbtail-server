@@ -76,7 +76,6 @@ internal class MatchCombatService(
             return;
         }
 
-
         var nowUtc = DateTime.UtcNow;
         var aliveBots = bots.Where(bot => !bot.Player.IsEliminated).ToList();
         var monsterContactDamages = CollectMonsterContactDamages(runtime, players, nowUtc);

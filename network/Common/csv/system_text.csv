@@ -1,4 +1,4 @@
-﻿id,category,text_kr,text_en,text_jp
+id,category,text_kr,text_en,text_jp
 "11060","6","어떻게 대응할까요?","How will you respond?","どう対応しますか？"
 "11061","6","아이템 사용 [- {0}]","Use item [- {0}]","アイテム使用 [- {0}]"
 "11062","6","상대방의 행동에 대비하기","Prepare for the other person's action","相手の行動に備える"
@@ -182,11 +182,8 @@
 12042,7,만인의 짝꿍,Best Friend,みんなの相棒
 12043,7,그리운 친구,Dear Old Friend,懐かしい友達
 12044,7,당신은 승리했습니다.,You won.,あなたは勝利しました。
-12045,7,당신은 <color={0}>색출</color>되어 <color={0}>탈락</color>했습니다.,You were <color={0}>exposed</color> and <color={0}>eliminated</color>.,あなたは<color={0}>正体を暴かれて</color><color={0}>脱落</color>しました。
 12046,7,당신은 <color={0}>체력이 모두 소모</color>되어 <color={0}>탈락</color>했습니다.,Your <color={0}>health was depleted</color> and you were <color={0}>eliminated</color>.,あなたは<color={0}>体力がすべて尽きた</color>ため<color={0}>脱落</color>しました。
-12047,7,다른 플레이어가 먼저 탈출하여 <color={0}>패배</color>했습니다.,Another player escaped first and you <color={0}>lost</color>.,他のプレイヤーが先に脱出したため、<color={0}>敗北</color>しました。
 12048,7,당신은 <color={0}>정신력이 모두 소모</color>되어 <color={0}>탈락</color>했습니다.,Your <color={0}>sanity was fully depleted</color> and you were <color={0}>eliminated</color>.,あなたは<color={0}>精神力がすべて尽きた</color>ため、<color={0}>脱落</color>しました。
-12161,7,기여도가 가장 낮아 <color={0}>탈락</color>했습니다.,You had the lowest contribution and were <color={0}>eliminated</color>.,貢献度が最も低く、<color={0}>脱落</color>しました。
 12049,7,클릭하여 로비로 복귀합니다.,Click to return to the lobby.,クリックしてロビーに戻ります。
 12050,7,결과 보고서,Result Report,結果報告書
 12051,7,요약,Summary,要約
@@ -331,15 +328,9 @@
 12205,7,조우 기회를 잃었습니다.,You lost the chance to encounter them.,遭遇の機会を逃しました。
 12206,7,{0}명,{0} players,{0}人
 "12207","7","소환","Summon","召喚"
-"12208","7","태양의 잔상","Sun Afterimage","太陽の残像"
-"12209","7","바람의 잔상","Wind Afterimage","風の残像"
-"12210","7","파도의 잔상","Wave Afterimage","波の残像"
 "12220","7","태양","Sun","太陽"
 "12221","7","파도","Wave","波"
 "12222","7","바람","Wind","風"
-"12223","7","공격력 +{0}%({1})","Attack +{0}%({1})","攻撃力 +{0}%({1})"
-"12224","7","이동 속도 +{0}%({1})","Move Speed +{0}%({1})","移動速度 +{0}%({1})"
-"12225","7","물폭탄 {0}개({1})","Bombs {0} ({1})","水爆弾 {0}個({1})"
 "12226","7","보유 수량: {0}","Owned: {0}","所持数: {0}"
 "12227","7","소환할 오브를 선택하세요.","Choose an orb to summon.","召喚するオーブを選んでください。"
 "12228","7","수량 증가","Stack +1","数量+1"
