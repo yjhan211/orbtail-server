@@ -178,7 +178,6 @@ public sealed class BotReplanningTests
         runtime.Bots.RegisterBots(runtime.MatchingId, [-1], new Dictionary<long, Cell> { [-1] = cell });
         var bot = runtime.Bots.GetBot(-1)!;
         runtime.RegisterParticipant(bot.Player);
-        bot.LoopWaitUntil = DateTime.MinValue;
         var destination = cell.GetAdjacentCells().First(candidate =>
             GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, candidate) == area &&
             MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, area, cell, area, candidate) is { Count: > 0 });

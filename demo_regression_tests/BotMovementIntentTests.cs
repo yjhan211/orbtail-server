@@ -25,7 +25,6 @@ public sealed class BotMovementIntentTests
         var now = DateTime.UtcNow;
         bot.Movement.Waypoints.Add(target);
         bot.Movement.LastProcessedAtUtc = now.AddSeconds(-0.05);
-        bot.LoopWaitUntil = DateTime.MinValue;
         var behavior = new FixedTargetBehavior(target);
         var movement = new MatchMoveService(behavior, null!);
 
@@ -77,7 +76,6 @@ public sealed class BotMovementIntentTests
             break;
         }
         Assert.NotNull(destination);
-        bot.LoopWaitUntil = DateTime.MinValue;
         var before = bot.Player.Position;
         var behavior = new FixedTargetBehavior(destination);
 

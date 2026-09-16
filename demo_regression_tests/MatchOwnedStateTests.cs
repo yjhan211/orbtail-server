@@ -132,7 +132,6 @@ public sealed class MatchOwnedStateTests
         var bot = match.Bots.GetBot(botId)!;
         var service = TestGameSessionServices.CreateEliminationService(store, NullLogger.Instance);
         bot.Movement.WaypointIndex = 3;
-        bot.LoopWaitUntil = DateTime.UtcNow.AddMinutes(1);
         using (MatchRuntimeStore.Enter(match))
         {
             service.EliminatePlayer(match, bot.Player, EliminationReason.HEALTH_ZERO, attackerPlayerId: 11);
@@ -141,7 +140,6 @@ public sealed class MatchOwnedStateTests
             Assert.True(bot.Player.IsEliminated);
             Assert.Same(bot.Player, match.GetParticipant(botId));
             Assert.Equal(0, bot.Movement.WaypointIndex);
-            Assert.Equal(DateTime.MinValue, bot.LoopWaitUntil);
             Assert.Empty(TestGameSessionServices.Orbs(match, botId).GetAllItems());
             int drops = match.GroundItems.GetItemsInArea(bot.Player.CurrentArea).Count;
             var eliminatedAt = entry.eliminatedAt;

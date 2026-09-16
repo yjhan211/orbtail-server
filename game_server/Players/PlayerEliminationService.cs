@@ -43,7 +43,6 @@ internal sealed class PlayerEliminationService(
         if (eliminatedBot != null)
         {
             eliminatedBot.Movement.Clear();
-            eliminatedBot.LoopWaitUntil = DateTime.MinValue;
         }
 
         logger.LogInformation("Player eliminated: MatchingId={MatchingId}, PlayerId={PlayerId}, Reason={Reason}, AttackerPlayerId={AttackerPlayerId}", runtime.MatchingId, eliminatedPlayerId, reason, resolvedAttackerPlayerId);

@@ -33,8 +33,6 @@ namespace network.common
         public static float SWARM_BOT_CUT_MIN_HEALTH_RATIO => SwarmConfigData.GetFloat("SWARM_BOT_CUT_MIN_HEALTH_RATIO", 0.5f);
         public static double SWARM_BOT_CUT_COOLDOWN_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_CUT_COOLDOWN_SECONDS", 6d);
 
-        public static double SWARM_BOT_INITIAL_DECISION_DELAY_MIN_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_INITIAL_DECISION_DELAY_MIN_SECONDS", 0.15d);
-        public static double SWARM_BOT_INITIAL_DECISION_DELAY_MAX_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_INITIAL_DECISION_DELAY_MAX_SECONDS", 1.2d);
         public static int[] SWARM_BOT_DEFAULT_WEAR_ITEM_IDS => SwarmConfigData.GetIntArray("SWARM_BOT_DEFAULT_WEAR_ITEM_IDS", new[] { 101000003, 102000003, 104000005, 105000005, 106000003 });
         public static int[] SWARM_BOT_CUSTOMIZATION_ITEM_IDS => SwarmConfigData.GetIntArray("SWARM_BOT_CUSTOMIZATION_ITEM_IDS", new[] { 103000001, 103000004, 103000005, 103000006 });
 

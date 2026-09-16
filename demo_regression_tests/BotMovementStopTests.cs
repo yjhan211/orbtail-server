@@ -36,7 +36,6 @@ public sealed class BotMovementStopTests
     [Theory]
     [InlineData("no_target")]
     [InlineData("no_path")]
-    [InlineData("waiting")]
     [InlineData("blocked_cell")]
     public void InterruptedMovementStopsOnce(string reason)
     {
@@ -48,13 +47,10 @@ public sealed class BotMovementStopTests
             runtime.Bots.RegisterBots(runtime.MatchingId, [-1L], new Dictionary<long, Cell> { [-1] = cell });
             var bot = runtime.Bots.GetBot(-1)!;
             bot.Movement.NextPathPlanAtUtc = DateTime.UtcNow.AddMinutes(1);
-            bot.LoopWaitUntil = DateTime.MinValue;
             var originalPosition = bot.Player.Position!;
             bot.Player.Velocity = new Vector3f(5f, 1f, 0f);
-            if (reason is "waiting" or "blocked_cell")
-                bot.Movement.Waypoints.Add(reason == "blocked_cell" ? new Cell(-10000, -10000) : cell);
-            if (reason == "waiting")
-                bot.LoopWaitUntil = DateTime.UtcNow.AddMinutes(1);
+            if (reason == "blocked_cell")
+                bot.Movement.Waypoints.Add(new Cell(-10000, -10000));
             var first = MovementTickTestDriver.RunBotTick(runtime, _ => { });
 
             var stopped = Assert.Single(first.Movements);

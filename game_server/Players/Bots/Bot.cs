@@ -35,7 +35,6 @@ public class Bot
     public long LastProximityAttackerPlayerId { get; set; }
     public MovementState Movement { get; } = new();
     public (AreaType Area, Cell Cell)? ExplorationTarget { get; set; }
-    public DateTime LoopWaitUntil { get; set; } = DateTime.MinValue;
     public DateTime LastDamagedAtUtc { get; set; } = DateTime.MinValue;
     public (Cell Destination, DateTime SelectedAtUtc)? MonsterAvoidanceTarget { get; set; }
     public DateTime? LastTrailCutAtUtc { get; set; }

@@ -116,8 +116,6 @@ public class SwarmConfigFallbackTests
             SwarmConfigData.Initialize(rows);
             Assert.Equal(new[] { 101000003, 102000003, 104000005, 105000005, 106000003 }, network.common.Config.SWARM_BOT_DEFAULT_WEAR_ITEM_IDS);
             Assert.Equal(new[] { 103000001, 103000004, 103000005, 103000006 }, network.common.Config.SWARM_BOT_CUSTOMIZATION_ITEM_IDS);
-            Assert.Equal(0.15d, network.common.Config.SWARM_BOT_INITIAL_DECISION_DELAY_MIN_SECONDS);
-            Assert.Equal(1.2d, network.common.Config.SWARM_BOT_INITIAL_DECISION_DELAY_MAX_SECONDS);
 
             SwarmConfigData.Initialize(new List<CsvRow>
             {

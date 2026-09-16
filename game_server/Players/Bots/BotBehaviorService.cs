@@ -183,10 +183,6 @@ internal class BotBehaviorService(
         }
 
         float speed = Config.SWARM_BOT_WALK_SPEED * GetBotMovementSpeedMultiplier(bot, nowUtc);
-        if (nowUtc < bot.LoopWaitUntil)
-        {
-            speed = 0f;
-        }
         return new MovementRequest(requestedCell.Clone(), speed);
     }
 

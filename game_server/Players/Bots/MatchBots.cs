@@ -24,12 +24,6 @@ public class MatchBots
     public void RegisterBots(long matchingId, IReadOnlyList<long> botPlayerIds, IReadOnlyDictionary<long, Cell> spawnCells)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
-        double minDecisionDelay = Config.SWARM_BOT_INITIAL_DECISION_DELAY_MIN_SECONDS;
-        double maxDecisionDelay = Config.SWARM_BOT_INITIAL_DECISION_DELAY_MAX_SECONDS;
-        if (!double.IsFinite(minDecisionDelay) || !double.IsFinite(maxDecisionDelay) || minDecisionDelay < 0 || maxDecisionDelay < minDecisionDelay)
-        {
-            throw new InvalidOperationException("Invalid bot initial decision delay range.");
-        }
 
         var bots = botPlayerIds.Select(botPlayerId =>
         {
@@ -45,7 +39,6 @@ public class MatchBots
             }
 
             var startPosition = CellToWorldPosition(Config.SWARM_MATCH_MAP, startCell);
-            var now = DateTime.UtcNow;
 
             return new Bot
             {
@@ -58,9 +51,7 @@ public class MatchBots
                     Cell = startCell,
                     Position = startPosition,
                     Rotation = 0f
-                },
-                LoopWaitUntil = now.AddSeconds(minDecisionDelay + Random.Shared.NextDouble() *
-                    (maxDecisionDelay - minDecisionDelay))
+                }
             };
         }).ToList();
 
