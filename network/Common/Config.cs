@@ -278,8 +278,6 @@ namespace network.common
 
         /// <summary>볼러 접촉 스플래시 반경</summary>
 
-        /// <summary>파도 문양 잔상 접촉 스플래시 반경</summary>
-        public static float SWARM_MONSTER_WAVE_SPLASH_RADIUS => SwarmConfigData.GetFloat("SWARM_MONSTER_WAVE_SPLASH_RADIUS", 2.2f);
 
         /// <summary>잔상 근접 개전 반경</summary>
         public static float SWARM_MONSTER_AGGRO_RADIUS => SwarmConfigData.GetFloat("SWARM_MONSTER_AGGRO_RADIUS", 2.5f);

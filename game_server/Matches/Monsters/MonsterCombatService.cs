@@ -51,31 +51,6 @@ internal sealed class MonsterCombatService
             player.StatusEffects.Apply(PlayerStatusEffectKind.MonsterContactImmunity, now.AddSeconds(Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS));
             monster.ChaseTargetPlayerId = participant.PlayerId;
             contacts.Add(new MonsterContactDamage(monster.MonsterId, participant.PlayerId, monster.Area, monster.ContactDamageValue));
-            if (monster.Insignia == MonsterInsignia.Wave)
-            {
-                float splashRadius = Config.SWARM_MONSTER_WAVE_SPLASH_RADIUS;
-                foreach (var splashed in snapshot)
-                {
-                    if (splashed.PlayerId == participant.PlayerId || splashed.Area != monster.Area)
-                    {
-                        continue;
-                    }
-                    float sx = splashed.Position.X - participant.Position.X;
-                    float sy = splashed.Position.Y - participant.Position.Y;
-                    if (sx * sx + sy * sy > splashRadius * splashRadius)
-                    {
-                        continue;
-                    }
-
-                    var splashedPlayer = runtime.GetPlayer(splashed.PlayerId);
-                    if (splashedPlayer == null || splashedPlayer.StatusEffects.IsActive(PlayerStatusEffectKind.MonsterContactImmunity, now))
-                    {
-                        continue;
-                    }
-                    splashedPlayer.StatusEffects.Apply(PlayerStatusEffectKind.MonsterContactImmunity, now.AddSeconds(Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS));
-                    contacts.Add(new MonsterContactDamage(monster.MonsterId, splashed.PlayerId, monster.Area, monster.ContactDamageValue));
-                }
-            }
             break;
         }
     }
