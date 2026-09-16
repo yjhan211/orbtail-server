@@ -106,10 +106,9 @@ internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logge
             {
                 validatedVelocity = new Vector3f();
             }
-            lastValidCell = clientCell;
         }
 
-        var validation = new ValidatedMovement(clientPos, validatedVelocity, lastValidCell, requiresClientCorrection);
+        var validation = new ValidatedMovement(clientPos, validatedVelocity, requiresClientCorrection);
         var validatedPosition = validation.Position;
         var currentCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, validatedPosition);
         var oldArea = player.GameInfo.ObjectInfo.Area;
@@ -130,7 +129,7 @@ internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logge
 
         player.TryStopSleep();
         PlayerPickupService.AddReachableItemsForMovement(match, player, player.Position ?? validatedPosition, validatedPosition, newArea);
-        player.ApplyValidatedMovement(validation.ValidCell, validation.Position, validation.Velocity, msg.Rotation);
+        player.ApplyValidatedMovement(validation.Position, validation.Velocity, msg.Rotation);
 
         if (newArea != oldArea && newArea != AreaType.None)
         {
@@ -156,5 +155,5 @@ internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logge
         }
     }
 
-    internal readonly record struct ValidatedMovement(Vector3f Position, Vector3f Velocity, Cell? ValidCell, bool RequiresCorrection);
+    internal readonly record struct ValidatedMovement(Vector3f Position, Vector3f Velocity, bool RequiresCorrection);
 }

@@ -193,14 +193,13 @@ public sealed class MatchOwnedBotsTests
             Assert.NotEqual(AreaType.None, player.GameInfo.ObjectInfo.Area);
 
             player.Position = new Vector3f(12, 34, 0);
-            player.Cell = new Cell(3, 4);
             player.Velocity = new Vector3f(6, 0, 0);
             player.Rotation = 180;
             var snapshot = match.Bots.GetPlayerObjectInfo(-1)!.ObjectInfo;
             Assert.Equal(12, snapshot.Position.X);
             Assert.Equal(34, snapshot.Position.Y);
             Assert.Equal(180, snapshot.Rotation);
-            Assert.Equal(3, bot.Player.Cell!.X);
+            Assert.Equal(network.common.data.MapCoordinateConverter.WorldToCell(network.common.Config.SWARM_MATCH_MAP, new Vector3f(12, 34, 0)).X, bot.Player.Cell!.X);
             Assert.Equal(6, bot.Player.Velocity.X);
             Assert.Equal(network.common.data.GameMapData.GetCurrentArea(network.common.Config.SWARM_MATCH_MAP, player.Cell!), bot.Player.GameInfo.ObjectInfo.Area);
             Assert.NotSame(player.Position, snapshot.Position);

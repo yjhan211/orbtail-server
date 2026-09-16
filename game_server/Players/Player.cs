@@ -159,9 +159,8 @@ public class Player
         Orbs.ResetOrbit(Position);
     }
 
-    internal void ApplyValidatedMovement(Cell? cell, Vector3f position, Vector3f velocity, float rotation)
+    internal void ApplyValidatedMovement(Vector3f position, Vector3f velocity, float rotation)
     {
-        Cell = cell;
         Position = position;
         Velocity = velocity;
         Rotation = rotation;

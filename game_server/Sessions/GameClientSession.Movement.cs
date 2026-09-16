@@ -187,6 +187,4 @@ public partial class GameClientSession
             _publishedMonsterStates[monster.MonsterId] = monster;
         }
     }
-
-
 }

@@ -967,7 +967,7 @@ public sealed class BotMovementDeliveryTests
         runtime.Monsters.Initialize(now);
         runtime.Monsters.Rng = new Random(42);
         var supply = new game_server.matches.monsters.MatchMonsterSpawnService();
-        supply.ProcessSupply(runtime, now);
+        supply.ProcessTick(runtime, now);
         Assert.NotEmpty(runtime.Monsters.Entities);
         Assert.All(runtime.Monsters.Entities.Values, monster =>
         {
@@ -979,7 +979,7 @@ public sealed class BotMovementDeliveryTests
         recipient.Packets.Clear();
         new MatchMoveService(null!, null!).ProcessTick(runtime, now.AddMilliseconds(50));
         Assert.Empty(recipient.Packets);
-        supply.ProcessSupply(runtime, now.AddMilliseconds(50));
+        supply.ProcessTick(runtime, now.AddMilliseconds(50));
         Assert.Empty(recipient.Packets);
 
         // 생성 후 늦게 입장한 세션은 기존 상태 전체를 한 번 받는다.

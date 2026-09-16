@@ -29,8 +29,9 @@ public sealed class MovementValidationServiceTests
         Assert.False(result.RequiresCorrection);
         Assert.Equal(0f, result.Position.Z);
         Assert.Equal(5f, input.Z);
-        Assert.Equal(cell.X, result.ValidCell!.X);
-        Assert.Equal(cell.Y, result.ValidCell.Y);
+        var resultCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, result.Position);
+        Assert.Equal(cell.X, resultCell.X);
+        Assert.Equal(cell.Y, resultCell.Y);
     }
 
     [Fact]
@@ -72,7 +73,9 @@ public sealed class MovementValidationServiceTests
 
         Assert.True(result.RequiresCorrection);
         Assert.Same(position, result.Position);
-        Assert.Same(cell, result.ValidCell);
+        var keptCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, result.Position);
+        Assert.Equal(cell.X, keptCell.X);
+        Assert.Equal(cell.Y, keptCell.Y);
         Assert.Equal(0f, result.Velocity.Magnitude());
     }
 
@@ -83,7 +86,7 @@ public sealed class MovementValidationServiceTests
         int check = source.IndexOf("match.Doors.GetBlockingDoor(", StringComparison.Ordinal);
         int reject = source.IndexOf("if (transitionDoor != null)", check, StringComparison.Ordinal);
         int stop = source.IndexOf("return true;", reject, StringComparison.Ordinal);
-        int commit = source.IndexOf("player.ApplyValidatedMovement(validation.ValidCell, validation.Position, validation.Velocity, msg.Rotation);", StringComparison.Ordinal);
+        int commit = source.IndexOf("player.ApplyValidatedMovement(validation.Position, validation.Velocity, msg.Rotation);", StringComparison.Ordinal);
         Assert.True(check >= 0 && reject > check && stop > reject && commit > stop);
         Assert.Contains("WorldToCell(Config.SWARM_MATCH_MAP, player.Position)", source);
         Assert.DoesNotContain("player.Session", source);
@@ -114,16 +117,14 @@ public sealed class MovementValidationServiceTests
         using (match.Enter())
         {
             player.InitializeSpawn(cell);
-            player.Position = position;
-            player.Cell = cell;
+            player.Position = position; // 셀은 위치에서 파생된다
             match.RegisterPlayer(player);
             bool correction = _service.ProcessMovement(match, player, new C_TO_G_MOVE
             {
                 Position = input,
                 Velocity = velocity
             }, deltaTime);
-            return new PlayerMovementService.ValidatedMovement(player.Position!, player.Velocity, player.Cell,
-                correction);
+            return new PlayerMovementService.ValidatedMovement(player.Position!, player.Velocity, correction);
         }
     }
 

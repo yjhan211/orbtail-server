@@ -187,20 +187,20 @@ public sealed class GameClientSessionConnectPublicationTests
         using var fixture = new ConnectFixture();
         var session = fixture.CreateSession(74016, 8115, _ => true);
         var movement = new PlayerMovementService.ValidatedMovement(
-            new Vector3f(10.25f, 20.75f, 0f), new Vector3f(2f, 3f, 0f),
-            new Cell(10, 20), false);
+            new Vector3f(10.25f, 20.75f, 0f), new Vector3f(2f, 3f, 0f), false);
 
         using (session.Match.Enter())
         {
-            session.Player.ApplyValidatedMovement(movement.ValidCell, movement.Position, movement.Velocity, 45f);
+            session.Player.ApplyValidatedMovement(movement.Position, movement.Velocity, 45f);
             var snapshot = session.Player.CreateGameObjectInfo();
             Assert.Equal(10.25f, snapshot.Position.X);
             Assert.Equal(20.75f, snapshot.Position.Y);
             Assert.Equal(2f, snapshot.Velocity.X);
             Assert.Equal(3f, snapshot.Velocity.Y);
             Assert.Equal(45f, snapshot.Rotation);
-            Assert.Equal(10, snapshot.Cell.X);
-            Assert.Equal(20, snapshot.Cell.Y);
+            var expectedCell = network.common.data.MapCoordinateConverter.WorldToCell(network.common.Config.SWARM_MATCH_MAP, movement.Position);
+            Assert.Equal(expectedCell.X, snapshot.Cell.X);
+            Assert.Equal(expectedCell.Y, snapshot.Cell.Y);
         }
     }
 
@@ -211,22 +211,20 @@ public sealed class GameClientSessionConnectPublicationTests
         var session = fixture.CreateSession(74006, 8105, _ => true);
         var position = new Vector3f(10.25f, 20.75f, 0f);
         var velocity = new Vector3f(2f, 3f, 0f);
-        var cell = new Cell(10, 20);
+        var expectedCell = network.common.data.MapCoordinateConverter.WorldToCell(network.common.Config.SWARM_MATCH_MAP, position);
         using var scope = session.Match.Enter();
         session.Match.RegisterPlayer(session.Player);
         TestGameSessionServices.SetMovementProperty(session, "Position", position);
         TestGameSessionServices.SetMovementProperty(session, "Velocity", velocity);
-        TestGameSessionServices.SetMovementProperty(session, "Cell", cell);
         var snapshot = session.Player.CreateGameObjectInfo();
         position.X = 999;
         velocity.X = 999;
-        cell.X = 999;
         Assert.Equal(8105, snapshot.ObjectId);
         Assert.Equal(session.Player.GameInfo.ObjectInfo.Area, snapshot.Area);
         Assert.Equal(10.25f, snapshot.Position.X);
         Assert.Equal(20.75f, snapshot.Position.Y);
         Assert.Equal(2f, snapshot.Velocity.X);
-        Assert.Equal(10, snapshot.Cell.X);
+        Assert.Equal(expectedCell.X, snapshot.Cell.X);
     }
 
     [Fact]

@@ -27,7 +27,7 @@ internal sealed class MatchMonsterSpawnService
         return phases.Count - 1;
     }
 
-    public void ProcessSupply(MatchRuntime runtime, DateTime now)
+    public void ProcessTick(MatchRuntime runtime, DateTime now)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {

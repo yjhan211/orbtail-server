@@ -31,17 +31,17 @@ public class MatchMonsterTickTests
         var supply = new MatchMonsterSpawnService();
         Assert.Equal(0.05d, Config.SWARM_MONSTER_SUPPLY_CORE_SPAWN_CHANCE);
 
-        supply.ProcessSupply(runtime, StartUtc);
+        supply.ProcessTick(runtime, StartUtc);
         Assert.NotEmpty(runtime.Monsters.Entities);
         Assert.All(runtime.Monsters.Entities.Values, monster => Assert.Equal(MonsterKind.Skeleton, monster.Kind));
         foreach (var monster in runtime.Monsters.Entities.Values.ToArray()) runtime.RemoveMonster(monster);
 
         int firstPhase = Config.SWARM_MONSTER_SUPPLY_CORE_FIRST_PHASE_INDEX;
         var now = StartUtc.AddSeconds(SwarmSupplyPhaseData.GetAll()[firstPhase - 1].UntilSeconds);
-        supply.ProcessSupply(runtime, now);
+        supply.ProcessTick(runtime, now);
         int firstWaveCount = runtime.Monsters.Entities.Count;
         Assert.True(firstWaveCount > 1);
-        supply.ProcessSupply(runtime, now.AddSeconds(Config.SWARM_MONSTER_SUPPLY_TOP_UP_INTERVAL_SECONDS));
+        supply.ProcessTick(runtime, now.AddSeconds(Config.SWARM_MONSTER_SUPPLY_TOP_UP_INTERVAL_SECONDS));
         Assert.Equal(firstWaveCount * 2, runtime.Monsters.Entities.Count);
         var expectedKind = expectCore ? MonsterKind.RunawayGoblin : MonsterKind.Skeleton;
         Assert.All(runtime.Monsters.Entities.Values, monster => Assert.Equal(expectedKind, monster.Kind));
@@ -59,7 +59,7 @@ public class MatchMonsterTickTests
         using var scope = runtime.Enter();
         var supply = new MatchMonsterSpawnService();
         double interval = Config.SWARM_MONSTER_SUPPLY_TOP_UP_INTERVAL_SECONDS;
-        supply.ProcessSupply(runtime, StartUtc);
+        supply.ProcessTick(runtime, StartUtc);
         int waveCount = runtime.Monsters.Entities.Count;
         Assert.Equal(Config.SWARM_MONSTER_SUPPLY_TOP_UP_COUNT, waveCount);
         Assert.All(runtime.Monsters.Entities.Values, monster =>
@@ -69,12 +69,12 @@ public class MatchMonsterTickTests
             Assert.True(GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, monster.Info.ObjectInfo.Cell));
             Assert.Empty(monster.Movement.Waypoints);
         });
-        supply.ProcessSupply(runtime, StartUtc.AddSeconds(interval).AddTicks(-1));
+        supply.ProcessTick(runtime, StartUtc.AddSeconds(interval).AddTicks(-1));
         Assert.Equal(waveCount, runtime.Monsters.Entities.Count);
-        supply.ProcessSupply(runtime, StartUtc.AddSeconds(interval));
+        supply.ProcessTick(runtime, StartUtc.AddSeconds(interval));
         Assert.Equal(waveCount * 2, runtime.Monsters.Entities.Count);
         foreach (var monster in runtime.Monsters.Entities.Values.ToArray()) runtime.RemoveMonster(monster);
-        supply.ProcessSupply(runtime, StartUtc.AddSeconds(interval * 2));
+        supply.ProcessTick(runtime, StartUtc.AddSeconds(interval * 2));
         Assert.Equal(waveCount, runtime.Monsters.Entities.Count);
     }
 
@@ -86,7 +86,7 @@ public class MatchMonsterTickTests
         runtime.Closures.GameStartTime = StartUtc;
         var supply = new MatchMonsterSpawnService();
         var now = StartUtc.AddSeconds(255);
-        supply.ProcessSupply(runtime, now);
+        supply.ProcessTick(runtime, now);
         Assert.NotEmpty(runtime.Monsters.Entities);
         double radius = runtime.Closures.GetSafeDistance(now);
         Assert.All(runtime.Monsters.Entities.Values, monster =>
@@ -98,9 +98,9 @@ public class MatchMonsterTickTests
         int cap = Config.SWARM_MONSTER_SUPPLY_GLOBAL_ALIVE_HARD_CAP;
         for (int id = 1; runtime.Monsters.Entities.Count < cap - 1; id++)
             runtime.Monsters.Entities[id] = new Monster { MonsterId = id, Alive = true };
-        supply.ProcessSupply(runtime, runtime.Monsters.NextSpawnAtUtc);
+        supply.ProcessTick(runtime, runtime.Monsters.NextSpawnAtUtc);
         Assert.Equal(cap, runtime.Monsters.Entities.Count);
-        supply.ProcessSupply(runtime, runtime.Monsters.NextSpawnAtUtc);
+        supply.ProcessTick(runtime, runtime.Monsters.NextSpawnAtUtc);
         Assert.Equal(cap, runtime.Monsters.Entities.Count);
     }
 
@@ -110,9 +110,9 @@ public class MatchMonsterTickTests
         var runtime = CreateManager(217004).Runtime;
         using var scope = runtime.Enter();
         var supply = new MatchMonsterSpawnService();
-        supply.ProcessSupply(runtime, StartUtc);
+        supply.ProcessTick(runtime, StartUtc);
         var initial = runtime.Monsters.Entities.Keys.ToArray();
-        supply.ProcessSupply(runtime, StartUtc.AddSeconds(60));
+        supply.ProcessTick(runtime, StartUtc.AddSeconds(60));
         Assert.All(initial, id => Assert.True(runtime.Monsters.Entities.ContainsKey(id)));
         Assert.True(runtime.Monsters.Entities.Count > initial.Length);
     }
@@ -399,7 +399,7 @@ public class MatchMonsterTickTests
                 }
                 if (isGameplayActive) Runtime.StartGameplay(StartUtc);
                 // 운영 틱과 같은 공급 → 이동 → 접촉 순서. 빈 참가자 공급 정책도 직접 검증한다.
-                new MatchMonsterSpawnService().ProcessSupply(Runtime, nowUtc);
+                new MatchMonsterSpawnService().ProcessTick(Runtime, nowUtc);
                 if (participants.Count > 0)
                 {
                     _movement.ProcessTick(Runtime, nowUtc);

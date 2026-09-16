@@ -1,5 +1,4 @@
 using game_server.matches.monsters;
-using network.common.data.models;
 using game_server.players;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -103,7 +102,7 @@ internal sealed class MatchTickLoop(
             }
         }
 
-        monsterSpawns.ProcessSupply(runtime, utcNow);
+        monsterSpawns.ProcessTick(runtime, utcNow);
         synchronization.InitializeComparisonSnapshots(runtime);
         movement.ProcessTick(runtime, utcNow);
         if (runtime.IsEnded)
