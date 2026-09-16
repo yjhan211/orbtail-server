@@ -144,7 +144,7 @@ public sealed class MonsterMovementIntentTests
 
         new MatchMoveService(null!, new MonsterBehaviorService()).ProcessTick(runtime, now);
 
-        Assert.NotEmpty(monster.Movement.Waypoints);
+        Assert.Empty(monster.Movement.Waypoints);
         Assert.Equal(position, monster.Position);
         Assert.Equal(new Vector3f(), monster.Info.ObjectInfo.Velocity);
     }
@@ -181,7 +181,7 @@ public sealed class MonsterMovementIntentTests
     }
 
     [Fact]
-    public void SameDestinationCellStopsWithoutMovingToCenterAndPreservesPath()
+    public void SameDestinationCellStopsWithoutMovingToCenterAndClearsPath()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(987642);
@@ -201,12 +201,12 @@ public sealed class MonsterMovementIntentTests
 
         var request = MovementPreparationTestSteps.Monster(behavior, runtime, monster, [new game_server.players.Player { Profile = new PlayerInfo { PlayerId = 1 }, CurrentArea = monster.Area, Position = target }], now);
         Assert.True(monster.Alive);
-        Assert.Single(monster.Movement.Waypoints);
+        Assert.Empty(monster.Movement.Waypoints);
         Assert.Equal(0f, request.Speed);
         Assert.Equal(monster.Info.ObjectInfo.Cell, request.DestinationCell);
         MovementPreparationTestSteps.Advance(runtime, monster.Info.ObjectInfo, monster.Movement, request, 1f, ignoreClosedDoors: true);
         Assert.Equal(position, monster.Position);
-        Assert.Single(monster.Movement.Waypoints);
+        Assert.Empty(monster.Movement.Waypoints);
         Assert.True(monster.Alive);
     }
     [Fact]

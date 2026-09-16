@@ -9,7 +9,7 @@ namespace demo_regression_tests;
 public sealed class BotMovementSafetyTests
 {
     [Fact]
-    public void ClosedDestinationPreservesPathWhileStoppedAndPublishesStop()
+    public void ClosedDestinationClearsPathWhileStoppedAndPublishesStop()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(982001);
@@ -28,9 +28,9 @@ public sealed class BotMovementSafetyTests
             runtime.Closures.CloseDueAreas();
             var result = MovementTickTestDriver.RunBotTick(runtime, _ => { });
 
-            Assert.Same(target, Assert.Single(bot.Movement.Waypoints));
+            Assert.Empty(bot.Movement.Waypoints);
             Assert.Same(originalPosition, bot.Player.Position);
-            Assert.Equal(deadline, bot.Movement.NextPathPlanAtUtc);
+            Assert.Equal(DateTime.MinValue, bot.Movement.NextPathPlanAtUtc);
             var movement = Assert.Single(result.Movements);
             Assert.Equal(0f, movement.Velocity.X);
             Assert.Equal(0f, movement.Velocity.Y);

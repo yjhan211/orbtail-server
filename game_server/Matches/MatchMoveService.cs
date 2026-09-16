@@ -90,6 +90,8 @@ internal class MatchMoveService(
         }
         if (request.Speed <= 0f)
         {
+            movement.Clear();
+            movement.NextPathPlanAtUtc = DateTime.MinValue;
             return;
         }
 

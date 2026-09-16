@@ -69,7 +69,7 @@ public sealed class BotReplanningTests
     }
 
     [Fact]
-    public void ExplicitHoldStopsOldPath()
+    public void ExplicitStopClearsOldPath()
     {
         var (runtime, bot, destination) = CreateBot();
         using var scope = runtime.Enter();
@@ -79,7 +79,7 @@ public sealed class BotReplanningTests
         var position = bot.Player.Position;
         MovementPreparationTestSteps.Advance(runtime, bot.Player.GameInfo.ObjectInfo, bot.Movement, request, 0.05f);
         Assert.Equal(position, bot.Player.Position);
-        Assert.Single(bot.Movement.Waypoints);
+        Assert.Empty(bot.Movement.Waypoints);
     }
 
     [Fact]

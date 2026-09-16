@@ -27,7 +27,7 @@ public sealed class SharedMovementPlanningTests
     [Theory]
     [InlineData(1f)]
     [InlineData(0f)]
-    public void PreparationDiscardsInvalidRouteOnlyWhenMoving(float speed)
+    public void PreparationDiscardsInvalidRoute(float speed)
     {
         var runtime = CreateRuntime();
         using var scope = runtime.Enter();
@@ -43,8 +43,8 @@ public sealed class SharedMovementPlanningTests
         Assert.False(result.Changed);
         if (speed <= 0f)
         {
-            Assert.Same(blocked, Assert.Single(state.Waypoints));
-            Assert.Equal(deadline, state.NextPathPlanAtUtc);
+            Assert.Empty(state.Waypoints);
+            Assert.Equal(DateTime.MinValue, state.NextPathPlanAtUtc);
             return;
         }
         Assert.Empty(state.Waypoints);
@@ -78,7 +78,7 @@ public sealed class SharedMovementPlanningTests
     [InlineData(-1f, false)]
     [InlineData(0f, true)]
     [InlineData(-1f, true)]
-    public void StoppedPathIsPreservedAndValidatedOnResume(float stoppedSpeed, bool ignoreDoors)
+    public void StoppedPathIsClearedAndReplannedOnResume(float stoppedSpeed, bool ignoreDoors)
     {
         var runtime = CreateRuntime();
         using var scope = runtime.Enter();
@@ -95,8 +95,8 @@ public sealed class SharedMovementPlanningTests
 
         MatchMoveService.PrepareMovement(runtime, info, state, request, now, ignoreDoors);
 
-        Assert.Same(invalidCell, Assert.Single(state.Waypoints));
-        Assert.Equal(deadline, state.NextPathPlanAtUtc);
+        Assert.Empty(state.Waypoints);
+        Assert.Equal(DateTime.MinValue, state.NextPathPlanAtUtc);
         Assert.Equal(0, state.WaypointIndex);
         var position = info.Position;
         MovementPreparationTestSteps.Advance(runtime, info, state, request, 0.05f, ignoreDoors, now);
@@ -335,7 +335,7 @@ public sealed class SharedMovementPlanningTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void CommonHoldKeepsSafePathAndCancelsExecution(bool ignoreDoors)
+    public void CommonStopClearsSafePathAndCancelsExecution(bool ignoreDoors)
     {
         var runtime = CreateRuntime();
         using var scope = runtime.Enter();
@@ -344,12 +344,12 @@ public sealed class SharedMovementPlanningTests
         state.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, info.Position));
         MatchMoveService.PrepareMovement(runtime, info, state,
             new MovementRequest(null, 0f), DateTime.UtcNow, ignoreDoors);
-        Assert.Single(state.Waypoints);
+        Assert.Empty(state.Waypoints);
         var before = info.Position;
         var result = MovementPreparationTestSteps.Advance(runtime, info, state,
             new MovementRequest(null, 0f), 1f, ignoreDoors);
         Assert.Equal(before, info.Position);
         Assert.False(result.ReachedPathEnd);
-        Assert.Single(state.Waypoints);
+        Assert.Empty(state.Waypoints);
     }
 }

@@ -94,7 +94,7 @@ public sealed class BotMovementIntentTests
         }
     }
     [Fact]
-    public void SleepingBotClearsIntentWithoutChoosingTargetOrDiscardingPath()
+    public void SleepingBotClearsPathWithoutChoosingTarget()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(987654);
@@ -110,7 +110,7 @@ public sealed class BotMovementIntentTests
         var request = MovementPreparationTestSteps.Bot(behavior, runtime, bot, DateTime.UtcNow);
 
         Assert.Equal(0, behavior.Selections);
-        Assert.Same(target, Assert.Single(bot.Movement.Waypoints));
+        Assert.Empty(bot.Movement.Waypoints);
     }
 
     [Theory]
