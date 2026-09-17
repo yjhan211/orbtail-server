@@ -22,8 +22,7 @@ public class PlayerSummonStoneTests
         return (match, TestGameSessionServices.GetOrRegisterPlayer(match, playerId));
     }
 
-    private static Func<int, InGameItemInfo?> Grant(long uid) =>
-        itemId => new InGameItemInfo { ItemUid = uid, ItemId = itemId, Count = 1 };
+    private static readonly PlayerOrbGrowthService Growth = new(NullLogger<PlayerOrbGrowthService>.Instance);
 
     [Fact]
     public void StartingStones_GrantTwoOpeningSummons()
@@ -34,12 +33,12 @@ public class PlayerSummonStoneTests
             var granted = PlayerOrbGrowthService.AddSummonStones(match, player, Config.SWARM_STARTING_STONE_GRANT);
             Assert.Equal(5, granted.StoneCount);
 
-            var summon = PlayerOrbGrowthService.TrySummon(match, player, Grant(1));
+            var summon = Growth.Summon(match, player);
             Assert.True(summon.Success);
             Assert.Equal(3, summon.State.StoneCount);
             Assert.Equal(3, summon.State.NextCost);
 
-            var secondSummon = PlayerOrbGrowthService.TrySummon(match, player, Grant(2));
+            var secondSummon = Growth.Summon(match, player);
             Assert.True(secondSummon.Success);
             Assert.Equal(0, secondSummon.State.StoneCount);
             Assert.Equal(6, secondSummon.State.NextCost);
@@ -59,7 +58,7 @@ public class PlayerSummonStoneTests
                 {
                     var player = TestGameSessionServices.GetOrRegisterPlayer(match, playerId);
                     PlayerOrbGrowthService.AddSummonStones(match, player, Config.SWARM_STARTING_STONE_GRANT);
-                    var summon = PlayerOrbGrowthService.TrySummon(match, player, Grant(1));
+                    var summon = Growth.Summon(match, player);
                     Assert.True(summon.Success);
                     Assert.True(OrbData.IsOrbItem(summon.ItemId));
                 }
@@ -89,12 +88,11 @@ public class PlayerSummonStoneTests
         using (match.Enter())
         {
             PlayerOrbGrowthService.AddSummonStones(match, player, 100);
-            long nextUid = 1;
             int[] expectedNextCosts = [3, 6, 10, 15, 21, 28];
 
             foreach (int expectedNextCost in expectedNextCosts)
             {
-                var attempt = PlayerOrbGrowthService.TrySummon(match, player, Grant(nextUid++));
+                var attempt = Growth.Summon(match, player);
                 Assert.True(attempt.Success);
                 Assert.Equal(expectedNextCost, attempt.State.NextCost);
                 Assert.Contains(attempt.ItemId, PlayerOrbGrowthService.SummonPoolItemIds);
@@ -112,8 +110,13 @@ public class PlayerSummonStoneTests
         using (match.Enter())
         {
             PlayerOrbGrowthService.AddSummonStones(match, player, 10);
-            blocked = PlayerOrbGrowthService.TrySummon(match, player, _ => null);
-            retry = PlayerOrbGrowthService.TrySummon(match, player, Grant(1));
+            // 꼬리를 상한까지 채우면 소환이 막히고, 비우면 같은 소환석으로 다시 된다.
+            while (player.Orbs.TryAddOrbWithCapacity(107000010, Config.SWARM_ORB_CAPACITY, out _))
+            {
+            }
+            blocked = Growth.Summon(match, player);
+            player.Orbs.TakeAllOrbs();
+            retry = Growth.Summon(match, player);
         }
 
         Assert.False(blocked.Success);
@@ -126,23 +129,18 @@ public class PlayerSummonStoneTests
     }
 
     [Fact]
-    public void InsufficientStones_DoesNotInvokeGrantOrChangeState()
+    public void InsufficientStones_DoesNotGrantOrChangeState()
     {
         var (match, player) = Create(202);
         using (match.Enter())
         {
             PlayerOrbGrowthService.AddSummonStones(match, player, 1);
-            bool grantCalled = false;
 
-            var attempt = PlayerOrbGrowthService.TrySummon(match, player, itemId =>
-            {
-                grantCalled = true;
-                return new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 };
-            });
+            var attempt = Growth.Summon(match, player);
 
             Assert.False(attempt.Success);
             Assert.Equal(ErrorCode.INSUFFICIENT_CURRENCY, attempt.ErrorCode);
-            Assert.False(grantCalled);
+            Assert.Empty(player.Orbs.GetAllOrbs());
             Assert.Equivalent(new SummonStoneStateInfo(1, 0), attempt.State);
         }
     }
@@ -154,9 +152,9 @@ public class PlayerSummonStoneTests
         using var scope = match.Enter();
         PlayerOrbGrowthService.AddSummonStones(match, player, 1);
         player.Orbs.SummonStones.NextCost = 0;
-        var result = PlayerOrbGrowthService.TrySummon(match, player, _ =>
-            throw new InvalidOperationException("Insufficient balance must not grant an orb."));
+        var result = Growth.Summon(match, player);
         Assert.False(result.Success);
+        Assert.Empty(player.Orbs.GetAllOrbs());
         Assert.Equal(ErrorCode.INSUFFICIENT_CURRENCY, result.ErrorCode);
         Assert.Equal(1, player.Orbs.SummonStones.StoneCount);
     }
@@ -166,7 +164,7 @@ public class PlayerSummonStoneTests
         var (match, player) = Create(202);
         Assert.Throws<InvalidOperationException>(() => PlayerOrbGrowthService.AddSummonStones(match, player, 1));
         Assert.Throws<InvalidOperationException>(() => PlayerOrbGrowthService.TrySpendSummonStones(match, player, 1));
-        Assert.Throws<InvalidOperationException>(() => PlayerOrbGrowthService.TrySummon(match, player, Grant(1)));
+        Assert.Throws<InvalidOperationException>(() => Growth.Summon(match, player));
         Assert.Equivalent(SummonStoneStateInfo.Empty, player.Orbs.SummonStones);
     }
 

@@ -260,33 +260,6 @@ public sealed class MatchGameplayServiceTests
     }
 
     [Fact]
-    public void GrowthRankingUsesAlivePlayersWithoutConnections()
-    {
-        TestGameData.EnsureBattleItemCombatLoaded();
-        using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var growth = provider.GetRequiredService<PlayerOrbGrowthService>();
-        var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947798);
-        var hunter = new game_server.players.Player(new PlayerInfo { PlayerId = -1 })
-        {
-            Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Gym1))
-        };
-        var prey = new game_server.players.Player(new PlayerInfo { PlayerId = 1 })
-        {
-            Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Gym1))
-        };
-        using (match.Enter())
-        {
-            match.RegisterPlayer(hunter);
-            match.RegisterPlayer(prey);
-            Assert.True(TestGameSessionServices.Orbs(match, hunter.PlayerId).TryAddOrbWithCapacity(107000010, 6, out _));
-            Assert.Equal(1, growth.GetTopOrbCount(match));
-            match.TryEliminatePlayer(prey.PlayerId, network.common.EliminationReason.HEALTH_ZERO);
-            match.TryEliminatePlayer(hunter.PlayerId, network.common.EliminationReason.HEALTH_ZERO);
-            Assert.Equal(0, growth.GetTopOrbCount(match));
-        }
-    }
-
-    [Fact]
     public void WaveVortexDamagesAndSlowsPlayersWithoutSessionOrBotState()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();

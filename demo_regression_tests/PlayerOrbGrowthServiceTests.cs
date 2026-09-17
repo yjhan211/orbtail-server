@@ -32,7 +32,6 @@ public sealed class PlayerOrbGrowthServiceTests
         Assert.Throws<InvalidOperationException>(() => service.GetUpgradeCost(runtime, player, 107000010 / 10));
         Assert.Throws<InvalidOperationException>(() => service.GetOrbUpgradeInfo(runtime, player));
         Assert.Throws<InvalidOperationException>(() => service.GetNextOrbGrowthCost(runtime, player));
-        Assert.Throws<InvalidOperationException>(() => service.GetTopOrbCount(runtime));
         Assert.Equal(100, TestGameSessionServices.SummonStones(runtime, 1).StoneCount);
         Assert.Empty(TestGameSessionServices.Orbs(runtime, 1).GetAllOrbs());
         Assert.Equal(0, player.Orbs.GetUpgradeCount(107000010 / 10));
