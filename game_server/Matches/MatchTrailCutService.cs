@@ -37,7 +37,7 @@ internal sealed class MatchTrailCutService(PlayerOrbTrailService orbTrails, Matc
             var chain = new List<Vector3f>(orbs.Count);
             for (int ordinal = 0; ordinal < orbs.Count; ordinal++)
             {
-                chain.Add(orbTrails.GetOrbPosition(runtime, owner, ordinal, position, orbTiers));
+                chain.Add(PlayerOrbTrailService.GetOrbPosition(runtime, owner, ordinal, position, orbTiers));
             }
             chainsByOwner[owner.PlayerId] = chain;
         }

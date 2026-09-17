@@ -18,6 +18,7 @@ public class PlayerOrbState
     public SummonStoneStateInfo SummonStones { get; internal set; } = SummonStoneStateInfo.Empty;
     private readonly Dictionary<long, DateTime> _nextAttackAtUtc = new();
     internal List<Vector3f> OrbTrail { get; } = new();
+    internal DateTime? LastOrbLostAtUtc { get; set; }
 
     public int GetUpgradeCount(int orbGroupId) => _upgradeCounts.GetValueOrDefault(orbGroupId);
 

@@ -38,5 +38,4 @@ public class Bot
     public DateTime LastDamagedAtUtc { get; set; } = DateTime.MinValue;
     public (Cell Destination, DateTime SelectedAtUtc)? MonsterAvoidanceTarget { get; set; }
     public bool Wounded { get; set; }
-    public DateTime SwarmBareSpeedUntilUtc { get; set; } = DateTime.MinValue;
 }

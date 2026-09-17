@@ -164,18 +164,19 @@ public sealed class BotMovementIntentTests
         bot.Player.Orbs.AddOrb(107000020);
         var trails = new game_server.players.PlayerOrbTrailService();
         trails.DestroyOrbsFromOrdinal(runtime, bot.Player, 1, DateTime.UtcNow);
-        Assert.Equal(DateTime.MinValue, bot.SwarmBareSpeedUntilUtc);
-        var before = DateTime.UtcNow;
-        trails.DestroyOrbsFromOrdinal(runtime, bot.Player, 0, DateTime.UtcNow);
-        Assert.InRange(bot.SwarmBareSpeedUntilUtc,
-            before.AddSeconds(Config.SWARM_BARE_MOVE_SPEED_SECONDS),
-            DateTime.UtcNow.AddSeconds(Config.SWARM_BARE_MOVE_SPEED_SECONDS));
-        var speedUntil = bot.SwarmBareSpeedUntilUtc;
-        trails.DestroyOrbsFromOrdinal(runtime, bot.Player, 0, DateTime.UtcNow);
-        Assert.Equal(speedUntil, bot.SwarmBareSpeedUntilUtc);
+        Assert.Null(bot.Player.Orbs.LastOrbLostAtUtc);
+        var lostAt = DateTime.UtcNow;
+        trails.DestroyOrbsFromOrdinal(runtime, bot.Player, 0, lostAt);
+        Assert.Equal(lostAt, bot.Player.Orbs.LastOrbLostAtUtc);
+        // 이미 빈손이면 다시 파괴를 시도해도 시각이 밀리지 않는다.
+        trails.DestroyOrbsFromOrdinal(runtime, bot.Player, 0, lostAt.AddSeconds(1));
+        Assert.Equal(lostAt, bot.Player.Orbs.LastOrbLostAtUtc);
+        // 가속은 잃은 직후에만 켜지고 유지 시간이 지나면 꺼진다.
+        Assert.True(BotBehaviorService.GetBotMovementSpeedMultiplier(bot, lostAt) > 1f);
+        Assert.Equal(1f, BotBehaviorService.GetBotMovementSpeedMultiplier(bot, lostAt.AddSeconds(Config.SWARM_BARE_MOVE_SPEED_SECONDS)));
         bot.Player.State = PlayerState.IDLE;
         var request = MovementPreparationTestSteps.Bot(new FixedTargetBehavior(null), runtime, bot, DateTime.UtcNow);
-        Assert.Equal(speedUntil, bot.SwarmBareSpeedUntilUtc);
+        Assert.Equal(lostAt, bot.Player.Orbs.LastOrbLostAtUtc);
     }
 
     private sealed class FixedTargetBehavior(Cell? destination)

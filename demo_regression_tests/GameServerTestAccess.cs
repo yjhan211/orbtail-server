@@ -73,7 +73,7 @@ internal static class GameServerTestAccess
             var combat = new MatchCombatService(
                 health, results,
                 orbTrails, trailCuts,
-                new MatchOrbAttackService(combatDamage, new PlayerOrbService(orbTrails), synchronization), decisions, new MonsterAttackService(combatDamage));
+                new MatchOrbAttackService(combatDamage, new PlayerOrbService(), synchronization), decisions, new MonsterAttackService(combatDamage));
 
             return new MatchTickLoop(runtime, runtimes, logger, groundPickup,
             entryFailure, combat, field, new MatchMoveService(decisions, new MonsterBehaviorService()), new MatchMonsterSpawnService(), synchronization, clock);

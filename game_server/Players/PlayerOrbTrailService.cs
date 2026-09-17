@@ -6,14 +6,14 @@ using network.common.data.models;
 namespace game_server.players;
 
 /// <summary>
-///     매치의 오브 꼬리 경로에서 좌표를 계산하고 지정 순번 이후의 오브를 삭제한다.
-///     전투와 구역 폐쇄가 같은 인벤토리 순서·좌표 규칙을 사용한다.
-///     경로와 인벤토리는 매치가 소유하며 호출자는 매치 잠금을 보유한다.
+///     오브 꼬리 경로에서 좌표를 계산하고 지정 순번 이후의 오브를 삭제한다.
+///     전투와 구역 폐쇄가 같은 꼬리 순서·좌표 규칙을 사용한다.
+///     경로와 오브는 Player.Orbs가 소유하며 호출자는 매치 잠금을 보유한다.
 /// </summary>
 internal sealed class PlayerOrbTrailService
 {
-    private const float SwarmTrailSampleMinDistance = 0.08f;
-    private const float SwarmTrailTeleportResetDistance = 5f;
+    private const float TrailSampleMinDistance = 0.08f;
+    private const float TrailTeleportResetDistance = 5f;
 
     public static List<int> GetOrbTiersInOrder(MatchRuntime runtime, Player player)
     {
@@ -31,7 +31,7 @@ internal sealed class PlayerOrbTrailService
         return tiers;
     }
 
-    public Vector3f GetOrbPosition(MatchRuntime runtime, Player player, int ordinal, Vector3f anchor, IReadOnlyList<int> orderedTiers)
+    public static Vector3f GetOrbPosition(MatchRuntime runtime, Player player, int ordinal, Vector3f anchor, IReadOnlyList<int> orderedTiers)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -42,7 +42,7 @@ internal sealed class PlayerOrbTrailService
         return GetPositionAtDistance(runtime, player, targetDistance, anchor);
     }
 
-    public Vector3f GetPositionAtDistance(MatchRuntime runtime, Player player, float targetDistance, Vector3f anchor)
+    internal static Vector3f GetPositionAtDistance(MatchRuntime runtime, Player player, float targetDistance, Vector3f anchor)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -71,6 +71,7 @@ internal sealed class PlayerOrbTrailService
             previous = point;
         }
 
+        // 경로가 모자라면 마지막 구간의 방향으로 이어 붙인다.
         Vector3f tailDirection = new(0f, -0.5f, 0f);
         if (points.Count >= 2)
         {
@@ -79,7 +80,10 @@ internal sealed class PlayerOrbTrailService
             float dx = last.X - beforeLast.X;
             float dy = last.Y - beforeLast.Y;
             float length = MathF.Sqrt(dx * dx + dy * dy);
-            if (length > 0.0001f) tailDirection = new Vector3f(dx / length, dy / length, 0f);
+            if (length > 0.0001f)
+            {
+                tailDirection = new Vector3f(dx / length, dy / length, 0f);
+            }
         }
 
         float remaining = targetDistance - accumulated;
@@ -94,8 +98,7 @@ internal sealed class PlayerOrbTrailService
         }
 
         var destroyed = new List<InGameItemInfo>();
-        var inventory = player.Orbs;
-        var orbs = inventory.GetAllOrbs().Where(item => item.Count > 0 && PlayerOrbState.GetOrbTier(item.ItemId) > 0).OrderBy(item => item.ItemUid).ToList();
+        var orbs = player.Orbs.GetOrderedOrbs();
         if (fromOrdinal < 0 || fromOrdinal >= orbs.Count)
         {
             return destroyed;
@@ -103,20 +106,20 @@ internal sealed class PlayerOrbTrailService
 
         for (int ordinal = fromOrdinal; ordinal < orbs.Count; ordinal++)
         {
-            if (inventory.TryRemoveOrb(orbs[ordinal].ItemUid, 1, out var destroyedItem) && destroyedItem != null)
+            if (player.Orbs.TryRemoveOrb(orbs[ordinal].ItemUid, 1, out var destroyedItem) && destroyedItem != null)
             {
                 player.Orbs.RemoveAttackTimers(destroyedItem.ItemUid);
                 destroyed.Add(destroyedItem);
             }
         }
-        if (destroyed.Count > 0 && !inventory.HasAnyOrb() && runtime.Bots.GetBot(player.PlayerId) is { } bot)
+        if (destroyed.Count > 0 && !player.Orbs.HasAnyOrb())
         {
-            bot.SwarmBareSpeedUntilUtc = nowUtc.AddSeconds(Config.SWARM_BARE_MOVE_SPEED_SECONDS);
+            player.Orbs.LastOrbLostAtUtc = nowUtc;
         }
         return destroyed;
     }
 
-    /// 이동 궤적을 기록하여 오브 좌표 계산과 꼬리 절단 판정에 사용
+    // 이동 궤적을 기록하여 오브 좌표 계산과 꼬리 절단 판정에 사용
     public void UpdateTrails(MatchRuntime runtime, IReadOnlyList<Player> players)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -131,14 +134,15 @@ internal sealed class PlayerOrbTrailService
                 continue;
             }
 
+            // 한 번에 멀리 옮겨졌으면 순간이동이므로 옛 경로를 버림
             var points = player.Orbs.OrbTrail;
             float moved = points.Count > 0 ? Vector3f.Distance(position, points[0]) : 0f;
-            if (moved >= SwarmTrailTeleportResetDistance)
+            if (moved >= TrailTeleportResetDistance)
             {
                 points.Clear();
             }
 
-            if (points.Count == 0 || moved >= SwarmTrailSampleMinDistance)
+            if (points.Count == 0 || moved >= TrailSampleMinDistance)
             {
                 points.Insert(0, new Vector3f(position.X, position.Y, 0f));
             }
@@ -149,12 +153,11 @@ internal sealed class PlayerOrbTrailService
             for (int pointIndex = 1; pointIndex < points.Count; pointIndex++)
             {
                 accumulated += Vector3f.Distance(points[pointIndex - 1], points[pointIndex]);
-                if (accumulated <= neededLength)
+                if (accumulated > neededLength)
                 {
-                    continue;
+                    points.RemoveRange(pointIndex + 1, points.Count - pointIndex - 1);
+                    break;
                 }
-                points.RemoveRange(pointIndex + 1, points.Count - pointIndex - 1);
-                break;
             }
         }
     }

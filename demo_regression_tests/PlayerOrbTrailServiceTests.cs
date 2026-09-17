@@ -35,8 +35,8 @@ public sealed class PlayerOrbTrailServiceTests
         using (MatchRuntimeStore.Enter(first))
         {
             firstPlayer.Orbs.OrbTrail.AddRange([new Vector3f(2, 0, 0), new Vector3f(4, 0, 0)]);
-            var middle = service.GetPositionAtDistance(first, firstPlayer, 3, anchor);
-            var beyond = service.GetPositionAtDistance(first, firstPlayer, 6, anchor);
+            var middle = PlayerOrbTrailService.GetPositionAtDistance(first, firstPlayer, 3, anchor);
+            var beyond = PlayerOrbTrailService.GetPositionAtDistance(first, firstPlayer, 6, anchor);
             Assert.Equal(3f, middle.X);
             Assert.Equal(0f, middle.Y);
             Assert.Equal(6f, beyond.X);
@@ -44,7 +44,7 @@ public sealed class PlayerOrbTrailServiceTests
         }
         using (MatchRuntimeStore.Enter(second))
         {
-            var fallback = service.GetPositionAtDistance(second, secondPlayer, 5, anchor);
+            var fallback = PlayerOrbTrailService.GetPositionAtDistance(second, secondPlayer, 5, anchor);
             Assert.Equal(0f, fallback.X);
             Assert.Equal(-1f, fallback.Y);
             second.TryMarkEnded();
@@ -87,8 +87,8 @@ public sealed class PlayerOrbTrailServiceTests
         var anchor = new Vector3f();
 
         Assert.Throws<InvalidOperationException>(() => PlayerOrbTrailService.GetOrbTiersInOrder(match, player));
-        Assert.Throws<InvalidOperationException>(() => service.GetOrbPosition(match, player, 0, anchor, []));
-        Assert.Throws<InvalidOperationException>(() => service.GetPositionAtDistance(match, player, 1, anchor));
+        Assert.Throws<InvalidOperationException>(() => PlayerOrbTrailService.GetOrbPosition(match, player, 0, anchor, []));
+        Assert.Throws<InvalidOperationException>(() => PlayerOrbTrailService.GetPositionAtDistance(match, player, 1, anchor));
         Assert.Throws<InvalidOperationException>(() => service.DestroyOrbsFromOrdinal(match, player, 0, DateTime.UtcNow));
     }
 }

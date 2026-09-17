@@ -35,7 +35,7 @@ public sealed class PlayerOrbServiceTests
             int windOrdinal = windFirst ? 1 : 2;
             int waveOrdinal = windFirst ? 2 : 1;
             var tiers = PlayerOrbTrailService.GetOrbTiersInOrder(runtime, owner);
-            victim.Position = trails.GetOrbPosition(runtime, owner, windOrdinal, owner.Position, tiers);
+            victim.Position = PlayerOrbTrailService.GetOrbPosition(runtime, owner, windOrdinal, owner.Position, tiers);
 
             // 처음 본 오브는 계열과 무관하게 첫 위상만 심는다. 바람 주기가 짧아 바람이 먼저 든다.
             attacks.ActivateOrbs(runtime, owner, now);
@@ -55,7 +55,7 @@ public sealed class PlayerOrbServiceTests
             Assert.True(readyAt > windReadyAt);
 
             // 색상별로 순서를 다시 매기지 않고 전체 보유 순서의 위치에서 발동한다.
-            var wavePosition = trails.GetOrbPosition(runtime, owner, waveOrdinal, owner.Position, tiers);
+            var wavePosition = PlayerOrbTrailService.GetOrbPosition(runtime, owner, waveOrdinal, owner.Position, tiers);
             victim.Position = wavePosition;
             attacks.ActivateOrbs(runtime, owner, readyAt);
             Assert.Single(runtime.PendingWaveAttacks);
@@ -85,7 +85,7 @@ public sealed class PlayerOrbServiceTests
             runtime.RegisterPlayer(owner);
             runtime.RegisterPlayer(victim);
             owner.Orbs.AddOrb(107000010);
-            var origin = trails.GetOrbPosition(runtime, owner, 0, position, PlayerOrbTrailService.GetOrbTiersInOrder(runtime, owner));
+            var origin = PlayerOrbTrailService.GetOrbPosition(runtime, owner, 0, position, PlayerOrbTrailService.GetOrbTiersInOrder(runtime, owner));
             var originCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, origin);
             int stepX = directionX == directionY ? (int)directionX : 0;
             int stepY = directionX == directionY ? 0 : (int)directionY;

@@ -9,7 +9,7 @@ namespace game_server.players;
 ///     매치 잠금 안에서 플레이어가 보유한 오브의 공격 발동을 처리한다.
 ///     발동 시각은 PlayerOrbState가, 지속 중인 공격은 MatchRuntime이 소유한다.
 /// </summary>
-internal sealed class PlayerOrbService(PlayerOrbTrailService orbTrails)
+internal sealed class PlayerOrbService
 {
     public void ActivateOrbs(MatchRuntime runtime, Player owner, DateTime nowUtc)
     {
@@ -49,7 +49,7 @@ internal sealed class PlayerOrbService(PlayerOrbTrailService orbTrails)
             }
 
             // 발동하지 못한 오브는 공격 주기를 쓰지 않고 다음 틱에 다시 시도
-            var orbPosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, owner.Position, orbTiers);
+            var orbPosition = PlayerOrbTrailService.GetOrbPosition(runtime, owner, ordinal, owner.Position, orbTiers);
             bool activated = orbGroupId switch
             {
                 OrbGroupIds.Wind => ActivateWindOrb(runtime, owner, orb, tier, orbPosition, attackMultiplier),

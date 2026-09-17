@@ -649,7 +649,7 @@ internal class BotBehaviorService(
     internal static float GetBotMovementSpeedMultiplier(Bot bot, DateTime nowUtc)
     {
         var orbs = bot.Player.Orbs.GetAllOrbs();
-        bool bareSpeedActive = !bot.Player.Orbs.HasAnyOrb() && nowUtc < bot.SwarmBareSpeedUntilUtc;
+        bool bareSpeedActive = !bot.Player.Orbs.HasAnyOrb() && bot.Player.Orbs.LastOrbLostAtUtc is { } lostAtUtc && nowUtc < lostAtUtc.AddSeconds(Config.SWARM_BARE_MOVE_SPEED_SECONDS);
         bool waveSlowActive = bot.Player.StatusEffects.IsActive(PlayerStatusEffectKind.WaveSlow, nowUtc);
         return MovementSpeed.GetMultiplier(orbs, bootsActive: false, bareSpeedActive, waveSlowActive);
     }

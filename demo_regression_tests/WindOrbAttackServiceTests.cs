@@ -19,7 +19,7 @@ public sealed class WindOrbAttackServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947503);
         var owner = new Bot { PlayerId = 11 };
-        var service = new PlayerOrbService(new PlayerOrbTrailService());
+        var service = new PlayerOrbService();
         var attacks = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store)), service, new MatchSynchronizationService());
         Assert.Throws<InvalidOperationException>(() => attacks.ProcessTick(match, DateTime.UtcNow));
         Assert.Throws<InvalidOperationException>(() => attacks.ProcessWindAttacks(match, DateTime.UtcNow));
@@ -36,8 +36,7 @@ public sealed class WindOrbAttackServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947501);
-        var trails = new PlayerOrbTrailService();
-        var service = new PlayerOrbService(trails);
+        var service = new PlayerOrbService();
         var attacks = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store, NullLogger.Instance)), service, new MatchSynchronizationService());
         var now = DateTime.UtcNow;
         var owner = new Bot { PlayerId = 11 };
@@ -47,7 +46,7 @@ public sealed class WindOrbAttackServiceTests
         using (MatchRuntimeStore.Enter(match))
         {
             var orb = TestGameSessionServices.Orbs(match, 11).AddOrb(107000020);
-            var origin = trails.GetOrbPosition(match, owner.Player, 0, new Vector3f(0, 0, 0), PlayerOrbTrailService.GetOrbTiersInOrder(match, owner.Player));
+            var origin = PlayerOrbTrailService.GetOrbPosition(match, owner.Player, 0, new Vector3f(0, 0, 0), PlayerOrbTrailService.GetOrbTiersInOrder(match, owner.Player));
             owner.Player.Position = new Vector3f(0, 0, 0);
             victim.Player.Position = origin;
             service.ActivateOrbs(match, owner.Player, now);
@@ -80,8 +79,7 @@ public sealed class WindOrbAttackServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947502);
-        var trails = new PlayerOrbTrailService();
-        var service = new PlayerOrbService(trails);
+        var service = new PlayerOrbService();
         var attacks = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store, NullLogger.Instance)), service, new MatchSynchronizationService());
         var owner = new Bot { PlayerId = 11 };
         var victim = new Bot { PlayerId = 12 };
@@ -90,7 +88,7 @@ public sealed class WindOrbAttackServiceTests
         using (MatchRuntimeStore.Enter(match))
         {
             TestGameSessionServices.Orbs(match, 11).AddOrb(itemId);
-            var origin = trails.GetOrbPosition(match, owner.Player, 0, new Vector3f(0, 0, 0), PlayerOrbTrailService.GetOrbTiersInOrder(match, owner.Player));
+            var origin = PlayerOrbTrailService.GetOrbPosition(match, owner.Player, 0, new Vector3f(0, 0, 0), PlayerOrbTrailService.GetOrbTiersInOrder(match, owner.Player));
             owner.Player.Position = new Vector3f(0, 0, 0);
             victim.Player.Position = origin;
             if (otherArea) victim.Player.Position = TestMapPosition.In(AreaType.S2Library1);

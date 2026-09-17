@@ -129,7 +129,7 @@ internal class MatchFieldService(
             var cutArea = AreaType.None;
             for (int ordinal = orbTiers.Count - 1; ordinal >= 0; ordinal--)
             {
-                var orbPosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, ownerPosition, orbTiers);
+                var orbPosition = PlayerOrbTrailService.GetOrbPosition(runtime, owner, ordinal, ownerPosition, orbTiers);
                 var orbCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, orbPosition);
                 var orbArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, orbCell);
                 if (!closedAreaSet.Contains(orbArea))
