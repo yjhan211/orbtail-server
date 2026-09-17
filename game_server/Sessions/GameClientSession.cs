@@ -264,23 +264,15 @@ public partial class GameClientSession : SessionBase
                 runtime.BeginEntry(PlayerId.Value);
 
                 Player.InitializeSpawn(matchingSpawnCell);
-
-                Logger.LogInformation(
-                    "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
-                    PlayerId, Player.CurrentArea, Player.Position?.X, Player.Position?.Y, Player.Cell?.X,
-                    Player.Cell?.Y);
-
-
+                Logger.LogInformation("Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})", PlayerId, Player.CurrentArea, Player.Position?.X, Player.Position?.Y, Player.Cell?.X, Player.Cell?.Y);
 
                 SendInteractableList();
-
                 SendGroundItemEntries(Player.CurrentArea);
                 SendMonsterSnapshot(runtime.Monsters.GetVisualStatesByArea());
                 SendOrbList();
                 SendOrbUpgradeInfo(_orbGrowth.GetOrbUpgradeInfo(runtime, Player));
                 SendSummonStoneState();
                 SendPressureFieldState();
-
                 SyncPlayersOnEntry();
                 EnsureConnectionActive();
             }

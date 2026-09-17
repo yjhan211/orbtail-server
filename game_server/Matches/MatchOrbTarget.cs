@@ -67,7 +67,7 @@ internal static class MatchOrbTarget
             {
                 continue;
             }
-            if (along > lastFront)
+            if (along < lastFront)
             {
                 // 지난 틱까지 지나간 자리
                 continue;
@@ -79,23 +79,27 @@ internal static class MatchOrbTarget
             }
         }
 
-        foreach (var participant in runtime.GetAlivePlayers())
+        foreach (var player in runtime.GetAlivePlayers())
         {
-            if (participant.PlayerId == attack.OwnerId || participant.Position == null || attack.HitVictims.Contains(participant.PlayerId))
+            if (player.PlayerId == attack.OwnerId || player.Position == null || attack.HitVictims.Contains(player.PlayerId))
             {
                 continue;
             }
-            if (participant.CurrentArea != attack.Area)
+            if (player.CurrentArea != attack.Area)
             {
                 continue;
             }
-            if (!GroundGeometry.TryGetNearestBodyAlongOnLine(origin.X, originGroundY, unitX, unitY, length, halfWidth + GroundGeometry.PlayerRadius, participant.Position, GroundGeometry.PlayerBodyHeight, out float along))
+            if (!GroundGeometry.TryGetNearestBodyAlongOnLine(origin.X, originGroundY, unitX, unitY, length, halfWidth + GroundGeometry.PlayerRadius, player.Position, GroundGeometry.PlayerBodyHeight, out float along))
             {
                 continue;
             }
-            if (along > lastFront && along <= front + GroundGeometry.PlayerRadius)
+            if (along < lastFront)
             {
-                players.Add(participant);
+                continue;
+            }
+            if (along <= front + GroundGeometry.PlayerRadius)
+            {
+                players.Add(player);
             }
         }
 
