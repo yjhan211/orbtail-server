@@ -122,6 +122,6 @@ internal static class TestMatchTickServices
         : MatchFieldService(null!, null!, null!, null!, null!, null!, null!)
     {
         public override void ProcessDamageTick(MatchRuntime runtime, DateTime nowUtc) => damage(runtime, runtime.GetSessions());
-        public override void ProcessClosureTick(MatchRuntime runtime) => closure(runtime);
+        public override void ProcessClosureTick(MatchRuntime runtime, DateTime nowUtc) => closure(runtime);
     }
 }

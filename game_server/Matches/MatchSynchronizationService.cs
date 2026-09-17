@@ -48,7 +48,7 @@ internal sealed class MatchSynchronizationService
                     {
                         continue;
                     }
-                    _observerAreas.Add(session, GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell));
+                    _observerAreas.Add(session, session.Player.CurrentArea);
                 }
                 return _observerAreas;
             }
@@ -131,7 +131,7 @@ internal sealed class MatchSynchronizationService
             {
                 continue;
             }
-            if (GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) == area)
+            if (session.Player.CurrentArea == area)
             {
                 runtime.PendingCombatHits.Enqueue((session, hit));
             }
@@ -193,7 +193,7 @@ internal sealed class MatchSynchronizationService
             {
                 continue;
             }
-            if (GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) != area)
+            if (session.Player.CurrentArea != area)
             {
                 continue;
             }
@@ -576,11 +576,11 @@ internal sealed class MatchSynchronizationService
         var areas = new Dictionary<(ObjectType Type, long Id), AreaType>();
         foreach (var player in runtime.GetAlivePlayers())
         {
-            areas[(ObjectType.PLAYER, player.PlayerId)] = GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell);
+            areas[(ObjectType.PLAYER, player.PlayerId)] = player.CurrentArea;
         }
         foreach (var monster in runtime.Monsters.Entities.Values)
         {
-            areas[(ObjectType.MONSTER, monster.MonsterId)] = GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell);
+            areas[(ObjectType.MONSTER, monster.MonsterId)] = monster.CurrentArea;
         }
         foreach (var session in batch.Sessions)
         {

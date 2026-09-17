@@ -43,6 +43,7 @@ public class Player
         }
     }
 
+    public AreaType CurrentArea => GameMapData.GetCurrentArea(GameInfo.ObjectInfo.MapId, GameInfo.ObjectInfo.Cell);
     public Cell? Cell
     {
         get => IsSpawned ? GameInfo.ObjectInfo.Cell : null;
@@ -108,7 +109,6 @@ public class Player
     public PlayerMatchStatus Status { get => GameInfo.Status; set => GameInfo.Status = value; }
     public bool IsEliminated => Status is PlayerMatchStatus.ELIMINATED or PlayerMatchStatus.SPECTATING;
     public EliminationReason EliminationReason { get; set; } = EliminationReason.NONE;
-    public DateTime? EliminatedAt { get; set; }
     public long AttackerPlayerId { get; set; }
     public AreaType EliminatedArea { get; set; } = AreaType.None;
     public int EliminationRank { get; set; }

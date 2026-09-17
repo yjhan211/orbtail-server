@@ -231,7 +231,7 @@ public partial class GameClientSession
 
         foreach (var visual in visuals)
         {
-            if (GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell) != visual.Area)
+            if (Player.CurrentArea != visual.Area)
             {
                 ForgetOrbVisualState(visual.ActorPlayerId);
                 continue;

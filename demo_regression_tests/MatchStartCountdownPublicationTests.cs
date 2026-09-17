@@ -99,7 +99,7 @@ public sealed class MatchStartCountdownPublicationTests
             var secondBody = MessagePackSerializer.Deserialize<G_TO_C_MATCH_START_COUNTDOWN>(second.DeliveredWireBytes.Last()[(Config.HEADER_SIZE + sizeof(int) + sizeof(long))..]);
             Assert.Equal(firstBody.StartsAtUnixMs, secondBody.StartsAtUnixMs);
             Assert.InRange(firstBody.StartsAtUnixMs - firstBody.ServerUnixMs, 1, 5000);
-            Assert.False(server.GetMatchRuntimes().GetOrThrow(matchingId).IsGameplayActive());
+            Assert.False(server.GetMatchRuntimes().GetOrThrow(matchingId).IsGameplayActive(DateTime.UtcNow));
         }
         finally { }
     }

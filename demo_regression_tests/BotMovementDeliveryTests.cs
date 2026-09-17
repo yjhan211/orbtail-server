@@ -429,14 +429,14 @@ public sealed class BotMovementDeliveryTests
         var field = new MatchFieldService(NullLogger<MatchFieldService>.Instance, new game_server.players.PlayerOrbTrailService(), null!, null!, null!, null!, synchronization);
 
         // 폐쇄 틱은 대기열에 넣기만 한다. 실제 전송은 같은 틱 끝의 동기화가 한다.
-        field.ProcessClosureTick(runtime);
+        field.ProcessClosureTick(runtime, DateTime.UtcNow);
         Assert.Empty(recipient.Packets);
         synchronization.ProcessTick(runtime, now);
         Assert.Contains(recipient.Packets, packet => packet.Protocol == Protocol.G_TO_C_SWARM_FIELD_STATE);
 
         // 매치당 한 번만 보낸다.
         recipient.Packets.Clear();
-        field.ProcessClosureTick(runtime);
+        field.ProcessClosureTick(runtime, DateTime.UtcNow);
         synchronization.ProcessTick(runtime, now.AddMilliseconds(50));
         Assert.DoesNotContain(recipient.Packets, packet => packet.Protocol == Protocol.G_TO_C_SWARM_FIELD_STATE);
     }

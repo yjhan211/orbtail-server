@@ -164,7 +164,7 @@ internal class BotBehaviorService(
             return false;
         }
 
-        int areaId = (int)GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell);
+        int areaId = (int)player.CurrentArea;
         foreach (var info in GameInteractableData.GetAll())
         {
             if (info.DoorId <= 0 || info.ZoneId != areaId || info.CellX != cell.X || info.CellY != cell.Y)
@@ -250,7 +250,7 @@ internal class BotBehaviorService(
         double retreatThreshold = safeDistance - margin * 2;
         Cell? retreatCell = null;
         int nearestDistance = int.MaxValue;
-        var currentArea = GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell);
+        var currentArea = bot.Player.CurrentArea;
         foreach (var entry in SwarmPressureField.GetAreaCellsByDistance(currentArea))
         {
             if (entry.Distance > retreatThreshold)
@@ -301,12 +301,12 @@ internal class BotBehaviorService(
     {
         target = null;
         var currentCell = bot.Player.Cell!;
-        var area = GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell);
+        var area = bot.Player.CurrentArea;
         long threatCellSumX = 0, threatCellSumY = 0;
         int threatCount = 0;
         foreach (var monster in runtime.Monsters.Entities.Values)
         {
-            if (!monster.Alive || GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell) != area)
+            if (!monster.Alive || monster.CurrentArea != area)
             {
                 continue;
             }
@@ -456,7 +456,7 @@ internal class BotBehaviorService(
         target = null;
         Cell? cell = null;
         int nearestDistance = int.MaxValue;
-        var currentArea = GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell);
+        var currentArea = bot.Player.CurrentArea;
         foreach (var item in runtime.GroundItems.GetItemsInArea(currentArea))
         {
             if (item.ItemId != Config.SUMMON_STONE_GROUND_ITEM_ID)
@@ -483,7 +483,7 @@ internal class BotBehaviorService(
     internal Cell SelectWanderTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc)
     {
         var mapId = Config.SWARM_MATCH_MAP;
-        var currentArea = GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell);
+        var currentArea = bot.Player.CurrentArea;
         var currentCell = bot.Player.Cell!;
         var candidates = new List<Cell>();
         if (bot.ExplorationTarget is { } previous && currentArea == previous.Area && currentCell.GetDistance(previous.Cell) > 1)
@@ -575,7 +575,7 @@ internal class BotBehaviorService(
             return true;
         }
 
-        var currentArea = GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell);
+        var currentArea = player.CurrentArea;
         if (currentArea == AreaType.None || runtime.Closures.IsAreaClosed(currentArea))
         {
             return true;

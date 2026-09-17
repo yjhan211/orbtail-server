@@ -265,7 +265,7 @@ public sealed class GameClientSessionConnectPublicationTests
             Assert.True(probe.Runtime.TryMarkEnded());
         }
 
-        Assert.False(session.Match.IsGameplayActive());
+        Assert.False(session.Match.IsGameplayActive(DateTime.UtcNow));
         Assert.Null(fixture.Store.GetOrNull(matchingId));
 
         releaseSender.Set();

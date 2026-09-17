@@ -69,11 +69,11 @@ internal class MatchFieldService(
         if (elapsedSeconds > runtime.LastAreaClosureSecond)
         {
             runtime.LastAreaClosureSecond = elapsedSeconds;
-            ProcessClosureTick(runtime);
+            ProcessClosureTick(runtime, nowUtc);
         }
     }
 
-    public virtual void ProcessClosureTick(MatchRuntime runtime)
+    public virtual void ProcessClosureTick(MatchRuntime runtime, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -146,7 +146,7 @@ internal class MatchFieldService(
                 continue;
             }
 
-            var destroyedOrbs = orbTrails.DestroyOrbsFromOrdinal(runtime, owner, firstClosedOrdinal);
+            var destroyedOrbs = orbTrails.DestroyOrbsFromOrdinal(runtime, owner, firstClosedOrdinal, nowUtc);
             foreach (var orb in destroyedOrbs)
             {
                 owner.Session?.SendOrbUpdate(orb);

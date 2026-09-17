@@ -39,14 +39,14 @@ public sealed class MatchStartTests
         var first = store.GetOrCreate(98102);
         var second = store.GetOrCreate(98103);
         first.StartGameplay();
-        Assert.True(first.IsGameplayActive());
-        Assert.False(second.IsGameplayActive());
+        Assert.True(first.IsGameplayActive(DateTime.UtcNow));
+        Assert.False(second.IsGameplayActive(DateTime.UtcNow));
         using (first.Enter()) first.TryMarkEnded();
-        Assert.False(first.IsGameplayActive());
+        Assert.False(first.IsGameplayActive(DateTime.UtcNow));
         var replacement = store.GetOrCreate(98102);
         Assert.NotSame(first, replacement);
         Assert.Null(replacement.StartsAtUtc);
-        Assert.False(replacement.IsGameplayActive());
+        Assert.False(replacement.IsGameplayActive(DateTime.UtcNow));
         using (replacement.Enter()) replacement.TryMarkEnded();
         using (second.Enter()) second.TryMarkEnded();
     }

@@ -26,7 +26,14 @@ public sealed class PlayerSpatialContractTests
         info.Cell.Y = destination.Y;
         Assert.Equal(AreaType.S2Library1, GameMapData.GetCurrentArea(info.MapId, info.Cell));
         Assert.Equal(AreaType.S2Corridor9, before.Area);
-        Assert.Null(typeof(Player).GetProperty("CurrentArea"));
+        // 서버 객체의 CurrentArea는 값을 저장하지 않는다. 쓸 수 없고, 읽을 때마다 맵과 셀에서 계산한다.
+        Assert.False(typeof(Player).GetProperty("CurrentArea")!.CanWrite);
+        Assert.False(typeof(game_server.matches.monsters.Monster).GetProperty("CurrentArea")!.CanWrite);
+        var movingPlayer = new Player(new PlayerInfo { PlayerId = 1 });
+        movingPlayer.InitializeSpawn(GameMapData.GetAreaSpawnCell(map, AreaType.S2Corridor9));
+        Assert.Equal(AreaType.S2Corridor9, movingPlayer.CurrentArea);
+        movingPlayer.InitializeSpawn(GameMapData.GetAreaSpawnCell(map, AreaType.S2Library1));
+        Assert.Equal(AreaType.S2Library1, movingPlayer.CurrentArea);
         Assert.Null(typeof(GameObjectInfo).GetProperty("Area"));
         Assert.Null(typeof(GameObjectInfo).GetMethod("GetArea"));
         Assert.Null(typeof(MonsterInfo).GetProperty("AreaType"));

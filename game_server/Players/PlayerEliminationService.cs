@@ -28,7 +28,7 @@ internal sealed class PlayerEliminationService(MatchResultService matchResults, 
         var allSessions = runtime.GetSessions();
         var eliminatedSession = eliminatedPlayer.Session;
         var eliminatedBot = runtime.Bots.GetBot(eliminatedPlayerId);
-        var eliminatedArea = GameMapData.GetCurrentArea(eliminatedPlayer.GameInfo.ObjectInfo.MapId, eliminatedPlayer.GameInfo.ObjectInfo.Cell);
+        var eliminatedArea = eliminatedPlayer.CurrentArea;
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
 
         bool eliminated = runtime.TryEliminatePlayer(eliminatedPlayerId, reason, resolvedAttackerPlayerId, eliminatedArea, forcedRank);

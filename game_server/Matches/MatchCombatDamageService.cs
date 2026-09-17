@@ -85,7 +85,7 @@ internal sealed class MatchCombatDamageService(PlayerHealthService healthService
 
         MarkAttacked(runtime, victim, 0, nowUtc);
         var victimSession = victim.Session;
-        var area = GameMapData.GetCurrentArea(victim.GameInfo.ObjectInfo.MapId, victim.GameInfo.ObjectInfo.Cell);
+        var area = victim.CurrentArea;
         healthService.ApplyDamage(runtime, victim, damage);
 
         var hit = new G_TO_C_COMBAT_HIT
@@ -117,7 +117,7 @@ internal sealed class MatchCombatDamageService(PlayerHealthService healthService
             damage = Math.Max(damage + 1, (int)MathF.Round(damage * Config.SWARM_CRITICAL_MULTIPLIER));
         }
 
-        var monsterArea = GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell);
+        var monsterArea = monster.CurrentArea;
         bool killed = monster.ApplyDamage(damage, nowUtc);
         synchronization.QueueMonsterHitForAttacker(runtime, runtime.GetPlayer(attackerId), monsterId, area, weaponItemId, damage, critical, showDamageOnly: true);
         if (!killed)

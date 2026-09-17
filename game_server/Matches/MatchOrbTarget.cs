@@ -18,7 +18,7 @@ internal static class MatchOrbTarget
         var monsters = new List<Monster>();
         foreach (var monster in runtime.Monsters.GetCombatTargets())
         {
-            if (GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell) == area && GroundGeometry.IsWithinGroundRadius(center, monster.Position, monsterRadius))
+            if (monster.CurrentArea == area && GroundGeometry.IsWithinGroundRadius(center, monster.Position, monsterRadius))
             {
                 monsters.Add(monster);
             }
@@ -28,7 +28,7 @@ internal static class MatchOrbTarget
         var players = new List<Player>();
         foreach (var participant in runtime.GetAlivePlayers())
         {
-            if (participant.PlayerId == ownerId || participant.Position == null || GameMapData.GetCurrentArea(participant.GameInfo.ObjectInfo.MapId, participant.GameInfo.ObjectInfo.Cell) != area)
+            if (participant.PlayerId == ownerId || participant.Position == null || participant.CurrentArea != area)
             {
                 continue;
             }
@@ -59,7 +59,7 @@ internal static class MatchOrbTarget
 
         foreach (var monster in runtime.Monsters.GetCombatTargets())
         {
-            if (GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell) != attack.Area || attack.HitMonsters.Contains(monster.MonsterId))
+            if (monster.CurrentArea != attack.Area || attack.HitMonsters.Contains(monster.MonsterId))
             {
                 continue;
             }
@@ -85,7 +85,7 @@ internal static class MatchOrbTarget
             {
                 continue;
             }
-            if (GameMapData.GetCurrentArea(participant.GameInfo.ObjectInfo.MapId, participant.GameInfo.ObjectInfo.Cell) != attack.Area)
+            if (participant.CurrentArea != attack.Area)
             {
                 continue;
             }

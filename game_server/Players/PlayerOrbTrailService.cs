@@ -86,7 +86,7 @@ internal sealed class PlayerOrbTrailService
         return new Vector3f(previous.X + tailDirection.X * remaining, previous.Y + tailDirection.Y * remaining, 0f);
     }
 
-    public List<InGameItemInfo> DestroyOrbsFromOrdinal(MatchRuntime runtime, Player player, int fromOrdinal)
+    public List<InGameItemInfo> DestroyOrbsFromOrdinal(MatchRuntime runtime, Player player, int fromOrdinal, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -111,7 +111,7 @@ internal sealed class PlayerOrbTrailService
         }
         if (destroyed.Count > 0 && !inventory.HasAnyOrb() && runtime.Bots.GetBot(player.PlayerId) is { } bot)
         {
-            bot.SwarmBareSpeedUntilUtc = DateTime.UtcNow.AddSeconds(Config.SWARM_BARE_MOVE_SPEED_SECONDS);
+            bot.SwarmBareSpeedUntilUtc = nowUtc.AddSeconds(Config.SWARM_BARE_MOVE_SPEED_SECONDS);
         }
         return destroyed;
     }

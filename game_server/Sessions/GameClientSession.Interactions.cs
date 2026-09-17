@@ -39,7 +39,7 @@ public partial class GameClientSession
             var error = ErrorCode.INVALID_GAME_STATE;
             if (!match.IsEnded && !IsGameplayActionBlocked(out _) && GameInteractableData.Get(msg.InteractId) is { DoorId: > 0 } info)
             {
-                if (info.ZoneId != (int)GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell))
+                if (info.ZoneId != (int)Player.CurrentArea)
                 {
                     error = ErrorCode.AREA_MISMATCH;
                 }
@@ -87,7 +87,7 @@ public partial class GameClientSession
             if (!match.IsEnded && !IsGameplayActionBlocked(out _) && GameInteractableData.Get(msg.InteractId) is { DoorId: > 0 } info)
             {
                 doorId = info.DoorId;
-                if (info.ZoneId != (int)GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell))
+                if (info.ZoneId != (int)Player.CurrentArea)
                 {
                     error = ErrorCode.AREA_MISMATCH;
                 }
@@ -180,7 +180,7 @@ public partial class GameClientSession
 
     internal void SendInteractableInfos(List<InteractableInfo> infos)
     {
-        var area = GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell);
+        var area = Player.CurrentArea;
         using var packet = PacketMaker.G_TO_C_INTERACTABLE_INFO(area, infos);
         if (!TrySend(packet))
         {
@@ -201,7 +201,7 @@ public partial class GameClientSession
 
     private void SendInteractableList()
     {
-        if (GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell) == AreaType.None) return;
+        if (Player.CurrentArea == AreaType.None) return;
         using (Match.Enter())
         {
             if (Match.IsEnded) return;

@@ -70,7 +70,7 @@ internal sealed class PlayerOrbService(PlayerOrbTrailService orbTrails)
 
     private bool ActivateSunOrb(MatchRuntime runtime, Player owner, InGameItemInfo orb, int ordinal, int tier, Vector3f origin, float attackMultiplier, DateTime nowUtc)
     {
-        var ownerArea = GameMapData.GetCurrentArea(owner.GameInfo.ObjectInfo.MapId, owner.GameInfo.ObjectInfo.Cell);
+        var ownerArea = owner.CurrentArea;
         float range = Config.TierValue(Config.SWARM_SUN_RANGE_BY_TIER, tier);
         var (monsters, players) = MatchOrbTarget.CollectTargetsInRadius(runtime, owner.PlayerId, ownerArea, origin, range);
 
@@ -211,7 +211,7 @@ internal sealed class PlayerOrbService(PlayerOrbTrailService orbTrails)
     /// </summary>
     private bool ActivateWaveOrb(MatchRuntime runtime, Player owner, InGameItemInfo orb, Vector3f orbPosition, float attackMultiplier, bool appliesSlow, DateTime nowUtc)
     {
-        var ownerArea = GameMapData.GetCurrentArea(owner.GameInfo.ObjectInfo.MapId, owner.GameInfo.ObjectInfo.Cell);
+        var ownerArea = owner.CurrentArea;
         float radius = OrbData.GetWaveVortexRadius(orb.ItemId);
         if (radius <= 0f)
         {

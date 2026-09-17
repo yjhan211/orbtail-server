@@ -172,10 +172,10 @@ internal sealed class MatchRuntime
         }
     }
 
-    public bool IsGameplayActive(DateTime? utcNow = null)
+    public bool IsGameplayActive(DateTime utcNow)
     {
         using (Enter())
-            return !IsEnded && _startsAtUtc.HasValue && (utcNow ?? DateTime.UtcNow) >= _startsAtUtc.Value;
+            return !IsEnded && _startsAtUtc.HasValue && utcNow >= _startsAtUtc.Value;
     }
 
     public bool IsEntryTimedOut(DateTime utcNow)
@@ -262,7 +262,6 @@ internal sealed class MatchRuntime
 
             participant.Status = PlayerMatchStatus.ELIMINATED;
             participant.EliminationReason = reason;
-            participant.EliminatedAt = DateTime.UtcNow;
             participant.AttackerPlayerId = attackerPlayerId;
             participant.EliminatedArea = eliminatedArea;
             participant.EliminationRank = forcedRank > 0 ? forcedRank : _aliveCount;
@@ -298,7 +297,7 @@ internal sealed class MatchRuntime
     }
 
     public List<(long playerId,
-        EliminationReason reason, PlayerMatchStatus finalStatus, DateTime? eliminatedAt,
+        EliminationReason reason, PlayerMatchStatus finalStatus,
         long attackerPlayerId, AreaType eliminatedArea, int eliminationRank)> BuildGameResult()
     {
         using (Enter())
@@ -306,13 +305,13 @@ internal sealed class MatchRuntime
             if (_cleanupStarted)
                 return new();
 
-            var result = new List<(long, EliminationReason, PlayerMatchStatus, DateTime?, long,
+            var result = new List<(long, EliminationReason, PlayerMatchStatus, long,
                 AreaType, int)>();
 
             foreach (var participant in _players.Values)
             {
                 result.Add((participant.PlayerId,
-                    participant.EliminationReason, participant.Status, participant.EliminatedAt, participant.AttackerPlayerId,
+                    participant.EliminationReason, participant.Status, participant.AttackerPlayerId,
                     participant.EliminatedArea,
                     participant.EliminationRank));
             }

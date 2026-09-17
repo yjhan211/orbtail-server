@@ -82,7 +82,7 @@ public sealed class SwarmArenaTickOrderTests
         string fieldService = ReadNormalizedSource(root, "game_server", "Matches", "MatchFieldService.cs");
         AssertInOrder(fieldService,
             "runtime.LastAreaClosureSecond = elapsedSeconds;",
-            "ProcessClosureTick(runtime);");
+            "ProcessClosureTick(runtime, nowUtc);");
         Assert.DoesNotContain("TryEnter", tick);
 
         // 폐쇄 처리는 문 상태만 바꾼다. 문 변경 전송은 틱 끝 동기화가 담당한다.

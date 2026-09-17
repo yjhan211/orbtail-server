@@ -121,11 +121,9 @@ public sealed class MatchOwnedStateTests
             Assert.Equal(0, bot.Movement.WaypointIndex);
             Assert.Empty(TestGameSessionServices.Orbs(match, botId).GetAllOrbs());
             int drops = match.GroundItems.GetItemsInArea(GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell)).Count;
-            var eliminatedAt = entry.eliminatedAt;
 
             service.EliminatePlayer(match, bot.Player, EliminationReason.HEALTH_ZERO, attackerPlayerId: 99);
             Assert.Equal(drops, match.GroundItems.GetItemsInArea(GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell)).Count);
-            Assert.Equal(eliminatedAt, match.BuildGameResult().Single(row => row.playerId == botId).eliminatedAt);
             Assert.Equal(11, match.BuildGameResult().Single(row => row.playerId == botId).attackerPlayerId);
         }
         Assert.False(sibling.Bots.GetBot(botId)!.Player.IsEliminated);
@@ -153,7 +151,6 @@ public sealed class MatchOwnedStateTests
         {
             service.EliminatePlayer(match, player, EliminationReason.PRESSURE_FIELD,
                 deferGameOver: true, attackerPlayerId: 11, forcedRank: 5);
-            var eliminatedAt = player.EliminatedAt;
             service.EliminatePlayer(match, player, EliminationReason.HEALTH_ZERO,
                 deferGameOver: true, attackerPlayerId: 99, forcedRank: 9);
             Assert.Null(player.Session);
@@ -162,7 +159,6 @@ public sealed class MatchOwnedStateTests
             Assert.Equal(EliminationReason.PRESSURE_FIELD, player.EliminationReason);
             Assert.Equal(5, player.EliminationRank);
             Assert.Equal(11, player.AttackerPlayerId);
-            Assert.Equal(eliminatedAt, player.EliminatedAt);
             Assert.Equal((true, (long?)11), match.CheckGameOver());
             Assert.False(match.IsEnded);
         }

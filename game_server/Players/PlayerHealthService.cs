@@ -104,7 +104,7 @@ internal sealed class PlayerHealthService(
             using var packet = PacketMaker.G_TO_C_HEALTH_RECOVERY(new G_TO_C_HEALTH_RECOVERY
             {
                 PlayerId = player.PlayerId,
-                AreaType = GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell),
+                AreaType = player.CurrentArea,
                 Amount = change.Recovered,
                 Source = HealthRecoveryKind.Sleep
             });

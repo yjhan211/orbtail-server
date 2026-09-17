@@ -163,15 +163,15 @@ public sealed class BotMovementIntentTests
         bot.Player.Orbs.AddOrb(107000020);
         bot.Player.Orbs.AddOrb(107000020);
         var trails = new game_server.players.PlayerOrbTrailService();
-        trails.DestroyOrbsFromOrdinal(runtime, bot.Player, 1);
+        trails.DestroyOrbsFromOrdinal(runtime, bot.Player, 1, DateTime.UtcNow);
         Assert.Equal(DateTime.MinValue, bot.SwarmBareSpeedUntilUtc);
         var before = DateTime.UtcNow;
-        trails.DestroyOrbsFromOrdinal(runtime, bot.Player, 0);
+        trails.DestroyOrbsFromOrdinal(runtime, bot.Player, 0, DateTime.UtcNow);
         Assert.InRange(bot.SwarmBareSpeedUntilUtc,
             before.AddSeconds(Config.SWARM_BARE_MOVE_SPEED_SECONDS),
             DateTime.UtcNow.AddSeconds(Config.SWARM_BARE_MOVE_SPEED_SECONDS));
         var speedUntil = bot.SwarmBareSpeedUntilUtc;
-        trails.DestroyOrbsFromOrdinal(runtime, bot.Player, 0);
+        trails.DestroyOrbsFromOrdinal(runtime, bot.Player, 0, DateTime.UtcNow);
         Assert.Equal(speedUntil, bot.SwarmBareSpeedUntilUtc);
         bot.Player.State = PlayerState.IDLE;
         var request = MovementPreparationTestSteps.Bot(new FixedTargetBehavior(null), runtime, bot, DateTime.UtcNow);

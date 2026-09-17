@@ -60,7 +60,7 @@ public sealed class MatchFieldServiceTests
         var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947001);
         var service = CreateService();
         Assert.Throws<InvalidOperationException>(() => service.ProcessDamageTick(match, DateTime.UtcNow));
-        Assert.Throws<InvalidOperationException>(() => service.ProcessClosureTick(match));
+        Assert.Throws<InvalidOperationException>(() => service.ProcessClosureTick(match, DateTime.UtcNow));
     }
 
     [Fact]

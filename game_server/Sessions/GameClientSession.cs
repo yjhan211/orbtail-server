@@ -146,7 +146,7 @@ public partial class GameClientSession : SessionBase
             return true;
         }
 
-        if (MatchingId > 0 && Volatile.Read(ref _match)?.IsGameplayActive() != true)
+        if (MatchingId > 0 && Volatile.Read(ref _match)?.IsGameplayActive(DateTime.UtcNow) != true)
         {
             errorCode = ErrorCode.GAME_NOT_STARTED;
             return true;
@@ -267,14 +267,14 @@ public partial class GameClientSession : SessionBase
 
                 Logger.LogInformation(
                     "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
-                    PlayerId, GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell), Player.Position?.X, Player.Position?.Y, Player.Cell?.X,
+                    PlayerId, Player.CurrentArea, Player.Position?.X, Player.Position?.Y, Player.Cell?.X,
                     Player.Cell?.Y);
 
 
 
                 SendInteractableList();
 
-                SendGroundItemEntries(GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell));
+                SendGroundItemEntries(Player.CurrentArea);
                 SendMonsterSnapshot(runtime.Monsters.GetVisualStatesByArea());
                 SendOrbList();
                 SendOrbUpgradeInfo(_orbGrowth.GetOrbUpgradeInfo(runtime, Player));
@@ -360,7 +360,7 @@ public partial class GameClientSession : SessionBase
                 {
                     continue;
                 }
-                if (session.Player.IsEliminated || GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) != GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell))
+                if (session.Player.IsEliminated || session.Player.CurrentArea != Player.CurrentArea)
                 {
                     continue;
                 }
@@ -378,7 +378,7 @@ public partial class GameClientSession : SessionBase
                 session.SendObjectEntries(mine);
             }
 
-            var bots = match.Bots.GetBots().Where(bot => !bot.Player.IsEliminated && GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell) == GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell)).ToList();
+            var bots = match.Bots.GetBots().Where(bot => !bot.Player.IsEliminated && bot.Player.CurrentArea == Player.CurrentArea).ToList();
             var botPlayers = bots.Select(bot => match.Bots.GetPlayerObjectInfo(bot.PlayerId)).OfType<GamePlayerInfo>().ToList();
             if (botPlayers.Count <= 0)
             {
@@ -659,7 +659,7 @@ public partial class GameClientSession : SessionBase
 
         Logger.LogInformation("Game client session removed: PlayerId={SessionPlayerId}", PlayerId.Value);
 
-        if (Player != null && MatchingId > 0 && GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell) != AreaType.None)
+        if (Player != null && MatchingId > 0 && Player.CurrentArea != AreaType.None)
         {
             var sameAreaSessions = new List<GameClientSession>();
             foreach (var other in Match.GetSessions())
@@ -668,7 +668,7 @@ public partial class GameClientSession : SessionBase
                 {
                     continue;
                 }
-                if (GameMapData.GetCurrentArea(other.Player.GameInfo.ObjectInfo.MapId, other.Player.GameInfo.ObjectInfo.Cell) != GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell))
+                if (other.Player.CurrentArea != Player.CurrentArea)
                 {
                     continue;
                 }
@@ -684,7 +684,7 @@ public partial class GameClientSession : SessionBase
                 "Broadcasted disconnected player leave: PlayerId={PlayerId}, MatchingId={MatchingId}, Area={Area}, Receivers={ReceiverCount}",
                 PlayerId.Value,
                 MatchingId,
-                GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell),
+                Player.CurrentArea,
                 sameAreaSessions.Count);
         }
 

@@ -39,14 +39,14 @@ public sealed class MatchMonsters
         var statesByArea = new Dictionary<AreaType, List<MonsterInfo>>();
         foreach (var monster in Entities.Values)
         {
-            if (monster.MonsterId <= 0 || GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell) == AreaType.None)
+            if (monster.MonsterId <= 0 || monster.CurrentArea == AreaType.None)
             {
                 continue;
             }
-            if (!statesByArea.TryGetValue(GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell), out var areaStates))
+            if (!statesByArea.TryGetValue(monster.CurrentArea, out var areaStates))
             {
                 areaStates = new List<MonsterInfo>();
-                statesByArea[GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell)] = areaStates;
+                statesByArea[monster.CurrentArea] = areaStates;
             }
             areaStates.Add(monster.ToMonsterInfo());
         }

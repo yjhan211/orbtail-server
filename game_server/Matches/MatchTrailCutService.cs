@@ -94,7 +94,7 @@ internal sealed class MatchTrailCutService(PlayerOrbTrailService orbTrails, Matc
             return;
         }
 
-        var cutterArea = GameMapData.GetCurrentArea(cutter.GameInfo.ObjectInfo.MapId, cutter.GameInfo.ObjectInfo.Cell);
+        var cutterArea = cutter.CurrentArea;
         if (!TryFindCut(runtime, cutter, cutterArea, chainsByOwner, nowUtc, out var hit))
         {
             return;
@@ -102,7 +102,7 @@ internal sealed class MatchTrailCutService(PlayerOrbTrailService orbTrails, Matc
 
         long cutterId = cutter.PlayerId;
         var victim = hit.Victim;
-        var destroyedOrbs = orbTrails.DestroyOrbsFromOrdinal(runtime, victim, hit.Ordinal);
+        var destroyedOrbs = orbTrails.DestroyOrbsFromOrdinal(runtime, victim, hit.Ordinal, nowUtc);
         if (destroyedOrbs.Count == 0)
         {
             return;
@@ -158,7 +158,7 @@ internal sealed class MatchTrailCutService(PlayerOrbTrailService orbTrails, Matc
                 continue;
             }
 
-            if (GameMapData.GetCurrentArea(owner.GameInfo.ObjectInfo.MapId, owner.GameInfo.ObjectInfo.Cell) != cutterArea)
+            if (owner.CurrentArea != cutterArea)
             {
                 continue;
             }

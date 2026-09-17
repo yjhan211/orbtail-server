@@ -47,7 +47,7 @@ public class MatchBots
 
         _bots = bots;
 
-        _logger.LogInformation("Bots registered: Count={Count}, MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]", bots.Count, matchingId, Config.SWARM_MATCH_MAP, string.Join(",", bots.Select(b => $"{b.PlayerId}@{GameMapData.GetCurrentArea(b.Player.GameInfo.ObjectInfo.MapId, b.Player.GameInfo.ObjectInfo.Cell)}")));
+        _logger.LogInformation("Bots registered: Count={Count}, MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]", bots.Count, matchingId, Config.SWARM_MATCH_MAP, string.Join(",", bots.Select(b => $"{b.PlayerId}@{b.Player.CurrentArea}")));
     }
 
     internal static List<int> BuildBotWearItems(long playerId)

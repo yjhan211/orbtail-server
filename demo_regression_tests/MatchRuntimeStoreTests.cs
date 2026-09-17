@@ -239,7 +239,7 @@ public sealed class MatchRuntimeStoreTests
         MatchRuntimeStore store = CreateStore(
             onRedisCleanup: _ =>
             {
-                Assert.False(runtime!.IsGameplayActive());
+                Assert.False(runtime!.IsGameplayActive(DateTime.UtcNow));
                 order.Add("after");
                 heldDuringAfterCleanup = Monitor.IsEntered(runtime!.MatchLock);
             });
@@ -268,10 +268,10 @@ public sealed class MatchRuntimeStoreTests
             {
                 using (runtime.Enter())
                     runtime.TryMarkEnded();
-                Assert.False(runtime!.IsGameplayActive());
+                Assert.False(runtime!.IsGameplayActive(DateTime.UtcNow));
                 Assert.Same(runtime, store.GetOrNull(matchingId));
             }
-            Assert.False(runtime!.IsGameplayActive());
+            Assert.False(runtime!.IsGameplayActive(DateTime.UtcNow));
             Assert.Null(store.GetOrNull(matchingId));
         }
         finally

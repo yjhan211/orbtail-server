@@ -67,9 +67,9 @@ public sealed class PlayerOrbTrailServiceTests
             inventory.AddOrb(107000020);
             inventory.AddOrb(107000030);
             var original = inventory.GetAllOrbs().OrderBy(item => item.ItemUid).ToArray();
-            Assert.Empty(service.DestroyOrbsFromOrdinal(match, player, -1));
-            Assert.Empty(service.DestroyOrbsFromOrdinal(match, player, 3));
-            var removed = service.DestroyOrbsFromOrdinal(match, player, 1);
+            Assert.Empty(service.DestroyOrbsFromOrdinal(match, player, -1, DateTime.UtcNow));
+            Assert.Empty(service.DestroyOrbsFromOrdinal(match, player, 3, DateTime.UtcNow));
+            var removed = service.DestroyOrbsFromOrdinal(match, player, 1, DateTime.UtcNow);
             Assert.Equal(original.Skip(1).Select(item => item.ItemUid), removed.Select(item => item.ItemUid));
             Assert.Equal(original[0].ItemUid, Assert.Single(inventory.GetAllOrbs()).ItemUid);
             match.TryMarkEnded();
@@ -89,6 +89,6 @@ public sealed class PlayerOrbTrailServiceTests
         Assert.Throws<InvalidOperationException>(() => PlayerOrbTrailService.GetOrbTiersInOrder(match, player));
         Assert.Throws<InvalidOperationException>(() => service.GetOrbPosition(match, player, 0, anchor, []));
         Assert.Throws<InvalidOperationException>(() => service.GetPositionAtDistance(match, player, 1, anchor));
-        Assert.Throws<InvalidOperationException>(() => service.DestroyOrbsFromOrdinal(match, player, 0));
+        Assert.Throws<InvalidOperationException>(() => service.DestroyOrbsFromOrdinal(match, player, 0, DateTime.UtcNow));
     }
 }

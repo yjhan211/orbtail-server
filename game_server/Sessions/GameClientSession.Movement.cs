@@ -129,7 +129,7 @@ public partial class GameClientSession
         var visibleIds = new HashSet<long>();
         foreach (var (area, monsters) in snapshotsByArea)
         {
-            if (GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell) != area) continue;
+            if (Player.CurrentArea != area) continue;
             foreach (var monster in monsters)
             {
                 visibleIds.Add(monster.MonsterId);
@@ -156,7 +156,7 @@ public partial class GameClientSession
 
     internal bool HasMonsterStateChanged(MonsterInfo monster)
     {
-        if (GameMapData.GetCurrentArea(monster.ObjectInfo.MapId, monster.ObjectInfo.Cell) != GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell))
+        if (GameMapData.GetCurrentArea(monster.ObjectInfo.MapId, monster.ObjectInfo.Cell) != Player.CurrentArea)
         {
             return false;
         }

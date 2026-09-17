@@ -32,7 +32,7 @@ internal sealed class PlayerPickupService(PlayerHealthService healthService, ILo
             return;
         }
 
-        var currentArea = GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell);
+        var currentArea = player.CurrentArea;
         if (nextArea == currentArea)
         {
             AddReachableItemsInArea(player, match.GroundItems, nextArea, from, to);
@@ -124,7 +124,7 @@ internal sealed class PlayerPickupService(PlayerHealthService healthService, ILo
             return;
         }
 
-        AddReachableItemsInArea(player, match.GroundItems, GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell), player.Position, player.Position);
+        AddReachableItemsInArea(player, match.GroundItems, player.CurrentArea, player.Position, player.Position);
         Player.ReachableItem[] candidates = [.. player.ReachableItems.Values];
         player.ReachableItems.Clear();
         foreach (var candidate in candidates)

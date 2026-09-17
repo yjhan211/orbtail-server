@@ -49,6 +49,7 @@ public sealed class Monster
             Info.ObjectInfo.Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, value);
         }
     }
+    public AreaType CurrentArea => GameMapData.GetCurrentArea(Info.ObjectInfo.MapId, Info.ObjectInfo.Cell);
     public MovementState Movement { get; } = new();
     public int Health { get => Info.CurrentHealth; set => Info.CurrentHealth = value; }
     public bool Alive { get => Info.IsAlive; set => Info.IsAlive = value; }

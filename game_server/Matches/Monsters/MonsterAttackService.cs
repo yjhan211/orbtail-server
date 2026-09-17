@@ -46,7 +46,7 @@ internal sealed class MonsterAttackService(MatchCombatDamageService combatDamage
             return false;
         }
 
-        var monsterArea = GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell);
+        var monsterArea = monster.CurrentArea;
         float attackRange = monster.AttackRangeValue;
         foreach (var player in players)
         {
@@ -55,7 +55,7 @@ internal sealed class MonsterAttackService(MatchCombatDamageService combatDamage
             {
                 continue;
             }
-            if (GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell) != monsterArea)
+            if (player.CurrentArea != monsterArea)
             {
                 continue;
             }

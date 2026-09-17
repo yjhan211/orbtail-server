@@ -228,7 +228,7 @@ public sealed class GameMatchEntryServiceTests
             Assert.Same(results[0], store.GetOrNull(placeholder.MatchingId));
             Assert.Equal(1, profileReads);
             Assert.Equal(1, loopCount);
-            Assert.False(results[0].IsGameplayActive());
+            Assert.False(results[0].IsGameplayActive(DateTime.UtcNow));
         }
         finally
         {

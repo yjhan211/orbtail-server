@@ -192,7 +192,7 @@ internal sealed class MatchOrbAttackService(
                 continue;
             }
 
-            var ownerArea = GameMapData.GetCurrentArea(owner.GameInfo.ObjectInfo.MapId, owner.GameInfo.ObjectInfo.Cell);
+            var ownerArea = owner.CurrentArea;
             var (monsters, players) = MatchOrbTarget.CollectTargetsInRadius(runtime, owner.PlayerId, ownerArea, attack.Position, attack.Radius);
             foreach (var monster in monsters)
             {
