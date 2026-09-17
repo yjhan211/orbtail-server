@@ -55,27 +55,23 @@ public sealed class OrbBoardTests
     }
 
     [Theory]
-    [InlineData(107000010, 10700001, OrbColor.Red, 1)]
-    [InlineData(107000011, 10700001, OrbColor.Red, 2)]
-    [InlineData(107000012, 10700001, OrbColor.Red, 3)]
-    [InlineData(107000020, 10700002, OrbColor.Green, 1)]
-    [InlineData(107000021, 10700002, OrbColor.Green, 2)]
-    [InlineData(107000022, 10700002, OrbColor.Green, 3)]
-    [InlineData(107000030, 10700003, OrbColor.Blue, 1)]
-    [InlineData(107000031, 10700003, OrbColor.Blue, 2)]
-    [InlineData(107000032, 10700003, OrbColor.Blue, 3)]
-    public void ColoredOrbIdsMapToStableGroupColorAndTier(
+    [InlineData(107000010, OrbGroupIds.Sun, 1)]
+    [InlineData(107000011, OrbGroupIds.Sun, 2)]
+    [InlineData(107000012, OrbGroupIds.Sun, 3)]
+    [InlineData(107000020, OrbGroupIds.Wind, 1)]
+    [InlineData(107000021, OrbGroupIds.Wind, 2)]
+    [InlineData(107000022, OrbGroupIds.Wind, 3)]
+    [InlineData(107000030, OrbGroupIds.Wave, 1)]
+    [InlineData(107000031, OrbGroupIds.Wave, 2)]
+    [InlineData(107000032, OrbGroupIds.Wave, 3)]
+    public void OrbIdsMapToCsvGroupAndTier(
         int itemId,
         int expectedGroupId,
-        OrbColor expectedColor,
         int expectedTier)
     {
-        Assert.True(OrbData.TryGetColorAndTier(itemId, out var color, out int tier));
         Assert.True(OrbData.TryGetOrbGroupAndTier(itemId, out int groupId, out int groupTier));
         Assert.True(OrbData.TryGetOrbItemId(groupId, groupTier, out int roundTripItemId));
         Assert.Equal(expectedGroupId, groupId);
-        Assert.Equal(expectedColor, color);
-        Assert.Equal(expectedTier, tier);
         Assert.Equal(expectedTier, groupTier);
         Assert.Equal(itemId, roundTripItemId);
     }
@@ -83,12 +79,30 @@ public sealed class OrbBoardTests
 
 
 
-    [Fact]
-    public void LegacyGuardianOrbDoesNotEnterColoredBoardRules()
+    [Theory]
+    [InlineData(107000003)]
+    [InlineData(107000004)]
+    [InlineData(107000006)]
+    [InlineData(0)]
+    [InlineData(107000019)]
+    public void LegacyOrUnknownItemDoesNotEnterOrbGroupRules(int itemId)
     {
-        Assert.False(OrbData.TryGetColorAndTier(107000003, out var color, out int tier));
-        Assert.Equal(OrbColor.None, color);
+        Assert.False(OrbData.TryGetOrbGroupAndTier(itemId, out var color, out int tier));
+        Assert.Equal(OrbGroupIds.None, color);
         Assert.Equal(0, tier);
+        Assert.Equal(OrbGroupIds.None, OrbData.GetOrbGroupId(itemId));
+        Assert.False(OrbData.IsOrbItem(itemId));
+    }
+
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(int.MaxValue, 1)]
+    [InlineData(OrbGroupIds.Sun, 0)]
+    [InlineData(OrbGroupIds.Sun, 4)]
+    public void UnknownGroupOrTierDoesNotProduceAnItem(int orbGroupId, int tier)
+    {
+        Assert.False(OrbData.TryGetOrbItemId(orbGroupId, tier, out int itemId));
+        Assert.Equal(0, itemId);
     }
 
     [Fact]
@@ -96,11 +110,11 @@ public sealed class OrbBoardTests
     {
         Assert.True(OrbData.TryGetActivePair(107000010, [107000021, 107000012], out var color,
             out int supportTier));
-        Assert.Equal(OrbColor.Red, color);
+        Assert.Equal(OrbGroupIds.Sun, color);
         Assert.Equal(3, supportTier);
 
         Assert.False(OrbData.TryGetActivePair(107000010, [], out color, out supportTier));
-        Assert.Equal(OrbColor.Red, color);
+        Assert.Equal(OrbGroupIds.Sun, color);
         Assert.Equal(0, supportTier);
     }
 
@@ -109,12 +123,12 @@ public sealed class OrbBoardTests
     {
         Assert.True(OrbData.TryGetActivePair(107000010,
             [107000011, 107000020, 107000021, 107000030, 107000031], out var color, out int supportTier));
-        Assert.Equal(OrbColor.Red, color);
+        Assert.Equal(OrbGroupIds.Sun, color);
         Assert.Equal(2, supportTier);
 
         Assert.False(OrbData.TryGetActivePair(107000010,
             [107000020, 107000021, 107000030, 107000031], out color, out supportTier));
-        Assert.Equal(OrbColor.Red, color);
+        Assert.Equal(OrbGroupIds.Sun, color);
         Assert.Equal(0, supportTier);
     }
 
@@ -125,16 +139,16 @@ public sealed class OrbBoardTests
             [107000010, 107000020, 107000021],
             out var color,
             out int supportTier));
-        Assert.Equal(OrbColor.Green, color);
+        Assert.Equal(OrbGroupIds.Wind, color);
         Assert.Equal(2, supportTier);
 
         Assert.False(OrbData.HasActivePair(
             [107000010, 107000020, 107000021],
-            OrbColor.Red,
+            OrbGroupIds.Sun,
             out _));
         Assert.True(OrbData.HasActivePair(
             [107000010, 107000020, 107000021],
-            OrbColor.Green,
+            OrbGroupIds.Wind,
             out supportTier));
         Assert.Equal(2, supportTier);
     }
@@ -144,9 +158,9 @@ public sealed class OrbBoardTests
     {
         int[] board = [107000010, 107000011, 107000020, 107000021, 107000030, 107000031];
 
-        Assert.True(OrbData.HasActivePair(board, OrbColor.Red, out int redTier));
-        Assert.True(OrbData.HasActivePair(board, OrbColor.Green, out int greenTier));
-        Assert.True(OrbData.HasActivePair(board, OrbColor.Blue, out int blueTier));
+        Assert.True(OrbData.HasActivePair(board, OrbGroupIds.Sun, out int redTier));
+        Assert.True(OrbData.HasActivePair(board, OrbGroupIds.Wind, out int greenTier));
+        Assert.True(OrbData.HasActivePair(board, OrbGroupIds.Wave, out int blueTier));
         Assert.Equal(2, redTier);
         Assert.Equal(2, greenTier);
         Assert.Equal(2, blueTier);
@@ -160,7 +174,7 @@ public sealed class OrbBoardTests
         inventory.AddOrb(107000032);
 
         Assert.True(OrbData.TryGetActivePair(inventory.GetOrderedOrbs().Select(item => item.ItemId), out var color, out int supportTier));
-        Assert.Equal(OrbColor.Blue, color);
+        Assert.Equal(OrbGroupIds.Wave, color);
         Assert.Equal(3, supportTier);
     }
 
@@ -190,7 +204,7 @@ public sealed class OrbBoardTests
         Assert.True(reconnectedInventory.TryAddOrbWithCapacity(107000020, 6, out _));
 
         Assert.True(OrbData.TryGetActivePair(reconnectedInventory.GetOrderedOrbs().Select(item => item.ItemId), out var color, out int supportTier));
-        Assert.Equal(OrbColor.Red, color);
+        Assert.Equal(OrbGroupIds.Sun, color);
         Assert.Equal(1, supportTier);
     }
 

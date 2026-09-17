@@ -13,32 +13,32 @@ public class OrbPveCombatDataTests
     [Fact]
     public void DominantPveColor_UsesStrictOrbCountMajorityAcrossTheWholeBoard()
     {
-        Assert.True(OrbData.TryGetDominantPveColor(
-            [107000010, 107000010, 107000032], out var dominantColor));
+        Assert.True(OrbData.TryGetDominantPveOrbGroup(
+            [107000010, 107000010, 107000032], out var dominantGroupId));
 
-        Assert.Equal(OrbColor.Red, dominantColor);
+        Assert.Equal(OrbGroupIds.Sun, dominantGroupId);
     }
 
     [Fact]
     public void DominantPveColor_ActivatesWhenOneColourOwnsMoreThanHalfTheBoard()
     {
-        Assert.True(OrbData.TryGetDominantPveColor(
-            [107000010, 107000010, 107000010, 107000032], out var dominantColor));
+        Assert.True(OrbData.TryGetDominantPveOrbGroup(
+            [107000010, 107000010, 107000010, 107000032], out var dominantGroupId));
 
-        Assert.Equal(OrbColor.Red, dominantColor);
+        Assert.Equal(OrbGroupIds.Sun, dominantGroupId);
     }
 
     [Fact]
     public void DominantPveColor_StaysNeutralWhenTopTierAndResonanceBothTie()
     {
-        Assert.False(OrbData.TryGetDominantPveColor(
+        Assert.False(OrbData.TryGetDominantPveOrbGroup(
             [107000010, 107000010, 107000010, 107000020, 107000020, 107000020], out _));
     }
 
     [Fact]
     public void DominantPveColor_RequiresAMajorityAcrossAllOrbColors()
     {
-        Assert.False(OrbData.TryGetDominantPveColor(
+        Assert.False(OrbData.TryGetDominantPveOrbGroup(
             [107000010, 107000010, 107000020, 107000030, 107000030], out _));
     }
 }

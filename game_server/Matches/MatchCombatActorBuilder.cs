@@ -17,7 +17,7 @@ internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails)
     {
         foreach (var orb in orbs.GetAllOrbs().Where(item => item.Count > 0).OrderBy(item => item.ItemUid))
         {
-            bool attackOrb = OrbData.TryGetColorAndTier(orb.ItemId, out _, out _) && BattleItemCombatData.Get(orb.ItemId) != null;
+            bool attackOrb = OrbData.TryGetOrbGroupAndTier(orb.ItemId, out _, out _) && BattleItemCombatData.Get(orb.ItemId) != null;
             if (!attackOrb)
             {
                 continue;
@@ -85,8 +85,8 @@ internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails)
                     TrailOrdinal = ordinal,
                     Untargetable = true
                 };
-                bool attackOrb = OrbData.TryGetColorAndTier(actor.WeaponItemId, out var orbColor, out int orbTier);
-                if (orbColor is OrbColor.Blue or OrbColor.Green)
+                bool attackOrb = OrbData.TryGetOrbGroupAndTier(actor.WeaponItemId, out var orbGroupId, out int orbTier);
+                if (orbGroupId is OrbGroupIds.Wave or OrbGroupIds.Wind)
                 {
                     actors[index] = actor;
                     continue;

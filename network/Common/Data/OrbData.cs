@@ -5,12 +5,12 @@ using network.common.data.models;
 
 namespace network.common.data
 {
-    public enum OrbColor
+    public static class OrbGroupIds
     {
-        None = 0,
-        Red = 1,
-        Green = 2,
-        Blue = 3
+        public const int None = 0;
+        public const int Sun = 10700001;
+        public const int Wind = 10700002;
+        public const int Wave = 10700003;
     }
 
     public static class OrbData
@@ -31,7 +31,7 @@ namespace network.common.data
 
         public static int GetSwarmPveAttackDamage(int itemId)
         {
-            if (!TryGetColorAndTier(itemId, out _, out _))
+            if (!TryGetOrbGroupAndTier(itemId, out _, out _))
             {
                 return 0;
             }
@@ -41,7 +41,7 @@ namespace network.common.data
 
         public static float GetSwarmWaveBombRadius(int itemId)
         {
-            if (!TryGetColorAndTier(itemId, out var color, out int tier) || color != OrbColor.Blue)
+            if (!TryGetOrbGroupAndTier(itemId, out var orbGroupId, out int tier) || orbGroupId != OrbGroupIds.Wave)
             {
                 return 0f;
             }
@@ -79,7 +79,7 @@ namespace network.common.data
                 ? GetSwarmOrbTierScale(orderedTiers[index])
                 : 1f;
 
-        private static int CountLivingOrbs(IEnumerable<InGameItemInfo> items, OrbColor color)
+        private static int CountLivingOrbs(IEnumerable<InGameItemInfo> items, int orbGroupId)
         {
             if (items == null)
             {
@@ -89,7 +89,7 @@ namespace network.common.data
             int count = 0;
             foreach (var item in items)
             {
-                if (item.Count <= 0 || !TryGetColorAndTier(item.ItemId, out var itemColor, out _) || itemColor != color)
+                if (item.Count <= 0 || !TryGetOrbGroupAndTier(item.ItemId, out var itemColor, out _) || itemColor != orbGroupId)
                 {
                     continue;
                 }
@@ -100,7 +100,7 @@ namespace network.common.data
             return count;
         }
 
-        public static bool IsResonating(IEnumerable<InGameItemInfo> items, OrbColor color)
+        public static bool IsResonating(IEnumerable<InGameItemInfo> items, int orbGroupId)
         {
             if (items == null)
             {
@@ -116,18 +116,18 @@ namespace network.common.data
                 }
             }
 
-            return TryGetDominantPveColor(boardItemIds, out OrbColor dominantColor) && dominantColor == color;
+            return TryGetDominantPveOrbGroup(boardItemIds, out var dominantGroupId) && dominantGroupId == orbGroupId;
         }
 
         public static float GetSunPveAttackMultiplier(IEnumerable<InGameItemInfo> items)
         {
             var orbs = items as IReadOnlyCollection<InGameItemInfo> ?? items?.ToList();
-            if (!IsResonating(orbs, OrbColor.Red))
+            if (!IsResonating(orbs, OrbGroupIds.Sun))
             {
                 return 1f;
             }
 
-            int count = CountLivingOrbs(orbs, OrbColor.Red);
+            int count = CountLivingOrbs(orbs, OrbGroupIds.Sun);
             float bonus = SunFirstAttackBonus + (count - 1) * SunAdditionalAttackBonus;
             return 1f + Math.Min(SunAttackBonusCap, bonus);
         }
@@ -135,23 +135,23 @@ namespace network.common.data
         public static float GetWindMoveSpeedMultiplier(IEnumerable<InGameItemInfo> items)
         {
             var orbs = items as IReadOnlyCollection<InGameItemInfo> ?? items?.ToList();
-            if (!IsResonating(orbs, OrbColor.Green))
+            if (!IsResonating(orbs, OrbGroupIds.Wind))
             {
                 return 1f;
             }
 
-            int count = CountLivingOrbs(orbs, OrbColor.Green);
+            int count = CountLivingOrbs(orbs, OrbGroupIds.Wind);
             float bonus = WindFirstMoveSpeedBonus + (count - 1) * WindAdditionalMoveSpeedBonus;
             return 1f + Math.Min(WindMoveSpeedBonusCap, bonus);
         }
 
-        private static readonly OrbColor[] EvolutionColors = { OrbColor.Red, OrbColor.Green, OrbColor.Blue };
+        private static readonly int[] EvolutionGroups = { OrbGroupIds.Sun, OrbGroupIds.Wind, OrbGroupIds.Wave };
 
-        public static bool TryGetColorAndTier(int itemId, out OrbColor color, out int tier)
+        public static bool TryGetOrbGroupAndTier(int itemId, out int orbGroupId, out int tier)
         {
-            if (!BattleItemCombatData.TryGetColorAndTier(itemId, out color, out tier))
+            if (!BattleItemCombatData.TryGetOrbGroupAndTier(itemId, out orbGroupId, out tier))
             {
-                color = OrbColor.None;
+                orbGroupId = OrbGroupIds.None;
                 tier = 0;
                 return false;
             }
@@ -159,82 +159,55 @@ namespace network.common.data
             return true;
         }
 
-        public static int GetOrbGroupId(int itemId) => itemId / 10;
+        public static int GetOrbGroupId(int itemId) =>
+            TryGetOrbGroupAndTier(itemId, out int orbGroupId, out _) ? orbGroupId : OrbGroupIds.None;
 
-        public static bool TryGetOrbGroupAndTier(int itemId, out int orbGroupId, out int tier)
-        {
-            if (!TryGetColorAndTier(itemId, out _, out tier))
-            {
-                orbGroupId = 0;
-                return false;
-            }
+        public static bool TryGetOrbItemId(int orbGroupId, int tier, out int itemId) =>
+            BattleItemCombatData.TryGetItemId(orbGroupId, tier, out itemId);
 
-            orbGroupId = GetOrbGroupId(itemId);
-            return true;
-        }
+        public static bool IsOrbItem(int itemId) => TryGetOrbGroupAndTier(itemId, out _, out _);
 
-        public static bool TryGetOrbItemId(int orbGroupId, int tier, out int itemId)
-        {
-            itemId = 0;
-            if (orbGroupId <= 0 || tier is < 1 or > 3)
-            {
-                return false;
-            }
+        /// <summary>계열·티어에 해당하는 오브 아이템을 CSV에서 조회한다. 없으면 0.</summary>
+        public static int GetItemId(int orbGroupId, int tier) =>
+            BattleItemCombatData.TryGetItemId(orbGroupId, tier, out int itemId) ? itemId : 0;
 
-            int candidateItemId = checked(orbGroupId * 10 + tier - 1);
-            if (!TryGetOrbGroupAndTier(candidateItemId, out int candidateGroupId, out int candidateTier) ||
-                candidateGroupId != orbGroupId || candidateTier != tier)
-            {
-                return false;
-            }
-
-            itemId = candidateItemId;
-            return true;
-        }
-
-        public static bool IsOrbItem(int itemId) => TryGetColorAndTier(itemId, out _, out _);
-
-        /// <summary>색 라인의 특정 티어 오브 아이템. battle_item_combat.csv가 원천이며 없으면 0.</summary>
-        public static int GetItemId(OrbColor color, int tier) =>
-            BattleItemCombatData.TryGetItemId(color, tier, out int itemId) ? itemId : 0;
-
-        public static int GetTierOneItemId(OrbColor color) => GetItemId(color, 1);
+        public static int GetTierOneItemId(int orbGroupId) => GetItemId(orbGroupId, 1);
 
         public static float GetPvpProjectileImpactDelaySeconds(int itemId, float distance)
         {
             return Math.Max(0.08f, Math.Max(0f, distance) / HopeProjectileSpeed);
         }
 
-        public static bool TryGetDominantPveColor(
+        public static bool TryGetDominantPveOrbGroup(
             IEnumerable<int> boardItemIds,
-            out OrbColor dominantColor)
+            out int dominantGroupId)
         {
             if (boardItemIds == null)
                 throw new ArgumentNullException(nameof(boardItemIds));
 
-            var orbCounts = new Dictionary<OrbColor, int>
+            var orbCounts = new Dictionary<int, int>
             {
-                [OrbColor.Red] = 0,
-                [OrbColor.Green] = 0,
-                [OrbColor.Blue] = 0
+                [OrbGroupIds.Sun] = 0,
+                [OrbGroupIds.Wind] = 0,
+                [OrbGroupIds.Wave] = 0
             };
             int occupiedOrbCount = 0;
 
             foreach (int itemId in boardItemIds)
             {
-                if (!TryGetColorAndTier(itemId, out OrbColor color, out _) ||
-                    !orbCounts.ContainsKey(color))
+                if (!TryGetOrbGroupAndTier(itemId, out int orbGroupId, out _) ||
+                    !orbCounts.ContainsKey(orbGroupId))
                 {
                     continue;
                 }
 
                 occupiedOrbCount++;
-                orbCounts[color]++;
+                orbCounts[orbGroupId]++;
             }
 
             if (occupiedOrbCount < 2)
             {
-                dominantColor = OrbColor.None;
+                dominantGroupId = OrbGroupIds.None;
                 return false;
             }
 
@@ -244,11 +217,11 @@ namespace network.common.data
                 .ToArray();
             if (majority.Length == 1)
             {
-                dominantColor = majority[0];
+                dominantGroupId = majority[0];
                 return true;
             }
 
-            dominantColor = OrbColor.None;
+            dominantGroupId = OrbGroupIds.None;
             return false;
         }
 
@@ -264,18 +237,18 @@ namespace network.common.data
         }
 
 
-        public static bool TryGetItemId(OrbColor color, int tier, out int itemId)
+        public static bool TryGetItemId(int orbGroupId, int tier, out int itemId)
         {
-            if (color == OrbColor.None)
+            if (orbGroupId == OrbGroupIds.None)
             {
                 itemId = 0;
                 return false;
             }
 
-            return BattleItemCombatData.TryGetItemId(color, tier, out itemId);
+            return BattleItemCombatData.TryGetItemId(orbGroupId, tier, out itemId);
         }
 
-        public static bool TryGetActivePair(IEnumerable<int> boardItemIds, out OrbColor color, out int pairTier)
+        public static bool TryGetActivePair(IEnumerable<int> boardItemIds, out int orbGroupId, out int pairTier)
         {
             if (boardItemIds == null)
             {
@@ -283,23 +256,23 @@ namespace network.common.data
             }
 
             var itemIds = boardItemIds.ToList();
-            foreach (var candidateColor in EvolutionColors)
+            foreach (var candidateGroupId in EvolutionGroups)
             {
-                if (!HasActivePair(itemIds, candidateColor, out pairTier))
+                if (!HasActivePair(itemIds, candidateGroupId, out pairTier))
                 {
                     continue;
                 }
 
-                color = candidateColor;
+                orbGroupId = candidateGroupId;
                 return true;
             }
 
-            color = OrbColor.None;
+            orbGroupId = OrbGroupIds.None;
             pairTier = 0;
             return false;
         }
 
-        public static bool HasActivePair(IEnumerable<int> boardItemIds, OrbColor targetColor, out int pairTier)
+        public static bool HasActivePair(IEnumerable<int> boardItemIds, int targetGroupId, out int pairTier)
         {
             if (boardItemIds == null)
             {
@@ -310,7 +283,7 @@ namespace network.common.data
             pairTier = 0;
             foreach (int itemId in boardItemIds)
             {
-                if (!TryGetColorAndTier(itemId, out var color, out int tier) || color != targetColor)
+                if (!TryGetOrbGroupAndTier(itemId, out var orbGroupId, out int tier) || orbGroupId != targetGroupId)
                 {
                     continue;
                 }
@@ -327,7 +300,7 @@ namespace network.common.data
             return false;
         }
 
-        public static bool TryGetActivePair(int equippedItemId, IEnumerable<int> otherBoardItemIds, out OrbColor color, out int pairTier)
+        public static bool TryGetActivePair(int equippedItemId, IEnumerable<int> otherBoardItemIds, out int orbGroupId, out int pairTier)
         {
             if (otherBoardItemIds == null)
             {
@@ -335,14 +308,14 @@ namespace network.common.data
             }
 
             pairTier = 0;
-            if (!TryGetColorAndTier(equippedItemId, out color, out _))
+            if (!TryGetOrbGroupAndTier(equippedItemId, out orbGroupId, out _))
             {
                 return false;
             }
 
             foreach (int itemId in otherBoardItemIds)
             {
-                if (!TryGetColorAndTier(itemId, out OrbColor candidateColor, out int candidateTier) || candidateColor != color)
+                if (!TryGetOrbGroupAndTier(itemId, out int candidateGroupId, out int candidateTier) || candidateGroupId != orbGroupId)
                 {
                     continue;
                 }

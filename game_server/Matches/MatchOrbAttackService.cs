@@ -23,7 +23,7 @@ internal sealed class MatchOrbAttackService(
     private static readonly bool SwarmCrossfireEnabled = true;
     private static long _lastEventId;
 
-    public static bool IsSunCrossfireWeapon(int weaponItemId) => SwarmCrossfireEnabled && OrbData.TryGetColorAndTier(weaponItemId, out var color, out _) && color == OrbColor.Red;
+    public static bool IsSunCrossfireWeapon(int weaponItemId) => SwarmCrossfireEnabled && OrbData.TryGetOrbGroupAndTier(weaponItemId, out var orbGroupId, out _) && orbGroupId == OrbGroupIds.Sun;
     public static long AllocateEventId() => Interlocked.Increment(ref _lastEventId);
 
     public static int CountTelegraphing(IReadOnlyList<SwarmCrossfireShape> shapes, long ownerId, DateTime nowUtc)

@@ -89,11 +89,7 @@ internal class MatchCombatService(
         orbAttacks.ProcessWaveDetonations(runtime, nowUtc);
         foreach (var player in runtime.GetAlivePlayers())
         {
-            playerOrbs.ActivateWaveOrbs(runtime, player, nowUtc);
-        }
-        foreach (var player in runtime.GetAlivePlayers())
-        {
-            playerOrbs.ActivateWindOrbs(runtime, player, nowUtc);
+            playerOrbs.ActivateOrbs(runtime, player, nowUtc);
         }
         orbAttacks.ProcessSunBurns(runtime, nowUtc);
         foreach (var damage in monsterContactDamages)
@@ -257,7 +253,7 @@ internal class MatchCombatService(
                 continue;
             }
 
-            if (OrbData.TryGetColorAndTier(attack.WeaponItemId, out var pvpColor, out _) && pvpColor is OrbColor.Red or OrbColor.Green)
+            if (OrbData.TryGetOrbGroupAndTier(attack.WeaponItemId, out var pvpGroupId, out _) && pvpGroupId is OrbGroupIds.Sun or OrbGroupIds.Wind)
             {
                 MatchCombatDamageService.BroadcastSwarmAttackVfxToTargetAndObservers(attack, sessions);
                 actorById ??= actors.GroupBy(actor => actor.PlayerId).ToDictionary(group => group.Key, group => group.First());

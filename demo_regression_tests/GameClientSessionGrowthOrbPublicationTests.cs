@@ -99,12 +99,12 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             var summon = connection.DeserializeSingle<G_TO_C_SUMMON_ORB_RESULT>(Protocol.G_TO_C_SUMMON_ORB_RESULT);
             Assert.True(summon.Success);
             var costs = connection.DeserializeSingle<G_TO_C_ORB_UPGRADE_INFO>(Protocol.G_TO_C_ORB_UPGRADE_INFO);
-            Assert.True(OrbData.TryGetColorAndTier(summon.SummonedItemId, out var color, out int tier));
+            Assert.True(OrbData.TryGetOrbGroupAndTier(summon.SummonedItemId, out var color, out int tier));
             int cost = color switch
             {
-                OrbColor.Red => costs.SunCost,
-                OrbColor.Green => costs.WindCost,
-                OrbColor.Blue => costs.WaveCost,
+                OrbGroupIds.Sun => costs.SunCost,
+                OrbGroupIds.Wind => costs.WindCost,
+                OrbGroupIds.Wave => costs.WaveCost,
                 _ => throw new InvalidOperationException("Unexpected orb color")
             };
             Assert.True(cost > 0);
@@ -115,7 +115,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 new C_TO_G_UPGRADE_ORB { Action = Config.ORB_UPGRADE_GROUP, TargetItemId = summon.SummonedItemId });
             var upgrade = connection.DeserializeSingle<G_TO_C_UPGRADE_ORB_RESULT>(Protocol.G_TO_C_UPGRADE_ORB_RESULT);
             Assert.True(upgrade.Success);
-            Assert.True(OrbData.TryGetColorAndTier(upgrade.ResultItemId, out var upgradedColor, out int upgradedTier));
+            Assert.True(OrbData.TryGetOrbGroupAndTier(upgrade.ResultItemId, out var upgradedColor, out int upgradedTier));
             Assert.Equal(color, upgradedColor);
             Assert.Equal(tier + 1, upgradedTier);
             Assert.Equal(stonesBefore - cost, upgrade.StoneCount);
@@ -285,10 +285,10 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
 
     [Theory]
-    [InlineData(OrbColor.Red)]
-    [InlineData(OrbColor.Green)]
-    [InlineData(OrbColor.Blue)]
-    public async Task OrbUpgrade_InvalidAndSuccess_PreserveExactStateAndWire(OrbColor color)
+    [InlineData(OrbGroupIds.Sun)]
+    [InlineData(OrbGroupIds.Wind)]
+    [InlineData(OrbGroupIds.Wave)]
+    public async Task OrbUpgrade_InvalidAndSuccess_PreserveExactStateAndWire(int color)
     {
         using var fixture = new SessionFixture();
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
@@ -420,7 +420,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         int upgradeCost = Math.Min(
             Config.SWARM_GROWTH_COST_CAP,
             Config.GetSwarmGrowthBaseCost(0));
-        Assert.True(OrbData.TryGetItemId(OrbColor.Red, 2, out int upgradedItemId));
+        Assert.True(OrbData.TryGetItemId(OrbGroupIds.Sun, 2, out int upgradedItemId));
         connection.ThrowOnceOn = Protocol.G_TO_C_ORB_UPGRADE_INFO;
 
         await SendAsync(
@@ -472,7 +472,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Config.SWARM_ORB_CAPACITY, out var original));
         TestGameSessionServices.AddSummonStones(runtime, FirstPlayerId, 20);
         int cost = Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(0));
-        Assert.True(OrbData.TryGetItemId(OrbColor.Red, 2, out int upgradedItemId));
+        Assert.True(OrbData.TryGetItemId(OrbGroupIds.Sun, 2, out int upgradedItemId));
         var connection = fixture.ConnectionFor(session);
         connection.BeforeSend = _ =>
         {

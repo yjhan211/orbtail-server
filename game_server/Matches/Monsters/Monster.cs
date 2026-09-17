@@ -17,7 +17,7 @@ public sealed class Monster
     public MonsterInfo Info { get; } = new()
     {
         ObjectInfo = new GameObjectInfo { ObjectType = ObjectType.MONSTER, MapId = Config.SWARM_MATCH_MAP },
-        RewardItemId = OrbData.GetTierOneItemId(OrbColor.Red)
+        RewardItemId = OrbData.GetTierOneItemId(OrbGroupIds.Sun)
     };
 
     public int MonsterId { get => Info.MonsterId; init => Info.MonsterId = value; }
@@ -30,9 +30,9 @@ public sealed class Monster
             _insignia = value;
             Info.RewardItemId = value switch
             {
-                MonsterInsignia.Sun => OrbData.GetTierOneItemId(OrbColor.Red),
-                MonsterInsignia.Wind => OrbData.GetTierOneItemId(OrbColor.Green),
-                _ => OrbData.GetTierOneItemId(OrbColor.Blue)
+                MonsterInsignia.Sun => OrbData.GetTierOneItemId(OrbGroupIds.Sun),
+                MonsterInsignia.Wind => OrbData.GetTierOneItemId(OrbGroupIds.Wind),
+                _ => OrbData.GetTierOneItemId(OrbGroupIds.Wave)
             };
         }
     }

@@ -16,23 +16,23 @@ internal sealed class PlayerOrbGrowthService(ILogger<PlayerOrbGrowthService> log
     public static IReadOnlyList<int> SummonPoolItemIds => SummonPool;
     private static int[] BuildSummonPool()
     {
-        (OrbColor Color, bool Enabled)[] lines =
+        (int OrbGroupId, bool Enabled)[] lines =
         {
-            (OrbColor.Red, Config.SWARM_SUN_ORB_ENABLED),
-            (OrbColor.Green, Config.SWARM_WIND_ORB_ENABLED),
-            (OrbColor.Blue, Config.SWARM_WAVE_ORB_ENABLED)
+            (OrbGroupIds.Sun, Config.SWARM_SUN_ORB_ENABLED),
+            (OrbGroupIds.Wind, Config.SWARM_WIND_ORB_ENABLED),
+            (OrbGroupIds.Wave, Config.SWARM_WAVE_ORB_ENABLED)
         };
         var pool = new List<int>();
-        foreach (var (color, enabled) in lines)
+        foreach (var (orbGroupId, enabled) in lines)
         {
             if (!enabled)
             {
                 continue;
             }
-            int itemId = OrbData.GetTierOneItemId(color);
+            int itemId = OrbData.GetTierOneItemId(orbGroupId);
             if (itemId <= 0)
             {
-                throw new InvalidOperationException($"battle_item_combat.csv has no tier 1 orb for {color}.");
+                throw new InvalidOperationException($"battle_item_combat.csv has no tier 1 orb for {orbGroupId}.");
             }
             pool.Add(itemId);
         }
@@ -218,9 +218,9 @@ internal sealed class PlayerOrbGrowthService(ILogger<PlayerOrbGrowthService> log
             throw new InvalidOperationException("Orb growth operations require the match lock.");
         }
 
-        int sunOrbGroupId = OrbData.GetTierOneItemId(OrbColor.Red) / 10;
-        int windOrbGroupId = OrbData.GetTierOneItemId(OrbColor.Green) / 10;
-        int waveOrbGroupId = OrbData.GetTierOneItemId(OrbColor.Blue) / 10;
+        int sunOrbGroupId = OrbGroupIds.Sun;
+        int windOrbGroupId = OrbGroupIds.Wind;
+        int waveOrbGroupId = OrbGroupIds.Wave;
 
         return new G_TO_C_ORB_UPGRADE_INFO
         {

@@ -20,11 +20,11 @@ public sealed class WindOrbAttackServiceTests
         var match = store.GetOrCreate(947503);
         var owner = new Bot { PlayerId = 11 };
         var service = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService(), new PlayerOrbTrailService());
-        Assert.Throws<InvalidOperationException>(() => service.ActivateWindOrbs(match, owner.Player, DateTime.UtcNow));
+        Assert.Throws<InvalidOperationException>(() => service.ActivateOrbs(match, owner.Player, DateTime.UtcNow));
         using (match.Enter())
         {
             match.TryMarkEnded();
-            service.ActivateWindOrbs(match, owner.Player, DateTime.UtcNow);
+            service.ActivateOrbs(match, owner.Player, DateTime.UtcNow);
         }
     }
 
@@ -46,7 +46,7 @@ public sealed class WindOrbAttackServiceTests
             var origin = trails.GetOrbPosition(match, owner.Player, 0, new Vector3f(0, 0, 0), PlayerOrbTrailService.GetOrbTiersInOrder(match, owner.Player));
             owner.Player.Position = new Vector3f(0, 0, 0);
             victim.Player.Position = origin;
-            service.ActivateWindOrbs(match, owner.Player, now);
+            service.ActivateOrbs(match, owner.Player, now);
             var hitAt = now;
             int expected = Math.Max(1, (int)MathF.Round(
                 Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE)));
@@ -54,7 +54,7 @@ public sealed class WindOrbAttackServiceTests
             Assert.True(victim.Player.StatusEffects.IsActive(PlayerStatusEffectKind.Wound, hitAt));
             Assert.Equal(Config.MAX_HEALTH, owner.Player.Health);
 
-            service.ActivateWindOrbs(match, owner.Player, hitAt.AddSeconds(Config.SWARM_WIND_BLADE_TICK_SECONDS + 0.001));
+            service.ActivateOrbs(match, owner.Player, hitAt.AddSeconds(Config.SWARM_WIND_BLADE_TICK_SECONDS + 0.001));
             Assert.Equal(Config.MAX_HEALTH - expected, victim.Player.Health);
             match.TryMarkEnded();
         }
@@ -81,8 +81,8 @@ public sealed class WindOrbAttackServiceTests
             victim.Player.Position = origin;
             if (otherArea) victim.Player.Position = TestMapPosition.In(AreaType.S2Library1);
             var now = DateTime.UtcNow;
-            service.ActivateWindOrbs(match, owner.Player, now);
-            service.ActivateWindOrbs(match, owner.Player, now.AddSeconds(1));
+            service.ActivateOrbs(match, owner.Player, now);
+            service.ActivateOrbs(match, owner.Player, now.AddSeconds(1));
             Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
             Assert.False(victim.Player.StatusEffects.IsActive(PlayerStatusEffectKind.Wound, now.AddSeconds(1)));
             match.TryMarkEnded();

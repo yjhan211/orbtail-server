@@ -176,5 +176,5 @@ public class PlayerOrbState
         return _items.Values.ToList();
     }
 
-    internal static int GetOrbTier(int itemId) => OrbData.TryGetColorAndTier(itemId, out _, out int attackTier) ? attackTier : 0;
+    internal static int GetOrbTier(int itemId) => OrbData.TryGetOrbGroupAndTier(itemId, out _, out int attackTier) ? attackTier : 0;
 }
