@@ -1,3 +1,4 @@
+using network.common.data;
 using game_server.matches.monsters;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -25,7 +26,7 @@ public sealed class MatchMonstersTests
         }
 
         Assert.Equal(2, groups.Count);
-        Assert.All(groups, group => Assert.All(group.Value, monster => Assert.Equal(group.Key, monster.AreaType)));
+        Assert.All(groups, group => Assert.All(group.Value, monster => Assert.Equal(group.Key, GameMapData.GetCurrentArea(monster.ObjectInfo.MapId, monster.ObjectInfo.Cell))));
         Assert.Equal(Enumerable.Range(1, 12), groups[AreaType.S2Classroom2].Select(monster => monster.MonsterId));
         Assert.Single(groups[AreaType.S2Gym1]);
     }

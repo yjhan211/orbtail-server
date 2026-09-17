@@ -130,7 +130,7 @@ internal class MatchFieldService(
             }));
             foreach (var viewer in runtime.GetPlayers())
             {
-                if (viewer.GameInfo.ObjectInfo.Area == cutArea)
+                if (GameMapData.GetCurrentArea(viewer.GameInfo.ObjectInfo.MapId, viewer.GameInfo.ObjectInfo.Cell) == cutArea)
                 {
                     viewer.Session?.TrySend(ringPacket);
                 }

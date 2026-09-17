@@ -9,9 +9,7 @@ namespace game_server.players;
 ///     매치 잠금 안에서 플레이어가 보유한 오브의 공격 발동을 처리한다.
 ///     발동 시각은 PlayerOrbState가, 지속 중인 공격은 MatchRuntime이 소유한다.
 /// </summary>
-internal sealed class PlayerOrbService(
-    MatchOrbAttackService orbAttacks,
-    PlayerOrbTrailService orbTrails)
+internal sealed class PlayerOrbService(PlayerOrbTrailService orbTrails)
 {
     public void ActivateOrbs(MatchRuntime runtime, Player owner, DateTime nowUtc)
     {
@@ -58,7 +56,7 @@ internal sealed class PlayerOrbService(
             var orbPosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, owner.Position, orbTiers);
             bool consumeAttackInterval = orbGroupId switch
             {
-                OrbGroupIds.Wind => ActivateWindOrb(runtime, owner, orb, tier, orbPosition, attackMultiplier, nowUtc),
+                OrbGroupIds.Wind => ActivateWindOrb(runtime, owner, orb, tier, orbPosition, attackMultiplier),
                 OrbGroupIds.Wave => ActivateWaveOrb(runtime, owner, orb, orbPosition, attackMultiplier, appliesSlow, nowUtc),
                 OrbGroupIds.Sun => ActivateSunOrb(runtime, owner, orb, ordinal, tier, orbPosition, attackMultiplier, nowUtc),
                 _ => false
@@ -72,13 +70,13 @@ internal sealed class PlayerOrbService(
 
     private bool ActivateSunOrb(MatchRuntime runtime, Player owner, InGameItemInfo orb, int ordinal, int tier, Vector3f origin, float attackMultiplier, DateTime nowUtc)
     {
-        var ownerArea = owner.GameInfo.ObjectInfo.Area;
-        float range = Config.TierValue(Config.SWARM_CROSSFIRE_SUN_RANGE_BY_TIER, tier);
-        var (monsters, players) = MatchOrbAttackService.CollectTargetsInRadius(runtime, owner.PlayerId, ownerArea, origin, range, padBodyRadius: false);
+        var ownerArea = GameMapData.GetCurrentArea(owner.GameInfo.ObjectInfo.MapId, owner.GameInfo.ObjectInfo.Cell);
+        float range = Config.TierValue(Config.SWARM_SUN_RANGE_BY_TIER, tier);
+        var (monsters, players) = MatchOrbTarget.CollectTargetsInRadius(runtime, owner.PlayerId, ownerArea, origin, range);
 
         // 이미 겨눈 표적은 제외
         var anchoredTargets = new HashSet<(ObjectType Type, long Id)>();
-        foreach (var shape in runtime.SunCrossfireShapes)
+        foreach (var shape in runtime.PendingSunAttacks)
         {
             if (shape.OwnerId == owner.PlayerId)
             {
@@ -157,7 +155,7 @@ internal sealed class PlayerOrbService(
         var nextCell = new Cell(originCell.X + stepX, originCell.Y + stepY);
         var nextPosition = MapCoordinateConverter.CellToWorld(mapId, nextCell);
         float groundLengthPerCell = GroundGeometry.GroundDistance(origin, nextPosition);
-        float maxGroundLength = Config.SWARM_CROSSFIRE_SUN_MAX_GROUND_LENGTH;
+        float maxGroundLength = Config.SWARM_SUN_MAX_GROUND_LENGTH;
         int maxCellSteps = (int)MathF.Floor(maxGroundLength / groundLengthPerCell);
         var endCell = originCell;
         bool detonateAtWall = false;
@@ -182,13 +180,13 @@ internal sealed class PlayerOrbService(
             return false;
         }
 
-        float width = Config.TierValue(Config.SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER, tier);
-        int damage = OrbData.GetAttackDamage(orb.ItemId, attackMultiplier, Config.SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER);
+        float width = Config.TierValue(Config.SWARM_SUN_WIDTH_BY_TIER, tier);
+        int damage = OrbData.GetAttackDamage(orb.ItemId, attackMultiplier, Config.SWARM_SUN_DAMAGE_MULTIPLIER);
 
-        float sweepSeconds = (selectedLength + width) / Config.SWARM_CROSSFIRE_SUN_SWEEP_SPEED;
-        long eventId = MatchOrbAttackService.AllocateEventId();
+        float sweepSeconds = (selectedLength + width) / Config.SWARM_SUN_SWEEP_SPEED;
+        long eventId = PendingSunAttack.AllocateEventId();
         var armedAtUtc = nowUtc.AddSeconds(Config.SWARM_SUN_ORB_ATTACK_WINDUP_SECONDS);
-        runtime.SunCrossfireShapes.Add(new SwarmCrossfireShape
+        runtime.PendingSunAttacks.Add(new PendingSunAttack
         {
             EventId = eventId,
             OwnerId = owner.PlayerId,
@@ -213,13 +211,14 @@ internal sealed class PlayerOrbService(
     /// </summary>
     private bool ActivateWaveOrb(MatchRuntime runtime, Player owner, InGameItemInfo orb, Vector3f orbPosition, float attackMultiplier, bool appliesSlow, DateTime nowUtc)
     {
-        var ownerArea = owner.GameInfo.ObjectInfo.Area;
+        var ownerArea = GameMapData.GetCurrentArea(owner.GameInfo.ObjectInfo.MapId, owner.GameInfo.ObjectInfo.Cell);
         float radius = OrbData.GetWaveVortexRadius(orb.ItemId);
         if (radius <= 0f)
         {
             return false;
         }
-        if (!MatchOrbAttackService.HasTargetInRadius(runtime, owner.PlayerId, ownerArea, orbPosition, radius))
+        var (monsters, players) = MatchOrbTarget.CollectTargetsInRadius(runtime, owner.PlayerId, ownerArea, orbPosition, radius);
+        if (monsters.Count == 0 && players.Count == 0)
         {
             return false;
         }
@@ -230,14 +229,14 @@ internal sealed class PlayerOrbService(
     }
 
     /// <summary>
-    ///     바람 공격의 범위와 피해량을 계산하고 즉시 공격 처리를 호출한다.
+    ///     바람 공격의 범위와 피해량을 계산해 대기열에 등록한다. 같은 틱에 MatchOrbAttackService가 적용한다.
     ///     대상 유무와 관계없이 공격 주기를 소비한다.
     /// </summary>
-    private bool ActivateWindOrb(MatchRuntime runtime, Player owner, InGameItemInfo orb, int tier, Vector3f orbPosition, float attackMultiplier, DateTime nowUtc)
+    private bool ActivateWindOrb(MatchRuntime runtime, Player owner, InGameItemInfo orb, int tier, Vector3f orbPosition, float attackMultiplier)
     {
         float radius = Config.TierValue(Config.SWARM_WIND_BLADE_RADIUS_BY_TIER, tier);
         int damage = OrbData.GetAttackDamage(orb.ItemId, attackMultiplier, Config.SWARM_WIND_BLADE_DAMAGE_MULTIPLIER);
-        orbAttacks.ProcessWindAttack(runtime, owner, orb.ItemId, orbPosition, radius, damage, nowUtc);
+        runtime.PendingWindAttacks.Add(new PendingWindAttack(owner.PlayerId, orb.ItemId, orbPosition, radius, damage));
         return true;
     }
 }

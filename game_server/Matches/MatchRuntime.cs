@@ -1,3 +1,4 @@
+using network.common.data;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
@@ -34,7 +35,7 @@ internal sealed class MatchRuntime
         Monsters.Entities.Remove(monster.MonsterId);
         var states = new Dictionary<AreaType, List<MonsterInfo>>
         {
-            [monster.Area] = [monster.ToMonsterInfo()]
+            [GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell)] = [monster.ToMonsterInfo()]
         };
         foreach (var session in GetSessions())
         {
@@ -90,10 +91,11 @@ internal sealed class MatchRuntime
     public MatchMonsters Monsters { get; }
 
     // 전투와 오브
-    public MatchCombatDamageState CombatDamage { get; } = new();
+    public Random CriticalRng { get; } = new();
     public Dictionary<(long CutterId, long VictimId), CutRetaliationWindow> CutRetaliationWindows { get; } = new();
-    public List<SwarmCrossfireShape> SunCrossfireShapes { get; } = new();
+    public List<PendingSunAttack> PendingSunAttacks { get; } = new();
     public List<PendingWaveAttack> PendingWaveAttacks { get; } = new();
+    public List<PendingWindAttack> PendingWindAttacks { get; } = new();
 
     // 아이템과 재화
     public MatchGroundItemState GroundItems { get; }

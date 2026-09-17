@@ -213,22 +213,22 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         // 처음 본 오브는 첫 위상(주기의 최대 1.5배)만 심으므로 그 뒤 틱에서 발동한다.
         orbService.ActivateOrbs(runtime, human, now);
         orbService.ActivateOrbs(runtime, bot, now);
-        Assert.Empty(runtime.SunCrossfireShapes);
+        Assert.Empty(runtime.PendingSunAttacks);
         now = now.AddSeconds(3);
         orbService.ActivateOrbs(runtime, human, now);
         orbService.ActivateOrbs(runtime, bot, now);
 
-        Assert.Equal(2, runtime.SunCrossfireShapes.Count);
-        Assert.Equal(new[] { human.PlayerId, bot.PlayerId }, runtime.SunCrossfireShapes.Select(shape => shape.OwnerId));
-        Assert.Equal((ObjectType.PLAYER, bot.PlayerId), runtime.SunCrossfireShapes[0].AnchorTarget);
-        Assert.Equal((ObjectType.PLAYER, human.PlayerId), runtime.SunCrossfireShapes[1].AnchorTarget);
-        Assert.Equal(runtime.SunCrossfireShapes[0].Damage, runtime.SunCrossfireShapes[1].Damage);
+        Assert.Equal(2, runtime.PendingSunAttacks.Count);
+        Assert.Equal(new[] { human.PlayerId, bot.PlayerId }, runtime.PendingSunAttacks.Select(shape => shape.OwnerId));
+        Assert.Equal((ObjectType.PLAYER, bot.PlayerId), runtime.PendingSunAttacks[0].AnchorTarget);
+        Assert.Equal((ObjectType.PLAYER, human.PlayerId), runtime.PendingSunAttacks[1].AnchorTarget);
+        Assert.Equal(runtime.PendingSunAttacks[0].Damage, runtime.PendingSunAttacks[1].Damage);
         Assert.Null(human.Session);
         Assert.Null(bot.Session);
 
         // 같은 틱에 다시 발동해도 이미 겨눈 표적은 다시 고르지 않는다.
         orbService.ActivateOrbs(runtime, human, now);
-        Assert.Equal(2, runtime.SunCrossfireShapes.Count);
+        Assert.Equal(2, runtime.PendingSunAttacks.Count);
     }
 
     // 수면은 이동과 회복만 바꾼다. 보유 오브는 자는 동안에도 발동한다.
@@ -253,7 +253,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         orbService.ActivateOrbs(runtime, owner, now.AddSeconds(3));
 
         Assert.True(owner.IsSleeping);
-        var shape = Assert.Single(runtime.SunCrossfireShapes);
+        var shape = Assert.Single(runtime.PendingSunAttacks);
         Assert.Equal(owner.PlayerId, shape.OwnerId);
     }
 

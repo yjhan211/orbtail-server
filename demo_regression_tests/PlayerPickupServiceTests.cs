@@ -1,3 +1,4 @@
+using network.common.data;
 using game_server.matches;
 using game_server.players;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -26,7 +27,7 @@ public sealed class PlayerPickupServiceTests
             PlayerPickupService.AddReachableItemsInArea(
                 player,
                 match.GroundItems,
-                player.GameInfo.ObjectInfo.Area,
+                GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell),
                 player.Position,
                 player.Position);
 
@@ -92,7 +93,7 @@ public sealed class PlayerPickupServiceTests
         };
         player.ReachableItems.TryAdd(
             long.MaxValue,
-            new Player.ReachableItem(long.MaxValue, player.GameInfo.ObjectInfo.Area, player.Position));
+            new Player.ReachableItem(long.MaxValue, GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell), player.Position));
         int healthBeforePickup = player.Health;
 
         using (match.Enter())
@@ -173,13 +174,13 @@ public sealed class PlayerPickupServiceTests
             match.RegisterPlayer(player);
             var service = CreateService(store);
 
-            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, player.GameInfo.ObjectInfo.Area, player.Position, player.Position);
+            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell), player.Position, player.Position);
             service.PickUp(match, player);
             Assert.NotNull(match.GroundItems.GetItem(item.GroundItemUid));
             Assert.Equal(Config.MAX_HEALTH, player.Health);
 
             player.Health = Config.MAX_HEALTH - 1;
-            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, player.GameInfo.ObjectInfo.Area, player.Position, player.Position);
+            PlayerPickupService.AddReachableItemsInArea(player, match.GroundItems, GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell), player.Position, player.Position);
             service.PickUp(match, player);
             Assert.Null(match.GroundItems.GetItem(item.GroundItemUid));
             Assert.Equal(Config.MAX_HEALTH, player.Health);

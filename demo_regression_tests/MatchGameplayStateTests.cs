@@ -17,6 +17,13 @@ public sealed class MatchGameplayStateTests
         var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         foreach (var kind in Enum.GetValues<PlayerStatusEffectKind>())
         {
+            // 수면과 화상은 끝나는 규칙이 달라 전용 메서드로만 건다.
+            if (kind is PlayerStatusEffectKind.Sleep or PlayerStatusEffectKind.SunBurn)
+            {
+                Assert.Throws<ArgumentException>(() => effects.Apply(kind, now.AddSeconds(5)));
+                continue;
+            }
+
             Assert.False(effects.IsActive(kind, now));
             effects.Apply(kind, now.AddSeconds(5));
             Assert.True(effects.IsActive(kind, now.AddSeconds(5).AddTicks(-1)));
@@ -28,6 +35,36 @@ public sealed class MatchGameplayStateTests
             Assert.False(effects.IsActive(kind, now.AddSeconds(2)));
             Assert.True(effects.TryApply(kind, now.AddSeconds(2), 3));
         }
+    }
+
+    [Fact]
+    public void SleepAndSunBurnShareTheEffectStoreButKeepTheirOwnEndRules()
+    {
+        var effects = new PlayerStatusEffects();
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        // 수면은 시간이 아무리 지나도 깨울 때까지 걸려 있다.
+        Assert.False(effects.IsActive(PlayerStatusEffectKind.Sleep, now));
+        effects.StartSleep();
+        Assert.True(effects.HasSleep());
+        Assert.True(effects.IsActive(PlayerStatusEffectKind.Sleep, now.AddHours(1)));
+        Assert.Equal(default, effects.GetExpiresAt(PlayerStatusEffectKind.Sleep));
+        effects.StopSleep();
+        Assert.False(effects.IsActive(PlayerStatusEffectKind.Sleep, now));
+
+        // 화상은 현재 시각이 아니라 남은 도트로 끝난다.
+        effects.ApplySunBurn(new PlayerStatusEffects.SunBurnState(1, 107000010, AreaType.S2Gym1, now.AddSeconds(3), now.AddSeconds(3)));
+        Assert.True(effects.IsActive(PlayerStatusEffectKind.SunBurn, now.AddSeconds(10)));
+        Assert.Equal(now.AddSeconds(3), effects.GetExpiresAt(PlayerStatusEffectKind.SunBurn));
+        effects.ApplySunBurn(effects.SunBurn! with { NextTickAtUtc = now.AddSeconds(4) });
+        Assert.False(effects.IsActive(PlayerStatusEffectKind.SunBurn, now));
+        Assert.Null(effects.SunBurn);
+
+        // 서로의 상태를 건드리지 않는다.
+        effects.Apply(PlayerStatusEffectKind.Wound, now.AddSeconds(5));
+        effects.StartSleep();
+        Assert.True(effects.IsActive(PlayerStatusEffectKind.Wound, now));
+        Assert.True(effects.HasSleep());
     }
 
     private static Player GetOrRegisterPlayer(MatchRuntime runtime, long playerId)
@@ -138,28 +175,28 @@ public sealed class MatchGameplayStateTests
         Assert.Equal(1, GetOrRegisterPlayer(second, playerId).Orbs.IncrementUpgradeCount(SunOrbGroupId));
         Assert.Equal(1, GetOrRegisterPlayer(first, playerId).Orbs.GetUpgradeCount(SunOrbGroupId));
 
-        first.SunCrossfireShapes.Add(CreateCrossfireShape(
+        first.PendingSunAttacks.Add(CreatePendingSunAttack(
             eventId: 11,
             ownerId: playerId,
             anchorPlayerId: 7001,
             armedAtUtc: nowUtc.AddSeconds(1)));
-        GetOrRegisterPlayer(first, playerId).StatusEffects.SunBurn = new PlayerStatusEffects.SunBurnState(playerId, 101, AreaType.S2Gym1, nowUtc.AddSeconds(3), nowUtc.AddSeconds(1));
+        GetOrRegisterPlayer(first, playerId).StatusEffects.ApplySunBurn(new PlayerStatusEffects.SunBurnState(playerId, 101, AreaType.S2Gym1, nowUtc.AddSeconds(3), nowUtc.AddSeconds(1)));
 
-        Assert.Single(first.SunCrossfireShapes);
-        Assert.Empty(second.SunCrossfireShapes);
+        Assert.Single(first.PendingSunAttacks);
+        Assert.Empty(second.PendingSunAttacks);
         Assert.Null(GetOrRegisterPlayer(second, playerId).StatusEffects.SunBurn);
 
-        second.SunCrossfireShapes.Add(CreateCrossfireShape(
+        second.PendingSunAttacks.Add(CreatePendingSunAttack(
             eventId: 12,
             ownerId: playerId,
             anchorPlayerId: 7001,
             armedAtUtc: nowUtc.AddSeconds(1)));
-        GetOrRegisterPlayer(second, playerId).StatusEffects.SunBurn = new PlayerStatusEffects.SunBurnState(playerId + 1, 202, AreaType.S2Gym1, nowUtc.AddSeconds(4), nowUtc.AddSeconds(2));
+        GetOrRegisterPlayer(second, playerId).StatusEffects.ApplySunBurn(new PlayerStatusEffects.SunBurnState(playerId + 1, 202, AreaType.S2Gym1, nowUtc.AddSeconds(4), nowUtc.AddSeconds(2)));
 
-        Assert.Single(first.SunCrossfireShapes);
-        Assert.Single(second.SunCrossfireShapes);
-        Assert.Equal(playerId, GetOrRegisterPlayer(first, playerId).StatusEffects.SunBurn!.Value.OwnerId);
-        Assert.Equal(playerId + 1, GetOrRegisterPlayer(second, playerId).StatusEffects.SunBurn!.Value.OwnerId);
+        Assert.Single(first.PendingSunAttacks);
+        Assert.Single(second.PendingSunAttacks);
+        Assert.Equal(playerId, GetOrRegisterPlayer(first, playerId).StatusEffects.SunBurn!.OwnerId);
+        Assert.Equal(playerId + 1, GetOrRegisterPlayer(second, playerId).StatusEffects.SunBurn!.OwnerId);
     }
 
     [Fact]
@@ -170,7 +207,7 @@ public sealed class MatchGameplayStateTests
         const long siblingMatchingId = 42006;
         const long removedPlayerId = 501;
         const long siblingPlayerId = 601;
-        DateTime crossfireNowUtc = new(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
+        DateTime sunAttackNowUtc = new(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
 
         MatchRuntime removed = store.GetOrCreate(removedMatchingId);
         MatchRuntime sibling = store.GetOrCreate(siblingMatchingId);
@@ -178,22 +215,22 @@ public sealed class MatchGameplayStateTests
         GetOrRegisterPlayer(removed, removedPlayerId).Orbs.OrbTrail.Add(new Vector3f(0f, 0f, 0f));
         GetOrRegisterPlayer(removed, removedPlayerId).StatusEffects.Apply(PlayerStatusEffectKind.Wound, DateTime.MaxValue);
         GetOrRegisterPlayer(removed, removedPlayerId).Orbs.IncrementUpgradeCount(WindOrbGroupId);
-        removed.SunCrossfireShapes.Add(CreateCrossfireShape(
+        removed.PendingSunAttacks.Add(CreatePendingSunAttack(
             eventId: 11,
             ownerId: removedPlayerId,
             anchorPlayerId: 7001,
-            armedAtUtc: crossfireNowUtc.AddSeconds(1)));
-        GetOrRegisterPlayer(removed, removedPlayerId).StatusEffects.SunBurn = new PlayerStatusEffects.SunBurnState(removedPlayerId, 101, AreaType.S2Gym1, crossfireNowUtc.AddSeconds(3d), crossfireNowUtc.AddSeconds(1d));
+            armedAtUtc: sunAttackNowUtc.AddSeconds(1)));
+        GetOrRegisterPlayer(removed, removedPlayerId).StatusEffects.ApplySunBurn(new PlayerStatusEffects.SunBurnState(removedPlayerId, 101, AreaType.S2Gym1, sunAttackNowUtc.AddSeconds(3d), sunAttackNowUtc.AddSeconds(1d)));
 
         GetOrRegisterPlayer(sibling, siblingPlayerId).Orbs.OrbTrail.Add(new Vector3f(0f, 0f, 0f));
         GetOrRegisterPlayer(sibling, siblingPlayerId).StatusEffects.Apply(PlayerStatusEffectKind.Wound, DateTime.MaxValue);
         GetOrRegisterPlayer(sibling, siblingPlayerId).Orbs.IncrementUpgradeCount(WaveOrbGroupId);
-        sibling.SunCrossfireShapes.Add(CreateCrossfireShape(
+        sibling.PendingSunAttacks.Add(CreatePendingSunAttack(
             eventId: 12,
             ownerId: siblingPlayerId,
             anchorPlayerId: 8001,
-            armedAtUtc: crossfireNowUtc.AddSeconds(1)));
-        GetOrRegisterPlayer(sibling, siblingPlayerId).StatusEffects.SunBurn = new PlayerStatusEffects.SunBurnState(siblingPlayerId, 202, AreaType.S2Gym1, crossfireNowUtc.AddSeconds(4d), crossfireNowUtc.AddSeconds(2d));
+            armedAtUtc: sunAttackNowUtc.AddSeconds(1)));
+        GetOrRegisterPlayer(sibling, siblingPlayerId).StatusEffects.ApplySunBurn(new PlayerStatusEffects.SunBurnState(siblingPlayerId, 202, AreaType.S2Gym1, sunAttackNowUtc.AddSeconds(4d), sunAttackNowUtc.AddSeconds(2d)));
 
         Assert.True(store.Remove(removedMatchingId));
 
@@ -204,8 +241,8 @@ public sealed class MatchGameplayStateTests
         Assert.Single(GetOrRegisterPlayer(sibling, siblingPlayerId).Orbs.OrbTrail);
         Assert.True(GetOrRegisterPlayer(sibling, siblingPlayerId).StatusEffects.IsActive(PlayerStatusEffectKind.Wound, DateTime.UtcNow));
         Assert.Equal(1, GetOrRegisterPlayer(sibling, siblingPlayerId).Orbs.GetUpgradeCount(WaveOrbGroupId));
-        Assert.Single(sibling.SunCrossfireShapes);
-        Assert.Equal(siblingPlayerId, GetOrRegisterPlayer(sibling, siblingPlayerId).StatusEffects.SunBurn!.Value.OwnerId);
+        Assert.Single(sibling.PendingSunAttacks);
+        Assert.Equal(siblingPlayerId, GetOrRegisterPlayer(sibling, siblingPlayerId).StatusEffects.SunBurn!.OwnerId);
         Assert.Equal(1, store.Count);
 
         MatchRuntime replacement = store.GetOrCreate(removedMatchingId);
@@ -213,8 +250,8 @@ public sealed class MatchGameplayStateTests
         Assert.Empty(GetOrRegisterPlayer(replacement, removedPlayerId).Orbs.OrbTrail);
         Assert.False(GetOrRegisterPlayer(replacement, removedPlayerId).StatusEffects.IsActive(PlayerStatusEffectKind.Wound, DateTime.UtcNow));
         Assert.Equal(0, GetOrRegisterPlayer(replacement, removedPlayerId).Orbs.GetUpgradeCount(WindOrbGroupId));
-        Assert.NotSame(removed.SunCrossfireShapes, replacement.SunCrossfireShapes);
-        Assert.Empty(replacement.SunCrossfireShapes);
+        Assert.NotSame(removed.PendingSunAttacks, replacement.PendingSunAttacks);
+        Assert.Empty(replacement.PendingSunAttacks);
     }
 
     [Fact]
@@ -227,13 +264,13 @@ public sealed class MatchGameplayStateTests
         MatchRuntime first = store.GetOrCreate(firstMatchingId);
         MatchRuntime second = store.GetOrCreate(secondMatchingId);
 
-        long firstId = MatchOrbAttackService.AllocateEventId();
-        long secondId = MatchOrbAttackService.AllocateEventId();
+        long firstId = PendingSunAttack.AllocateEventId();
+        long secondId = PendingSunAttack.AllocateEventId();
         Assert.True(secondId > firstId);
 
         Assert.True(store.Remove(firstMatchingId));
         MatchRuntime recreated = store.GetOrCreate(firstMatchingId);
-        long recreatedId = MatchOrbAttackService.AllocateEventId();
+        long recreatedId = PendingSunAttack.AllocateEventId();
         Assert.True(recreatedId > secondId);
 
         var allocated = new ConcurrentBag<long>();
@@ -242,15 +279,15 @@ public sealed class MatchGameplayStateTests
             1000,
             index => allocated.Add(
                 (index & 1) == 0
-                    ? MatchOrbAttackService.AllocateEventId()
-                    : MatchOrbAttackService.AllocateEventId()));
+                    ? PendingSunAttack.AllocateEventId()
+                    : PendingSunAttack.AllocateEventId()));
 
         Assert.Equal(1000, allocated.Count);
         Assert.Equal(1000, allocated.Distinct().Count());
         Assert.True(allocated.Min() > recreatedId);
     }
 
-    private static SwarmCrossfireShape CreateCrossfireShape(
+    private static PendingSunAttack CreatePendingSunAttack(
         long eventId,
         long ownerId,
         long anchorPlayerId,

@@ -260,8 +260,8 @@ public sealed class GameClientSessionPublicationTests
         var session = fixture.CreateSession(70001, 102, (AreaType)50);
         using (session.Match.Enter())
         {
-            var combat = TestGameSessionServices.CreateCombatDamageService();
-            combat.ApplyProximityAutoCombatHit(session.Match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), session.Player, 101, (AreaType)50, 123, 5, isPeriodicDamage: true, sourceHealth: 73);
+            var combat = TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance));
+            combat.ApplyPlayerHit(session.Match, session.Player, 101, (AreaType)50, 123, 5, DateTime.UtcNow, isPeriodicDamage: true, sourceHealth: 73);
         }
         using (session.Match.Enter())
         {
@@ -289,14 +289,14 @@ public sealed class GameClientSessionPublicationTests
         int before = bot.Player.Health;
         using (match.Enter())
         {
-            TestGameSessionServices.CreateCombatDamageService().ApplyProximityAutoCombatHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), session.Player, 101, (AreaType)50, 123, 5);
-            TestGameSessionServices.CreateCombatDamageService().ApplyProximityAutoCombatHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), bot.Player, 101, (AreaType)50, 123, 5);
+            TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance)).ApplyPlayerHit(match, session.Player, 101, (AreaType)50, 123, 5, DateTime.UtcNow);
+            TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance)).ApplyPlayerHit(match, bot.Player, 101, (AreaType)50, 123, 5, DateTime.UtcNow);
         }
         Assert.Equal(before - 5, bot.Player.Health);
         Assert.Equal(session.Player.Health, bot.Player.Health);
         Assert.True(session.Player.TryStartSleep());
         Assert.True(bot.Player.TryStartSleep());
-        Assert.Equal(101, bot.LastProximityAttackerPlayerId);
+        Assert.Equal(101, bot.LastAttackerPlayerId);
         Assert.True(bot.LastDamagedAtUtc > DateTime.MinValue);
         Assert.NotEqual(DateTime.MinValue, bot.LastDamagedAtUtc);
         using (match.Enter())
@@ -314,21 +314,21 @@ public sealed class GameClientSessionPublicationTests
         var match = session.Match;
         var bot = new game_server.players.bots.Bot { PlayerId = -11 };
         bot.Player.Health = session.Player.Health;
-        bot.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(session.Player.GameInfo.ObjectInfo.Area)));
+        bot.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell))));
         match.Bots.GetBots().Add(bot);
         int before = bot.Player.Health;
         using (match.Enter())
         {
             if (match.GetPlayer(bot.PlayerId) == null) match.RegisterPlayer(bot.Player);
-            TestGameSessionServices.CreateCombatDamageService().ApplySwarmAfterimageMonsterHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), session.Player, 42, 5);
-            TestGameSessionServices.CreateCombatDamageService().ApplySwarmAfterimageMonsterHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), bot.Player, 42, 5);
+            TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance)).ApplyMonsterContactHit(match, session.Player, 42, 5, DateTime.UtcNow);
+            TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance)).ApplyMonsterContactHit(match, bot.Player, 42, 5, DateTime.UtcNow);
         }
         Assert.Equal(before - 5, bot.Player.Health);
         Assert.Equal(session.Player.Health, bot.Player.Health);
         Assert.True(session.Player.TryStartSleep());
         Assert.True(bot.Player.TryStartSleep());
         Assert.True(bot.LastDamagedAtUtc > DateTime.MinValue);
-        Assert.Equal(0, bot.LastProximityAttackerPlayerId);
+        Assert.Equal(0, bot.LastAttackerPlayerId);
         using (session.Match.Enter())
         {
             new MatchSynchronizationService().SendBatch(session.Match, new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, session.Match.GetSessions()));
@@ -342,7 +342,7 @@ public sealed class GameClientSessionPublicationTests
         using (match.Enter())
         {
             if (match.GetPlayer(bot.PlayerId) == null) match.RegisterPlayer(bot.Player);
-            TestGameSessionServices.CreateCombatDamageService().ApplySwarmAfterimageMonsterHit(match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), bot.Player, 42, Config.MAX_HEALTH);
+            TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance)).ApplyMonsterContactHit(match, bot.Player, 42, Config.MAX_HEALTH, DateTime.UtcNow);
             Assert.Equal(0, bot.Player.Health);
             Assert.True(bot.Player.IsEliminated);
         }
@@ -378,8 +378,8 @@ public sealed class GameClientSessionPublicationTests
         int healthBefore = session.Player.Health;
         using (session.Match.Enter())
         {
-            var combat = TestGameSessionServices.CreateCombatDamageService();
-            combat.ApplySwarmAfterimageMonsterHit(session.Match, TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance), session.Player, 42, 1);
+            var combat = TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance));
+            combat.ApplyMonsterContactHit(session.Match, session.Player, 42, 1, DateTime.UtcNow);
         }
         using (session.Match.Enter())
         {
@@ -1163,7 +1163,7 @@ public sealed class GameClientSessionPublicationTests
         using (match.Enter())
         {
             PlayerPickupService.AddReachableItemsForMovement(session.Match, session.Player,
-                session.Player.Position!, session.Player.Position!, session.Player.GameInfo.ObjectInfo.Area);
+                session.Player.Position!, session.Player.Position!, GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell));
             Assert.Single(session.Player.ReachableItems);
         }
 
@@ -1199,13 +1199,13 @@ public sealed class GameClientSessionPublicationTests
         var match = previous.Match;
         using (match.Enter())
             PlayerPickupService.AddReachableItemsForMovement(previous.Match, previous.Player,
-                previous.Player.Position!, previous.Player.Position!, previous.Player.GameInfo.ObjectInfo.Area);
+                previous.Player.Position!, previous.Player.Position!, GameMapData.GetCurrentArea(previous.Player.GameInfo.ObjectInfo.MapId, previous.Player.GameInfo.ObjectInfo.Cell));
 
         var registry = new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance);
         registry.Register(101, previous);
         using (match.Enter())
             PlayerPickupService.AddReachableItemsForMovement(match, previous.Player,
-                previous.Player.Position!, previous.Player.Position!, previous.Player.GameInfo.ObjectInfo.Area);
+                previous.Player.Position!, previous.Player.Position!, GameMapData.GetCurrentArea(previous.Player.GameInfo.ObjectInfo.MapId, previous.Player.GameInfo.ObjectInfo.Cell));
         var current = fixture.CreateSession(70001, 101, AreaType.S2Corridor9);
         registry.Register(101, current);
         TestGameSessionServices.SetMovementProperty(current, "Position", new Vector3f(item.PositionX + 20, item.PositionY, 0));
@@ -1236,7 +1236,7 @@ public sealed class GameClientSessionPublicationTests
             eliminations.EliminatePlayer(match, eliminated.Player, EliminationReason.HEALTH_ZERO, deferGameOver: true);
 
             Assert.Empty(TestGameSessionServices.Orbs(match, 101).GetAllOrbs());
-            Assert.Single(match.GroundItems.GetItemsInArea(eliminated.Player.GameInfo.ObjectInfo.Area));
+            Assert.Single(match.GroundItems.GetItemsInArea(GameMapData.GetCurrentArea(eliminated.Player.GameInfo.ObjectInfo.MapId, eliminated.Player.GameInfo.ObjectInfo.Cell)));
         }
         Assert.Equal([Protocol.G_TO_C_ORB_UPDATE, Protocol.G_TO_C_PLAYER_ELIMINATED, Protocol.G_TO_C_OBJECT_LEAVE], fixture.ConnectionFor(eliminated).DeliveredProtocols);
         Assert.Equal([Protocol.G_TO_C_PLAYER_ELIMINATED, Protocol.G_TO_C_OBJECT_LEAVE], fixture.ConnectionFor(observer).DeliveredProtocols);
@@ -1252,7 +1252,7 @@ public sealed class GameClientSessionPublicationTests
         var other = fixture.CreateSession(70001, 102, AreaType.S2Corridor9);
         var item = fixture.SpawnAtSession(owner, Config.SUMMON_STONE_GROUND_ITEM_ID);
         using (owner.Match.Enter())
-            owner.SendGroundItemEntries(owner.Player.GameInfo.ObjectInfo.Area);
+            owner.SendGroundItemEntries(GameMapData.GetCurrentArea(owner.Player.GameInfo.ObjectInfo.MapId, owner.Player.GameInfo.ObjectInfo.Cell));
         var snapshot = fixture.ConnectionFor(owner).DeserializeSingle<G_TO_C_OBJECT_ENTER>(
             Protocol.G_TO_C_OBJECT_ENTER);
         Assert.Equal(item.GroundItemUid, Assert.Single(snapshot.Items).GroundItemUid);
@@ -1422,7 +1422,7 @@ public sealed class GameClientSessionPublicationTests
         public GroundItemInfo SpawnAtSession(RecordingSession session, int itemId)
         {
             GroundItemInfo item = Store.GetOrThrow(session.MatchingId).GroundItems.SpawnItems(
-                session.Player.GameInfo.ObjectInfo.Area,
+                GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell),
                 session.Player.Position!.X,
                 session.Player.Position.Y,
                 [itemId]).Single();

@@ -19,9 +19,10 @@ public sealed class WindOrbAttackServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947503);
         var owner = new Bot { PlayerId = 11 };
-        var attacks = new MatchOrbAttackService(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService());
-        var service = new PlayerOrbService(attacks, new PlayerOrbTrailService());
-        Assert.Throws<InvalidOperationException>(() => attacks.ProcessWindAttack(match, owner.Player, 107000020, new Vector3f(), 1f, 1, DateTime.UtcNow));
+        var service = new PlayerOrbService(new PlayerOrbTrailService());
+        var attacks = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store)), service);
+        Assert.Throws<InvalidOperationException>(() => attacks.ProcessTick(match, DateTime.UtcNow));
+        Assert.Throws<InvalidOperationException>(() => attacks.ProcessWindAttacks(match, DateTime.UtcNow));
         Assert.Throws<InvalidOperationException>(() => service.ActivateOrbs(match, owner.Player, DateTime.UtcNow));
         using (match.Enter())
         {
@@ -36,7 +37,8 @@ public sealed class WindOrbAttackServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947501);
         var trails = new PlayerOrbTrailService();
-        var service = new PlayerOrbService(new MatchOrbAttackService(TestGameSessionServices.CreateHealthService(store, NullLogger.Instance), TestGameSessionServices.CreateCombatDamageService()), trails);
+        var service = new PlayerOrbService(trails);
+        var attacks = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store, NullLogger.Instance)), service);
         var now = DateTime.UtcNow;
         var owner = new Bot { PlayerId = 11 };
         var victim = new Bot { PlayerId = 12 };
@@ -49,16 +51,23 @@ public sealed class WindOrbAttackServiceTests
             owner.Player.Position = new Vector3f(0, 0, 0);
             victim.Player.Position = origin;
             service.ActivateOrbs(match, owner.Player, now);
+            attacks.ProcessWindAttacks(match, now);
             Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
             var hitAt = TestGameSessionServices.Orbs(match, 11).GetNextOrbAttackAtUtc(orb.ItemUid)!.Value;
             service.ActivateOrbs(match, owner.Player, hitAt);
+            Assert.Single(match.PendingWindAttacks);
+            Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
+            attacks.ProcessWindAttacks(match, hitAt);
+            Assert.Empty(match.PendingWindAttacks);
             int expected = Math.Max(1, (int)MathF.Round(
-                Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE)));
+                Config.ScaleSwarmDamageTaken(Config.SWARM_ORB_SHOCK_DAMAGE)));
             Assert.Equal(Config.MAX_HEALTH - expected, victim.Player.Health);
             Assert.True(victim.Player.StatusEffects.IsActive(PlayerStatusEffectKind.Wound, hitAt));
             Assert.Equal(Config.MAX_HEALTH, owner.Player.Health);
 
-            service.ActivateOrbs(match, owner.Player, hitAt.AddSeconds(Config.SWARM_WIND_BLADE_TICK_SECONDS + 0.001));
+            var immuneAt = hitAt.AddSeconds(Config.SWARM_WIND_BLADE_TICK_SECONDS + 0.001);
+            service.ActivateOrbs(match, owner.Player, immuneAt);
+            attacks.ProcessWindAttacks(match, immuneAt);
             Assert.Equal(Config.MAX_HEALTH - expected, victim.Player.Health);
             match.TryMarkEnded();
         }
@@ -72,7 +81,8 @@ public sealed class WindOrbAttackServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947502);
         var trails = new PlayerOrbTrailService();
-        var service = new PlayerOrbService(new MatchOrbAttackService(TestGameSessionServices.CreateHealthService(store, NullLogger.Instance), TestGameSessionServices.CreateCombatDamageService()), trails);
+        var service = new PlayerOrbService(trails);
+        var attacks = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store, NullLogger.Instance)), service);
         var owner = new Bot { PlayerId = 11 };
         var victim = new Bot { PlayerId = 12 };
         match.RegisterPlayer(owner.Player);
@@ -86,7 +96,9 @@ public sealed class WindOrbAttackServiceTests
             if (otherArea) victim.Player.Position = TestMapPosition.In(AreaType.S2Library1);
             var now = DateTime.UtcNow;
             service.ActivateOrbs(match, owner.Player, now);
+            attacks.ProcessWindAttacks(match, now);
             service.ActivateOrbs(match, owner.Player, now.AddSeconds(1));
+            attacks.ProcessWindAttacks(match, now.AddSeconds(1));
             Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
             Assert.False(victim.Player.StatusEffects.IsActive(PlayerStatusEffectKind.Wound, now.AddSeconds(1)));
             match.TryMarkEnded();

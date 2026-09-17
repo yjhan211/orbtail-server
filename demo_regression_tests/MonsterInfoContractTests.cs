@@ -1,3 +1,4 @@
+using network.common.data;
 using MessagePack;
 using network.common;
 using network.common.data.models;
@@ -50,11 +51,11 @@ public sealed class MonsterInfoContractTests
                 network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Gym1)) };
         Assert.Equal(ObjectType.MONSTER, info.ObjectInfo.ObjectType);
         Assert.Equal(7, info.ObjectInfo.ObjectId);
-        Assert.Equal(AreaType.S2Gym1, info.ObjectInfo.Area);
+        Assert.Equal(AreaType.S2Gym1, GameMapData.GetCurrentArea(info.ObjectInfo.MapId, info.ObjectInfo.Cell));
         info.ObjectInfo.ObjectId = 9;
         info.ObjectInfo.Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1));
         Assert.Equal(9, info.MonsterId);
-        Assert.Equal(AreaType.S2Gym1, info.AreaType);
+        Assert.Equal(AreaType.S2Gym1, GameMapData.GetCurrentArea(info.ObjectInfo.MapId, info.ObjectInfo.Cell));
     }
 
     [Fact]
@@ -91,7 +92,7 @@ public sealed class MonsterInfoContractTests
         Assert.Equal(info.ObjectInfo.Velocity, copy.ObjectInfo.Velocity);
         Assert.Equal(180f, copy.ObjectInfo.Rotation);
         Assert.Equal(info.ObjectInfo.MapId, copy.ObjectInfo.MapId);
-        Assert.Equal(network.common.data.GameMapData.GetCurrentArea(copy.ObjectInfo.MapId, copy.ObjectInfo.Cell), copy.AreaType);
+        Assert.Equal(network.common.data.GameMapData.GetCurrentArea(copy.ObjectInfo.MapId, copy.ObjectInfo.Cell), GameMapData.GetCurrentArea(copy.ObjectInfo.MapId, copy.ObjectInfo.Cell));
         Assert.DoesNotContain("\"area\"", json);
         Assert.NotSame(info.ObjectInfo.Position, copy.ObjectInfo.Position);
         Assert.Equal(12, copy.CurrentHealth);

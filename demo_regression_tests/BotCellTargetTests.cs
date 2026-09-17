@@ -61,7 +61,8 @@ public sealed class BotCellTargetTests
         var targetCell = SwarmPressureField.GetAreaCellsByDistance(area)
             .Select(entry => entry.Cell)
             .First(cell => origin.GetDistance(cell) >= 4 && origin.GetDistance(cell) <= 8 && GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell));
-        var attacker = new Player(new PlayerInfo { PlayerId = 1 }) {
+        var attacker = new Player(new PlayerInfo { PlayerId = 1 })
+        {
             Cell = targetCell,
             // 목표 선택은 이 정밀 위치가 아니라 위 셀을 사용해야 한다.
             Position = new Vector3f(10000f, 10000f, 0f),
@@ -74,7 +75,7 @@ public sealed class BotCellTargetTests
         }
         runtime.RegisterPlayer(attacker);
         bot.Wounded = wounded;
-        bot.LastProximityAttackerPlayerId = attacker.PlayerId;
+        bot.LastAttackerPlayerId = attacker.PlayerId;
         bot.LastDamagedAtUtc = DateTime.UtcNow;
         var service = new BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance);
 

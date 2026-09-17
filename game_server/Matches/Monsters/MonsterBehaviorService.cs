@@ -22,10 +22,6 @@ internal sealed class MonsterBehaviorService
         }
 
         float speed = Config.SWARM_MONSTER_MOVE_SPEED;
-        if (now < monster.WaveSlowUntilUtc)
-        {
-            speed *= Config.SWARM_WAVE_SLOW_MOVE_SPEED_MULTIPLIER;
-        }
         if (runtime.Monsters.IsInitialized)
         {
             double elapsedSeconds = (now - runtime.Monsters.StartsAtUtc).TotalSeconds;
@@ -56,9 +52,13 @@ internal sealed class MonsterBehaviorService
         Player? nearestOtherAreaPlayer = null;
         float nearestOtherAreaDistanceSquared = float.MaxValue;
         float nearestSameAreaDistanceSquared = float.MaxValue;
+        var monsterInfo = monster.Info.ObjectInfo;
+        var monsterArea = GameMapData.GetCurrentArea(monsterInfo.MapId, monsterInfo.Cell);
         foreach (var participant in participants)
         {
-            if (participant.GameInfo.ObjectInfo.Area == AreaType.None || participant.IsEliminated || participant.Position == null)
+            var participantInfo = participant.GameInfo.ObjectInfo;
+            var participantArea = GameMapData.GetCurrentArea(participantInfo.MapId, participantInfo.Cell);
+            if (participantArea == AreaType.None || participant.IsEliminated || participant.Position == null)
             {
                 continue;
             }
@@ -67,7 +67,7 @@ internal sealed class MonsterBehaviorService
             float dy = participant.Position.Y - monster.Position.Y;
             float distanceSquared = dx * dx + dy * dy;
             // 다른 구역 후보
-            if (participant.GameInfo.ObjectInfo.Area != monster.Area)
+            if (participantArea != monsterArea)
             {
                 if (distanceSquared >= nearestOtherAreaDistanceSquared)
                 {

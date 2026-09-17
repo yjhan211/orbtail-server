@@ -27,6 +27,16 @@ namespace network.common.data
         public static int GetAttackDamage(int itemId, float attackMultiplier, float seriesMultiplier) =>
             Math.Max(1, (int)MathF.Round(GetAttackDamage(itemId) * attackMultiplier * seriesMultiplier));
 
+        /// <summary>태양 선의 판정 폭(바닥면). 서버 쓸기 판정과 클라 예고 표시가 같은 값을 쓴다.</summary>
+        public static float GetSunWidth(int itemId)
+        {
+            if (!TryGetOrbGroupAndTier(itemId, out int orbGroupId, out int tier) || orbGroupId != OrbGroupIds.Sun)
+            {
+                return 0f;
+            }
+            return Config.TierValue(Config.SWARM_SUN_WIDTH_BY_TIER, tier);
+        }
+
         public static float GetWaveVortexRadius(int itemId)
         {
             if (!TryGetOrbGroupAndTier(itemId, out int orbGroupId, out int tier) || orbGroupId != OrbGroupIds.Wave)

@@ -134,7 +134,7 @@ public sealed class BotEscapeTargetTests
             Assert.True(GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, target));
             if (target.GetDistance(cell) > 0)
             {
-                var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, bot.Player.GameInfo.ObjectInfo.Area,
+                var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell),
                     cell, GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, target!), target);
                 Assert.NotNull(path);
                 Assert.NotEmpty(path!);

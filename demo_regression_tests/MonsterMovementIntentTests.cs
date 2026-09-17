@@ -87,13 +87,10 @@ public sealed class MonsterMovementIntentTests
     }
 
     [Theory]
-    [InlineData(-1, false)]
-    [InlineData(0, false)]
-    [InlineData(1, false)]
-    [InlineData(-1, true)]
-    [InlineData(0, true)]
-    [InlineData(1, true)]
-    public void RequestedSpeedAppliesEscalationAtBoundaryAndPreservesSlow(int offsetSeconds, bool slowed)
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void RequestedSpeedAppliesEscalationAtBoundary(int offsetSeconds)
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(987645);
@@ -101,11 +98,7 @@ public sealed class MonsterMovementIntentTests
         var started = DateTime.UtcNow;
         runtime.Monsters.Initialize(started);
         var now = started.AddSeconds(Config.SWARM_MONSTER_ESCALATION_STAGE2_AT_SECONDS + offsetSeconds);
-        var monster = new Monster
-        {
-            Alive = true,
-            WaveSlowUntilUtc = slowed ? now.AddSeconds(1) : now
-        };
+        var monster = new Monster { Alive = true };
         var target = new game_server.players.Player(new PlayerInfo { PlayerId = 1 })
         {
 
@@ -114,7 +107,6 @@ public sealed class MonsterMovementIntentTests
         };
         var request = new MonsterBehaviorService().CreateMovementRequest(runtime, monster, [target], now);
         float expected = Config.SWARM_MONSTER_MOVE_SPEED;
-        if (slowed) expected *= Config.SWARM_WAVE_SLOW_MOVE_SPEED_MULTIPLIER;
         if (offsetSeconds >= 0) expected *= (float)Config.SWARM_MONSTER_ESCALATION_STAGE2_MOVE_SPEED_MULTIPLIER;
         Assert.Equal(expected, request.Speed);
         Assert.NotNull(request.DestinationCell);

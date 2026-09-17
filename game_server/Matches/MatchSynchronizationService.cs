@@ -1,3 +1,4 @@
+using network.common.data;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.sessions;
@@ -109,12 +110,12 @@ internal sealed class MatchSynchronizationService
         var openDoors = runtime.Doors.GetOpenDoors().ToHashSet();
         foreach (var session in batch.Sessions)
         {
-            if (session.Player.IsEliminated || session.Player.GameInfo.ObjectInfo.Area == AreaType.None)
+            if (session.Player.IsEliminated || GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) == AreaType.None)
             {
                 continue;
             }
 
-            if (session.PublishedInteractionArea != session.Player.GameInfo.ObjectInfo.Area || !session.PublishedOpenDoors.SetEquals(openDoors))
+            if (session.PublishedInteractionArea != GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) || !session.PublishedOpenDoors.SetEquals(openDoors))
             {
                 batch.InteractableUpdates[session] = session.GetInteractableInfos();
             }
@@ -130,7 +131,7 @@ internal sealed class MatchSynchronizationService
         var areaItems = new Dictionary<AreaType, List<GroundItemInfo>>();
         foreach (var session in batch.Sessions)
         {
-            var area = session.Player.GameInfo.ObjectInfo.Area;
+            var area = GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell);
             if (session.Player.IsEliminated || area == AreaType.None) continue;
             if (!areaItems.TryGetValue(area, out var items))
             {
@@ -170,7 +171,7 @@ internal sealed class MatchSynchronizationService
                 continue;
             }
             bool isSelf = session.Player.PlayerId == player.PlayerId;
-            if (session.Player.GameInfo.ObjectInfo.Area != info.Area) continue;
+            if (GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) != GameMapData.GetCurrentArea(info.MapId, info.Cell)) continue;
             bool known = isSelf || session.PublishedObjects.Contains((ObjectType.PLAYER, player.PlayerId));
             if (!known)
             {
@@ -208,7 +209,7 @@ internal sealed class MatchSynchronizationService
         var snapshot = monster.ToMonsterInfo();
         foreach (var session in batch.Sessions)
         {
-            if (session.Player.IsEliminated || session.Player.GameInfo.ObjectInfo.Area != snapshot.AreaType) continue;
+            if (session.Player.IsEliminated || GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) != GameMapData.GetCurrentArea(snapshot.ObjectInfo.MapId, snapshot.ObjectInfo.Cell)) continue;
             if (!session.PublishedObjects.Contains((ObjectType.MONSTER, monster.MonsterId)))
             {
                 if (!snapshot.IsAlive) continue;
@@ -257,7 +258,7 @@ internal sealed class MatchSynchronizationService
             {
                 continue;
             }
-            bool inArea = session.Player.GameInfo.ObjectInfo.Area == info.Area;
+            bool inArea = GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) == GameMapData.GetCurrentArea(info.MapId, info.Cell);
             if (!inArea)
             {
                 continue;
@@ -281,11 +282,11 @@ internal sealed class MatchSynchronizationService
         var areas = new Dictionary<(ObjectType Type, long Id), AreaType>();
         foreach (var player in runtime.GetAlivePlayers())
         {
-            areas[(ObjectType.PLAYER, player.PlayerId)] = player.GameInfo.ObjectInfo.Area;
+            areas[(ObjectType.PLAYER, player.PlayerId)] = GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell);
         }
         foreach (var monster in runtime.Monsters.Entities.Values)
         {
-            areas[(ObjectType.MONSTER, monster.MonsterId)] = monster.Area;
+            areas[(ObjectType.MONSTER, monster.MonsterId)] = GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell);
         }
         foreach (var session in batch.Sessions)
         {
@@ -294,7 +295,7 @@ internal sealed class MatchSynchronizationService
                 var area = identity.Type == ObjectType.ITEM
                     ? runtime.GroundItems.GetItemArea(identity.Id)
                     : areas.GetValueOrDefault(identity, AreaType.None);
-                if (!session.Player.IsEliminated && area != AreaType.None && area == session.Player.GameInfo.ObjectInfo.Area)
+                if (!session.Player.IsEliminated && area != AreaType.None && area == GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell))
                 {
                     continue;
                 }
@@ -329,7 +330,7 @@ internal sealed class MatchSynchronizationService
         {
             throw new InvalidOperationException("Synchronization collection requires the match lock.");
         }
-        foreach (var shape in runtime.SunCrossfireShapes)
+        foreach (var shape in runtime.PendingSunAttacks)
         {
             if (shape.IsPublished)
             {
@@ -347,7 +348,7 @@ internal sealed class MatchSynchronizationService
                 OriginY = origin.Y,
                 EndX = end.X,
                 EndY = end.Y,
-                Width = shape.HalfWidth * 2f,
+                Width = OrbData.GetSunWidth(shape.WeaponItemId),
                 // 발행이 늦어진 만큼 예고를 줄여 보낸다 — 서버의 발사 시각(ArmedAtUtc)은 움직이지 않는다.
                 TelegraphSeconds = MathF.Max(0f, (float)(shape.ArmedAtUtc - nowUtc).TotalSeconds),
                 ActiveSeconds = (float)(shape.ExpiresAtUtc - shape.ArmedAtUtc).TotalSeconds,
@@ -356,7 +357,7 @@ internal sealed class MatchSynchronizationService
             };
             foreach (var session in batch.Sessions)
             {
-                if (session.Player.IsEliminated || session.Player.GameInfo.ObjectInfo.Area != shape.Area)
+                if (session.Player.IsEliminated || GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) != shape.Area)
                 {
                     continue;
                 }
@@ -395,7 +396,7 @@ internal sealed class MatchSynchronizationService
             };
             foreach (var session in batch.Sessions)
             {
-                if (session.Player.IsEliminated || session.Player.GameInfo.ObjectInfo.Area != vortex.Area)
+                if (session.Player.IsEliminated || GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) != vortex.Area)
                 {
                     continue;
                 }

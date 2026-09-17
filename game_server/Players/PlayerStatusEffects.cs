@@ -8,64 +8,37 @@ internal enum PlayerStatusEffectKind
     WaveSlow,
     Wound,
     WindShockImmunity,
-    MonsterContactImmunity
+    MonsterContactImmunity,
+    Sleep,
+    SunBurn
 }
 
 /// <summary>
-///     플레이어 한 명의 지속 효과·화상·수면 회복 상태를 보관한다. 호출자는 매치 잠금을 보유한다.
-///     효과 적용은 종료 시각을 교체하며, 실제 피해·회복·이동 처리는 해당 서비스가 담당한다.
+///     플레이어 한 명의 지속 효과를 종류별로 하나씩 보관한다. 호출자는 매치 잠금을 보유한다.
 /// </summary>
 internal sealed class PlayerStatusEffects
 {
     private const double SwarmSleepWarmupSeconds = 1d;
     private const float SwarmSleepRecoveryRatioPerSecond = 0.05f;
-    private readonly Dictionary<PlayerStatusEffectKind, DateTime> _expiresAt = new();
-    private SleepRecoveryState? _sleep;
+    private readonly Dictionary<PlayerStatusEffectKind, StatusEffectState> _effects = new();
 
-    public bool HasSleep() => _sleep != null;
-    internal void StartSleep() => _sleep ??= new SleepRecoveryState();
-    internal void StopSleep() => _sleep = null;
-    public int GetSleepRecovery(DateTime nowUtc, int health, int maxHealth)
+    public bool IsActive(PlayerStatusEffectKind kind, DateTime nowUtc) => _effects.TryGetValue(kind, out var state) && state.IsActive(nowUtc);
+
+    public DateTime GetExpiresAt(PlayerStatusEffectKind kind) => _effects.GetValueOrDefault(kind) switch
     {
-        if (_sleep == null) return 0;
-        if (_sleep.StartedAtUtc == DateTime.MinValue)
-        {
-            _sleep.StartedAtUtc = nowUtc;
-            return 0;
-        }
-        double elapsed = (nowUtc - _sleep.StartedAtUtc).TotalSeconds;
-        if (elapsed < SwarmSleepWarmupSeconds)
-        {
-            return 0;
-        }
-        int due = (int)Math.Floor(elapsed - SwarmSleepWarmupSeconds) + 1;
-        int pending = due - _sleep.ProcessedRecoveryCount;
-        if (pending <= 0)
-        {
-            return 0;
-        }
-        _sleep.ProcessedRecoveryCount = due;
-        if (IsActive(PlayerStatusEffectKind.HealingBlocked, nowUtc) || health >= maxHealth)
-        {
-            return 0;
-        }
-        int perTick = Math.Max(1, (int)MathF.Round(maxHealth * SwarmSleepRecoveryRatioPerSecond));
-        return Math.Min(perTick * pending, maxHealth - health);
-    }
+        TimedEffectState timed => timed.UntilUtc,
+        SunBurnState burn => burn.UntilUtc,
+        _ => default
+    };
 
-    private sealed class SleepRecoveryState
+    public void Apply(PlayerStatusEffectKind kind, DateTime untilUtc)
     {
-        public DateTime StartedAtUtc { get; set; } = DateTime.MinValue;
-        public int ProcessedRecoveryCount { get; set; }
+        if (kind is PlayerStatusEffectKind.Sleep or PlayerStatusEffectKind.SunBurn)
+        {
+            throw new ArgumentException($"{kind} has its own state and cannot be applied as a timed effect.", nameof(kind));
+        }
+        _effects[kind] = new TimedEffectState(untilUtc);
     }
-
-    internal SunBurnState? SunBurn { get; set; }
-
-    public DateTime GetExpiresAt(PlayerStatusEffectKind kind) => _expiresAt.GetValueOrDefault(kind);
-
-    public bool IsActive(PlayerStatusEffectKind kind, DateTime nowUtc) => nowUtc < GetExpiresAt(kind);
-
-    public void Apply(PlayerStatusEffectKind kind, DateTime untilUtc) => _expiresAt[kind] = untilUtc;
 
     public bool TryApply(PlayerStatusEffectKind kind, DateTime nowUtc, double durationSeconds)
     {
@@ -77,5 +50,69 @@ internal sealed class PlayerStatusEffects
         return true;
     }
 
-    internal readonly record struct SunBurnState(long OwnerId, int WeaponItemId, AreaType Area, DateTime UntilUtc, DateTime NextTickAtUtc);
+    public bool HasSleep() => _effects.ContainsKey(PlayerStatusEffectKind.Sleep);
+
+    internal void StartSleep() => _effects.TryAdd(PlayerStatusEffectKind.Sleep, new SleepRecoveryState(DateTime.MinValue, 0));
+
+    internal void StopSleep() => _effects.Remove(PlayerStatusEffectKind.Sleep);
+
+    public int GetSleepRecovery(DateTime nowUtc, int health, int maxHealth)
+    {
+        if (_effects.GetValueOrDefault(PlayerStatusEffectKind.Sleep) is not SleepRecoveryState sleep)
+        {
+            return 0;
+        }
+
+        if (sleep.StartedAtUtc == DateTime.MinValue)
+        {
+            _effects[PlayerStatusEffectKind.Sleep] = sleep with { StartedAtUtc = nowUtc };
+            return 0;
+        }
+
+        double elapsed = (nowUtc - sleep.StartedAtUtc).TotalSeconds;
+        if (elapsed < SwarmSleepWarmupSeconds)
+        {
+            return 0;
+        }
+
+        int due = (int)Math.Floor(elapsed - SwarmSleepWarmupSeconds) + 1;
+        int pending = due - sleep.ProcessedRecoveryCount;
+        if (pending <= 0)
+        {
+            return 0;
+        }
+
+        _effects[PlayerStatusEffectKind.Sleep] = sleep with { ProcessedRecoveryCount = due };
+        if (IsActive(PlayerStatusEffectKind.HealingBlocked, nowUtc) || health >= maxHealth)
+        {
+            return 0;
+        }
+
+        int perTick = Math.Max(1, (int)MathF.Round(maxHealth * SwarmSleepRecoveryRatioPerSecond));
+        return Math.Min(perTick * pending, maxHealth - health);
+    }
+
+    internal SunBurnState? SunBurn => _effects.GetValueOrDefault(PlayerStatusEffectKind.SunBurn) is SunBurnState burn && burn.IsActive(default) ? burn : null;
+
+    internal void ApplySunBurn(SunBurnState burn) => _effects[PlayerStatusEffectKind.SunBurn] = burn;
+
+    internal abstract record StatusEffectState
+    {
+        public abstract bool IsActive(DateTime nowUtc);
+    }
+
+    private sealed record TimedEffectState(DateTime UntilUtc) : StatusEffectState
+    {
+        public override bool IsActive(DateTime nowUtc) => nowUtc < UntilUtc;
+    }
+
+    private sealed record SleepRecoveryState(DateTime StartedAtUtc, int ProcessedRecoveryCount) : StatusEffectState
+    {
+        public override bool IsActive(DateTime nowUtc) => true;
+    }
+
+    internal sealed record SunBurnState(long OwnerId, int WeaponItemId, AreaType Area, DateTime UntilUtc, DateTime NextTickAtUtc) : StatusEffectState
+    {
+        public override bool IsActive(DateTime nowUtc) => NextTickAtUtc <= UntilUtc;
+    }
 }

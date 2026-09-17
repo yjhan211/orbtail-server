@@ -1,3 +1,4 @@
+using network.common.data;
 using network.common;
 using network.common.data.models;
 
@@ -22,7 +23,7 @@ internal readonly struct MatchObjectSnapshot(GameObjectInfo info)
     {
         // 기존 Vector3f.Equals의 허용 오차를 유지한다. 회전은 기존처럼 정확히 비교한다.
         const float epsilon = 0.00001f;
-        return Area == current.Area &&
+        return Area == GameMapData.GetCurrentArea(current.MapId, current.Cell) &&
             Math.Abs(_positionX - current.Position.X) < epsilon &&
             Math.Abs(_positionY - current.Position.Y) < epsilon &&
             Math.Abs(_positionZ - current.Position.Z) < epsilon &&

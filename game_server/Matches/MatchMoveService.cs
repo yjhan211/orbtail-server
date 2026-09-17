@@ -117,14 +117,14 @@ internal class MatchMoveService(
         // 경로 탐색을 매 틱 수행하지 않도록 다음 탐색 가능 시간 지정
         movement.NextPathPlanAtUtc = nowUtc.AddSeconds(Config.SWARM_MONSTER_CHASE_PLAN_INTERVAL_SECONDS);
         var destinationArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, destination);
-        var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, objectInfo.Area, objectInfo.Cell, destinationArea, destination);
+        var path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, GameMapData.GetCurrentArea(objectInfo.MapId, objectInfo.Cell), objectInfo.Cell, destinationArea, destination);
         if (path == null || path.Count == 0)
         {
             return;
         }
 
         var previousCell = objectInfo.Cell;
-        var previousArea = objectInfo.Area;
+        var previousArea = GameMapData.GetCurrentArea(objectInfo.MapId, objectInfo.Cell);
 
         // 계산된 경로를 순회하며 닫힌 문이 있다면 문으로 목표 변경
         foreach (var step in path)
@@ -138,7 +138,7 @@ internal class MatchMoveService(
                 {
                     return;
                 }
-                path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, objectInfo.Area, objectInfo.Cell, (AreaType)interaction.ZoneId, new Cell(interaction.CellX, interaction.CellY));
+                path = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, GameMapData.GetCurrentArea(objectInfo.MapId, objectInfo.Cell), objectInfo.Cell, (AreaType)interaction.ZoneId, new Cell(interaction.CellX, interaction.CellY));
                 if (path == null || path.Count == 0)
                 {
                     return;
@@ -375,7 +375,7 @@ internal class MatchMoveService(
         {
             return false;
         }
-        var planned = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, objectInfo.Area, objectInfo.Cell, area, destination);
+        var planned = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, GameMapData.GetCurrentArea(objectInfo.MapId, objectInfo.Cell), objectInfo.Cell, area, destination);
         if (planned is not { Count: > 0 })
         {
             return false;

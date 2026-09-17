@@ -29,7 +29,7 @@ internal static class GameServerTestAccess
     internal static PlayerOrbGrowthService GetOrbGrowth(this GameServer server) => Read<PlayerOrbGrowthService>(server);
 
     internal static PlayerOrbService GetPlayerOrbs(this GameServer server, long matchingId) =>
-        Read<PlayerOrbService>(GetCombat(server, matchingId));
+        Read<PlayerOrbService>(Read<MatchOrbAttackService>(GetCombat(server, matchingId)));
 
     internal static MatchEntryFailureHandler GetEntryFailureHandler(this GameServer server) =>
         Read<MatchEntryFailureHandler>(server);
@@ -57,23 +57,22 @@ internal static class GameServerTestAccess
         var cleanup = new MatchCleanupService(runtimes, logger);
         var matchEliminations = TestGameSessionServices.CreateEliminationService(runtimes, logger);
         var health = TestGameSessionServices.CreateHealthService(runtimes);
-        var combatDamage = TestGameSessionServices.CreateCombatDamageService();
+        var combatDamage = TestGameSessionServices.CreateCombatDamageService(health);
         var results = new MatchResultService(runtimes, logger);
         var interactions = new PlayerInteractionService();
         var decisions = new BotBehaviorService(growth, interactions,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotBehaviorService>.Instance);
         var field = new MatchFieldService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchFieldService>.Instance, orbTrails, health,
             cleanup, matchEliminations, results);
-        var trailCuts = new MatchTrailCutService(orbTrails, combatDamage, health, decisions);
+        var trailCuts = new MatchTrailCutService(orbTrails, combatDamage, decisions);
         var groundPickup = new PlayerPickupService(health,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<PlayerPickupService>.Instance);
         Func<MatchRuntime, TimeProvider, MatchTickLoop> createLoop = (runtime, clock) =>
         {
             var combat = new MatchCombatService(
                 health, combatDamage, results,
-                new PlayerOrbService(new MatchOrbAttackService(health, combatDamage), orbTrails),
                 orbTrails, trailCuts,
-                new MatchOrbAttackService(health, combatDamage), decisions, new MonsterCombatService());
+                new MatchOrbAttackService(combatDamage, new PlayerOrbService(orbTrails)), decisions, new MonsterCombatService());
 
             return new MatchTickLoop(runtime, runtimes, logger, groundPickup,
             entryFailure, combat, field, new MatchMoveService(decisions, new MonsterBehaviorService()), new MatchMonsterSpawnService(), new MatchSynchronizationService(), clock);

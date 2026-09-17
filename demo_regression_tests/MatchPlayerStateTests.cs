@@ -1,3 +1,4 @@
+using network.common.data;
 using game_server.matches;
 using game_server.players;
 using game_server.sessions;
@@ -27,7 +28,7 @@ public sealed class MatchPlayerStateTests
             participant.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Library1)));
             participant.Interactions.Begin(123, 0);
             Assert.Equal(42, session.Player.Health);
-            Assert.Equal(AreaType.S2Library1, session.Player.GameInfo.ObjectInfo.Area);
+            Assert.Equal(AreaType.S2Library1, GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell));
             Assert.True(session.Player.Interactions.Cancel(123));
             Assert.True(match.TryEliminatePlayer(10, EliminationReason.PRESSURE_FIELD));
             Assert.True(session.Player.IsEliminated);

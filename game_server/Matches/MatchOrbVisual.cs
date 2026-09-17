@@ -24,7 +24,7 @@ internal sealed record MatchOrbVisual(long ActorPlayerId, AreaType Area, int Wea
         var visuals = new List<MatchOrbVisual>(players.Count);
         foreach (var player in players)
         {
-            if (player.IsEliminated || player.Position == null || player.GameInfo.ObjectInfo.Area == AreaType.None)
+            if (player.IsEliminated || player.Position == null || GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell) == AreaType.None)
             {
                 continue;
             }
@@ -41,7 +41,7 @@ internal sealed record MatchOrbVisual(long ActorPlayerId, AreaType Area, int Wea
                 orbItemIds.Add(orb.ItemId);
             }
             int leadOrbItemId = orbs.Count > 0 ? orbs[0].ItemId : 0;
-            visuals.Add(new MatchOrbVisual(player.PlayerId, player.GameInfo.ObjectInfo.Area, leadOrbItemId, player.Health, orbItemIds.MoveToImmutable()));
+            visuals.Add(new MatchOrbVisual(player.PlayerId, GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell), leadOrbItemId, player.Health, orbItemIds.MoveToImmutable()));
         }
         return visuals;
     }

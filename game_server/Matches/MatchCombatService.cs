@@ -1,10 +1,10 @@
+using network.common.data;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
 using game_server.sessions;
 using MessagePack;
 using network.common;
-using network.common.data;
 using network.common.data.models;
 using network.packets;
 
@@ -18,7 +18,6 @@ internal class MatchCombatService(
     PlayerHealthService healthService,
     MatchCombatDamageService combatDamage,
     MatchResultService matchResults,
-    PlayerOrbService playerOrbs,
     PlayerOrbTrailService orbTrails,
     MatchTrailCutService trailCuts,
     MatchOrbAttackService orbAttacks,
@@ -84,15 +83,10 @@ internal class MatchCombatService(
 
         orbTrails.UpdateTrails(runtime, players);
         trailCuts.ProcessTick(runtime, nowUtc, players, sessions);
-        orbAttacks.ProcessWaveDetonations(runtime, nowUtc);
-        foreach (var player in runtime.GetAlivePlayers())
-        {
-            playerOrbs.ActivateOrbs(runtime, player, nowUtc);
-        }
-        orbAttacks.ProcessSunBurns(runtime, nowUtc);
+        orbAttacks.ProcessTick(runtime, nowUtc);
         foreach (var damage in monsterContactDamages)
         {
-            ApplySwarmParticipantDamage(runtime, damage, sessions);
+            ApplySwarmParticipantDamage(runtime, damage, sessions, nowUtc);
         }
         if (runtime.IsEnded)
         {
@@ -120,11 +114,9 @@ internal class MatchCombatService(
         {
             return;
         }
-        combatDamage.ProcessPendingMonsterHits(runtime, nowUtc, sessions);
-        orbAttacks.ProcessSunCrossfires(runtime, nowUtc);
     }
 
-    internal void ApplySwarmParticipantDamage(MatchRuntime runtime, MonsterContactDamage damage, List<GameClientSession> allSessions)
+    internal void ApplySwarmParticipantDamage(MatchRuntime runtime, MonsterContactDamage damage, List<GameClientSession> allSessions, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -147,12 +139,12 @@ internal class MatchCombatService(
             }));
             foreach (var vfxSession in allSessions)
             {
-                if (!vfxSession.Player.IsEliminated && vfxSession.Player.GameInfo.ObjectInfo.Area == damage.Area)
+                if (!vfxSession.Player.IsEliminated && GameMapData.GetCurrentArea(vfxSession.Player.GameInfo.ObjectInfo.MapId, vfxSession.Player.GameInfo.ObjectInfo.Cell) == damage.Area)
                 {
                     vfxSession.TrySend(vfxPacket);
                 }
             }
         }
-        combatDamage.ApplySwarmAfterimageMonsterHit(runtime, healthService, victim, damage.MonsterId, damage.Damage);
+        combatDamage.ApplyMonsterContactHit(runtime, victim, damage.MonsterId, damage.Damage, nowUtc);
     }
 }

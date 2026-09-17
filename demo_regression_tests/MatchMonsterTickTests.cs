@@ -165,7 +165,7 @@ public class MatchMonsterTickTests
         for (double elapsed = 0.5d; elapsed <= 9d; elapsed += 0.25d)
         {
             now = StartUtc.AddSeconds(elapsed);
-            damageEvents.AddRange(manager.Tick(Participants(onMonster, monster.AreaType), true, now).PlayerDamage);
+            damageEvents.AddRange(manager.Tick(Participants(onMonster, GameMapData.GetCurrentArea(monster.ObjectInfo.MapId, monster.ObjectInfo.Cell)), true, now).PlayerDamage);
         }
 
         Assert.NotEmpty(damageEvents);
@@ -239,7 +239,7 @@ public class MatchMonsterTickTests
             now = StartUtc.AddSeconds(elapsed);
             var participants = new[]
             {
-                new ParticipantInput(1, monster.AreaType, onMonster),
+                new ParticipantInput(1, GameMapData.GetCurrentArea(monster.ObjectInfo.MapId, monster.ObjectInfo.Cell), onMonster),
                 new ParticipantInput(2, AreaType.S2Library1, corridor)
             };
             damageEvents.AddRange(manager.Tick(participants, true, now).PlayerDamage);
@@ -250,7 +250,7 @@ public class MatchMonsterTickTests
         Assert.NotEmpty(damageEvents);
         Assert.Contains(damageEvents, damage => damage.TargetPlayerId == 1);
         Assert.All(damageEvents, damage => Assert.Equal(
-            damage.TargetPlayerId == 1 ? monster.AreaType : AreaType.S2Library1,
+            damage.TargetPlayerId == 1 ? GameMapData.GetCurrentArea(monster.ObjectInfo.MapId, monster.ObjectInfo.Cell) : AreaType.S2Library1,
             damage.Area));
     }
 
@@ -298,14 +298,14 @@ public class MatchMonsterTickTests
 
         var pursuerCount = manager.GetVisualStates()
             .Count(state => state.IsAlive && roomMonsterIds.Contains(state.MonsterId) &&
-                            state.AreaType == corridor);
+                            GameMapData.GetCurrentArea(state.ObjectInfo.MapId, state.ObjectInfo.Cell) == corridor);
         Assert.True(pursuerCount > 0,
             "방에서 나를 담당하던 몹이 문 너머 복도로 따라와야 한다 — " +
             string.Join(", ", manager.GetVisualStates()
                 .Where(state => state.IsAlive && roomMonsterIds.Contains(state.MonsterId))
                 .Take(4)
                 .Select(state =>
-                    $"{state.MonsterId}@{state.AreaType}({state.ObjectInfo.Position.X:F1},{state.ObjectInfo.Position.Y:F1}) chase={state.ChaseTargetPlayerId}")));
+                    $"{state.MonsterId}@{GameMapData.GetCurrentArea(state.ObjectInfo.MapId, state.ObjectInfo.Cell)}({state.ObjectInfo.Position.X:F1},{state.ObjectInfo.Position.Y:F1}) chase={state.ChaseTargetPlayerId}")));
     }
 
     [Fact]
@@ -386,7 +386,7 @@ public class MatchMonsterTickTests
                 {
                     var player = Runtime.GetPlayer(participant.PlayerId)!;
                     player.Position = participant.Position;
-                    if (player.GameInfo.ObjectInfo.Area != participant.Area)
+                    if (GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell) != participant.Area)
                         player.Position = TestMapPosition.In(participant.Area);
                 }
                 if (isGameplayActive) Runtime.StartGameplay(StartUtc);

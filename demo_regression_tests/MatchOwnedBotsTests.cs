@@ -1,3 +1,4 @@
+using network.common.data;
 using game_server.matches;
 using game_server.matches.monsters;
 using game_server.players.bots;
@@ -189,7 +190,7 @@ public sealed class MatchOwnedBotsTests
             Assert.Equal(cells[-1].X, player.Cell!.X);
             Assert.Equal(cells[-1].Y, player.Cell.Y);
             Assert.NotNull(player.Position);
-            Assert.NotEqual(AreaType.None, player.GameInfo.ObjectInfo.Area);
+            Assert.NotEqual(AreaType.None, GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell));
 
             player.Position = new Vector3f(12, 34, 0);
             player.Velocity = new Vector3f(6, 0, 0);
@@ -200,7 +201,7 @@ public sealed class MatchOwnedBotsTests
             Assert.Equal(180, snapshot.Rotation);
             Assert.Equal(network.common.data.MapCoordinateConverter.WorldToCell(network.common.Config.SWARM_MATCH_MAP, new Vector3f(12, 34, 0)).X, bot.Player.Cell!.X);
             Assert.Equal(6, bot.Player.Velocity.X);
-            Assert.Equal(network.common.data.GameMapData.GetCurrentArea(network.common.Config.SWARM_MATCH_MAP, player.Cell!), bot.Player.GameInfo.ObjectInfo.Area);
+            Assert.Equal(network.common.data.GameMapData.GetCurrentArea(network.common.Config.SWARM_MATCH_MAP, player.Cell!), GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell));
             Assert.NotSame(player.Position, snapshot.Position);
             Assert.Null(match.GetPlayer(1)!.Position);
         }

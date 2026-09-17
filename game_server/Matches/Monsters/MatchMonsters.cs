@@ -1,3 +1,4 @@
+using network.common.data;
 using network.common;
 using network.common.data.models;
 
@@ -38,14 +39,14 @@ public sealed class MatchMonsters
         var statesByArea = new Dictionary<AreaType, List<MonsterInfo>>();
         foreach (var monster in Entities.Values)
         {
-            if (monster.MonsterId <= 0 || monster.Area == AreaType.None)
+            if (monster.MonsterId <= 0 || GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell) == AreaType.None)
             {
                 continue;
             }
-            if (!statesByArea.TryGetValue(monster.Area, out var areaStates))
+            if (!statesByArea.TryGetValue(GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell), out var areaStates))
             {
                 areaStates = new List<MonsterInfo>();
-                statesByArea[monster.Area] = areaStates;
+                statesByArea[GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell)] = areaStates;
             }
             areaStates.Add(monster.ToMonsterInfo());
         }
@@ -61,7 +62,7 @@ public sealed class MatchMonsters
         var targets = new List<Monster>();
         foreach (var monster in Entities.Values)
         {
-            if (!monster.Alive || monster.Health <= monster.PendingDamage)
+            if (!monster.Alive)
             {
                 continue;
             }

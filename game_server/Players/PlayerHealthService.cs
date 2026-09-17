@@ -1,3 +1,4 @@
+using network.common.data;
 using game_server.matches;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -103,7 +104,7 @@ internal sealed class PlayerHealthService(
             using var packet = PacketMaker.G_TO_C_HEALTH_RECOVERY(new G_TO_C_HEALTH_RECOVERY
             {
                 PlayerId = player.PlayerId,
-                AreaType = player.GameInfo.ObjectInfo.Area,
+                AreaType = GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell),
                 Amount = change.Recovered,
                 Source = HealthRecoveryKind.Sleep
             });

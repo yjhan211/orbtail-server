@@ -1,3 +1,4 @@
+using network.common.data;
 using game_server.matches;
 using game_server.players;
 using MessagePack;
@@ -266,14 +267,14 @@ public partial class GameClientSession : SessionBase
 
                 Logger.LogInformation(
                     "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
-                    PlayerId, Player.GameInfo.ObjectInfo.Area, Player.Position?.X, Player.Position?.Y, Player.Cell?.X,
+                    PlayerId, GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell), Player.Position?.X, Player.Position?.Y, Player.Cell?.X,
                     Player.Cell?.Y);
 
 
 
                 SendInteractableList();
 
-                SendGroundItemEntries(Player.GameInfo.ObjectInfo.Area);
+                SendGroundItemEntries(GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell));
                 SendMonsterSnapshot(runtime.Monsters.GetVisualStatesByArea());
                 SendOrbList();
                 SendOrbUpgradeInfo(_orbGrowth.GetOrbUpgradeInfo(runtime, Player));
@@ -359,7 +360,7 @@ public partial class GameClientSession : SessionBase
                 {
                     continue;
                 }
-                if (session.Player.IsEliminated || session.Player.GameInfo.ObjectInfo.Area != Player.GameInfo.ObjectInfo.Area)
+                if (session.Player.IsEliminated || GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) != GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell))
                 {
                     continue;
                 }
@@ -377,7 +378,7 @@ public partial class GameClientSession : SessionBase
                 session.SendObjectEntries(mine);
             }
 
-            var bots = match.Bots.GetBots().Where(bot => !bot.Player.IsEliminated && bot.Player.GameInfo.ObjectInfo.Area == Player.GameInfo.ObjectInfo.Area).ToList();
+            var bots = match.Bots.GetBots().Where(bot => !bot.Player.IsEliminated && GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell) == GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell)).ToList();
             var botPlayers = bots.Select(bot => match.Bots.GetPlayerObjectInfo(bot.PlayerId)).OfType<GamePlayerInfo>().ToList();
             if (botPlayers.Count <= 0)
             {
@@ -658,7 +659,7 @@ public partial class GameClientSession : SessionBase
 
         Logger.LogInformation("Game client session removed: PlayerId={SessionPlayerId}", PlayerId.Value);
 
-        if (Player != null && MatchingId > 0 && Player.GameInfo.ObjectInfo.Area != AreaType.None)
+        if (Player != null && MatchingId > 0 && GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell) != AreaType.None)
         {
             var sameAreaSessions = new List<GameClientSession>();
             foreach (var other in Match.GetSessions())
@@ -667,7 +668,7 @@ public partial class GameClientSession : SessionBase
                 {
                     continue;
                 }
-                if (other.Player.GameInfo.ObjectInfo.Area != Player.GameInfo.ObjectInfo.Area)
+                if (GameMapData.GetCurrentArea(other.Player.GameInfo.ObjectInfo.MapId, other.Player.GameInfo.ObjectInfo.Cell) != GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell))
                 {
                     continue;
                 }
@@ -683,7 +684,7 @@ public partial class GameClientSession : SessionBase
                 "Broadcasted disconnected player leave: PlayerId={PlayerId}, MatchingId={MatchingId}, Area={Area}, Receivers={ReceiverCount}",
                 PlayerId.Value,
                 MatchingId,
-                Player.GameInfo.ObjectInfo.Area,
+                GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell),
                 sameAreaSessions.Count);
         }
 

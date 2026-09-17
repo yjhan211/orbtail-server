@@ -1,3 +1,4 @@
+using network.common.data;
 using game_server.matches;
 using game_server.matches.monsters;
 using game_server.players.bots;
@@ -15,7 +16,7 @@ internal static class MovementTickTestDriver
         if (!Monitor.IsEntered(runtime.MatchLock))
             throw new InvalidOperationException("Test tick requires the match lock.");
         var before = runtime.Bots.GetBots().ToDictionary(bot => bot.PlayerId,
-            bot => (bot.Player.Position, bot.Player.Velocity, bot.Player.GameInfo.ObjectInfo.Area));
+            bot => (bot.Player.Position, bot.Player.Velocity, Area: GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell)));
         var behavior = new BehaviorProbe(decide);
         var monsters = new MonsterBehaviorService();
         var service = new MatchMoveService(behavior, monsters);
@@ -30,9 +31,9 @@ internal static class MovementTickTestDriver
                 continue;
             movements.Add(new BotMovementResult
             {
-                BotPlayerId = bot.PlayerId, FromArea = previous.Area, ToArea = player.GameInfo.ObjectInfo.Area,
+                BotPlayerId = bot.PlayerId, FromArea = previous.Area, ToArea = GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell),
                 Position = player.Position!, ToCell = player.Cell!, Velocity = player.Velocity,
-                Rotation = player.Rotation, IsAreaTransition = previous.Area != player.GameInfo.ObjectInfo.Area
+                Rotation = player.Rotation, IsAreaTransition = previous.Area != GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell)
             });
         }
         return (movements, behavior.RequestedBotIds);

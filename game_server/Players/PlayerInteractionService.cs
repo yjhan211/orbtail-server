@@ -38,7 +38,7 @@ internal sealed class PlayerInteractionService
             return ErrorCode.INVALID_GAME_STATE;
         }
 
-        if ((runtime.Closures.IsAreaClosed(door.AreaType) || runtime.Closures.IsAreaClosed(door.AreaTypeB)) && !runtime.Closures.IsAreaClosed(player.GameInfo.ObjectInfo.Area))
+        if ((runtime.Closures.IsAreaClosed(door.AreaType) || runtime.Closures.IsAreaClosed(door.AreaTypeB)) && !runtime.Closures.IsAreaClosed(GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell)))
         {
             return ErrorCode.INVALID_GAME_STATE;
         }
@@ -47,7 +47,7 @@ internal sealed class PlayerInteractionService
         {
             return ErrorCode.INVALID_GAME_STATE;
         }
-        if (info.ZoneId != (int)player.GameInfo.ObjectInfo.Area)
+        if (info.ZoneId != (int)GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell))
         {
             return ErrorCode.AREA_MISMATCH;
         }

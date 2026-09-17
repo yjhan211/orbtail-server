@@ -1,3 +1,4 @@
+using network.common.data;
 using MessagePack;
 using network.common;
 using network.common.data.models;
@@ -32,7 +33,7 @@ public partial class GameClientSession
             var sameAreaSessions = new List<GameClientSession>();
             foreach (var session in match.GetSessions())
             {
-                if (!session.Player.IsEliminated && session.Player.GameInfo.ObjectInfo.Area == Player.GameInfo.ObjectInfo.Area)
+                if (!session.Player.IsEliminated && GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) == GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell))
                     sameAreaSessions.Add(session);
             }
             var broadcast = new G_TO_C_SOCIAL_ACTION

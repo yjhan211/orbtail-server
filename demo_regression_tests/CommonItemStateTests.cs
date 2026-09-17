@@ -1,3 +1,4 @@
+using network.common.data;
 using MessagePack;
 using network.common;
 using network.common.data.models;
@@ -17,7 +18,7 @@ public sealed class CommonItemStateTests
         };
         Assert.Equal(ObjectType.ITEM, item.ObjectInfo.ObjectType);
         Assert.Equal(42, item.ObjectInfo.ObjectId);
-        Assert.Equal(network.common.data.GameMapData.GetCurrentArea(item.ObjectInfo.MapId, item.ObjectInfo.Cell), item.ObjectInfo.Area);
+        Assert.Equal(network.common.data.GameMapData.GetCurrentArea(item.ObjectInfo.MapId, item.ObjectInfo.Cell), GameMapData.GetCurrentArea(item.ObjectInfo.MapId, item.ObjectInfo.Cell));
         item.PositionX = 56;
         Assert.Equal(56, item.PositionX);
         var bytes = MessagePackSerializer.Serialize(item);

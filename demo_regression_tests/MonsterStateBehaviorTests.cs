@@ -42,32 +42,13 @@ public sealed class MonsterStateBehaviorTests
     }
 
     [Fact]
-    public void DeadMonster_OnlyReleasesPreviouslyReservedDamage()
-    {
-        var monster = new Monster { Alive = true, Health = 10 };
-        monster.ReserveDamage(6);
-        monster.ApplySlow(2, Now);
-        monster.ApplyDamage(10, Now);
-
-        monster.ReserveDamage(9);
-        monster.ApplySlow(10, Now);
-        Assert.Equal(6, monster.PendingDamage);
-        Assert.Equal(Now.AddSeconds(2), monster.WaveSlowUntilUtc);
-        monster.ReleaseReservedDamage(3);
-        Assert.Equal(3, monster.PendingDamage);
-        monster.ReleaseReservedDamage(99);
-        Assert.Equal(0, monster.PendingDamage);
-    }
-
-    [Fact]
-    public void CombatTargets_IncludeNewMonstersAndExcludeDeadAndFullyReservedMonsters()
+    public void CombatTargets_IncludeNewMonstersAndExcludeDeadMonsters()
     {
         var state = new MatchMonsters();
         var ready = new Monster { MonsterId = 1, Alive = true, Health = 10 };
         state.Entities[1] = ready;
         state.Entities[2] = new Monster { Alive = true, Health = 10 };
         state.Entities[3] = new Monster { Alive = false, Health = 10 };
-        state.Entities[4] = new Monster { Alive = true, Health = 10, PendingDamage = 10 };
         Assert.Equal(2, state.GetCombatTargets().Count);
         Assert.Contains(ready, state.GetCombatTargets());
         Assert.Contains(state.Entities[2], state.GetCombatTargets());

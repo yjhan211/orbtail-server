@@ -1,3 +1,4 @@
+using network.common.data;
 using game_server.players;
 using network.common;
 
@@ -31,7 +32,7 @@ internal sealed class MonsterCombatService
         foreach (var player in players)
         {
             var position = player.Position;
-            if (position == null || player.GameInfo.ObjectInfo.Area != monster.Area)
+            if (position == null || GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell) != GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell))
             {
                 continue;
             }
@@ -50,7 +51,7 @@ internal sealed class MonsterCombatService
             monster.NextContactAtUtc = now.AddSeconds(monster.AttackCooldownValue);
             player.StatusEffects.Apply(PlayerStatusEffectKind.MonsterContactImmunity, now.AddSeconds(Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS));
             monster.ChaseTargetPlayerId = player.PlayerId;
-            contacts.Add(new MonsterContactDamage(monster.MonsterId, player.PlayerId, monster.Area, monster.ContactDamageValue));
+            contacts.Add(new MonsterContactDamage(monster.MonsterId, player.PlayerId, GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell), monster.ContactDamageValue));
             break;
         }
     }
@@ -68,11 +69,6 @@ internal sealed class MonsterCombatService
         }
 
         var monster = state.Find(monsterId);
-        if (monster != null)
-        {
-            monster.ReleaseReservedDamage(damage);
-        }
-
         if (monster is not { Alive: true })
         {
             return MonsterDamageResult.None;
@@ -80,7 +76,7 @@ internal sealed class MonsterCombatService
         monster.ChaseTargetPlayerId = attackerPlayerId;
         foreach (var mate in state.Entities.Values)
         {
-            if (!mate.Alive || mate.ChaseTargetPlayerId != 0 || mate.Area != monster.Area)
+            if (!mate.Alive || mate.ChaseTargetPlayerId != 0 || GameMapData.GetCurrentArea(mate.Info.ObjectInfo.MapId, mate.Info.ObjectInfo.Cell) != GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell))
             {
                 continue;
             }

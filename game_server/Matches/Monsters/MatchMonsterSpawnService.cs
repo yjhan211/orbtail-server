@@ -148,10 +148,10 @@ internal sealed class MatchMonsterSpawnService
             };
 
             state.Entities[monster.MonsterId] = monster;
-            if (!spawnedStates.TryGetValue(monster.Area, out var states))
+            if (!spawnedStates.TryGetValue(GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell), out var states))
             {
                 states = [];
-                spawnedStates[monster.Area] = states;
+                spawnedStates[GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell)] = states;
             }
             states.Add(monster.ToMonsterInfo());
         }

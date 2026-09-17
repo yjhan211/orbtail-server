@@ -53,10 +53,6 @@ namespace network.common.data.models
         [Key("mapId")]
         public MapId MapId { get; set; }
 
-        /// <summary>구역은 맵과 셀에서 계산한다. 별도 저장하거나 전송하지 않는다.</summary>
-        [IgnoreMember]
-        public AreaType Area => GameMapData.GetCurrentArea(MapId, Cell);
-
         [Key("cell")]
         public Cell Cell { get; set; }
 

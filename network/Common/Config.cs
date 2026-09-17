@@ -213,8 +213,6 @@ namespace network.common
         /// <summary>인당 목표를 그대로 더하는 인원 수 — 그 뒤는 비율 적용</summary>
         public static int SWARM_MONSTER_SUPPLY_CROWD_LINEAR_PLAYERS => SwarmConfigData.GetInt("SWARM_MONSTER_SUPPLY_CROWD_LINEAR_PLAYERS", 2);
 
-        /// <summary>스폰 예고(초) — 이 시간 뒤 활성화</summary>
-
         /// <summary>무리 산개 반경</summary>
         public static float SWARM_MONSTER_SUPPLY_SCATTER_RADIUS => SwarmConfigData.GetFloat("SWARM_MONSTER_SUPPLY_SCATTER_RADIUS", 1.6f);
 
@@ -239,8 +237,6 @@ namespace network.common
         /// <summary>행군 속도 개체별 지터 비율</summary>
         public static float SWARM_MONSTER_MARCH_SPEED_JITTER => SwarmConfigData.GetFloat("SWARM_MONSTER_MARCH_SPEED_JITTER", 0.1f);
 
-        /// <summary>출발 시각 지터(초)</summary>
-
         /// <summary>파도 문양 일반 몹 접촉 쿨다운(초) — 스플래시라 길다</summary>
         public static float SWARM_MONSTER_WAVE_INSIGNIA_ATTACK_COOLDOWN_SECONDS => SwarmConfigData.GetFloat("SWARM_MONSTER_WAVE_INSIGNIA_ATTACK_COOLDOWN_SECONDS", 2.2f);
 
@@ -255,8 +251,6 @@ namespace network.common
 
         /// <summary>순찰 각속도(라디안/초)</summary>
         public static double SWARM_MONSTER_IDLE_PATROL_ANGULAR_SPEED => SwarmConfigData.GetDouble("SWARM_MONSTER_IDLE_PATROL_ANGULAR_SPEED", 0.5d);
-
-        /// <summary>원거리 몹이 멈춰 서는 사거리 비율</summary>
 
         /// <summary>행군 웨이포인트 도착 판정 거리</summary>
         public static float SWARM_MONSTER_MARCH_WAYPOINT_ARRIVE_DISTANCE => SwarmConfigData.GetFloat("SWARM_MONSTER_MARCH_WAYPOINT_ARRIVE_DISTANCE", 0.6f);
@@ -276,15 +270,11 @@ namespace network.common
         /// <summary>잔상 접촉 후 참가자 피격 무적창(초) — 플레이어당 전역</summary>
         public static float SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS => SwarmConfigData.GetFloat("SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS", 0.6f);
 
-        /// <summary>볼러 접촉 스플래시 반경</summary>
-
-
         /// <summary>잔상 근접 개전 반경</summary>
         public static float SWARM_MONSTER_AGGRO_RADIUS => SwarmConfigData.GetFloat("SWARM_MONSTER_AGGRO_RADIUS", 2.5f);
 
         /// <summary>잔상 이동 속도 (행군·추격 공통)</summary>
         public static float SWARM_MONSTER_MOVE_SPEED => SwarmConfigData.GetFloat("SWARM_MONSTER_MOVE_SPEED", 4.2f);
-
 
         /// <summary>파도(Blue) 오브 공급 — 단색 검증이 필요하면 false로 차단한다.</summary>
         public static readonly bool SWARM_WAVE_ORB_ENABLED = true;
@@ -433,29 +423,8 @@ namespace network.common
         /// </summary>
         public static float SWARM_ORB_ATTACK_RANGE => SwarmConfigData.GetFloat("SWARM_ORB_ATTACK_RANGE", 2.5f);
 
-        /// <summary>
-        ///     PvE 오브 사거리(바닥면 단위). 사거리가 구역 전체를 덮으면 후미 절단과 머리 절단의 위험이 같아지므로,
-        ///     오브가 자기 열 좌표 주변만 덮는 국소 화망으로 잡는다 — 깊게 자를수록 앞열 오브들의 사거리가 겹치는 자리로 들어가야 한다 (#227).
-        /// </summary>
-
         /// <summary>오브 궤적 표시와 공격 높이 판정에 사용하는 본체 기준 Y 오프셋.</summary>
         public const float SWARM_ORB_ORBIT_CENTER_OFFSET_Y = 0.8f;
-
-        /// <summary>
-        ///     유저간 사격 사거리. PvE(7)보다 짧게 — 붙어야 싸운다.
-        ///     플레이어 본체 기준으로 잰다: 오브별 원점으로 재면 꼬리가 길수록 사정권이
-        ///     늘어나 "오브 수는 PvP 화력을 키우지 않는다"는 규칙과 어긋나고, 링 하나로
-        ///     표시할 수도 없다. 클라 표시(PlayerRangeRing)가 같은 값을 읽는다.
-        /// </summary>
-
-        /// <summary>
-        ///     유저간 사격에 참여하는 오브 수 = 앞열 이만큼.
-        ///     전체 오브가 사람을 쏘면 20개 꼬리가 3개 꼬리를 그대로 녹인다. 상한을 두면
-        ///     오브 수는 PvE 성장과 절단 위험만 키우는 축이 된다.
-        /// </summary>
-
-        /// <summary>PvP 피해 1당 본체 체력 피해 환산. 소수부는 피해자별로 이월 누산해 버리지 않는다.</summary>
-        public static float SWARM_PVP_DAMAGE_PER_DAMAGE => SwarmConfigData.GetFloat("SWARM_PVP_DAMAGE_PER_DAMAGE", 0.12f);
 
         // ===== 교차사격 (#232 2단계) =====
         // 오브는 몬스터만 쏜다. 그 공격이 만드는 모양(태양 = 직선)에 다른 플레이어가 들어오면
@@ -463,7 +432,7 @@ namespace network.common
         // 서버 판정과 클라 예고 표시가 같은 값을 읽어야 "표시 = 판정"이 성립한다.
 
         /// <summary>교차사격 충격 1회의 체력 피해. 티어·공격 강화와 무관한 고정값.</summary>
-        public static int SWARM_CROSSFIRE_SHOCK_DAMAGE => SwarmConfigData.GetInt("SWARM_CROSSFIRE_SHOCK_DAMAGE", 50);
+        public static int SWARM_ORB_SHOCK_DAMAGE => SwarmConfigData.GetInt("SWARM_ORB_SHOCK_DAMAGE", 50);
 
         /// <summary>
         ///     받는 피해 배율(봇·플레이어 전부 1/3만 받게 결정): 사람·봇 공통,
@@ -505,15 +474,15 @@ namespace network.common
         public static float SWARM_SUN_ORB_ATTACK_WINDUP_SECONDS => SwarmConfigData.GetFloat("SWARM_SUN_ORB_ATTACK_WINDUP_SECONDS", 0.25f);
         // 서버 앞머리 속도. 클라 투사체는 패킷의 ActiveSeconds(= 실제 벽까지 거리/속도)를 그대로 써
         // 표시와 판정의 도착 시간을 맞춘다.
-        public static float SWARM_CROSSFIRE_SUN_SWEEP_SPEED => SwarmConfigData.GetFloat("SWARM_CROSSFIRE_SUN_SWEEP_SPEED", 7.5f);
-        public static float SWARM_CROSSFIRE_SUN_MAX_GROUND_LENGTH => SwarmConfigData.GetFloat("SWARM_CROSSFIRE_SUN_MAX_GROUND_LENGTH", 40f);
+        public static float SWARM_SUN_SWEEP_SPEED => SwarmConfigData.GetFloat("SWARM_SUN_SWEEP_SPEED", 7.5f);
+        public static float SWARM_SUN_MAX_GROUND_LENGTH => SwarmConfigData.GetFloat("SWARM_SUN_MAX_GROUND_LENGTH", 40f);
 
         /// <summary>
         ///     큰 공격 한 번 = 유도탄 두 발 몫. 주기 1.6초에 피해 ×2 — 총 화력은 같고 한 번의 무게가 커진다.
         ///     T1 24는 일반 몹(16~22)을 한 방에 지우고 관통하므로 실측 뒤 조정 대상이다.
         /// </summary>
-        public static double SWARM_CROSSFIRE_SUN_INTERVAL_SECONDS => SwarmConfigData.GetDouble("SWARM_CROSSFIRE_SUN_INTERVAL_SECONDS", 1.6d);
-        public static float SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER", 2f);
+        public static double SWARM_SUN_INTERVAL_SECONDS => SwarmConfigData.GetDouble("SWARM_SUN_INTERVAL_SECONDS", 1.6d);
+        public static float SWARM_SUN_DAMAGE_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_SUN_DAMAGE_MULTIPLIER", 2f);
 
         /// <summary>티어별 CSV 배열(T1|T2|T3)에서 티어 값을 고른다. 범위 밖 티어는 양끝으로 맞춘다.</summary>
         public static float TierValue(float[] valuesByTier, int tier) =>
@@ -524,16 +493,16 @@ namespace network.common
         ///     "안 맞는" 체감의 원인은 폭이 아니라 세로 축이었고 몸통 캡슐 판정이 그걸 풀었다 — 폭은 넓히지 않는다.
         /// </summary>
         private static readonly float[] DefaultSunWidthByTier = { 0.7f, 0.85f, 1f };
-        public static float[] SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER =>
-            SwarmConfigData.GetFloatArray("SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER", DefaultSunWidthByTier);
+        public static float[] SWARM_SUN_WIDTH_BY_TIER =>
+            SwarmConfigData.GetFloatArray("SWARM_SUN_WIDTH_BY_TIER", DefaultSunWidthByTier);
 
         /// <summary>
         ///     태양 표적 획득 거리(T1/T2/T3, 바닥면 단위). 투사체 길이로는 쓰지 않는다 (투사체는 항상 구역 경계까지
         ///     난다) — 강화는 조준이 걸리는 거리만 늘린다.
         /// </summary>
         private static readonly float[] DefaultSunRangeByTier = { 4f, 5.5f, 7f };
-        public static float[] SWARM_CROSSFIRE_SUN_RANGE_BY_TIER =>
-            SwarmConfigData.GetFloatArray("SWARM_CROSSFIRE_SUN_RANGE_BY_TIER", DefaultSunRangeByTier);
+        public static float[] SWARM_SUN_RANGE_BY_TIER =>
+            SwarmConfigData.GetFloatArray("SWARM_SUN_RANGE_BY_TIER", DefaultSunRangeByTier);
 
         /// <summary>
         ///     바람 = 회전 칼날 (#268): 오브가 제자리에서 돌며 반경(티어별, 바닥면) 안 전원을 주기 틱으로 간다 —
@@ -588,13 +557,12 @@ namespace network.common
         public static float SWARM_WIND_RESONANCE_ADDITIONAL_MOVE_SPEED_BONUS => SwarmConfigData.GetFloat("SWARM_WIND_RESONANCE_ADDITIONAL_MOVE_SPEED_BONUS", 0.02f);
         public static float SWARM_WIND_RESONANCE_MOVE_SPEED_BONUS_CAP => SwarmConfigData.GetFloat("SWARM_WIND_RESONANCE_MOVE_SPEED_BONUS_CAP", 0.14f);
 
-
         /// <summary>
         ///     태양 벽 충돌 시각 폭발 크기(T1/T2/T3, 바닥면 단위). 추가 피해·충격 판정은 없다.
         /// </summary>
         private static readonly float[] DefaultSunBlastRadiusByTier = { 1.1f, 1.3f, 1.5f };
-        public static float[] SWARM_CROSSFIRE_SUN_BLAST_RADIUS_BY_TIER =>
-            SwarmConfigData.GetFloatArray("SWARM_CROSSFIRE_SUN_BLAST_RADIUS_BY_TIER", DefaultSunBlastRadiusByTier);
+        public static float[] SWARM_SUN_BLAST_RADIUS_BY_TIER =>
+            SwarmConfigData.GetFloatArray("SWARM_SUN_BLAST_RADIUS_BY_TIER", DefaultSunBlastRadiusByTier);
 
         // ===== 6칸 빌드 (#232 4단계) =====
         /// <summary>
@@ -603,7 +571,6 @@ namespace network.common
         /// </summary>
         public static int SWARM_STARTING_ORB_GRANT_COUNT => SwarmConfigData.GetInt("SWARM_STARTING_ORB_GRANT_COUNT", 3);
         public static int SWARM_STARTING_STONE_GRANT => SwarmConfigData.GetInt("SWARM_STARTING_STONE_GRANT", 5);
-
 
         /// <summary>결정 패킷 액션 — 클라·서버·로그 공유. TargetItemId에서 OrbGroupId를 판정.</summary>
         public const int ORB_UPGRADE_GROUP = 1;

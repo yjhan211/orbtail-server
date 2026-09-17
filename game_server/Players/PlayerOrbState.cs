@@ -62,7 +62,7 @@ public class PlayerOrbState
             case OrbGroupIds.Wave:
                 return Config.SWARM_WAVE_VORTEX_INTERVAL_SECONDS;
             case OrbGroupIds.Sun:
-                return Config.SWARM_CROSSFIRE_SUN_INTERVAL_SECONDS;
+                return Config.SWARM_SUN_INTERVAL_SECONDS;
             default:
                 return 0d;
         }

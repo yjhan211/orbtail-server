@@ -1,3 +1,4 @@
+using network.common.data;
 using System.Diagnostics;
 using game_server.matches;
 using game_server.players;
@@ -127,7 +128,7 @@ public partial class GameClientSession
         var visibleIds = new HashSet<long>();
         foreach (var (area, monsters) in snapshotsByArea)
         {
-            if (Player.GameInfo.ObjectInfo.Area != area) continue;
+            if (GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell) != area) continue;
             foreach (var monster in monsters)
             {
                 visibleIds.Add(monster.MonsterId);
@@ -157,7 +158,7 @@ public partial class GameClientSession
 
     internal bool HasMonsterStateChanged(MonsterInfo monster)
     {
-        if (monster.AreaType != Player.GameInfo.ObjectInfo.Area)
+        if (GameMapData.GetCurrentArea(monster.ObjectInfo.MapId, monster.ObjectInfo.Cell) != GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell))
         {
             return false;
         }
@@ -165,7 +166,7 @@ public partial class GameClientSession
         {
             return true;
         }
-        return previous.AreaType != monster.AreaType || previous.CurrentHealth != monster.CurrentHealth ||
+        return GameMapData.GetCurrentArea(previous.ObjectInfo.MapId, previous.ObjectInfo.Cell) != GameMapData.GetCurrentArea(monster.ObjectInfo.MapId, monster.ObjectInfo.Cell) || previous.CurrentHealth != monster.CurrentHealth ||
             previous.MaxHealth != monster.MaxHealth || previous.IsAlive != monster.IsAlive ||
             previous.ChaseTargetPlayerId != monster.ChaseTargetPlayerId ||
             previous.RewardItemId != monster.RewardItemId || previous.IsCore != monster.IsCore ||

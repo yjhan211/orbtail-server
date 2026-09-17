@@ -1,3 +1,4 @@
+using network.common.data;
 using game_server.matches;
 using game_server.players;
 using game_server.players.bots;
@@ -155,14 +156,14 @@ public sealed class MatchGameplayServiceTests
             match.RegisterPlayer(player);
             player.Interactions.Begin(702000101, 0);
             service.ApplySwarmParticipantDamage(match,
-                new MonsterContactDamage(1, playerId, player.GameInfo.ObjectInfo.Area, 12), []);
+                new MonsterContactDamage(1, playerId, GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell), 12), [], DateTime.UtcNow);
             Assert.Equal(100 - network.common.Config.ScaleSwarmDamageTaken(12), player.Health);
             Assert.False(player.Interactions.TryComplete(702000101, 3000, TimeSpan.FromSeconds(3), out _));
 
             player.Status = network.common.PlayerMatchStatus.ELIMINATED;
             int health = player.Health;
             service.ApplySwarmParticipantDamage(match,
-                new MonsterContactDamage(1, playerId, player.GameInfo.ObjectInfo.Area, 12), []);
+                new MonsterContactDamage(1, playerId, GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell), 12), [], DateTime.UtcNow);
             Assert.Equal(health, player.Health);
         }
     }
@@ -246,8 +247,8 @@ public sealed class MatchGameplayServiceTests
         {
             match.RegisterPlayer(human);
             match.RegisterPlayer(bot);
-            match.PendingWaveAttacks.Add(new PendingWaveAttack(99, human.GameInfo.ObjectInfo.Area, new Vector3f(), 5, 2f, 107000030, now, true));
-            waveAttacks.ProcessWaveDetonations(match, now);
+            match.PendingWaveAttacks.Add(new PendingWaveAttack(99, GameMapData.GetCurrentArea(human.GameInfo.ObjectInfo.MapId, human.GameInfo.ObjectInfo.Cell), new Vector3f(), 5, 2f, 107000030, now, true));
+            waveAttacks.ProcessWaveAttacks(match, now);
             Assert.True(human.Health < network.common.Config.MAX_HEALTH);
             Assert.Equal(human.Health, bot.Health);
             Assert.Equal(now.AddSeconds(network.common.Config.SWARM_WAVE_SLOW_SECONDS), human.StatusEffects.GetExpiresAt(PlayerStatusEffectKind.WaveSlow));
@@ -272,8 +273,8 @@ public sealed class MatchGameplayServiceTests
         using (match.Enter())
         {
             match.RegisterPlayer(human);
-            match.PendingWaveAttacks.Add(new PendingWaveAttack(99, human.GameInfo.ObjectInfo.Area, new Vector3f(), 5, 2f, 107000030, now, false));
-            waveAttacks.ProcessWaveDetonations(match, now);
+            match.PendingWaveAttacks.Add(new PendingWaveAttack(99, GameMapData.GetCurrentArea(human.GameInfo.ObjectInfo.MapId, human.GameInfo.ObjectInfo.Cell), new Vector3f(), 5, 2f, 107000030, now, false));
+            waveAttacks.ProcessWaveAttacks(match, now);
             Assert.True(human.Health < network.common.Config.MAX_HEALTH);
             Assert.False(human.StatusEffects.IsActive(PlayerStatusEffectKind.WaveSlow, now));
         }
@@ -313,7 +314,7 @@ public sealed class MatchGameplayServiceTests
             service.UpdateSleep(match, [bot], now);
             Assert.True(bot.Player.IsSleeping);
 
-            match.GroundItems.SpawnItems(bot.Player.GameInfo.ObjectInfo.Area, bot.Player.Position!.X, bot.Player.Position.Y, [network.common.Config.SUMMON_STONE_GROUND_ITEM_ID]);
+            match.GroundItems.SpawnItems(GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell), bot.Player.Position!.X, bot.Player.Position.Y, [network.common.Config.SUMMON_STONE_GROUND_ITEM_ID]);
             service.UpdateSleep(match, [bot], now);
             Assert.False(bot.Player.IsSleeping);
             service.UpdateSleep(match, [bot], now.AddSeconds(1));
@@ -394,7 +395,7 @@ public sealed class MatchGameplayServiceTests
         match.Bots.GetBots().Add(bot);
         using (match.Enter())
         {
-            var spawnCell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, bot.Player.GameInfo.ObjectInfo.Area);
+            var spawnCell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell));
             bot.Player.Position = network.common.data.MapCoordinateConverter.CellToWorld(network.common.Config.SWARM_MATCH_MAP, spawnCell);
             var originalPosition = bot.Player.Position;
             Assert.True(bot.Player.TryStartSleep());

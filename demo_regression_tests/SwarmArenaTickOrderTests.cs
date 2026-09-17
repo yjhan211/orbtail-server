@@ -28,9 +28,7 @@ public sealed class SwarmArenaTickOrderTests
             "if (!runtime.IsGameplayActive())",
             "orbTrails.UpdateTrails(",
             "trailCuts.ProcessTick(",
-            "orbAttacks.ProcessWaveDetonations(",
-            "playerOrbs.ActivateOrbs(",
-            "ProcessSunBurns(",
+            "orbAttacks.ProcessTick(",
             "ApplySwarmParticipantDamage(",
             "botBehavior.UpdateSleep(",
             "ApplySleepRecovery(",
@@ -38,9 +36,20 @@ public sealed class SwarmArenaTickOrderTests
             "MatchOrbVisual.Build(",
             "matchResults.BroadcastOrbRankings(",
             "botBehavior.ProcessOrbGrowth(",
-            "matchResults.TryEndOnScoreTimeout(",
-            "ProcessPendingMonsterHits(",
-            "ProcessSunCrossfires(");
+            "matchResults.TryEndOnScoreTimeout(");
+
+        // 오브 공격 단계 안의 순서: 이미 깔린 공격을 먼저 정산하고, 생존자가 발동한 바람 칼날은 같은 틱에 적용한다.
+        string orbAttackTick = ReadMethodSlice(
+            ReadNormalizedSource(FindRepositoryRoot(), "game_server", "Matches", "MatchOrbAttackService.cs"),
+            "public void ProcessTick(",
+            "    internal void ProcessWaveAttacks(");
+        AssertInOrder(
+            orbAttackTick,
+            "ProcessWaveAttacks(runtime,",
+            "ProcessSunAttacks(runtime,",
+            "ProcessSunBurns(runtime,",
+            "playerOrbs.ActivateOrbs(",
+            "ProcessWindAttacks(runtime,");
     }
 
     [Fact]

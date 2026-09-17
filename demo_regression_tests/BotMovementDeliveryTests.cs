@@ -665,7 +665,7 @@ public sealed class BotMovementDeliveryTests
             {
                 // 이미 출발 구역에 등장한 플레이어의 이동을 준비한다.
                 foreach (var session in runtime.GetSessions())
-                    if (session.Player.GameInfo.ObjectInfo.Area == movement.FromArea)
+                    if (GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) == movement.FromArea)
                         session.PublishedObjects.Add((ObjectType.PLAYER, movement.Info.ObjectId));
                 var player = runtime.GetPlayer(movement.Info.ObjectId)!;
                 player.GameInfo.ObjectInfo = movement.Info;
@@ -813,7 +813,7 @@ public sealed class BotMovementDeliveryTests
         var now = DateTime.UtcNow;
         runtime.StartGameplay(now);
         var originCell = network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
-        runtime.SunCrossfireShapes.Add(new SwarmCrossfireShape
+        runtime.PendingSunAttacks.Add(new PendingSunAttack
         {
             EventId = 7, OwnerId = 101, WeaponItemId = 107000010, Damage = 10,
             Area = AreaType.S2Corridor9,
@@ -989,7 +989,7 @@ public sealed class BotMovementDeliveryTests
         Assert.Equal(4, sent.Cell.Y);
         Assert.Equal(30f, sent.Rotation);
         Assert.Equal(2f, sent.Velocity.Y);
-        Assert.Equal(network.common.data.GameMapData.GetCurrentArea(sent.MapId, sent.Cell), sent.Area);
+        Assert.Equal(network.common.data.GameMapData.GetCurrentArea(sent.MapId, sent.Cell), GameMapData.GetCurrentArea(sent.MapId, sent.Cell));
         Assert.Equal(123456, message.ServerTimestamp);
     }
 
@@ -1047,7 +1047,7 @@ public sealed class BotMovementDeliveryTests
         TestGameSessionServices.AttachSession(session);
         foreach (var other in store.GetOrCreate(matchingId).GetSessions())
         {
-            if (other.Player.GameInfo.ObjectInfo.Area != area || other == session) continue;
+            if (GameMapData.GetCurrentArea(other.Player.GameInfo.ObjectInfo.MapId, other.Player.GameInfo.ObjectInfo.Cell) != area || other == session) continue;
             session.PublishedObjects.Add((ObjectType.PLAYER, other.Player.PlayerId));
             other.PublishedObjects.Add((ObjectType.PLAYER, playerId));
         }

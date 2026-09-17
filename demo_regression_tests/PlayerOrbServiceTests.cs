@@ -19,6 +19,7 @@ public sealed class PlayerOrbServiceTests
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var runtime = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(948603);
         var attacks = provider.GetRequiredService<PlayerOrbService>();
+        var orbAttacks = provider.GetRequiredService<MatchOrbAttackService>();
         var trails = provider.GetRequiredService<PlayerOrbTrailService>();
         var owner = new Player(new PlayerInfo { PlayerId = 11 }) { Position = new Vector3f() };
         var victim = new Player(new PlayerInfo { PlayerId = 12 }) { Position = new Vector3f() };
@@ -40,10 +41,11 @@ public sealed class PlayerOrbServiceTests
             attacks.ActivateOrbs(runtime, owner, now);
             Assert.Equal(Config.MAX_HEALTH, victim.Health);
             Assert.Empty(runtime.PendingWaveAttacks);
-            Assert.Empty(runtime.SunCrossfireShapes);
+            Assert.Empty(runtime.PendingSunAttacks);
             var windReadyAt = owner.Orbs.GetNextOrbAttackAtUtc(orbs[windOrdinal].ItemUid)!.Value;
             Assert.True(windReadyAt > now);
             attacks.ActivateOrbs(runtime, owner, windReadyAt);
+            orbAttacks.ProcessWindAttacks(runtime, windReadyAt);
             Assert.True(victim.Health < Config.MAX_HEALTH);
             Assert.Empty(runtime.PendingWaveAttacks);
             Assert.False(owner.Orbs.IsOrbAttackReady(orbs[windOrdinal].ItemUid, windReadyAt));
@@ -91,7 +93,7 @@ public sealed class PlayerOrbServiceTests
                 new Cell(originCell.X + stepX, originCell.Y + stepY));
             attacks.ActivateOrbs(runtime, owner, now);
             attacks.ActivateOrbs(runtime, owner, now.AddSeconds(3));
-            var shape = Assert.Single(runtime.SunCrossfireShapes);
+            var shape = Assert.Single(runtime.PendingSunAttacks);
             Assert.Equal(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, originCell), shape.Origin);
             Assert.Equal(Math.Sign(directionX), Math.Sign(shape.End.X - shape.Origin.X));
             Assert.Equal(Math.Sign(directionY), Math.Sign(shape.End.Y - shape.Origin.Y));
@@ -121,10 +123,10 @@ public sealed class PlayerOrbServiceTests
             owner.Orbs.AddOrb(107000010);
             // 첫 위상을 심은 뒤 다음 틱에서 사거리 안 상대에게 발동한다.
             attacks.ActivateOrbs(runtime, owner, now);
-            Assert.Empty(runtime.SunCrossfireShapes);
+            Assert.Empty(runtime.PendingSunAttacks);
             now = now.AddSeconds(3);
             attacks.ActivateOrbs(runtime, owner, now);
-            var shape = Assert.Single(runtime.SunCrossfireShapes);
+            var shape = Assert.Single(runtime.PendingSunAttacks);
             Assert.Equal(owner.PlayerId, shape.OwnerId);
             Assert.Equal(area, shape.Area);
 
@@ -135,16 +137,16 @@ public sealed class PlayerOrbServiceTests
             Assert.Equal(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, shape.EndCell), shape.End);
             Assert.Equal(area, GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, shape.EndCell));
             Assert.NotEqual(area, GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, outsideCell));
-            Assert.True(shape.GroundLength <= Config.SWARM_CROSSFIRE_SUN_MAX_GROUND_LENGTH);
+            Assert.True(shape.GroundLength <= Config.SWARM_SUN_MAX_GROUND_LENGTH);
 
             // 탈락한 소유자는 더 쏘지 않지만 이미 나간 투사체는 끝까지 간다.
             owner.Status = PlayerMatchStatus.ELIMINATED;
             attacks.ActivateOrbs(runtime, owner, now.AddSeconds(3));
-            Assert.Single(runtime.SunCrossfireShapes);
-            projectiles.ProcessSunCrossfires(runtime, shape.ArmedAtUtc);
-            Assert.NotEmpty(runtime.SunCrossfireShapes);
-            projectiles.ProcessSunCrossfires(runtime, shape.ExpiresAtUtc.AddSeconds(1));
-            Assert.Empty(runtime.SunCrossfireShapes);
+            Assert.Single(runtime.PendingSunAttacks);
+            projectiles.ProcessSunAttacks(runtime, shape.ArmedAtUtc);
+            Assert.NotEmpty(runtime.PendingSunAttacks);
+            projectiles.ProcessSunAttacks(runtime, shape.ExpiresAtUtc.AddSeconds(1));
+            Assert.Empty(runtime.PendingSunAttacks);
         }
     }
 

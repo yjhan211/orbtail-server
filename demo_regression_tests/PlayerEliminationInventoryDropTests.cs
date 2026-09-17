@@ -45,7 +45,7 @@ public sealed class PlayerEliminationInventoryDropTests
         Assert.Empty(TestGameSessionServices.Orbs(match, playerId).GetAllOrbs());
         Assert.Equal(
             new[] { HopeOrbT1, ForgetOrbT1 },
-            match.GroundItems.GetItemsInArea(player.GameInfo.ObjectInfo.Area)
+            match.GroundItems.GetItemsInArea(GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell))
                 .Select(item => item.ItemId)
                 .OrderBy(itemId => itemId)
                 .ToArray());
@@ -78,7 +78,7 @@ public sealed class PlayerEliminationInventoryDropTests
         }
 
         Assert.Empty(TestGameSessionServices.Orbs(match, botPlayerId).GetAllOrbs());
-        Assert.Single(match.GroundItems.GetItemsInArea(player.GameInfo.ObjectInfo.Area));
+        Assert.Single(match.GroundItems.GetItemsInArea(GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell)));
     }
 
     private static Player RegisterPlayer(MatchRuntime match, long playerId)

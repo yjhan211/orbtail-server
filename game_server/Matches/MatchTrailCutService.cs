@@ -16,7 +16,6 @@ namespace game_server.matches;
 internal sealed class MatchTrailCutService(
     PlayerOrbTrailService orbTrails,
     MatchCombatDamageService combatDamage,
-    PlayerHealthService healthService,
     BotBehaviorService botBehavior)
 {
     private const float SwarmTrailCutMaxSegmentLength = 2f;
@@ -105,7 +104,7 @@ internal sealed class MatchTrailCutService(
         }
 
         long cutterId = cutter.PlayerId;
-        var cutterArea = cutter.GameInfo.ObjectInfo.Area;
+        var cutterArea = GameMapData.GetCurrentArea(cutter.GameInfo.ObjectInfo.MapId, cutter.GameInfo.ObjectInfo.Cell);
         float segmentDx = currentPosition.X - previousPosition.X;
         float segmentDy = currentPosition.Y - previousPosition.Y;
         float segmentLengthSquared = segmentDx * segmentDx + segmentDy * segmentDy;
@@ -127,7 +126,7 @@ internal sealed class MatchTrailCutService(
                 continue;
             }
             var owner = runtime.GetPlayer(ownerId);
-            if (owner == null || owner.IsEliminated || owner.GameInfo.ObjectInfo.Area != cutterArea || owner.Position == null)
+            if (owner == null || owner.IsEliminated || GameMapData.GetCurrentArea(owner.GameInfo.ObjectInfo.MapId, owner.GameInfo.ObjectInfo.Cell) != cutterArea || owner.Position == null)
             {
                 continue;
             }
@@ -175,7 +174,7 @@ internal sealed class MatchTrailCutService(
                 cutOrdinal = ordinal;
                 cutOrbUid = ownerOrbs[ordinal].ItemUid;
                 cutOrbPosition = orbPoints[ordinal];
-                cutArea = owner.GameInfo.ObjectInfo.Area;
+                cutArea = GameMapData.GetCurrentArea(owner.GameInfo.ObjectInfo.MapId, owner.GameInfo.ObjectInfo.Cell);
             }
         }
 
@@ -247,7 +246,7 @@ internal sealed class MatchTrailCutService(
             }));
             foreach (var session in allSessions)
             {
-                if (session.PlayerId.HasValue && session.Player.GameInfo.ObjectInfo.Area == cutArea)
+                if (session.PlayerId.HasValue && GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) == cutArea)
                 {
                     session.TrySend(ringPacket);
                 }
@@ -255,7 +254,7 @@ internal sealed class MatchTrailCutService(
         }
 
         var healLockUntil = nowUtc.AddSeconds(Config.SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS);
-        combatDamage.ApplyProximityAutoCombatHit(runtime, healthService, cutter, cutterId, cutterArea, firstDestroyedOrb.ItemId, Config.SWARM_SINGLE_CUT_HEALTH_COST);
+        combatDamage.ApplyPlayerHit(runtime, cutter, cutterId, cutterArea, firstDestroyedOrb.ItemId, Config.SWARM_SINGLE_CUT_HEALTH_COST, nowUtc);
         cutter.StatusEffects.Apply(PlayerStatusEffectKind.HealingBlocked, healLockUntil);
         if (cutterBot != null)
         {

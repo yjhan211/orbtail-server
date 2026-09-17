@@ -89,8 +89,8 @@ public sealed class SharedMovementPlanningTests
         var invalidCell = new Cell(-10000, -10000);
         state.Waypoints.Add(invalidCell);
         var destination = info.Cell.GetAdjacentCells().First(cell =>
-            GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == info.Area &&
-            MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, info.Area, info.Cell, info.Area, cell) is { Count: > 0 });
+            GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == GameMapData.GetCurrentArea(info.MapId, info.Cell) &&
+            MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, GameMapData.GetCurrentArea(info.MapId, info.Cell), info.Cell, GameMapData.GetCurrentArea(info.MapId, info.Cell), cell) is { Count: > 0 });
         var request = new MovementRequest(destination, stoppedSpeed);
 
         MatchMoveService.PrepareMovement(runtime, info, state, request, now, ignoreDoors);
@@ -186,7 +186,7 @@ public sealed class SharedMovementPlanningTests
         using var scope = runtime.Enter();
         var info = CreateObject();
         var destination = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Library1);
-        runtime.Closures.InitializeMatching([(info.Area, 0)]);
+        runtime.Closures.InitializeMatching([(GameMapData.GetCurrentArea(info.MapId, info.Cell), 0)]);
         runtime.Closures.CloseDueAreas();
 
         Assert.True(MatchMoveService.TryFindSafePath(runtime, info, destination, DateTime.UtcNow, out var path));
@@ -202,8 +202,8 @@ public sealed class SharedMovementPlanningTests
         var destination = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area);
         var blockedAreas = new HashSet<AreaType> { area };
 
-        Assert.NotNull(MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, info.Area, info.Cell, area, destination));
-        Assert.Null(MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, info.Area, info.Cell, area, destination, blockedAreas));
+        Assert.NotNull(MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, GameMapData.GetCurrentArea(info.MapId, info.Cell), info.Cell, area, destination));
+        Assert.Null(MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, GameMapData.GetCurrentArea(info.MapId, info.Cell), info.Cell, area, destination, blockedAreas));
         Assert.Contains(area, blockedAreas);
     }
 
@@ -216,20 +216,20 @@ public sealed class SharedMovementPlanningTests
         foreach (var region in GameMapData.GetAreas(mapId))
         {
             var destination = GameMapData.GetAreaSpawnCell(mapId, region.AreaType);
-            var path = MapPathfinder.FindPath(mapId, info.Area, info.Cell, region.AreaType, destination);
-            if (path == null || !path.Any(step => step.Area != info.Area && step.Area != region.AreaType))
+            var path = MapPathfinder.FindPath(mapId, GameMapData.GetCurrentArea(info.MapId, info.Cell), info.Cell, region.AreaType, destination);
+            if (path == null || !path.Any(step => step.Area != GameMapData.GetCurrentArea(info.MapId, info.Cell) && step.Area != region.AreaType))
             {
                 continue;
             }
             var blockedAreas = new HashSet<AreaType>();
             foreach (var candidate in GameMapData.GetAreas(mapId))
             {
-                if (candidate.AreaType != info.Area && candidate.AreaType != region.AreaType)
+                if (candidate.AreaType != GameMapData.GetCurrentArea(info.MapId, info.Cell) && candidate.AreaType != region.AreaType)
                 {
                     blockedAreas.Add(candidate.AreaType);
                 }
             }
-            Assert.Null(MapPathfinder.FindPath(mapId, info.Area, info.Cell, region.AreaType, destination, blockedAreas));
+            Assert.Null(MapPathfinder.FindPath(mapId, GameMapData.GetCurrentArea(info.MapId, info.Cell), info.Cell, region.AreaType, destination, blockedAreas));
             return;
         }
         Assert.Fail("Test map must contain a route through an intermediate area.");
@@ -246,10 +246,10 @@ public sealed class SharedMovementPlanningTests
         foreach (var region in GameMapData.GetAreas(map))
         {
             var destination = GameMapData.GetAreaSpawnCell(map, region.AreaType);
-            var original = MapPathfinder.FindPath(map, info.Area, info.Cell, region.AreaType, destination);
+            var original = MapPathfinder.FindPath(map, GameMapData.GetCurrentArea(info.MapId, info.Cell), info.Cell, region.AreaType, destination);
             if (original == null) continue;
             var intermediate = original.Select(step => step.Area)
-                .Where(area => area != info.Area && area != region.AreaType && area != AreaType.None)
+                .Where(area => area != GameMapData.GetCurrentArea(info.MapId, info.Cell) && area != region.AreaType && area != AreaType.None)
                 .Distinct().ToArray();
             if (intermediate.Length == 0) continue;
             runtime.Closures.InitializeMatching(intermediate.Select(area => (area, 0)).ToArray());
@@ -292,7 +292,7 @@ public sealed class SharedMovementPlanningTests
         using var scope = runtime.Enter();
         var info = CreateObject();
         var destination = info.Cell.GetAdjacentCells().First(cell =>
-            GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == info.Area &&
+            GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == GameMapData.GetCurrentArea(info.MapId, info.Cell) &&
             GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell));
         var state = new MovementState();
         var now = DateTime.UtcNow;

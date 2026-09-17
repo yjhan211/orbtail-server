@@ -111,7 +111,7 @@ internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logge
         var validation = new ValidatedMovement(clientPos, validatedVelocity, requiresClientCorrection);
         var validatedPosition = validation.Position;
         var currentCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, validatedPosition);
-        var oldArea = player.GameInfo.ObjectInfo.Area;
+        var oldArea = GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell);
         var newArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, currentCell);
         var previousCell = player.Position != null ? MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, player.Position) : currentCell;
 

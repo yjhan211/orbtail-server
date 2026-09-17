@@ -1,3 +1,4 @@
+using network.common.data;
 using System.Buffers;
 using game_server.players;
 using MessagePack;
@@ -23,22 +24,25 @@ public sealed class PlayerSpatialContractTests
         var destination = network.common.data.GameMapData.GetAreaSpawnCell(map, AreaType.S2Library1);
         info.Cell.X = destination.X;
         info.Cell.Y = destination.Y;
-        Assert.Equal(AreaType.S2Library1, info.Area);
+        Assert.Equal(AreaType.S2Library1, GameMapData.GetCurrentArea(info.MapId, info.Cell));
         Assert.Equal(AreaType.S2Corridor9, before.Area);
         Assert.Null(typeof(Player).GetProperty("CurrentArea"));
-        Assert.Null(typeof(GameObjectInfo).GetProperty(nameof(GameObjectInfo.Area))!.SetMethod);
+        Assert.Null(typeof(GameObjectInfo).GetProperty("Area"));
+        Assert.Null(typeof(GameObjectInfo).GetMethod("GetArea"));
+        Assert.Null(typeof(MonsterInfo).GetProperty("AreaType"));
+        Assert.Null(typeof(game_server.matches.monsters.Monster).GetProperty("Area"));
 
         var bytes = MessagePackSerializer.Serialize(info);
         Assert.DoesNotContain("\"area\"", MessagePackSerializer.ConvertToJson(bytes));
         var copy = MessagePackSerializer.Deserialize<GameObjectInfo>(bytes);
-        Assert.Equal(AreaType.S2Library1, copy.Area);
+        Assert.Equal(AreaType.S2Library1, GameMapData.GetCurrentArea(copy.MapId, copy.Cell));
 
         info.MapId = MapId.None;
-        Assert.Equal(AreaType.None, info.Area);
+        Assert.Equal(AreaType.None, GameMapData.GetCurrentArea(info.MapId, info.Cell));
         info.MapId = map;
         info.Cell = new Cell(-10000, -10000);
-        Assert.Equal(AreaType.None, info.Area);
-        Assert.Equal(AreaType.S2Library1, copy.Area);
+        Assert.Equal(AreaType.None, GameMapData.GetCurrentArea(info.MapId, info.Cell));
+        Assert.Equal(AreaType.S2Library1, GameMapData.GetCurrentArea(copy.MapId, copy.Cell));
     }
 
     [Fact]
@@ -157,24 +161,24 @@ public sealed class PlayerSpatialContractTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var player = new Player(new PlayerInfo { PlayerId = 17 });
         player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Corridor9)));
-        Assert.Equal(AreaType.S2Corridor9, player.GameInfo.ObjectInfo.Area);
+        Assert.Equal(AreaType.S2Corridor9, GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell));
         player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Library1)));
-        Assert.Equal(AreaType.S2Library1, player.GameInfo.ObjectInfo.Area);
+        Assert.Equal(AreaType.S2Library1, GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell));
         var snapshot = player.GameInfo.ObjectInfo.Clone();
         player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.None)));
-        Assert.Equal(AreaType.S2Library1, snapshot.Area);
+        Assert.Equal(AreaType.S2Library1, GameMapData.GetCurrentArea(snapshot.MapId, snapshot.Cell));
 
         var monster = new network.common.data.models.MonsterInfo
         {
             ObjectInfo = new GameObjectInfo(ObjectType.MONSTER, 1, Config.SWARM_MATCH_MAP,
                 network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9))
         };
-        Assert.Equal(AreaType.S2Corridor9, monster.ObjectInfo.Area);
+        Assert.Equal(AreaType.S2Corridor9, GameMapData.GetCurrentArea(monster.ObjectInfo.MapId, monster.ObjectInfo.Cell));
         monster.ObjectInfo.Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Library1));
-        Assert.Equal(AreaType.S2Library1, monster.AreaType);
+        Assert.Equal(AreaType.S2Library1, GameMapData.GetCurrentArea(monster.ObjectInfo.MapId, monster.ObjectInfo.Cell));
         var copy = MessagePackSerializer.Deserialize<network.common.data.models.MonsterInfo>(
             MessagePackSerializer.Serialize(monster));
-        Assert.Equal(AreaType.S2Library1, copy.ObjectInfo.Area);
+        Assert.Equal(AreaType.S2Library1, GameMapData.GetCurrentArea(copy.ObjectInfo.MapId, copy.ObjectInfo.Cell));
     }
     private static GamePlayerInfo CreatePlayerObject() => new()
     {
@@ -210,7 +214,7 @@ public sealed class PlayerSpatialContractTests
         Assert.Equal(new[] { 101000003 }, player.WearItemIdList);
         var info = player.ObjectInfo;
         Assert.Equal(42, info.ObjectId);
-        Assert.Equal(network.common.data.GameMapData.GetCurrentArea(info.MapId, info.Cell), info.Area);
+        Assert.Equal(network.common.data.GameMapData.GetCurrentArea(info.MapId, info.Cell), GameMapData.GetCurrentArea(info.MapId, info.Cell));
         Assert.Null(typeof(GameObjectInfo).GetProperty("MapSubId"));
         Assert.Equal(3.25f, info.Position.X);
         Assert.Equal(4.75f, info.Position.Y);

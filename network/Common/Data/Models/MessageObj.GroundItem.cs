@@ -1,3 +1,4 @@
+using network.common.data;
 #pragma warning disable CS8618
 using System.Collections.Generic;
 using MessagePack;
@@ -11,7 +12,7 @@ namespace network.common.data.models
         [IgnoreMember] public GameObjectInfo ObjectInfo { get; } = new GameObjectInfo { ObjectType = ObjectType.ITEM, MapId = Config.SWARM_MATCH_MAP };
         [Key("groundItemUid")] public long GroundItemUid { get => ObjectInfo.ObjectId; set => ObjectInfo.ObjectId = value; }
         [Key("itemId")] public int ItemId { get; set; }
-        [IgnoreMember] public int AreaType => (int)ObjectInfo.Area;
+        [IgnoreMember] public int AreaType => (int)GameMapData.GetCurrentArea(ObjectInfo.MapId, ObjectInfo.Cell);
         [Key("positionX")] public float PositionX
         {
             get => ObjectInfo.Position.X;

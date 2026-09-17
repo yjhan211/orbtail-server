@@ -24,7 +24,8 @@ public class Bot
 
     }
 
-    public Player Player { get; } = new(new PlayerInfo()) {
+    public Player Player { get; } = new(new PlayerInfo())
+    {
         Cell = new(0, 0),
         Position = new(0f, 0f, 0f)
     };
@@ -36,7 +37,7 @@ public class Bot
             Player.GameInfo.ObjectInfo.ObjectId = value;
         }
     }
-    public long LastProximityAttackerPlayerId { get; set; }
+    public long LastAttackerPlayerId { get; set; }
     public MovementState Movement { get; } = new();
     public (AreaType Area, Cell Cell)? ExplorationTarget { get; set; }
     public DateTime LastDamagedAtUtc { get; set; } = DateTime.MinValue;

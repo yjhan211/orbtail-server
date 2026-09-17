@@ -1,3 +1,4 @@
+using network.common.data;
 using game_server.matches;
 using game_server.players;
 using MessagePack;
@@ -230,7 +231,7 @@ public partial class GameClientSession
 
         foreach (var visual in visuals)
         {
-            if (Player.GameInfo.ObjectInfo.Area != visual.Area)
+            if (GameMapData.GetCurrentArea(Player.GameInfo.ObjectInfo.MapId, Player.GameInfo.ObjectInfo.Cell) != visual.Area)
             {
                 ForgetOrbVisualState(visual.ActorPlayerId);
                 continue;

@@ -13,7 +13,6 @@ namespace network.common.data.models
         [Key("objectInfo")] public GameObjectInfo ObjectInfo { get; set; } = new GameObjectInfo { ObjectType = ObjectType.MONSTER };
 
         [Key("monsterId")] public int MonsterId { get => (int)ObjectInfo.ObjectId; set => ObjectInfo.ObjectId = value; }
-        [IgnoreMember] public AreaType AreaType => ObjectInfo.Area;
         [Key("maxHealth")] public int MaxHealth { get; set; }
         [Key("currentHealth")] public int CurrentHealth { get; set; }
         [Key("isAlive")] public bool IsAlive { get; set; }

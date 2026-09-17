@@ -24,9 +24,8 @@ public sealed class GameServerDependencyInjectionTests
         var second = store.GetOrCreate(990012);
 
         Assert.Same(provider.GetRequiredService<MatchCombatDamageService>(), provider.GetRequiredService<MatchCombatDamageService>());
-        Assert.Same(first.CombatDamage, store.GetOrThrow(first.MatchingId).CombatDamage);
-        Assert.NotSame(first.CombatDamage, second.CombatDamage);
-        Assert.NotSame(first.CombatDamage.CriticalRng, second.CombatDamage.CriticalRng);
+        Assert.Same(first.CriticalRng, store.GetOrThrow(first.MatchingId).CriticalRng);
+        Assert.NotSame(first.CriticalRng, second.CriticalRng);
     }
 
     [Fact]
@@ -112,7 +111,7 @@ public sealed class GameServerDependencyInjectionTests
         var health = provider.GetRequiredService<PlayerHealthService>();
         Assert.Same(health, provider.GetRequiredService<PlayerHealthService>());
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        foreach (var type in new[] { typeof(MatchCombatService), typeof(game_server.matches.MatchOrbAttackService),
+        foreach (var type in new[] { typeof(MatchCombatService), typeof(MatchCombatDamageService),
                      typeof(game_server.matches.MatchFieldService), typeof(game_server.players.PlayerPickupService) })
         {
             var service = provider.GetRequiredService(type);

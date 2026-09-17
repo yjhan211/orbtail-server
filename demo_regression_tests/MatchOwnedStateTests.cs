@@ -120,11 +120,11 @@ public sealed class MatchOwnedStateTests
             Assert.Same(bot.Player, match.GetPlayer(botId));
             Assert.Equal(0, bot.Movement.WaypointIndex);
             Assert.Empty(TestGameSessionServices.Orbs(match, botId).GetAllOrbs());
-            int drops = match.GroundItems.GetItemsInArea(bot.Player.GameInfo.ObjectInfo.Area).Count;
+            int drops = match.GroundItems.GetItemsInArea(GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell)).Count;
             var eliminatedAt = entry.eliminatedAt;
 
             service.EliminatePlayer(match, bot.Player, EliminationReason.HEALTH_ZERO, attackerPlayerId: 99);
-            Assert.Equal(drops, match.GroundItems.GetItemsInArea(bot.Player.GameInfo.ObjectInfo.Area).Count);
+            Assert.Equal(drops, match.GroundItems.GetItemsInArea(GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell)).Count);
             Assert.Equal(eliminatedAt, match.BuildGameResult().Single(row => row.playerId == botId).eliminatedAt);
             Assert.Equal(11, match.BuildGameResult().Single(row => row.playerId == botId).attackerPlayerId);
         }
@@ -185,9 +185,9 @@ public sealed class MatchOwnedStateTests
             service.EliminatePlayer(match, player, EliminationReason.HEALTH_ZERO, deferGameOver: true);
             service.EliminatePlayer(match, player, EliminationReason.HEALTH_ZERO, deferGameOver: true);
             Assert.Null(player.Session);
-            Assert.Equal(player.GameInfo.ObjectInfo.Area, player.EliminatedArea);
+            Assert.Equal(GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell), player.EliminatedArea);
             Assert.Empty(TestGameSessionServices.Orbs(match, player.PlayerId).GetAllOrbs());
-            Assert.Single(match.GroundItems.GetItemsInArea(player.GameInfo.ObjectInfo.Area));
+            Assert.Single(match.GroundItems.GetItemsInArea(GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell)));
         }
     }
 }
