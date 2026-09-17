@@ -92,7 +92,7 @@ internal class MatchFieldService(
                 continue;
             }
 
-            var orbTiers = orbTrails.GetOrbTiersInOrder(runtime, owner);
+            var orbTiers = PlayerOrbTrailService.GetOrbTiersInOrder(runtime, owner);
             int firstClosedOrdinal = orbTiers.Count;
             Vector3f? firstClosedOrbPosition = null;
             var cutArea = AreaType.None;

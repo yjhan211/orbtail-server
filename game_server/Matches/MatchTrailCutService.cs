@@ -22,8 +22,6 @@ internal sealed class MatchTrailCutService(
     private const float SwarmTrailCutMaxSegmentLength = 2f;
     private const float SwarmTrailCutMinSegmentLengthSquared = 0.0004f;
     private const float SwarmTrailCutOrbHitYOffset = 0.15f;
-    private const float SwarmTrailCutFlashRadius = PlayerOrbTrailService.CutFlashRadius;
-    private const int SwarmRingVfxKindCut = PlayerOrbTrailService.CutVfxKind;
     private const int SwarmRingVfxKindRetaliationGuard = 5;
     private static double SwarmTrailCutSameOrbDebounceSeconds => SwarmConfigData.GetDouble("SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS", 0.8d);
     private static int SwarmSingleCutHealthCost => SwarmConfigData.GetInt("SWARM_SINGLE_CUT_HEALTH_COST", 35);
@@ -235,8 +233,8 @@ internal sealed class MatchTrailCutService(
                 OwnerPlayerId = cutterId,
                 CenterX = cutOrbPosition.X,
                 CenterY = cutOrbPosition.Y,
-                Radius = SwarmTrailCutFlashRadius,
-                Kind = SwarmRingVfxKindCut,
+                Radius = PlayerOrbTrailService.CutFlashRadius,
+                Kind = PlayerOrbTrailService.CutVfxKind,
                 VictimPlayerId = victimId,
                 FromOrdinal = cutOrdinal
             }));

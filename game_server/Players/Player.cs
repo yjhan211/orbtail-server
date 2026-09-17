@@ -120,7 +120,7 @@ public class Player
     {
         ArgumentNullException.ThrowIfNull(profile);
         GameInfo.ObjectInfo.ObjectId = profile.PlayerId;
-        Orbs = new PlayerOrbState(profile.PlayerId);
+        Orbs = new PlayerOrbState();
         GameInfo.ObjectInfo.MapId = Config.SWARM_MATCH_MAP;
         GameInfo.Name = profile.Name;
         GameInfo.WearItemIdList = new List<int>(profile.WearItemIdList);
@@ -156,7 +156,6 @@ public class Player
         Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, spawnCell);
         Velocity = new Vector3f();
         Rotation = 0f;
-        Orbs.ResetOrbit(Position);
     }
 
     internal void ApplyValidatedMovement(Vector3f position, Vector3f velocity, float rotation)

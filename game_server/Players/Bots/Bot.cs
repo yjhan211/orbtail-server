@@ -1,6 +1,5 @@
 using game_server.matches;
 using network.common;
-using network.common.data;
 using network.common.data.models;
 
 namespace game_server.players.bots;
@@ -35,7 +34,6 @@ public class Bot
         set
         {
             Player.GameInfo.ObjectInfo.ObjectId = value;
-            Player.Orbs.ResetOrbit(Player.Position, value);
         }
     }
     public long LastProximityAttackerPlayerId { get; set; }

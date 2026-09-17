@@ -53,14 +53,13 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_MOVE(GameObjectInfo info, long serverTimestamp, float orbOrbitPhaseDegrees = 0f)
+    public static Packet G_TO_C_MOVE(GameObjectInfo info, long serverTimestamp)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_MOVE, info.ObjectId);
         var body = new G_TO_C_MOVE
         {
             Objects = new() { info.Clone() },
-            ServerTimestamp = serverTimestamp,
-            OrbPhases = new() { [info.ObjectId] = orbOrbitPhaseDegrees }
+            ServerTimestamp = serverTimestamp
         };
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

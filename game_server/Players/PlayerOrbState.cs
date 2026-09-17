@@ -4,27 +4,23 @@ using network.common.data.models;
 namespace game_server.players;
 
 /// <summary>
-///     플레이어 한 명의 보유 오브·소환석·강화 횟수·궤도·궤적·공격 타이머 상태.
+///     플레이어 한 명의 보유 오브·소환석·강화 횟수·궤적·공격 타이머 상태.
 ///     Player가 소유하며 읽기와 변경 모두 매치 잠금 안에서만 일어난다.
 ///     그래서 자체 동기화는 두지 않는다. 동일한 종류의 오브도 각각 독립 슬롯과 UID를 유지한다.
 ///     ItemUid는 프로세스 전역 순번이다.
 /// </summary>
 public class PlayerOrbState
 {
-    // 보유 오브·소환석·강화 횟수
-    private static long s_nextItemUid;
+    private static long _nextItemUid;
     private readonly Dictionary<long, InGameItemInfo> _items = new();
     private readonly Dictionary<int, int> _upgradeCounts = new();
     public SummonStoneStateInfo SummonStones { get; internal set; } = SummonStoneStateInfo.Empty;
 
-    // 궤도·이동 궤적
-    private float _initialOrbitPhaseDegrees;
-    private Vector3f? _orbitLastPosition;
-    public float OrbitPhaseDegrees { get; private set; }
-    internal List<Vector3f> OrbTrail { get; } = new();
-
-    // 오브별 공격 시각과 예열 시작 시각
+    // 오브별 공격 주기·준비 상태
     private readonly Dictionary<long, OrbAttackTimerState> _attackTimers = new();
+
+    // 이동 궤적
+    internal List<Vector3f> OrbTrail { get; } = new();
 
     private sealed class OrbAttackTimerState
     {
@@ -34,39 +30,13 @@ public class PlayerOrbState
 
     private OrbAttackTimerState GetOrCreateAttackTimers(long itemUid)
     {
-        if (!_attackTimers.TryGetValue(itemUid, out var timers))
+        if (_attackTimers.TryGetValue(itemUid, out var timers))
         {
-            timers = new OrbAttackTimerState();
-            _attackTimers.Add(itemUid, timers);
+            return timers;
         }
+        timers = new OrbAttackTimerState();
+        _attackTimers.Add(itemUid, timers);
         return timers;
-    }
-
-    public PlayerOrbState(long playerId = 0)
-    {
-        _initialOrbitPhaseDegrees = SwarmOrbOrbit.InitialPhaseDegrees(playerId);
-        OrbitPhaseDegrees = _initialOrbitPhaseDegrees;
-    }
-
-    public void ResetOrbit(Vector3f? position = null, long? playerId = null)
-    {
-        if (playerId.HasValue)
-        {
-            _initialOrbitPhaseDegrees = SwarmOrbOrbit.InitialPhaseDegrees(playerId.Value);
-        }
-        OrbitPhaseDegrees = _initialOrbitPhaseDegrees;
-        _orbitLastPosition = position == null ? null : new Vector3f(position.X, position.Y, position.Z);
-    }
-
-    public void AdvanceOrbit(Vector3f position)
-    {
-        if (_orbitLastPosition != null)
-        {
-            float dx = position.X - _orbitLastPosition.X;
-            float dy = position.Y - _orbitLastPosition.Y;
-            OrbitPhaseDegrees = SwarmOrbOrbit.AdvancePhase(OrbitPhaseDegrees, MathF.Sqrt(dx * dx + dy * dy));
-        }
-        _orbitLastPosition = new Vector3f(position.X, position.Y, position.Z);
     }
 
     public int GetUpgradeCount(int orbGroupId) => _upgradeCounts.GetValueOrDefault(orbGroupId);
@@ -113,7 +83,6 @@ public class PlayerOrbState
             timers.NextAttackAtUtc = nowUtc.AddSeconds(intervalSeconds * firstPhase);
             return false;
         }
-
         return nowUtc >= timers.NextAttackAtUtc.Value;
     }
 
@@ -141,7 +110,7 @@ public class PlayerOrbState
         }
         var item = new InGameItemInfo
         {
-            ItemUid = Interlocked.Increment(ref s_nextItemUid),
+            ItemUid = Interlocked.Increment(ref _nextItemUid),
             ItemId = itemId,
             Count = 1
         };
@@ -194,7 +163,6 @@ public class PlayerOrbState
         addedItem = null;
         if (GetOrbTier(itemId) <= 0 || maxSlots <= 0 || _items.Count >= maxSlots) return false;
         addedItem = AddOrb(itemId);
-
         return true;
     }
 
@@ -211,55 +179,38 @@ public class PlayerOrbState
         return items;
     }
 
+    public int OrbCount => _items.Count;
+
     internal float GetOrbPower()
     {
         float power = 0f;
-        foreach (var item in GetAllOrbs())
+        foreach (var item in _items.Values)
         {
-            if (item.Count <= 0) continue;
-            int tier = GetOrbTier(item.ItemId);
-            if (tier <= 0) continue;
-            power += OrbData.GetSwarmStatTierWeight(tier) * item.Count;
+            power += OrbData.GetSwarmStatTierWeight(GetOrbTier(item.ItemId));
         }
         return power;
     }
 
-    internal List<InGameItemInfo> GetOrderedOrbs() =>
-        GetAllOrbs()
-            .Where(item => item.Count > 0 && GetOrbTier(item.ItemId) > 0)
-            .OrderBy(item => item.ItemUid)
-            .ToList();
+    internal List<InGameItemInfo> GetOrderedOrbs() => _items.Values.OrderBy(item => item.ItemUid).ToList();
 
-    public bool HasAnyOrb() =>
-        GetAllOrbs().Any(item => item.Count > 0 && GetOrbTier(item.ItemId) > 0);
+    public bool HasAnyOrb() => _items.Count > 0;
 
     public (int OrbCount, int TierSum) GetOrbScore()
     {
-        int orbCount = 0;
         int tierSum = 0;
-        foreach (var item in GetAllOrbs())
+        foreach (var item in _items.Values)
         {
-            int tier = GetOrbTier(item.ItemId);
-            if (item.Count <= 0 || tier <= 0)
-            {
-                continue;
-            }
-            orbCount += item.Count;
-            tierSum += tier * item.Count;
+            tierSum += GetOrbTier(item.ItemId);
         }
-        return (orbCount, tierSum);
+        return (_items.Count, tierSum);
     }
 
-    public int GetHighestOrbTier() =>
-        GetOrderedOrbs().Select(item => GetOrbTier(item.ItemId)).DefaultIfEmpty(0).Max();
+    public int GetHighestOrbTier() => GetOrderedOrbs().Select(item => GetOrbTier(item.ItemId)).DefaultIfEmpty(0).Max();
 
     public List<InGameItemInfo> GetAllOrbs()
     {
         return _items.Values.ToList();
     }
 
-    internal static int GetOrbTier(int itemId) =>
-        OrbData.TryGetColorAndTier(itemId, out _, out int attackTier)
-            ? attackTier
-            : 0;
+    internal static int GetOrbTier(int itemId) => OrbData.TryGetColorAndTier(itemId, out _, out int attackTier) ? attackTier : 0;
 }

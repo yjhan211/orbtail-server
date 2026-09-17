@@ -129,6 +129,8 @@ public sealed class GameServerDependencyInjectionTests
     internal static ServiceProvider CreateProvider(network.infrastructure.messaging.INatsClient? natsClient = null,
         Action<IServiceCollection>? configure = null)
     {
+        // 서비스가 맵·CSV를 읽으므로 테스트 실행 순서와 무관하게 여기서 로드한다.
+        UserServerMatchingTestData.EnsureGameDataLoaded();
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(
             new Dictionary<string, string?>
             {

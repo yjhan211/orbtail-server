@@ -253,7 +253,7 @@ public sealed class MatchOrbAttackServiceTests
             attacks.ActivateWaveOrbs(match, owner, readyAt);
             Assert.Empty(match.PendingWaveAttacks);
             Assert.Equal(readyAt, owner.Orbs.GetNextWaveOrbAttackAtUtc(key)!.Value);
-            victim.Position = trails.GetOrbPosition(match, owner, 0, owner.Position);
+            victim.Position = trails.GetOrbPosition(match, owner, 0, owner.Position, PlayerOrbTrailService.GetOrbTiersInOrder(match, owner));
             attacks.ActivateWaveOrbs(match, owner, readyAt);
             var pending = Assert.Single(match.PendingWaveAttacks);
             Assert.True(pending.ExplodeAtUtc > readyAt);

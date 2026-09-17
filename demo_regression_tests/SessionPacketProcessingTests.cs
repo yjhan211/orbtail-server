@@ -53,12 +53,13 @@ public sealed class SessionPacketProcessingTests
     }
 
     [Fact]
-    public void MovementWireContracts_CarryServerTimeAndOrbPhase()
+    public void MovementWireContracts_CarryObjectsAndServerTimeOnly()
     {
         string response = MessagePackSerializer.ConvertToJson(MessagePackSerializer.Serialize(
             new G_TO_C_MOVE { Objects = [new GameObjectInfo()] }));
         Assert.Contains("serverTime", response);
-        Assert.Contains("orbPhase", response);
+        Assert.Contains("objects", response);
+        Assert.DoesNotContain("orbPhase", response);
     }
 
     private static Task Send<T>(GameClientSession session, Protocol protocol, T body)

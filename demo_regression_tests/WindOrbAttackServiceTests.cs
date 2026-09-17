@@ -43,7 +43,7 @@ public sealed class WindOrbAttackServiceTests
         using (MatchRuntimeStore.Enter(match))
         {
             TestGameSessionServices.Orbs(match, 11).AddOrb(107000020);
-            var origin = trails.GetOrbPosition(match, owner.Player, 0, new Vector3f(0, 0, 0));
+            var origin = trails.GetOrbPosition(match, owner.Player, 0, new Vector3f(0, 0, 0), PlayerOrbTrailService.GetOrbTiersInOrder(match, owner.Player));
             owner.Player.Position = new Vector3f(0, 0, 0);
             victim.Player.Position = origin;
             service.ActivateWindOrbs(match, owner.Player, now);
@@ -81,7 +81,7 @@ public sealed class WindOrbAttackServiceTests
         using (MatchRuntimeStore.Enter(match))
         {
             TestGameSessionServices.Orbs(match, 11).AddOrb(itemId);
-            var origin = trails.GetOrbPosition(match, owner.Player, 0, new Vector3f(0, 0, 0));
+            var origin = trails.GetOrbPosition(match, owner.Player, 0, new Vector3f(0, 0, 0), PlayerOrbTrailService.GetOrbTiersInOrder(match, owner.Player));
             owner.Player.Position = new Vector3f(0, 0, 0);
             victim.Player.Position = origin;
             if (otherArea) victim.Player.Position = TestMapPosition.In(AreaType.S2Library1);

@@ -73,7 +73,7 @@ internal sealed class PlayerOrbService(
                 continue;
             }
 
-            orbTiers ??= orbTrails.GetOrbTiersInOrder(runtime, owner);
+            orbTiers ??= PlayerOrbTrailService.GetOrbTiersInOrder(runtime, owner);
             var orbPosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, owner.Position!, orbTiers);
             monsterTargets ??= runtime.Monsters.GetCombatTargets();
             bool hasTargetInRange = false;
@@ -432,7 +432,7 @@ internal sealed class PlayerOrbService(
                 continue;
             }
 
-            orbTiers ??= orbTrails.GetOrbTiersInOrder(runtime, owner);
+            orbTiers ??= PlayerOrbTrailService.GetOrbTiersInOrder(runtime, owner);
             var orbPosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, owner.Position!, orbTiers);
             float radius = Config.SWARM_WIND_BLADE_RADIUS_BY_TIER[Math.Clamp(tier, 1, 3) - 1];
             monsterTargets ??= runtime.Monsters.GetCombatTargets();

@@ -34,7 +34,6 @@ namespace network.common.data.models
         [Key("stoneCount")] public int StoneCount { get; set; }
         [Key("successfulSummonCount")] public int SuccessfulSummonCount { get; set; }
         [Key("nextCost")] public int NextCost { get; set; }
-
     }
 
     [MessagePackObject]

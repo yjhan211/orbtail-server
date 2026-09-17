@@ -146,7 +146,6 @@ internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logge
         {
             throw new InvalidOperationException("Player movement completion requires the match lock.");
         }
-        player.Orbs.AdvanceOrbit(player.GameInfo.ObjectInfo.Position);
         var velocity = player.GameInfo.ObjectInfo.Velocity;
         if (player.State == PlayerState.EXPLORE_1 && (velocity.X != 0f || velocity.Y != 0f))
         {

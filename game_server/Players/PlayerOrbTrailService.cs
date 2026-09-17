@@ -17,64 +17,30 @@ internal sealed class PlayerOrbTrailService
     private const float SwarmTrailSampleMinDistance = 0.08f;
     private const float SwarmTrailTeleportResetDistance = 5f;
 
-    public int CountOrbs(MatchRuntime runtime, Player player)
+    public static List<int> GetOrbTiersInOrder(MatchRuntime runtime, Player player)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Orb trail operations require the match lock.");
         }
-
-        var inventory = player.Orbs;
-        int orbCount = 0;
-        foreach (var item in inventory.GetAllOrbs())
-        {
-            if (item.Count <= 0 || PlayerOrbState.GetOrbTier(item.ItemId) <= 0)
-            {
-                continue;
-            }
-
-            orbCount += item.Count;
-        }
-
-        return orbCount;
-    }
-
-    public List<int> GetOrbTiersInOrder(MatchRuntime runtime, Player player)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Orb trail operations require the match lock.");
-        }
-
-        var items = player.Orbs.GetAllOrbs().ToList();
-        items.Sort((left, right) => left.ItemUid.CompareTo(right.ItemUid));
 
         var tiers = new List<int>();
-        foreach (var item in items)
+        foreach (var item in player.Orbs.GetOrderedOrbs())
         {
-            if (item.Count <= 0)
-            {
-                continue;
-            }
-
-            int tier = PlayerOrbState.GetOrbTier(item.ItemId);
-            if (tier > 0)
-            {
-                tiers.Add(tier);
-            }
+            tiers.Add(PlayerOrbState.GetOrbTier(item.ItemId));
         }
 
         return tiers;
     }
 
-    public Vector3f GetOrbPosition(MatchRuntime runtime, Player player, int ordinal, Vector3f anchor, IReadOnlyList<int>? orderedTiers = null)
+    public Vector3f GetOrbPosition(MatchRuntime runtime, Player player, int ordinal, Vector3f anchor, IReadOnlyList<int> orderedTiers)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Orb trail operations require the match lock.");
         }
 
-        float targetDistance = OrbData.GetSwarmTrailDistance(orderedTiers ?? GetOrbTiersInOrder(runtime, player), ordinal);
+        float targetDistance = OrbData.GetSwarmTrailDistance(orderedTiers, ordinal);
         return GetPositionAtDistance(runtime, player, targetDistance, anchor);
     }
 
@@ -179,7 +145,7 @@ internal sealed class PlayerOrbTrailService
                 points.Insert(0, new Vector3f(position.X, position.Y, 0f));
             }
 
-            int trailOrbCount = Math.Max(CountOrbs(runtime, player) + 2, 4);
+            int trailOrbCount = Math.Max(player.Orbs.OrbCount + 2, 4);
             float neededLength = Config.SWARM_ORB_TRAIL_FIRST_OFFSET + trailOrbCount * Config.SWARM_ORB_TRAIL_SPACING + 1f;
             float accumulated = 0f;
             for (int pointIndex = 1; pointIndex < points.Count; pointIndex++)

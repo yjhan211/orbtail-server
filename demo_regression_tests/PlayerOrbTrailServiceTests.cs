@@ -86,9 +86,8 @@ public sealed class PlayerOrbTrailServiceTests
         var service = new PlayerOrbTrailService();
         var anchor = new Vector3f();
 
-        Assert.Throws<InvalidOperationException>(() => service.CountOrbs(match, player));
-        Assert.Throws<InvalidOperationException>(() => service.GetOrbTiersInOrder(match, player));
-        Assert.Throws<InvalidOperationException>(() => service.GetOrbPosition(match, player, 0, anchor));
+        Assert.Throws<InvalidOperationException>(() => PlayerOrbTrailService.GetOrbTiersInOrder(match, player));
+        Assert.Throws<InvalidOperationException>(() => service.GetOrbPosition(match, player, 0, anchor, []));
         Assert.Throws<InvalidOperationException>(() => service.GetPositionAtDistance(match, player, 1, anchor));
         Assert.Throws<InvalidOperationException>(() => service.DestroyOrbsFromOrdinal(match, player, 0));
     }

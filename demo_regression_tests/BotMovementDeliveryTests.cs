@@ -756,9 +756,7 @@ public sealed class BotMovementDeliveryTests
         {
             match.Bots.GetBots().Add(bot);
             match.RegisterPlayer(bot.Player);
-            float phase = bot.Player.Orbs.OrbitPhaseDegrees;
             SendMovements(match, [movement]);
-            Assert.Equal(phase, bot.Player.Orbs.OrbitPhaseDegrees);
         }
 
         if (changesArea)
@@ -881,7 +879,6 @@ public sealed class BotMovementDeliveryTests
         Assert.Equal(2, packet.Objects.Count);
         Assert.Equal(ObjectType.PLAYER, packet.Objects[0].ObjectType);
         Assert.Equal(ObjectType.MONSTER, packet.Objects[1].ObjectType);
-        Assert.Equal(bot.Player.Orbs.OrbitPhaseDegrees, packet.OrbPhases[-20]);
         Assert.True(packet.ServerTimestamp > 0);
         Assert.Equal(Protocol.G_TO_C_OBJECT_ENTER, recipient.Packets[0].Protocol);
         recipient.Packets.Clear();
@@ -933,7 +930,7 @@ public sealed class BotMovementDeliveryTests
              Cell = new Cell(3, 4), Position = new Vector3f(10, 20, 0),
             Velocity = new Vector3f(1, 2, 0), Rotation = 30
         };
-        using var packet = PacketMaker.G_TO_C_MOVE(info, 123456, 45f);
+        using var packet = PacketMaker.G_TO_C_MOVE(info, 123456);
         info.Position.X = 999;
         info.Cell.Y = 999;
         var connection = new RecordingConnection(42, []);
@@ -948,7 +945,6 @@ public sealed class BotMovementDeliveryTests
         Assert.Equal(2f, sent.Velocity.Y);
         Assert.Equal(network.common.data.GameMapData.GetCurrentArea(sent.MapId, sent.Cell), sent.Area);
         Assert.Equal(123456, message.ServerTimestamp);
-        Assert.Equal(45f, message.OrbPhases[42]);
     }
 
     [Fact]

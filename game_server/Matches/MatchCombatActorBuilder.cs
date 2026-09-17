@@ -72,7 +72,7 @@ internal sealed class MatchCombatActorBuilder(PlayerOrbTrailService orbTrails)
             }
 
             float sunAttackMultiplier = OrbData.GetSunPveAttackMultiplier(orbCollection.GetAllOrbs());
-            var orbTiers = orbTrails.GetOrbTiersInOrder(runtime, player);
+            var orbTiers = PlayerOrbTrailService.GetOrbTiersInOrder(runtime, player);
             for (int ordinal = 0; ordinal < orbCount; ordinal++)
             {
                 int index = firstOrbIndex + ordinal;

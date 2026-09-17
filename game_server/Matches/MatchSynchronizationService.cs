@@ -188,7 +188,7 @@ internal sealed class MatchSynchronizationService
             snapshot ??= player.CreatePlayerObjectInfo();
             updates.Add(snapshot);
         }
-        CollectMovementUpdates(runtime, info, batch, player.Orbs.OrbitPhaseDegrees, stateChanged);
+        CollectMovementUpdates(runtime, info, batch, stateChanged);
     }
 
     internal void CollectMonsterUpdates(MatchRuntime runtime, Monster monster, SyncBatch batch)
@@ -229,7 +229,7 @@ internal sealed class MatchSynchronizationService
         }
     }
 
-    internal void CollectMovementUpdates(MatchRuntime runtime, GameObjectInfo info, SyncBatch batch, float? orbPhase = null, bool stateChanged = false)
+    internal void CollectMovementUpdates(MatchRuntime runtime, GameObjectInfo info, SyncBatch batch, bool stateChanged = false)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -265,10 +265,6 @@ internal sealed class MatchSynchronizationService
             }
             snapshot ??= info.Clone();
             message.Objects.Add(snapshot);
-            if (orbPhase.HasValue)
-            {
-                message.OrbPhases[info.ObjectId] = orbPhase.Value;
-            }
         }
     }
 

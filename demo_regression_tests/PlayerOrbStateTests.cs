@@ -4,12 +4,6 @@ namespace demo_regression_tests;
 
 public sealed class PlayerOrbStateTests
 {
-    [Fact]
-    public void BotOrbitUsesAssignedPlayerId()
-    {
-        var bot = new game_server.players.bots.Bot { PlayerId = -42 };
-        Assert.Equal(network.common.data.SwarmOrbOrbit.InitialPhaseDegrees(-42), bot.Player.Orbs.OrbitPhaseDegrees);
-    }
     public PlayerOrbStateTests()
     {
         // 오브 판별에 필요한 데이터를 직접 준비해 다른 테스트의 실행 순서에 의존하지 않는다.
@@ -31,12 +25,14 @@ public sealed class PlayerOrbStateTests
     }
 
     [Fact]
+    // 저장소 불변식: 오브만, 항목당 한 개. 조회 계층이 Count·티어를 재검사하지 않는 근거다.
     public void NonOrbItemsAreRejected()
     {
         var inventory = new PlayerOrbState();
         Assert.Throws<ArgumentException>(() => inventory.AddOrb(401000005));
         Assert.False(inventory.TryAddOrbWithCapacity(401000005, 8, out _));
         Assert.Empty(inventory.GetOrderedOrbs());
+        Assert.Equal(0, inventory.OrbCount);
         Assert.Equal(0, inventory.GetHighestOrbTier());
     }
 

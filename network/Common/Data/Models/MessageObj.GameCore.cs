@@ -40,7 +40,6 @@ namespace network.common.data.models
     {
         [Key("objects")] public List<GameObjectInfo> Objects { get; set; } = new List<GameObjectInfo>();
         [Key("serverTime")] public long ServerTimestamp { get; set; }
-        [Key("orbPhases")] public Dictionary<long, float> OrbPhases { get; set; } = new Dictionary<long, float>();
     }
 
     [MessagePackObject]

@@ -71,6 +71,7 @@ internal static class TestGameSessionServices
         Microsoft.Extensions.Logging.ILogger logger,
         Action<long>? onRedisCleanup = null, InMemoryRedisOperations? redis = null)
     {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
         redis ??= new InMemoryRedisOperations();
         if (onRedisCleanup != null)
         {
