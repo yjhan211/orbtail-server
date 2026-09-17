@@ -29,7 +29,7 @@ public sealed class WindOrbAttackServiceTests
     }
 
     [Fact]
-    public void Process_HitsWithoutSpinupAndHonorsImmunity()
+    public void Process_HitsAtFirstPhaseAndHonorsImmunity()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947501);
@@ -42,12 +42,14 @@ public sealed class WindOrbAttackServiceTests
         match.RegisterPlayer(victim.Player);
         using (MatchRuntimeStore.Enter(match))
         {
-            TestGameSessionServices.Orbs(match, 11).AddOrb(107000020);
+            var orb = TestGameSessionServices.Orbs(match, 11).AddOrb(107000020);
             var origin = trails.GetOrbPosition(match, owner.Player, 0, new Vector3f(0, 0, 0), PlayerOrbTrailService.GetOrbTiersInOrder(match, owner.Player));
             owner.Player.Position = new Vector3f(0, 0, 0);
             victim.Player.Position = origin;
             service.ActivateOrbs(match, owner.Player, now);
-            var hitAt = now;
+            Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
+            var hitAt = TestGameSessionServices.Orbs(match, 11).GetNextOrbAttackAtUtc(orb.ItemUid)!.Value;
+            service.ActivateOrbs(match, owner.Player, hitAt);
             int expected = Math.Max(1, (int)MathF.Round(
                 Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE)));
             Assert.Equal(Config.MAX_HEALTH - expected, victim.Player.Health);

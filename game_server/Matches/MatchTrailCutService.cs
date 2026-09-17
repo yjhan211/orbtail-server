@@ -23,10 +23,6 @@ internal sealed class MatchTrailCutService(
     private const float SwarmTrailCutMinSegmentLengthSquared = 0.0004f;
     private const float SwarmTrailCutOrbHitYOffset = 0.15f;
     private const int SwarmRingVfxKindRetaliationGuard = 5;
-    private static double SwarmTrailCutSameOrbDebounceSeconds => SwarmConfigData.GetDouble("SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS", 0.8d);
-    private static int SwarmSingleCutHealthCost => SwarmConfigData.GetInt("SWARM_SINGLE_CUT_HEALTH_COST", 35);
-    private static double SwarmSingleCutHealLockSeconds => SwarmConfigData.GetDouble("SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS", 8d);
-    private static double SwarmCutRetaliationWindowSeconds => SwarmConfigData.GetDouble("SWARM_CUT_RETALIATION_WINDOW_SECONDS", 1.2d);
 
     public void ProcessTick(MatchRuntime runtime, DateTime nowUtc, IReadOnlyList<Player> players, List<GameClientSession> sessions)
     {
@@ -144,7 +140,7 @@ internal sealed class MatchTrailCutService(
             {
                 var orbHitPoint = new Vector3f(orbPoints[ordinal].X, orbPoints[ordinal].Y + SwarmTrailCutOrbHitYOffset, 0f);
                 bool latched = cutter.OrbCutLatches.TryGetValue(ownerOrbs[ordinal].ItemUid, out var lastLatchedAtUtc);
-                bool withinDebounce = latched && (nowUtc - lastLatchedAtUtc).TotalSeconds < SwarmTrailCutSameOrbDebounceSeconds;
+                bool withinDebounce = latched && (nowUtc - lastLatchedAtUtc).TotalSeconds < Config.SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS;
                 if (withinDebounce)
                 {
                     continue;
@@ -191,12 +187,12 @@ internal sealed class MatchTrailCutService(
 
         var cutterBot = runtime.Bots.GetBot(cutterId);
         int cutterHealthBefore = cutter.Health;
-        if (cutterHealthBefore - SwarmSingleCutHealthCost <= 0)
+        if (cutterHealthBefore - Config.SWARM_SINGLE_CUT_HEALTH_COST <= 0)
         {
             return;
         }
 
-        if (cutterBot != null && !botBehavior.CanCutTrail(cutterBot, cutterHealthBefore, nowUtc, SwarmSingleCutHealthCost))
+        if (cutterBot != null && !botBehavior.CanCutTrail(cutterBot, cutterHealthBefore, nowUtc, Config.SWARM_SINGLE_CUT_HEALTH_COST))
         {
             cutter.OrbCutLatches[cutOrbUid] = nowUtc;
             return;
@@ -218,8 +214,8 @@ internal sealed class MatchTrailCutService(
             guardOnVictim = new CutRetaliationWindow();
             runtime.CutRetaliationWindows[guardKey] = guardOnVictim;
         }
-        guardOnVictim.ExpiresAtUtc = nowUtc.AddSeconds(SwarmCutRetaliationWindowSeconds);
-        combatDamage.SendSwarmRetaliationVfx(runtime, cutterId, victimId, cutArea, SwarmRingVfxKindRetaliationGuard, (float)SwarmCutRetaliationWindowSeconds, allSessions);
+        guardOnVictim.ExpiresAtUtc = nowUtc.AddSeconds(Config.SWARM_CUT_RETALIATION_WINDOW_SECONDS);
+        combatDamage.SendSwarmRetaliationVfx(runtime, cutterId, victimId, cutArea, SwarmRingVfxKindRetaliationGuard, (float)Config.SWARM_CUT_RETALIATION_WINDOW_SECONDS, allSessions);
 
         foreach (var destroyedOrb in destroyedOrbs)
         {
@@ -247,8 +243,8 @@ internal sealed class MatchTrailCutService(
             }
         }
 
-        var healLockUntil = nowUtc.AddSeconds(SwarmSingleCutHealLockSeconds);
-        combatDamage.ApplyProximityAutoCombatHit(runtime, healthService, cutter, cutterId, cutterArea, firstDestroyedOrb.ItemId, SwarmSingleCutHealthCost);
+        var healLockUntil = nowUtc.AddSeconds(Config.SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS);
+        combatDamage.ApplyProximityAutoCombatHit(runtime, healthService, cutter, cutterId, cutterArea, firstDestroyedOrb.ItemId, Config.SWARM_SINGLE_CUT_HEALTH_COST);
         cutter.StatusEffects.Apply(PlayerStatusEffectKind.HealingBlocked, healLockUntil);
         if (cutterBot != null)
         {

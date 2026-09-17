@@ -1283,13 +1283,13 @@ public sealed class GameClientSessionPublicationTests
         var observer = fixture.CreateSession(70001, 101, (AreaType)50);
         var actor = fixture.CreateSession(70001, 102, (AreaType)50);
         var match = observer.Match;
-        var actors = new[]
+        using (match.Enter())
         {
-            new ProximityCombatActor(102, (AreaType)50, new Vector3f(), 107000010, 0, 0, 0, WeaponItemUid: 1)
-        };
+            TestGameSessionServices.Orbs(match, 102).AddOrb(107000010);
+        }
         void Publish(params GameClientSession[] sessions)
         {
-            var visuals = MatchOrbVisual.Build(match, actors);
+            var visuals = MatchOrbVisual.Build(match, [actor.Player]);
             foreach (var session in sessions)
             {
                 session.SendOrbVisualStates(visuals);

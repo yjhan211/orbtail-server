@@ -1,11 +1,12 @@
 using System.Collections.Immutable;
 using game_server.players;
 using network.common;
+using network.common.data;
 
 namespace game_server.matches;
 
 /// <summary>
-///     전투 액터에서 구성한 플레이어별 오브 표시 정보.
+///     플레이어별 오브 표시 정보(구역·선두 오브·본체 체력·꼬리 오브 목록).
 ///     각 세션이 이전에 보낸 상태와 비교해 변경된 정보만 전송하는 데 사용한다.
 /// </summary>
 internal sealed record MatchOrbVisual(long ActorPlayerId, AreaType Area, int WeaponItemId, int BodyHealth, ImmutableArray<int> OrbItemIds)
@@ -13,57 +14,35 @@ internal sealed record MatchOrbVisual(long ActorPlayerId, AreaType Area, int Wea
     public bool HasSameState(MatchOrbVisual other) =>
         Area == other.Area && WeaponItemId == other.WeaponItemId && BodyHealth == other.BodyHealth && OrbItemIds.SequenceEqual(other.OrbItemIds);
 
-    public static List<MatchOrbVisual> Build(MatchRuntime runtime, IReadOnlyCollection<ProximityCombatActor> actors)
+    public static List<MatchOrbVisual> Build(MatchRuntime runtime, IReadOnlyList<Player> players)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Orb visual build requires the match lock.");
         }
-        var playerOrder = new List<long>();
-        var bodyActors = new Dictionary<long, ProximityCombatActor>();
-        var orbActorsByPlayer = new Dictionary<long, List<ProximityCombatActor>>();
-        foreach (var actor in actors)
-        {
-            if (!bodyActors.ContainsKey(actor.PlayerId))
-            {
-                playerOrder.Add(actor.PlayerId);
-                bodyActors[actor.PlayerId] = actor;
-                orbActorsByPlayer[actor.PlayerId] = new List<ProximityCombatActor>();
-            }
 
-            if (!actor.IsMonsterTarget && PlayerOrbState.GetOrbTier(actor.WeaponItemId) > 0)
-            {
-                orbActorsByPlayer[actor.PlayerId].Add(actor);
-            }
-        }
-
-        var visuals = new List<MatchOrbVisual>(playerOrder.Count);
-        foreach (long playerId in playerOrder)
+        var visuals = new List<MatchOrbVisual>(players.Count);
+        foreach (var player in players)
         {
-            var bodyActor = bodyActors[playerId];
-            if (bodyActor.IsMonsterTarget)
+            if (player.IsEliminated || player.Position == null || player.GameInfo.ObjectInfo.Area == AreaType.None)
+            {
+                continue;
+            }
+            var cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, player.Position);
+            if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell))
             {
                 continue;
             }
 
-            var orbActors = orbActorsByPlayer[playerId];
-            orbActors.Sort(CompareOrbActors);
-            var orbItemIds = ImmutableArray.CreateBuilder<int>(orbActors.Count);
-            foreach (var orbActor in orbActors)
+            var orbs = runtime.GetOrbs(player.PlayerId).GetOrderedOrbs();
+            var orbItemIds = ImmutableArray.CreateBuilder<int>(orbs.Count);
+            foreach (var orb in orbs)
             {
-                orbItemIds.Add(orbActor.WeaponItemId);
+                orbItemIds.Add(orb.ItemId);
             }
-
-            var primaryActor = orbActors.Count > 0 ? orbActors[0] : bodyActor;
-            int bodyHealth = runtime.GetPlayer(primaryActor.PlayerId)?.Health ?? -1;
-            visuals.Add(new MatchOrbVisual(primaryActor.PlayerId, primaryActor.Area, primaryActor.WeaponItemId, bodyHealth, orbItemIds.MoveToImmutable()));
+            int leadOrbItemId = orbs.Count > 0 ? orbs[0].ItemId : 0;
+            visuals.Add(new MatchOrbVisual(player.PlayerId, player.GameInfo.ObjectInfo.Area, leadOrbItemId, player.Health, orbItemIds.MoveToImmutable()));
         }
         return visuals;
-    }
-
-    private static int CompareOrbActors(ProximityCombatActor left, ProximityCombatActor right)
-    {
-        int uidComparison = left.WeaponItemUid.CompareTo(right.WeaponItemUid);
-        return uidComparison != 0 ? uidComparison : left.WeaponStackIndex.CompareTo(right.WeaponStackIndex);
     }
 }

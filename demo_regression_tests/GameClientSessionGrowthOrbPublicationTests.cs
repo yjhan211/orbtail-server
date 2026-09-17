@@ -192,67 +192,69 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         }
     }
 
+    // 사람과 봇은 세션 유무와 무관하게 같은 오브 발동 규칙을 탄다. 서로가 사거리 안의 표적이라 각자 태양 교차사격 하나를 건다.
     [Fact]
-    public void CombatActorsUsePlayerStateWithoutRequiringSessionsOrBotManagerEntries()
+    public void SunOrbsActivateForHumanAndBotWithoutSessions()
     {
         using var fixture = new SessionFixture();
         var runtime = fixture.Store.GetOrCreate(FirstMatchingId);
-        var cell = GameMapData.GetMapInfo(Config.SWARM_MATCH_MAP)!.GetInitialPosition().Item1;
-        var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
+        var orbService = fixture.Server.GetPlayerOrbs(FirstMatchingId);
+        var cell = MatchSpawnData.GetCorridorAnchor(1);
         var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
-        var human = new game_server.players.Player(new PlayerInfo { PlayerId = FirstPlayerId })
-        {
-            Position = position
-        };
-        var bot = new game_server.players.Player(new PlayerInfo { PlayerId = -1 })
-        {
-            Position = position
-        };
+        var human = new game_server.players.Player(new PlayerInfo { PlayerId = FirstPlayerId }) { Position = position };
+        var bot = new game_server.players.Player(new PlayerInfo { PlayerId = -1 }) { Position = new Vector3f(position.X + 1f, position.Y, 0f) };
         using var scope = runtime.Enter();
         runtime.RegisterPlayer(human);
         runtime.RegisterPlayer(bot);
         foreach (var player in new[] { human, bot })
             Assert.True(TestGameSessionServices.Orbs(runtime, player.PlayerId).TryAddOrbWithCapacity(107000010, Config.SWARM_ORB_CAPACITY, out _));
-        var actorBuilder = fixture.Server.GetActorBuilder(FirstMatchingId);
-        var actors = actorBuilder.Build(runtime, runtime.GetAlivePlayers(), DateTime.UtcNow);
-        var humanActors = actors.Where(actor => actor.PlayerId == human.PlayerId).ToList();
-        var botActors = actors.Where(actor => actor.PlayerId == bot.PlayerId).ToList();
-        Assert.NotEmpty(humanActors);
-        Assert.Equal(humanActors.Select(actor => (actor.WeaponItemId, actor.Damage)),
-            botActors.Select(actor => (actor.WeaponItemId, actor.Damage)));
+        var now = DateTime.UtcNow;
+
+        // 처음 본 오브는 첫 위상(주기의 최대 1.5배)만 심으므로 그 뒤 틱에서 발동한다.
+        orbService.ActivateOrbs(runtime, human, now);
+        orbService.ActivateOrbs(runtime, bot, now);
+        Assert.Empty(runtime.SunCrossfireShapes);
+        now = now.AddSeconds(3);
+        orbService.ActivateOrbs(runtime, human, now);
+        orbService.ActivateOrbs(runtime, bot, now);
+
+        Assert.Equal(2, runtime.SunCrossfireShapes.Count);
+        Assert.Equal(new[] { human.PlayerId, bot.PlayerId }, runtime.SunCrossfireShapes.Select(shape => shape.OwnerId));
+        Assert.Equal(bot.PlayerId, runtime.SunCrossfireShapes[0].AnchorCombatTargetId);
+        Assert.Equal(human.PlayerId, runtime.SunCrossfireShapes[1].AnchorCombatTargetId);
+        Assert.Equal(runtime.SunCrossfireShapes[0].Damage, runtime.SunCrossfireShapes[1].Damage);
         Assert.Null(human.Session);
         Assert.Null(bot.Session);
 
-        var snapshot = runtime.GetAlivePlayers();
-        runtime.TryEliminatePlayer(bot.PlayerId, EliminationReason.HEALTH_ZERO);
-        actors = actorBuilder.Build(runtime, snapshot, DateTime.UtcNow);
-        Assert.DoesNotContain(actors, actor => actor.PlayerId == bot.PlayerId);
+        // 같은 틱에 다시 발동해도 이미 겨눈 표적은 다시 고르지 않는다.
+        orbService.ActivateOrbs(runtime, human, now);
+        Assert.Equal(2, runtime.SunCrossfireShapes.Count);
     }
 
+    // 수면은 이동과 회복만 바꾼다. 보유 오브는 자는 동안에도 발동한다.
     [Fact]
-    public void SleepingPlayer_KeepsAutomaticAttackActors()
+    public void SleepingPlayer_KeepsActivatingOrbs()
     {
         using var fixture = new SessionFixture();
-        var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
-        var runtime = fixture.Store.GetOrThrow(FirstMatchingId);
-        var spawnCell = GameMapData.GetMapInfo(Config.SWARM_MATCH_MAP)!.GetInitialPosition().Item1;
-        var spawnArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, spawnCell);
-        TestGameSessionServices.SpawnInArea(session, spawnArea);
-        TestGameSessionServices.SetMovementProperty(session, "Position", MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, spawnCell));
-        using var matchLock = runtime.Enter();
-        Assert.True(TestGameSessionServices.Orbs(runtime, FirstPlayerId).TryAddOrbWithCapacity(107000010, Config.SWARM_ORB_CAPACITY, out _));
-        var condition = session.Player;
+        var runtime = fixture.Store.GetOrCreate(FirstMatchingId);
+        var orbService = fixture.Server.GetPlayerOrbs(FirstMatchingId);
+        var cell = MatchSpawnData.GetCorridorAnchor(1);
+        var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
+        var owner = new game_server.players.Player(new PlayerInfo { PlayerId = FirstPlayerId }) { Position = position };
+        var victim = new game_server.players.Player(new PlayerInfo { PlayerId = -1 }) { Position = new Vector3f(position.X + 1f, position.Y, 0f) };
+        using var scope = runtime.Enter();
+        runtime.RegisterPlayer(owner);
+        runtime.RegisterPlayer(victim);
+        Assert.True(TestGameSessionServices.Orbs(runtime, owner.PlayerId).TryAddOrbWithCapacity(107000010, Config.SWARM_ORB_CAPACITY, out _));
+        owner.State = PlayerState.SLEEP;
+
         var now = DateTime.UtcNow;
-        List<ProximityCombatActor> Build() => fixture.Server.GetActorBuilder(FirstMatchingId)
-            .Build(runtime, [session.Player], now);
+        orbService.ActivateOrbs(runtime, owner, now);
+        orbService.ActivateOrbs(runtime, owner, now.AddSeconds(3));
 
-        var awake = Build();
-        Assert.Contains(awake, actor => actor.WeaponItemId != 0 && actor.Damage > 0);
-        condition.State = PlayerState.SLEEP;
-        var sleeping = Build();
-
-        Assert.Equal(awake, sleeping);
-        Assert.True(condition.IsSleeping);
+        Assert.True(owner.IsSleeping);
+        var shape = Assert.Single(runtime.SunCrossfireShapes);
+        Assert.Equal(owner.PlayerId, shape.OwnerId);
     }
 
     [Fact]
@@ -294,7 +296,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         RecordingTcpConnection connection = fixture.ConnectionFor(session);
         Assert.True(OrbData.TryGetItemId(color, 1, out int originalItemId));
-        int orbGroupId = OrbData.GetOrbGroupId(originalItemId);
+        Assert.True(OrbData.TryGetOrbGroupAndTier(originalItemId, out int orbGroupId, out _));
         Assert.True(TestGameSessionServices.Orbs(fixture.Store.GetOrThrow(FirstMatchingId), FirstPlayerId).TryAddOrbWithCapacity(originalItemId,
             Config.SWARM_ORB_CAPACITY,
             out InGameItemInfo? original));

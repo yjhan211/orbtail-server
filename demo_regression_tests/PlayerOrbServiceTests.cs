@@ -36,30 +36,35 @@ public sealed class PlayerOrbServiceTests
             var tiers = PlayerOrbTrailService.GetOrbTiersInOrder(runtime, owner);
             victim.Position = trails.GetOrbPosition(runtime, owner, windOrdinal, owner.Position, tiers);
 
-            // 바람은 즉시 발동하고 파도는 자신의 첫 지연을 유지한다.
+            // 처음 본 오브는 계열과 무관하게 첫 위상만 심는다. 바람 주기가 짧아 바람이 먼저 든다.
             attacks.ActivateOrbs(runtime, owner, now);
+            Assert.Equal(Config.MAX_HEALTH, victim.Health);
+            Assert.Empty(runtime.PendingWaveAttacks);
+            Assert.Empty(runtime.SunCrossfireShapes);
+            var windReadyAt = owner.Orbs.GetNextOrbAttackAtUtc(orbs[windOrdinal].ItemUid)!.Value;
+            Assert.True(windReadyAt > now);
+            attacks.ActivateOrbs(runtime, owner, windReadyAt);
             Assert.True(victim.Health < Config.MAX_HEALTH);
             Assert.Empty(runtime.PendingWaveAttacks);
-            Assert.False(owner.Orbs.IsOrbAttackReady(orbs[windOrdinal].ItemUid, now));
+            Assert.False(owner.Orbs.IsOrbAttackReady(orbs[windOrdinal].ItemUid, windReadyAt));
             Assert.True(owner.Orbs.IsOrbAttackReady(orbs[windOrdinal].ItemUid,
-                now.AddSeconds(Config.SWARM_WIND_BLADE_TICK_SECONDS)));
-            Assert.True(owner.Orbs.IsOrbAttackReady(orbs[0].ItemUid, now));
-            var readyAt = owner.Orbs.GetNextWaveOrbAttackAtUtc(orbs[waveOrdinal].ItemUid)!.Value;
-            Assert.True(readyAt > now);
+                windReadyAt.AddSeconds(Config.SWARM_WIND_BLADE_TICK_SECONDS)));
+            var readyAt = owner.Orbs.GetNextOrbAttackAtUtc(orbs[waveOrdinal].ItemUid)!.Value;
+            Assert.True(readyAt > windReadyAt);
 
             // 색상별로 순서를 다시 매기지 않고 전체 보유 순서의 위치에서 발동한다.
             var wavePosition = trails.GetOrbPosition(runtime, owner, waveOrdinal, owner.Position, tiers);
             victim.Position = wavePosition;
             attacks.ActivateOrbs(runtime, owner, readyAt);
             Assert.Single(runtime.PendingWaveAttacks);
-            Assert.True(owner.Orbs.GetNextWaveOrbAttackAtUtc(orbs[waveOrdinal].ItemUid) > readyAt);
+            Assert.True(owner.Orbs.GetNextOrbAttackAtUtc(orbs[waveOrdinal].ItemUid) > readyAt);
             attacks.ActivateOrbs(runtime, owner, readyAt);
             Assert.Single(runtime.PendingWaveAttacks);
         }
     }
 
     [Fact]
-    public void SunActivationCapsTelegraphsAndProjectilesOutliveOwner()
+    public void SunProjectilesOutliveOwner()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var runtime = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(948601);
@@ -69,20 +74,26 @@ public sealed class PlayerOrbServiceTests
         var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
         var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
         var owner = new Player(new PlayerInfo { PlayerId = 11 }) { Position = position };
-        var anchor = new Vector3f(position.X + 2, position.Y + 1, 0);
-        var attack = new ProximityCombatAttack(11, -100, area, 107000010, 10,
-            Origin: position, AnchorPosition: anchor);
+        var victim = new Player(new PlayerInfo { PlayerId = 12 }) { Position = new Vector3f(position.X + 1f, position.Y, 0f) };
         var now = DateTime.UtcNow;
         using (runtime.Enter())
         {
             runtime.RegisterPlayer(owner);
-            for (int i = 0; i < Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER; i++)
-                Assert.True(attacks.TryStartSunCrossfire(runtime, owner, attack, now));
-            Assert.False(attacks.TryStartSunCrossfire(runtime, owner, attack, now));
-            var shape = runtime.SunCrossfireShapes[0];
+            runtime.RegisterPlayer(victim);
+            owner.Orbs.AddOrb(107000010);
+            // 첫 위상을 심은 뒤 다음 틱에서 사거리 안 상대에게 발동한다.
+            attacks.ActivateOrbs(runtime, owner, now);
+            Assert.Empty(runtime.SunCrossfireShapes);
+            now = now.AddSeconds(3);
+            attacks.ActivateOrbs(runtime, owner, now);
+            var shape = Assert.Single(runtime.SunCrossfireShapes);
             Assert.Equal(owner.PlayerId, shape.OwnerId);
+            Assert.Equal(area, shape.Area);
+
+            // 탈락한 소유자는 더 쏘지 않지만 이미 나간 투사체는 끝까지 간다.
             owner.Status = PlayerMatchStatus.ELIMINATED;
-            Assert.False(attacks.TryStartSunCrossfire(runtime, owner, attack, now));
+            attacks.ActivateOrbs(runtime, owner, now.AddSeconds(3));
+            Assert.Single(runtime.SunCrossfireShapes);
             projectiles.ProcessSunCrossfires(runtime, shape.ArmedAtUtc);
             Assert.NotEmpty(runtime.SunCrossfireShapes);
             projectiles.ProcessSunCrossfires(runtime, shape.ExpiresAtUtc.AddSeconds(1));
@@ -91,21 +102,18 @@ public sealed class PlayerOrbServiceTests
     }
 
     [Fact]
-    public void PersonalActivationRejectsAnotherPlayerInstanceAndMismatchedSunOwner()
+    public void PersonalActivationRejectsAnotherPlayerInstance()
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var runtime = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(948602);
         var attacks = provider.GetRequiredService<PlayerOrbService>();
         var owner = new Player(new PlayerInfo { PlayerId = 11 }) { Position = new Vector3f() };
         var stale = new Player(new PlayerInfo { PlayerId = 11 }) { Position = new Vector3f() };
-        var attack = new ProximityCombatAttack(12, -100, AreaType.None, 107000010, 10);
         var now = DateTime.UtcNow;
         using (runtime.Enter())
         {
             runtime.RegisterPlayer(owner);
             Assert.Throws<InvalidOperationException>(() => attacks.ActivateOrbs(runtime, stale, now));
-            Assert.Throws<InvalidOperationException>(() => attacks.TryStartSunCrossfire(runtime, stale, attack, now));
-            Assert.Throws<InvalidOperationException>(() => attacks.TryStartSunCrossfire(runtime, owner, attack, now));
         }
     }
 }

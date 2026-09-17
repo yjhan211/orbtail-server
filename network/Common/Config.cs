@@ -342,6 +342,9 @@ namespace network.common
         ///     SwarmPressureField의 같은 곡선 함수를 쓴다.
         /// </summary>
         public static double SWARM_FIELD_SHRINK_EXPONENT => SwarmConfigData.GetDouble("SWARM_FIELD_SHRINK_EXPONENT", 1.4d);
+        // 경계 밖 피해 = 기본값 + 초과 셀 × 가산 (5초 정산 틱마다).
+        public static int SWARM_FIELD_BASE_DAMAGE_PER_TICK => SwarmConfigData.GetInt("SWARM_FIELD_BASE_DAMAGE_PER_TICK", 12);
+        public static int SWARM_FIELD_DAMAGE_PER_EXTRA_CELL => SwarmConfigData.GetInt("SWARM_FIELD_DAMAGE_PER_EXTRA_CELL", 5);
 
         /// <summary>문 게이지 시간(초) — 시작방 문: 혼자 여는 관문이라 짧다. 봇 채널도 같은 값.</summary>
         public static float SWARM_DOOR_GAUGE_SECONDS => SwarmConfigData.GetFloat("SWARM_DOOR_GAUGE_SECONDS", 3f);
@@ -387,6 +390,9 @@ namespace network.common
 
         /// <summary>오브 계열 강화의 상한 비용.</summary>
         public static int SWARM_GROWTH_COST_CAP => SwarmConfigData.GetInt("SWARM_GROWTH_COST_CAP", 21);
+        // 드래프트 카드가 보여 주는 티어는 매치 경과 시간으로 정한다 — 이 시각 전에는 낮은 티어.
+        public static int SWARM_DRAFT_TIER_TWO_AT_SECONDS => SwarmConfigData.GetInt("SWARM_DRAFT_TIER_TWO_AT_SECONDS", 80);
+        public static int SWARM_DRAFT_TIER_THREE_AT_SECONDS => SwarmConfigData.GetInt("SWARM_DRAFT_TIER_THREE_AT_SECONDS", 160);
 
         /// <summary>궤도 오브 1개당 개봉 비용 가산 — SB "스쿼드 인원수 비례 상자 코인".</summary>
         public static int SWARM_EXPLORE_COST_PER_ORB => SwarmConfigData.GetInt("SWARM_EXPLORE_COST_PER_ORB", 2);
@@ -431,7 +437,6 @@ namespace network.common
         ///     PvE 오브 사거리(바닥면 단위). 사거리가 구역 전체를 덮으면 후미 절단과 머리 절단의 위험이 같아지므로,
         ///     오브가 자기 열 좌표 주변만 덮는 국소 화망으로 잡는다 — 깊게 자를수록 앞열 오브들의 사거리가 겹치는 자리로 들어가야 한다 (#227).
         /// </summary>
-        public static float SWARM_PVE_SAME_AREA_ATTACK_RANGE => SwarmConfigData.GetFloat("SWARM_PVE_SAME_AREA_ATTACK_RANGE", 7f);
 
         /// <summary>오브 궤적 표시와 공격 높이 판정에 사용하는 본체 기준 Y 오프셋.</summary>
         public const float SWARM_ORB_ORBIT_CENTER_OFFSET_Y = 0.8f;
@@ -442,14 +447,12 @@ namespace network.common
         ///     늘어나 "오브 수는 PvP 화력을 키우지 않는다"는 규칙과 어긋나고, 링 하나로
         ///     표시할 수도 없다. 클라 표시(PlayerRangeRing)가 같은 값을 읽는다.
         /// </summary>
-        public static float SWARM_PVP_ATTACK_RANGE => SwarmConfigData.GetFloat("SWARM_PVP_ATTACK_RANGE", 5f);
 
         /// <summary>
         ///     유저간 사격에 참여하는 오브 수 = 앞열 이만큼.
         ///     전체 오브가 사람을 쏘면 20개 꼬리가 3개 꼬리를 그대로 녹인다. 상한을 두면
         ///     오브 수는 PvE 성장과 절단 위험만 키우는 축이 된다.
         /// </summary>
-        public static int SWARM_PVP_ORB_COUNT => SwarmConfigData.GetInt("SWARM_PVP_ORB_COUNT", 3);
 
         /// <summary>PvP 피해 1당 본체 체력 피해 환산. 소수부는 피해자별로 이월 누산해 버리지 않는다.</summary>
         public static float SWARM_PVP_DAMAGE_PER_DAMAGE => SwarmConfigData.GetFloat("SWARM_PVP_DAMAGE_PER_DAMAGE", 0.12f);
@@ -494,14 +497,6 @@ namespace network.common
         public static float SWARM_WIND_WOUND_CRIT_CHANCE => SwarmConfigData.GetFloat("SWARM_WIND_WOUND_CRIT_CHANCE", 0.35f);
 
         /// <summary>
-        ///     한 플레이어가 동시에 유지할 수 있는 교차사격 예고 수 (명세 "동시 예고 최대 2개"). 예고(시전)
-        ///     중인 모양만 센다 — 예고 시간이 0인 지금은 사실상 안 걸리고, 예고를 되살릴 때를 위해 남긴다.
-        ///     상한에 닿은 소유자의 태양은 표적을 잡지 않고 기다렸다가(리졸버 필터) 자리가 나면 쏜다 —
-        ///     버리지 않는다. 모양 없이 때리던 옛 폴백은 "안 맞은 몹이 죽는" 보이지 않는 피해였다 — 표시 = 판정.
-        /// </summary>
-        public const int SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER = 2;
-
-        /// <summary>
         ///     태양 투사체: 같은 타일 X/Y축 표적을 향해 큰 구체 하나가 직진하며
         ///     선상의 몬스터·플레이어를 대상당 한 번 관통 타격한다. 벽에서는 피해 없는 시각 폭발,
         ///     벽 없는 끝점에서는 폭발 없이 소멸한다. 예고 시간에는 고정된 시안색 바닥 경로선이
@@ -514,10 +509,10 @@ namespace network.common
         public static float SWARM_CROSSFIRE_SUN_MAX_GROUND_LENGTH => SwarmConfigData.GetFloat("SWARM_CROSSFIRE_SUN_MAX_GROUND_LENGTH", 40f);
 
         /// <summary>
-        ///     큰 공격 한 번 = 유도탄 두 발 몫. 주기 ×2, 피해 ×2 — 총 화력은 같고 한 번의 무게가 커진다.
+        ///     큰 공격 한 번 = 유도탄 두 발 몫. 주기 1.6초에 피해 ×2 — 총 화력은 같고 한 번의 무게가 커진다.
         ///     T1 24는 일반 몹(16~22)을 한 방에 지우고 관통하므로 실측 뒤 조정 대상이다.
         /// </summary>
-        public static float SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER", 2f);
+        public static double SWARM_CROSSFIRE_SUN_INTERVAL_SECONDS => SwarmConfigData.GetDouble("SWARM_CROSSFIRE_SUN_INTERVAL_SECONDS", 1.6d);
         public static float SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER", 2f);
 
         /// <summary>
@@ -546,7 +541,7 @@ namespace network.common
         public static float[] SWARM_WIND_BLADE_RADIUS_BY_TIER =>
             SwarmConfigData.GetFloatArray("SWARM_WIND_BLADE_RADIUS_BY_TIER", DefaultWindBladeRadiusByTier);
         // 틱 0.35초 × 배율 0.375 = 발당 피해 기준 DPS 유지 — "믹서기에 갈린다"는 잘게 자주 맞아야 읽힌다.
-        public static float SWARM_WIND_BLADE_TICK_SECONDS => SwarmConfigData.GetFloat("SWARM_WIND_BLADE_TICK_SECONDS", 0.35f);
+        public static double SWARM_WIND_BLADE_TICK_SECONDS => SwarmConfigData.GetDouble("SWARM_WIND_BLADE_TICK_SECONDS", 0.35d);
         public static float SWARM_WIND_BLADE_DAMAGE_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_WIND_BLADE_DAMAGE_MULTIPLIER", 0.375f);
 
         /// <summary>
@@ -556,6 +551,38 @@ namespace network.common
         ///     변위(당김·밀침·원 밖 축출)는 쓰지 않기로 결정.
         /// </summary>
         public static float SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER", 0.25f); // 현행 물폭탄 피해의 1/4
+        private static readonly float[] DefaultWaveVortexRadiusByTier = { 1.8f, 2.2f, 2.6f };
+        public static float[] SWARM_WAVE_VORTEX_RADIUS_BY_TIER =>
+            SwarmConfigData.GetFloatArray("SWARM_WAVE_VORTEX_RADIUS_BY_TIER", DefaultWaveVortexRadiusByTier);
+        public static float SWARM_WAVE_SLOW_SECONDS => SwarmConfigData.GetFloat("SWARM_WAVE_SLOW_SECONDS", 5f);
+        public static float SWARM_WAVE_SLOW_MOVE_SPEED_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_WAVE_SLOW_MOVE_SPEED_MULTIPLIER", 0.75f);
+        public static double SWARM_WAVE_VORTEX_INTERVAL_SECONDS => SwarmConfigData.GetDouble("SWARM_WAVE_VORTEX_INTERVAL_SECONDS", 2d);
+        public static double SWARM_WAVE_VORTEX_FUSE_SECONDS => SwarmConfigData.GetDouble("SWARM_WAVE_VORTEX_FUSE_SECONDS", 0.65d);
+        public static double SWARM_WIND_BLADE_VICTIM_IMMUNE_SECONDS => SwarmConfigData.GetDouble("SWARM_WIND_BLADE_VICTIM_IMMUNE_SECONDS", 0.9d);
+
+        /// <summary>PvE 치명타 — 확률로 굴리고 맞으면 배수를 곱한다(최소 +1).</summary>
+        public static double SWARM_CRITICAL_CHANCE => SwarmConfigData.GetDouble("SWARM_CRITICAL_CHANCE", 0.15d);
+        public static float SWARM_CRITICAL_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_CRITICAL_MULTIPLIER", 2f);
+
+        /// <summary>
+        ///     꼬리 절단 — 절단자는 체력 비용을 치르고 잠시 수면 회복이 막힌다. 같은 오브는 억제 창 안에서 한 번만 잘리고,
+        ///     피해자는 반격 보호 창 동안 그 절단자에게 다시 잘리지 않는다.
+        /// </summary>
+        public static int SWARM_SINGLE_CUT_HEALTH_COST => SwarmConfigData.GetInt("SWARM_SINGLE_CUT_HEALTH_COST", 35);
+        public static double SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS => SwarmConfigData.GetDouble("SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS", 8d);
+        public static double SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS => SwarmConfigData.GetDouble("SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS", 0.8d);
+        public static double SWARM_CUT_RETALIATION_WINDOW_SECONDS => SwarmConfigData.GetDouble("SWARM_CUT_RETALIATION_WINDOW_SECONDS", 1.2d);
+
+        /// <summary>
+        ///     공명 보너스 — 그 계열이 꼬리의 과반일 때만 붙고, 크기는 오브 수로 쌓인다(첫 오브 + 추가 오브당, 상한).
+        ///     태양은 모든 오브 공격 피해 배율, 바람은 이동 속도 배율이다.
+        /// </summary>
+        public static float SWARM_SUN_RESONANCE_FIRST_ATTACK_BONUS => SwarmConfigData.GetFloat("SWARM_SUN_RESONANCE_FIRST_ATTACK_BONUS", 0.15f);
+        public static float SWARM_SUN_RESONANCE_ADDITIONAL_ATTACK_BONUS => SwarmConfigData.GetFloat("SWARM_SUN_RESONANCE_ADDITIONAL_ATTACK_BONUS", 0.05f);
+        public static float SWARM_SUN_RESONANCE_ATTACK_BONUS_CAP => SwarmConfigData.GetFloat("SWARM_SUN_RESONANCE_ATTACK_BONUS_CAP", 0.4f);
+        public static float SWARM_WIND_RESONANCE_FIRST_MOVE_SPEED_BONUS => SwarmConfigData.GetFloat("SWARM_WIND_RESONANCE_FIRST_MOVE_SPEED_BONUS", 0.06f);
+        public static float SWARM_WIND_RESONANCE_ADDITIONAL_MOVE_SPEED_BONUS => SwarmConfigData.GetFloat("SWARM_WIND_RESONANCE_ADDITIONAL_MOVE_SPEED_BONUS", 0.02f);
+        public static float SWARM_WIND_RESONANCE_MOVE_SPEED_BONUS_CAP => SwarmConfigData.GetFloat("SWARM_WIND_RESONANCE_MOVE_SPEED_BONUS_CAP", 0.14f);
 
 
         /// <summary>

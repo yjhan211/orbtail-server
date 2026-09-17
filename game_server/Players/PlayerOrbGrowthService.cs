@@ -146,7 +146,7 @@ internal sealed class PlayerOrbGrowthService(ILogger<PlayerOrbGrowthService> log
         }
 
         int cost = Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(player.Orbs.GetUpgradeCount(orbGroupId)));
-        if (cost <= 0 || !OrbData.TryGetOrbGroupAndTier(target.ItemId, out _, out int tier) || !OrbData.TryGetOrbItemId(orbGroupId, tier + 1, out int upgradedItemId))
+        if (cost <= 0 || !OrbData.TryGetOrbGroupAndTier(target.ItemId, out _, out int tier) || !OrbData.TryGetItemId(orbGroupId, tier + 1, out int upgradedItemId))
         {
             return (false, 0, -1);
         }

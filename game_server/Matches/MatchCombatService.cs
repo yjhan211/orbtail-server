@@ -12,7 +12,7 @@ namespace game_server.matches;
 
 /// <summary>
 ///     매치의 전투 틱을 조율한다.
-///     오브·몬스터 공격, 상태 효과, 지연 타격을 순서대로 처리하고 자동공격 목록을 결정한 뒤 피해 적용을 각 서비스에 위임한다.
+///     오브·몬스터 공격, 상태 효과, 지연 타격을 순서대로 처리하고 피해 적용을 각 서비스에 위임한다.
 /// </summary>
 internal class MatchCombatService(
     PlayerHealthService healthService,
@@ -21,8 +21,6 @@ internal class MatchCombatService(
     PlayerOrbService playerOrbs,
     PlayerOrbTrailService orbTrails,
     MatchTrailCutService trailCuts,
-    MatchCombatActorBuilder actorBuilder,
-    MatchAutoAttackService autoAttacks,
     MatchOrbAttackService orbAttacks,
     BotBehaviorService botBehavior,
     MonsterCombatService monsterCombat)
@@ -111,8 +109,7 @@ internal class MatchCombatService(
         healthService.ApplySleepRecovery(runtime, players, nowUtc);
         botBehavior.ProcessDoorInteractions(runtime, aliveBots, sessions, nowUtc);
 
-        var actors = actorBuilder.Build(runtime, players, nowUtc);
-        var orbVisuals = MatchOrbVisual.Build(runtime, actors);
+        var orbVisuals = MatchOrbVisual.Build(runtime, players);
         foreach (var session in sessions)
         {
             session.SendOrbVisualStates(orbVisuals);
@@ -125,150 +122,6 @@ internal class MatchCombatService(
         }
         combatDamage.ProcessPendingMonsterHits(runtime, nowUtc, sessions);
         orbAttacks.ProcessSunCrossfires(runtime, nowUtc);
-        combatDamage.ProcessPendingPvpHits(runtime, healthService, nowUtc, runtime.GetAlivePlayers(), sessions);
-        if (runtime.IsEnded)
-        {
-            return;
-        }
-
-        var swarmBodyPositions = new Dictionary<long, Vector3f>();
-        foreach (var actor in actors)
-        {
-            if (actor.WeaponItemId == 0 && !actor.IsMonsterTarget)
-            {
-                swarmBodyPositions[actor.PlayerId] = actor.Position;
-            }
-        }
-
-        var crossfireCappedOwners = orbAttacks.CollectSunCrossfireCappedOwners(runtime, nowUtc);
-        var crossfireAnchoredTargets = orbAttacks.CollectSunCrossfireAnchoredTargets(runtime);
-        var attacks = autoAttacks.UpdateAttacks(
-            runtime,
-            actors,
-            nowUtc,
-            (attacker, target) =>
-            {
-                if (attacker.IsMonsterTarget || attacker.Area != target.Area)
-                {
-                    return false;
-                }
-                if (MatchOrbAttackService.IsSunCrossfireWeapon(attacker.WeaponItemId))
-                {
-                    if (crossfireCappedOwners.Contains(attacker.PlayerId))
-                    {
-                        return false;
-                    }
-
-                    if (crossfireAnchoredTargets.Contains((attacker.PlayerId, target.PlayerId)))
-                    {
-                        return false;
-                    }
-
-                    float range = attacker.AttackRange > 0f ? attacker.AttackRange : Config.SWARM_ORB_ATTACK_RANGE;
-                    if (!GroundGeometry.IsWithinGroundRadius(attacker.Position, target.Position, range))
-                    {
-                        return false;
-                    }
-                }
-
-                if (target.IsMonsterTarget)
-                {
-                    return true;
-                }
-
-                if (MatchOrbAttackService.IsSunCrossfireWeapon(attacker.WeaponItemId))
-                {
-                    return true;
-                }
-
-                if (attacker.TrailOrdinal >= Config.SWARM_PVP_ORB_COUNT)
-                {
-                    return false;
-                }
-
-                if (!swarmBodyPositions.TryGetValue(attacker.PlayerId, out var attackerBody))
-                {
-                    attackerBody = attacker.Position;
-                }
-                float dx = target.Position.X - attackerBody.X;
-                float dy = target.Position.Y - attackerBody.Y;
-                if (dx * dx + dy * dy > Config.SWARM_PVP_ATTACK_RANGE * Config.SWARM_PVP_ATTACK_RANGE)
-                {
-                    return false;
-                }
-                return true;
-            });
-        ExecuteAttacks(runtime, attacks, actors, crossfireAnchoredTargets, sessions, nowUtc);
-    }
-
-    private void ExecuteAttacks(
-        MatchRuntime runtime,
-        IReadOnlyList<ProximityCombatAttack> attacks,
-        IReadOnlyList<ProximityCombatActor> actors,
-        HashSet<(long OwnerId, long CombatTargetId)> crossfireAnchoredTargets,
-        List<GameClientSession> sessions,
-        DateTime nowUtc)
-    {
-        Dictionary<long, ProximityCombatActor>? actorById = null;
-        foreach (var attack in attacks)
-        {
-            if (runtime.GetPlayer(attack.AttackerPlayerId)?.IsEliminated == true)
-            {
-                continue;
-            }
-            var targetMonster = runtime.Monsters.FindAliveByCombatTarget(attack.TargetPlayerId);
-            int monsterId = targetMonster?.MonsterId ?? 0;
-            if (monsterId <= 0 && Monster.IsCombatTargetId(attack.TargetPlayerId))
-            {
-                continue;
-            }
-            if (MatchOrbAttackService.IsSunCrossfireWeapon(attack.WeaponItemId))
-            {
-                bool anchoredThisTick = !crossfireAnchoredTargets.Add((attack.AttackerPlayerId, attack.TargetPlayerId));
-                if (anchoredThisTick || runtime.GetPlayer(attack.AttackerPlayerId) is not { } sunOwner || !playerOrbs.TryStartSunCrossfire(runtime, sunOwner, attack, nowUtc))
-                {
-                    runtime.GetPlayer(attack.AttackerPlayerId)?.Orbs.ScheduleNextOrbAttack(attack.AttackerItemUid, nowUtc, 0d);
-                }
-                continue;
-            }
-
-            if (monsterId > 0)
-            {
-                int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, attack.Damage, out bool critical);
-                var attacker = runtime.GetPlayer(attack.AttackerPlayerId);
-                combatDamage.QueueMonsterHitNotification(runtime, attacker, monsterId, attack.Area, attack.WeaponItemId, monsterDamage, critical);
-                MatchCombatDamageService.BroadcastSwarmAttackVfxToTargetAndObservers(attack with { TargetPlayerId = -monsterId }, sessions);
-                actorById ??= actors.GroupBy(actor => actor.PlayerId).ToDictionary(group => group.Key, group => group.First());
-                var origin = attack.Origin ?? (actorById.TryGetValue(attack.AttackerPlayerId, out var attackerActor) ? attackerActor.Position : null);
-                var anchor = attack.AnchorPosition ?? (actorById.TryGetValue(attack.TargetPlayerId, out var targetActor) ? targetActor.Position : null);
-                float distance = origin != null && anchor != null ? Vector3f.Distance(origin, anchor) : Config.SWARM_ORB_ATTACK_RANGE;
-                double delaySeconds = OrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, distance);
-                targetMonster!.ReserveDamage(monsterDamage);
-                combatDamage.ScheduleMonsterHit(runtime, new PendingMonsterHit(attack.TargetPlayerId, attack.AttackerPlayerId, monsterDamage, nowUtc.AddSeconds(delaySeconds)));
-                continue;
-            }
-
-            if (Monster.IsCombatTargetId(attack.TargetPlayerId))
-            {
-                continue;
-            }
-
-            if (OrbData.TryGetOrbGroupAndTier(attack.WeaponItemId, out var pvpGroupId, out _) && pvpGroupId is OrbGroupIds.Sun or OrbGroupIds.Wind)
-            {
-                MatchCombatDamageService.BroadcastSwarmAttackVfxToTargetAndObservers(attack, sessions);
-                actorById ??= actors.GroupBy(actor => actor.PlayerId).ToDictionary(group => group.Key, group => group.First());
-                float pvpDistance = actorById.TryGetValue(attack.AttackerPlayerId, out var pvpAttacker) && actorById.TryGetValue(attack.TargetPlayerId, out var pvpTarget)
-                    ? Vector3f.Distance(pvpAttacker.Position, pvpTarget.Position)
-                    : Config.SWARM_ORB_ATTACK_RANGE;
-                double pvpDelaySeconds = OrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, pvpDistance); combatDamage.SchedulePvpHit(runtime, attack, nowUtc.AddSeconds(pvpDelaySeconds));
-                continue;
-            }
-            combatDamage.ApplySwarmPvpAttack(runtime, healthService, attack, runtime.GetAlivePlayers(), sessions);
-            if (runtime.IsEnded)
-            {
-                return;
-            }
-        }
     }
 
     internal void ApplySwarmParticipantDamage(MatchRuntime runtime, MonsterContactDamage damage, List<GameClientSession> allSessions)

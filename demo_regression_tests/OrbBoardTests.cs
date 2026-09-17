@@ -13,44 +13,41 @@ public sealed class OrbBoardTests
         TestGameData.EnsureBattleItemCombatLoaded();
     }
 
-    // 주기는 전 티어 0.8초 고정 (2026-08-24 #268): 티어 주기 단축은 오브 개수 증가와 겹치는
-    // 이중 가속이라 퇴역 — 티어 값어치는 발당 피해(12/21/30)와 사거리만 진다. 기저 0.8초는
-    // #229 상향값(시작 오브 하나로 구역 보충 초당 1.33마리를 열 수 있는 최소 박자) 그대로다.
+    // 티어 값어치는 발당 피해(12/21/30)만 진다 — 주기는 계열별 swarm_config 키가 정하고 티어와 무관하다.
     [Theory]
-    [InlineData(107000010, 12, 0.8f)]
-    [InlineData(107000011, 21, 0.8f)]
-    [InlineData(107000012, 30, 0.8f)]
-    [InlineData(107000020, 12, 0.8f)]
-    [InlineData(107000021, 21, 0.8f)]
-    [InlineData(107000022, 30, 0.8f)]
-    public void SunAndWindUseTheSameTierAttackTable(int itemId, int damage, float interval)
+    [InlineData(107000010, 12)]
+    [InlineData(107000011, 21)]
+    [InlineData(107000012, 30)]
+    [InlineData(107000020, 12)]
+    [InlineData(107000021, 21)]
+    [InlineData(107000022, 30)]
+    public void SunAndWindUseTheSameTierAttackTable(int itemId, int damage)
     {
-        Assert.Equal(damage, OrbData.GetSwarmPveAttackDamage(itemId));
-        Assert.Equal(interval, BattleItemCombatData.Get(itemId)!.AttackIntervalSeconds);
+        Assert.Equal(damage, OrbData.GetAttackDamage(itemId));
     }
 
     // 공명 보너스는 그 색이 판의 과반일 때만 붙고, 크기는 오브 수로 정한다(티어 무관).
     [Fact]
     public void SunPassiveRequiresMajorityAndCountsLivingOrbsWithoutTierWeight()
     {
-        Assert.Equal(1f, OrbData.GetSunPveAttackMultiplier([]));
-        Assert.Equal(1f, OrbData.GetSunPveAttackMultiplier(Items(107000012))); // 오브 하나는 과반이 아니다
-        Assert.Equal(1f, OrbData.GetSunPveAttackMultiplier(Items(107000010, 107000020))); // 1:1은 과반이 아니다
-        Assert.Equal(1.20f, OrbData.GetSunPveAttackMultiplier(Items(107000010, 107000012)));
-        Assert.Equal(1.20f, OrbData.GetSunPveAttackMultiplier(Items(107000010, 107000012, 107000020)));
-        Assert.Equal(1.40f, OrbData.GetSunPveAttackMultiplier(
+        Assert.Equal(1f, OrbData.GetAttackMultiplier([]));
+        Assert.Equal(1f, OrbData.GetAttackMultiplier(Items(107000012))); // 오브 하나는 과반이 아니다
+        Assert.Equal(1f, OrbData.GetAttackMultiplier(Items(107000010, 107000020))); // 1:1은 과반이 아니다
+        Assert.Equal(1.20f, OrbData.GetAttackMultiplier(Items(107000010, 107000012)));
+        Assert.Equal(1.20f, OrbData.GetAttackMultiplier(Items(107000010, 107000012, 107000020)));
+        Assert.Equal(1.40f, OrbData.GetAttackMultiplier(
             Items(107000010, 107000010, 107000010, 107000010, 107000010, 107000010, 107000010)));
     }
 
     [Fact]
     public void WindPassiveRequiresMajorityAndCountsLivingOrbsWithoutTierWeight()
     {
-        Assert.Equal(1f, OrbData.GetWindMoveSpeedMultiplier([]));
-        Assert.Equal(1f, OrbData.GetWindMoveSpeedMultiplier(Items(107000022)));
-        Assert.Equal(1f, OrbData.GetWindMoveSpeedMultiplier(Items(107000020, 107000010)));
-        Assert.Equal(1.08f, OrbData.GetWindMoveSpeedMultiplier(Items(107000020, 107000022)));
-        Assert.Equal(1.08f, OrbData.GetWindMoveSpeedMultiplier(Items(107000020, 107000022, 107000030)));
-        Assert.Equal(1.14f, OrbData.GetWindMoveSpeedMultiplier(
+        Assert.Equal(1f, OrbData.GetMoveSpeedMultiplier([]));
+        Assert.Equal(1f, OrbData.GetMoveSpeedMultiplier(Items(107000022)));
+        Assert.Equal(1f, OrbData.GetMoveSpeedMultiplier(Items(107000020, 107000010)));
+        Assert.Equal(1.08f, OrbData.GetMoveSpeedMultiplier(Items(107000020, 107000022)));
+        Assert.Equal(1.08f, OrbData.GetMoveSpeedMultiplier(Items(107000020, 107000022, 107000030)));
+        Assert.Equal(1.14f, OrbData.GetMoveSpeedMultiplier(
             Items(107000020, 107000020, 107000020, 107000020, 107000020, 107000020)));
     }
 
@@ -70,7 +67,7 @@ public sealed class OrbBoardTests
         int expectedTier)
     {
         Assert.True(OrbData.TryGetOrbGroupAndTier(itemId, out int groupId, out int groupTier));
-        Assert.True(OrbData.TryGetOrbItemId(groupId, groupTier, out int roundTripItemId));
+        Assert.True(OrbData.TryGetItemId(groupId, groupTier, out int roundTripItemId));
         Assert.Equal(expectedGroupId, groupId);
         Assert.Equal(expectedTier, groupTier);
         Assert.Equal(itemId, roundTripItemId);
@@ -90,7 +87,6 @@ public sealed class OrbBoardTests
         Assert.False(OrbData.TryGetOrbGroupAndTier(itemId, out var color, out int tier));
         Assert.Equal(OrbGroupIds.None, color);
         Assert.Equal(0, tier);
-        Assert.Equal(OrbGroupIds.None, OrbData.GetOrbGroupId(itemId));
         Assert.False(OrbData.IsOrbItem(itemId));
     }
 
@@ -101,69 +97,8 @@ public sealed class OrbBoardTests
     [InlineData(OrbGroupIds.Sun, 4)]
     public void UnknownGroupOrTierDoesNotProduceAnItem(int orbGroupId, int tier)
     {
-        Assert.False(OrbData.TryGetOrbItemId(orbGroupId, tier, out int itemId));
+        Assert.False(OrbData.TryGetItemId(orbGroupId, tier, out int itemId));
         Assert.Equal(0, itemId);
-    }
-
-    [Fact]
-    public void ResonanceUsesEquippedColorAndAnyOtherTier()
-    {
-        Assert.True(OrbData.TryGetActivePair(107000010, [107000021, 107000012], out var color,
-            out int supportTier));
-        Assert.Equal(OrbGroupIds.Sun, color);
-        Assert.Equal(3, supportTier);
-
-        Assert.False(OrbData.TryGetActivePair(107000010, [], out color, out supportTier));
-        Assert.Equal(OrbGroupIds.Sun, color);
-        Assert.Equal(0, supportTier);
-    }
-
-    [Fact]
-    public void MultiplePairsStillResolveOnlyTheEquippedColorAndNoCrossColorFallback()
-    {
-        Assert.True(OrbData.TryGetActivePair(107000010,
-            [107000011, 107000020, 107000021, 107000030, 107000031], out var color, out int supportTier));
-        Assert.Equal(OrbGroupIds.Sun, color);
-        Assert.Equal(2, supportTier);
-
-        Assert.False(OrbData.TryGetActivePair(107000010,
-            [107000020, 107000021, 107000030, 107000031], out color, out supportTier));
-        Assert.Equal(OrbGroupIds.Sun, color);
-        Assert.Equal(0, supportTier);
-    }
-
-    [Fact]
-    public void BoardResonanceDoesNotRequireAnEquippedOrb()
-    {
-        Assert.True(OrbData.TryGetActivePair(
-            [107000010, 107000020, 107000021],
-            out var color,
-            out int supportTier));
-        Assert.Equal(OrbGroupIds.Wind, color);
-        Assert.Equal(2, supportTier);
-
-        Assert.False(OrbData.HasActivePair(
-            [107000010, 107000020, 107000021],
-            OrbGroupIds.Sun,
-            out _));
-        Assert.True(OrbData.HasActivePair(
-            [107000010, 107000020, 107000021],
-            OrbGroupIds.Wind,
-            out supportTier));
-        Assert.Equal(2, supportTier);
-    }
-
-    [Fact]
-    public void BoardCanActivateMultipleResonanceColorsAtOnce()
-    {
-        int[] board = [107000010, 107000011, 107000020, 107000021, 107000030, 107000031];
-
-        Assert.True(OrbData.HasActivePair(board, OrbGroupIds.Sun, out int redTier));
-        Assert.True(OrbData.HasActivePair(board, OrbGroupIds.Wind, out int greenTier));
-        Assert.True(OrbData.HasActivePair(board, OrbGroupIds.Wave, out int blueTier));
-        Assert.Equal(2, redTier);
-        Assert.Equal(2, greenTier);
-        Assert.Equal(2, blueTier);
     }
 
     [Fact]
@@ -173,9 +108,7 @@ public sealed class OrbBoardTests
         inventory.AddOrb(107000030);
         inventory.AddOrb(107000032);
 
-        Assert.True(OrbData.TryGetActivePair(inventory.GetOrderedOrbs().Select(item => item.ItemId), out var color, out int supportTier));
-        Assert.Equal(OrbGroupIds.Wave, color);
-        Assert.Equal(3, supportTier);
+        Assert.True(OrbData.IsResonating(inventory.GetOrderedOrbs(), OrbGroupIds.Wave));
     }
 
     [Fact]
@@ -186,16 +119,13 @@ public sealed class OrbBoardTests
         Assert.True(inventory.TryAddOrbWithCapacity(107000020, 6, out var second));
         Assert.Equal(new[] { first!.ItemUid, second!.ItemUid },
             inventory.GetOrderedOrbs().Select(item => item.ItemUid));
-        var actors = new List<ProximityCombatActor>();
-        MatchCombatActorBuilder.AddOrbActors(actors, default, inventory);
-        Assert.Equal(new[] { first.ItemUid, second.ItemUid }, actors.Select(actor => actor.WeaponItemUid));
         Assert.True(inventory.TryReplaceOrb(first.ItemUid, 107000011, out _));
         Assert.Equal(first.ItemUid, inventory.GetOrderedOrbs()[0].ItemUid);
     }
 
 
     [Fact]
-    public void ReconnectRecomputesTheSameSingleResonanceFromTheAuthoritativeBoard()
+    public void TiedBoardHasNoResonanceAfterReconnect()
     {
         var reconnectedInventory = new PlayerOrbState();
         Assert.True(reconnectedInventory.TryAddOrbWithCapacity(107000010, 6, out _));
@@ -203,9 +133,8 @@ public sealed class OrbBoardTests
         Assert.True(reconnectedInventory.TryAddOrbWithCapacity(107000020, 6, out _));
         Assert.True(reconnectedInventory.TryAddOrbWithCapacity(107000020, 6, out _));
 
-        Assert.True(OrbData.TryGetActivePair(reconnectedInventory.GetOrderedOrbs().Select(item => item.ItemId), out var color, out int supportTier));
-        Assert.Equal(OrbGroupIds.Sun, color);
-        Assert.Equal(1, supportTier);
+        Assert.False(OrbData.IsResonating(reconnectedInventory.GetOrderedOrbs(), OrbGroupIds.Sun));
+        Assert.False(OrbData.IsResonating(reconnectedInventory.GetOrderedOrbs(), OrbGroupIds.Wind));
     }
 
 

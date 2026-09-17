@@ -65,12 +65,24 @@ public sealed class MatchGameplayStateTests
     [Fact]
     public void WindOrbAttackState_PreservesAttackAndImmunityTimingBoundaries()
     {
+        TestGameData.EnsureBattleItemCombatLoaded();
         var player = new Player(new PlayerInfo { PlayerId = 10 });
         DateTime nowUtc = new(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc);
+        long windUid = player.Orbs.AddOrb(107000020).ItemUid;
+        double tick = Config.SWARM_WIND_BLADE_TICK_SECONDS;
 
-        Assert.True(player.Orbs.TryBeginOrbAttack(100, nowUtc, 1d));
-        Assert.False(player.Orbs.TryBeginOrbAttack(100, nowUtc.AddMilliseconds(999), 1d));
-        Assert.True(player.Orbs.TryBeginOrbAttack(100, nowUtc.AddSeconds(1), 1d));
+        // 주기는 오브가 스스로 안다. 처음 본 오브는 첫 위상만 심고 발동하지 않는다.
+        Assert.Equal(tick, player.Orbs.GetAttackIntervalSeconds(windUid));
+        Assert.False(player.Orbs.IsOrbAttackReady(windUid, nowUtc));
+        DateTime firstAt = player.Orbs.GetNextOrbAttackAtUtc(windUid)!.Value;
+        Assert.True(firstAt > nowUtc);
+        Assert.True(player.Orbs.IsOrbAttackReady(windUid, firstAt));
+        player.Orbs.ScheduleNextOrbAttack(windUid, firstAt);
+        Assert.False(player.Orbs.IsOrbAttackReady(windUid, firstAt.AddSeconds(tick).AddMilliseconds(-1)));
+        Assert.True(player.Orbs.IsOrbAttackReady(windUid, firstAt.AddSeconds(tick)));
+        // 보유하지 않은 uid는 주기가 없어 발동하지 않고 타이머도 심지 않는다.
+        Assert.False(player.Orbs.IsOrbAttackReady(100, nowUtc));
+        Assert.Null(player.Orbs.GetNextOrbAttackAtUtc(100));
 
 
         var victim = new Player(new PlayerInfo { PlayerId = 20 });
@@ -107,16 +119,16 @@ public sealed class MatchGameplayStateTests
         MatchRuntime first = store.GetOrCreate(42001);
         MatchRuntime second = store.GetOrCreate(42002);
         const long playerId = 501;
-        const long itemUid = 9001;
+        long itemUid = GetOrRegisterPlayer(first, playerId).Orbs.AddOrb(107000020).ItemUid;
         DateTime nowUtc = new(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc);
 
         GetOrRegisterPlayer(first, playerId).StatusEffects.Apply(PlayerStatusEffectKind.Wound, nowUtc.AddMinutes(1));
         Assert.True(GetOrRegisterPlayer(first, playerId).StatusEffects.IsActive(PlayerStatusEffectKind.Wound, nowUtc));
         Assert.False(GetOrRegisterPlayer(second, playerId).StatusEffects.IsActive(PlayerStatusEffectKind.Wound, nowUtc));
 
-        Assert.True(GetOrRegisterPlayer(first, playerId).Orbs.TryBeginOrbAttack(itemUid, nowUtc, 1d));
-        Assert.False(GetOrRegisterPlayer(first, playerId).Orbs.TryBeginOrbAttack(itemUid, nowUtc, 1d));
-        Assert.True(GetOrRegisterPlayer(second, playerId).Orbs.TryBeginOrbAttack(itemUid, nowUtc, 1d));
+        Assert.False(GetOrRegisterPlayer(first, playerId).Orbs.IsOrbAttackReady(itemUid, nowUtc));
+        Assert.NotNull(GetOrRegisterPlayer(first, playerId).Orbs.GetNextOrbAttackAtUtc(itemUid));
+        Assert.Null(GetOrRegisterPlayer(second, playerId).Orbs.GetNextOrbAttackAtUtc(itemUid));
         Assert.True(GetOrRegisterPlayer(first, playerId).StatusEffects.TryApply(PlayerStatusEffectKind.WindShockImmunity, nowUtc, 1d));
         Assert.False(GetOrRegisterPlayer(first, playerId).StatusEffects.TryApply(PlayerStatusEffectKind.WindShockImmunity, nowUtc, 1d));
         Assert.True(GetOrRegisterPlayer(second, playerId).StatusEffects.TryApply(PlayerStatusEffectKind.WindShockImmunity, nowUtc, 1d));

@@ -18,9 +18,6 @@ internal sealed class PlayerOrbService(
     PlayerOrbTrailService orbTrails)
 {
     private const float AreaBoundaryProbeStep = 0.2f;
-    private static double SwarmWindBladeVictimImmuneSeconds => SwarmConfigData.GetDouble("SWARM_WIND_BLADE_VICTIM_IMMUNE_SECONDS", 0.9d);
-    private static double WaveOrbAttackIntervalSeconds => SwarmConfigData.GetDouble("SWARM_WAVE_VORTEX_INTERVAL_SECONDS", 2d);
-    private static double WaveOrbDetonationDelaySeconds => SwarmConfigData.GetDouble("SWARM_WAVE_VORTEX_FUSE_SECONDS", 0.65d);
 
     public void ActivateOrbs(MatchRuntime runtime, Player owner, DateTime nowUtc)
     {
@@ -45,53 +42,133 @@ internal sealed class PlayerOrbService(
             return;
         }
 
-        float sunDamageMultiplier = OrbData.GetSunPveAttackMultiplier(orderedOrbs);
+        float attackMultiplier = OrbData.GetAttackMultiplier(orderedOrbs);
         bool appliesSlow = OrbData.IsResonating(orderedOrbs, OrbGroupIds.Wave);
         var orbTiers = orderedOrbs.Select(orb => PlayerOrbState.GetOrbTier(orb.ItemId)).ToList();
         for (int ordinal = 0; ordinal < orderedOrbs.Count; ordinal++)
         {
-            var orb = orderedOrbs[ordinal];
-            if (!OrbData.TryGetOrbGroupAndTier(orb.ItemId, out var orbGroupId, out int tier))
-            {
-                continue;
-            }
-
-            if (runtime.IsEnded || owner.IsEliminated)
+            if (runtime.IsEnded)
             {
                 return;
             }
-            if (orbGroupId == OrbGroupIds.Wind)
+            var orb = orderedOrbs[ordinal];
+            if (!OrbData.TryGetOrbGroupAndTier(orb.ItemId, out int orbGroupId, out int tier))
             {
-                if (owner.Orbs.TryBeginOrbAttack(orb.ItemUid, nowUtc, Config.SWARM_WIND_BLADE_TICK_SECONDS))
-                {
+                continue;
+            }
+            switch (orbGroupId)
+            {
+                case OrbGroupIds.Wind:
+                    if (!owner.Orbs.IsOrbAttackReady(orb.ItemUid, nowUtc))
+                    {
+                        continue;
+                    }
+                    owner.Orbs.ScheduleNextOrbAttack(orb.ItemUid, nowUtc);
                     var windPosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, owner.Position, orbTiers);
-                    ActivateWindOrb(runtime, owner, orb, tier, windPosition, sunDamageMultiplier, nowUtc);
-                }
-                continue;
-            }
-            if (orbGroupId != OrbGroupIds.Wave)
-            {
-                continue;
-            }
+                    ActivateWindOrb(runtime, owner, orb, tier, windPosition, attackMultiplier, nowUtc);
+                    break;
 
-            long orbUid = orb.ItemUid;
-            double firstPhase = 0.5d + orb.ItemUid % 977 / 977d;
-            if (!owner.Orbs.UpdateWaveOrbAttackReadiness(orbUid, nowUtc, WaveOrbAttackIntervalSeconds, firstPhase))
-            {
-                continue;
+                case OrbGroupIds.Wave:
+                    if (!owner.Orbs.IsOrbAttackReady(orb.ItemUid, nowUtc))
+                    {
+                        continue;
+                    }
+                    var wavePosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, owner.Position, orbTiers);
+                    ActivateWaveOrb(runtime, owner, orb, ordinal, wavePosition, attackMultiplier, appliesSlow, nowUtc);
+                    break;
+
+                case OrbGroupIds.Sun:
+                    if (!owner.Orbs.IsOrbAttackReady(orb.ItemUid, nowUtc))
+                    {
+                        continue;
+                    }
+                    var sunPosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, owner.Position, orbTiers);
+                    if (ActivateSunOrb(runtime, owner, orb, ordinal, tier, sunPosition, attackMultiplier, nowUtc))
+                    {
+                        owner.Orbs.ScheduleNextOrbAttack(orb.ItemUid, nowUtc);
+                    }
+                    break;
             }
-            var wavePosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, owner.Position, orbTiers);
-            ActivateWaveOrb(runtime, owner, orb, ordinal, wavePosition, sunDamageMultiplier, appliesSlow, nowUtc);
         }
     }
 
-    private void ActivateWaveOrb(MatchRuntime runtime, Player owner, InGameItemInfo orb, int ordinal,
-        Vector3f orbPosition, float sunDamageMultiplier, bool appliesSlow, DateTime nowUtc)
+    private bool ActivateSunOrb(MatchRuntime runtime, Player owner, InGameItemInfo orb, int ordinal, int tier, Vector3f origin, float attackMultiplier, DateTime nowUtc)
     {
         var ownerArea = owner.GameInfo.ObjectInfo.Area;
-        float radius = OrbData.GetSwarmWaveBombRadius(orb.ItemId);
-        int baseDamage = OrbData.GetSwarmPveAttackDamage(orb.ItemId);
-        if (radius <= 0f || baseDamage <= 0)
+        float range = Config.SWARM_CROSSFIRE_SUN_RANGE_BY_TIER[Math.Clamp(tier, 1, 3) - 1];
+        long targetId = 0;
+        Vector3f? anchor = null;
+        float nearestSquared = float.MaxValue;
+        foreach (var participant in runtime.GetAlivePlayers())
+        {
+            if (participant.PlayerId == owner.PlayerId || participant.Position == null || participant.GameInfo.ObjectInfo.Area != ownerArea || IsSunAnchored(runtime, owner.PlayerId, participant.PlayerId))
+            {
+                continue;
+            }
+            if (!GroundGeometry.IsWithinGroundRadius(origin, participant.Position, range))
+            {
+                continue;
+            }
+            float dx = participant.Position.X - origin.X;
+            float dy = participant.Position.Y - origin.Y;
+            float distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared < nearestSquared || distanceSquared.Equals(nearestSquared) && participant.PlayerId < targetId)
+            {
+                nearestSquared = distanceSquared;
+                targetId = participant.PlayerId;
+                anchor = participant.Position;
+            }
+        }
+        if (anchor == null)
+        {
+            foreach (var monster in runtime.Monsters.GetCombatTargets())
+            {
+                if (monster.Area != ownerArea || IsSunAnchored(runtime, owner.PlayerId, monster.CombatTargetId))
+                {
+                    continue;
+                }
+                if (!GroundGeometry.IsWithinGroundRadius(origin, monster.Position, range))
+                {
+                    continue;
+                }
+                float dx = monster.Position.X - origin.X;
+                float dy = monster.Position.Y - origin.Y;
+                float distanceSquared = dx * dx + dy * dy;
+                if (distanceSquared < nearestSquared || distanceSquared.Equals(nearestSquared) && monster.CombatTargetId < targetId)
+                {
+                    nearestSquared = distanceSquared;
+                    targetId = monster.CombatTargetId;
+                    anchor = monster.Position;
+                }
+            }
+        }
+        if (anchor == null)
+        {
+            return false;
+        }
+
+        int damage = Math.Max(1, (int)MathF.Round(OrbData.GetAttackDamage(orb.ItemId) * attackMultiplier * Config.SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER));
+        return TryStartSunCrossfire(runtime, owner, orb, ordinal, tier, origin, targetId, anchor, damage, nowUtc);
+    }
+
+    /// <summary>이 소유자의 태양 도형이 이미 겨눈 표적인지 — 같은 표적에 두 발을 겹치지 않는다.</summary>
+    private static bool IsSunAnchored(MatchRuntime runtime, long ownerId, long combatTargetId)
+    {
+        foreach (var shape in runtime.SunCrossfireShapes)
+        {
+            if (shape.OwnerId == ownerId && shape.AnchorCombatTargetId == combatTargetId)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void ActivateWaveOrb(MatchRuntime runtime, Player owner, InGameItemInfo orb, int ordinal, Vector3f orbPosition, float attackMultiplier, bool appliesSlow, DateTime nowUtc)
+    {
+        var ownerArea = owner.GameInfo.ObjectInfo.Area;
+        float radius = OrbData.GetWaveVortexRadius(orb.ItemId);
+        if (radius <= 0f)
         {
             return;
         }
@@ -143,10 +220,10 @@ internal sealed class PlayerOrbService(
             return;
         }
 
-        owner.Orbs.ScheduleNextOrbAttack(orb.ItemUid, nowUtc, WaveOrbAttackIntervalSeconds);
+        owner.Orbs.ScheduleNextOrbAttack(orb.ItemUid, nowUtc);
 
-        int damage = Math.Max(1, (int)MathF.Round(baseDamage * sunDamageMultiplier * Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER));
-        runtime.PendingWaveAttacks.Add(new PendingWaveAttack(owner.PlayerId, ownerArea, orbPosition, damage, radius, orb.ItemId, nowUtc.AddSeconds(WaveOrbDetonationDelaySeconds), appliesSlow));
+        int damage = Math.Max(1, (int)MathF.Round(OrbData.GetAttackDamage(orb.ItemId) * attackMultiplier * Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER));
+        runtime.PendingWaveAttacks.Add(new PendingWaveAttack(owner.PlayerId, ownerArea, orbPosition, damage, radius, orb.ItemId, nowUtc.AddSeconds(Config.SWARM_WAVE_VORTEX_FUSE_SECONDS), appliesSlow));
         using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_RING_EFFECT);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_RING_EFFECT
         {
@@ -167,53 +244,11 @@ internal sealed class PlayerOrbService(
         }
     }
 
-    public bool TryStartSunCrossfire(MatchRuntime runtime, Player owner, ProximityCombatAttack attack, DateTime nowUtc)
+    private bool TryStartSunCrossfire(MatchRuntime runtime, Player owner, InGameItemInfo orb, int ordinal, int tier, Vector3f origin, long targetId, Vector3f anchor, int damage, DateTime nowUtc)
     {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Sun orb attacks require the match lock.");
-        }
-
-        if (runtime.IsEnded || owner.IsEliminated)
-        {
-            return false;
-        }
-
-        if (!ReferenceEquals(runtime.GetPlayer(owner.PlayerId), owner) || attack.AttackerPlayerId != owner.PlayerId)
-        {
-            throw new InvalidOperationException("Sun orb attack owner must belong to the match and match the attack.");
-        }
-        if (owner.Position == null || !MatchOrbAttackService.IsSunCrossfireWeapon(attack.WeaponItemId))
-        {
-            return false;
-        }
-
+        var ownerArea = owner.GameInfo.ObjectInfo.Area;
         var monsterTargets = runtime.Monsters.GetCombatTargets();
-        var origin = attack.Origin ?? owner.Position;
-        var anchor = attack.AnchorPosition;
-        var anchorMonster = runtime.Monsters.FindAliveByCombatTarget(attack.TargetPlayerId);
-        int anchorMonsterId = anchorMonster?.MonsterId ?? 0;
-        if (anchor == null && runtime.GetPlayer(attack.TargetPlayerId)?.Position is { } targetPosition)
-        {
-            anchor = targetPosition;
-        }
-
-        if (anchor == null && anchorMonster != null && anchorMonster.Health > anchorMonster.PendingDamage)
-        {
-            anchor = anchorMonster.Position;
-        }
-
-        if (anchor == null)
-        {
-            return false;
-        }
-
-        OrbData.TryGetOrbGroupAndTier(attack.WeaponItemId, out _, out int tier);
-        if (MatchOrbAttackService.CountTelegraphing(runtime.SunCrossfireShapes, owner.PlayerId, nowUtc) >= Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER)
-        {
-            return false;
-        }
-
+        int anchorMonsterId = runtime.Monsters.FindAliveByCombatTarget(targetId)?.MonsterId ?? 0;
         float targetGroundX = anchor.X - origin.X;
         float targetGroundY = (anchor.Y - origin.Y) * GroundGeometry.GroundYScale;
         if (targetGroundX * targetGroundX + targetGroundY * targetGroundY < 0.0025f)
@@ -254,7 +289,7 @@ internal sealed class PlayerOrbService(
                     origin.Y + directionY[direction] * along / GroundGeometry.GroundYScale,
                     0f);
                 var cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, probe);
-                if (GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == attack.Area)
+                if (GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == ownerArea)
                 {
                     continue;
                 }
@@ -271,7 +306,7 @@ internal sealed class PlayerOrbService(
             float nearest = float.MaxValue;
             foreach (var monsterTarget in monsterTargets)
             {
-                if (monsterTarget.Area != attack.Area)
+                if (monsterTarget.Area != ownerArea)
                 {
                     continue;
                 }
@@ -360,10 +395,10 @@ internal sealed class PlayerOrbService(
         runtime.SunCrossfireShapes.Add(new SwarmCrossfireShape
         {
             EventId = eventId,
-            OwnerId = attack.AttackerPlayerId,
-            WeaponItemId = attack.WeaponItemId,
-            Damage = attack.Damage,
-            Area = attack.Area,
+            OwnerId = owner.PlayerId,
+            WeaponItemId = orb.ItemId,
+            Damage = damage,
+            Area = ownerArea,
             Origin = new Vector3f(origin.X, origin.Y, 0f),
             End = endPosition,
             GroundLength = selectedLength,
@@ -374,7 +409,7 @@ internal sealed class PlayerOrbService(
             ExpiresAtUtc = telegraphEndsAtUtc.AddSeconds(sweepSeconds),
             DetonateAtWall = detonateAtWall,
             AnchorMonsterId = anchorMonsterId,
-            AnchorCombatTargetId = attack.TargetPlayerId,
+            AnchorCombatTargetId = targetId,
             LastFront = -halfWidth
         });
 
@@ -383,7 +418,7 @@ internal sealed class PlayerOrbService(
         {
             EventId = eventId,
             OwnerPlayerId = owner.PlayerId,
-            WeaponItemId = attack.WeaponItemId,
+            WeaponItemId = orb.ItemId,
             Shape = Config.SWARM_CROSSFIRE_SHAPE_LINE,
             OriginX = origin.X,
             OriginY = origin.Y,
@@ -393,11 +428,11 @@ internal sealed class PlayerOrbService(
             TelegraphSeconds = Config.SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS,
             ActiveSeconds = sweepSeconds,
             AnchorMonsterId = anchorMonsterId,
-            OwnerOrbOrdinal = attack.AttackerTrailOrdinal
+            OwnerOrbOrdinal = ordinal
         }));
         foreach (var session in runtime.GetSessions())
         {
-            if (session is { PlayerId: not null, Player.IsEliminated: false } && session.Player.GameInfo.ObjectInfo.Area == attack.Area)
+            if (session is { PlayerId: not null, Player.IsEliminated: false } && session.Player.GameInfo.ObjectInfo.Area == ownerArea)
             {
                 session.TrySend(packet);
             }
@@ -406,7 +441,7 @@ internal sealed class PlayerOrbService(
     }
 
     private void ActivateWindOrb(MatchRuntime runtime, Player owner, InGameItemInfo orb, int tier,
-        Vector3f orbPosition, float sunDamageMultiplier, DateTime nowUtc)
+        Vector3f orbPosition, float attackMultiplier, DateTime nowUtc)
     {
         var ownerArea = owner.GameInfo.ObjectInfo.Area;
         float radius = Config.SWARM_WIND_BLADE_RADIUS_BY_TIER[Math.Clamp(tier, 1, 3) - 1];
@@ -455,7 +490,7 @@ internal sealed class PlayerOrbService(
         }
 
 
-        int damage = Math.Max(1, (int)MathF.Round(OrbData.GetSwarmPveAttackDamage(orb.ItemId) * sunDamageMultiplier * Config.SWARM_WIND_BLADE_DAMAGE_MULTIPLIER));
+        int damage = Math.Max(1, (int)MathF.Round(OrbData.GetAttackDamage(orb.ItemId) * attackMultiplier * Config.SWARM_WIND_BLADE_DAMAGE_MULTIPLIER));
         if (monstersInRadius != null)
         {
             var activeSessions = runtime.GetSessions().Where(session => !session.IsGameEnded).ToList();
@@ -470,7 +505,7 @@ internal sealed class PlayerOrbService(
         {
             foreach (var participant in playersInRadius)
             {
-                if (!participant.StatusEffects.TryApply(PlayerStatusEffectKind.WindShockImmunity, nowUtc, SwarmWindBladeVictimImmuneSeconds))
+                if (!participant.StatusEffects.TryApply(PlayerStatusEffectKind.WindShockImmunity, nowUtc, Config.SWARM_WIND_BLADE_VICTIM_IMMUNE_SECONDS))
                 {
                     continue;
                 }
@@ -499,6 +534,5 @@ internal sealed class PlayerOrbService(
                 victimSession.TrySend(packet);
             }
         }
-
     }
 }

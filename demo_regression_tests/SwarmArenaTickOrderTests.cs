@@ -35,20 +35,12 @@ public sealed class SwarmArenaTickOrderTests
             "botBehavior.UpdateSleep(",
             "ApplySleepRecovery(",
             "ProcessDoorInteractions(",
-            "actorBuilder.Build(",
             "MatchOrbVisual.Build(",
             "matchResults.BroadcastOrbRankings(",
             "botBehavior.ProcessOrbGrowth(",
             "matchResults.TryEndOnScoreTimeout(",
             "ProcessPendingMonsterHits(",
-            "ProcessSunCrossfires(",
-            "ProcessPendingPvpHits(",
-            "CollectSunCrossfireCappedOwners(",
-            "CollectSunCrossfireAnchoredTargets(",
-            "autoAttacks.UpdateAttacks(",
-            "TryStartSunCrossfire(",
-            "combatDamage.QueueMonsterHitNotification(runtime, attacker,",
-            "BroadcastSwarmAttackVfxToTargetAndObservers(");
+            "ProcessSunCrossfires(");
     }
 
     [Fact]

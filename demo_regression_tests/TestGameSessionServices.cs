@@ -21,7 +21,7 @@ internal static class TestGameSessionServices
     {
         var spawns = new MatchMonsterSpawnService();
         return new MatchCombatService(null!, null!, null!, null!, null!,
-            null!, null!, null!, null!, null!, new MonsterCombatService());
+            null!, null!, null!, new MonsterCombatService());
     }
 
     public static PlayerHealthService CreateHealthService(MatchRuntimeStore store, Microsoft.Extensions.Logging.ILogger? logger = null) =>

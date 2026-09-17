@@ -11,38 +11,27 @@ public sealed class MatchCombatDamageServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var combat = TestGameSessionServices.CreateCombatDamageService();
-        var health = TestGameSessionServices.CreateHealthService(store, NullLogger.Instance);
         var first = store.GetOrCreate(982003);
         var second = store.GetOrCreate(982004);
         var dueAt = DateTime.UtcNow.AddSeconds(1);
-        var attack = new ProximityCombatAttack(1001, 1002, default, 0, 1);
 
         using (first.Enter())
         {
             combat.ScheduleMonsterHit(first, new PendingMonsterHit(-123, 1001, 1, dueAt));
-            combat.SchedulePvpHit(first, attack, dueAt);
             combat.ProcessPendingMonsterHits(first, dueAt.AddTicks(-1), []);
-            combat.ProcessPendingPvpHits(first, health, dueAt.AddTicks(-1), [], []);
             Assert.Single(first.CombatDamage.PendingMonsterHits);
-            Assert.Single(first.CombatDamage.PendingPvpHits);
         }
         using (second.Enter())
         {
             combat.ProcessPendingMonsterHits(second, dueAt, []);
-            combat.ProcessPendingPvpHits(second, health, dueAt, [], []);
             Assert.Empty(second.CombatDamage.PendingMonsterHits);
-            Assert.Empty(second.CombatDamage.PendingPvpHits);
         }
         using (first.Enter())
         {
             Assert.Single(first.CombatDamage.PendingMonsterHits);
-            Assert.Single(first.CombatDamage.PendingPvpHits);
             combat.ProcessPendingMonsterHits(first, dueAt, []);
-            combat.ProcessPendingPvpHits(first, health, dueAt, [], []);
             combat.ProcessPendingMonsterHits(first, dueAt.AddSeconds(1), []);
-            combat.ProcessPendingPvpHits(first, health, dueAt.AddSeconds(1), [], []);
             Assert.Empty(first.CombatDamage.PendingMonsterHits);
-            Assert.Empty(first.CombatDamage.PendingPvpHits);
         }
     }
 

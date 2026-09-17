@@ -25,35 +25,6 @@ public readonly record struct PendingWaveAttack(
     DateTime ExplodeAtUtc,
     bool AppliesSlow);
 
-public readonly record struct ProximityCombatActor(
-    long PlayerId,
-    AreaType Area,
-    Vector3f Position,
-    int WeaponItemId,
-    float AttackRange,
-    int Damage,
-    float AttackIntervalSeconds,
-    MapId MapId = MapId.None,
-    Cell? Cell = null,
-    long WeaponItemUid = 0,
-    int WeaponStackIndex = 0,
-    bool IsMonsterTarget = false,
-    int TargetPriority = 0,
-    bool Untargetable = false,
-    int TrailOrdinal = 0);
-
-public readonly record struct ProximityCombatAttack(
-    long AttackerPlayerId,
-    long TargetPlayerId,
-    AreaType Area,
-    int WeaponItemId,
-    int Damage,
-    int CandidateTargetCount = 0,
-    long AttackerItemUid = 0,
-    Vector3f? Origin = null,
-    Vector3f? AnchorPosition = null,
-    int AttackerTrailOrdinal = 0);
-
 public sealed class CutRetaliationWindow
 {
     public DateTime ExpiresAtUtc;

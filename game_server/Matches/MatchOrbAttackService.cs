@@ -20,65 +20,9 @@ internal sealed class MatchOrbAttackService(
     private const float SwarmCrossfirePlayerRadius = GroundGeometry.PlayerRadius;
     private const float SwarmCrossfirePlayerBodyHeight = 0.9f;
     private const float SwarmCrossfireMonsterRadius = GroundGeometry.MonsterRadius;
-    private static readonly bool SwarmCrossfireEnabled = true;
     private static long _lastEventId;
 
-    public static bool IsSunCrossfireWeapon(int weaponItemId) => SwarmCrossfireEnabled && OrbData.TryGetOrbGroupAndTier(weaponItemId, out var orbGroupId, out _) && orbGroupId == OrbGroupIds.Sun;
     public static long AllocateEventId() => Interlocked.Increment(ref _lastEventId);
-
-    public static int CountTelegraphing(IReadOnlyList<SwarmCrossfireShape> shapes, long ownerId, DateTime nowUtc)
-    {
-        int count = 0;
-        foreach (var shape in shapes)
-        {
-            if (shape.OwnerId == ownerId && nowUtc < shape.ArmedAtUtc)
-            {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    public HashSet<(long OwnerId, long CombatTargetId)> CollectSunCrossfireAnchoredTargets(MatchRuntime runtime)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Sun orb attacks require the match lock.");
-        }
-        var anchored = new HashSet<(long, long)>();
-        foreach (var shape in runtime.SunCrossfireShapes)
-        {
-            anchored.Add((shape.OwnerId, shape.AnchorCombatTargetId));
-        }
-        return anchored;
-    }
-
-    public HashSet<long> CollectSunCrossfireCappedOwners(MatchRuntime runtime, DateTime nowUtc)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Sun orb attacks require the match lock.");
-        }
-        var telegraphingByOwner = new Dictionary<long, int>();
-        foreach (var shape in runtime.SunCrossfireShapes)
-        {
-            if (nowUtc >= shape.ArmedAtUtc)
-            {
-                continue;
-            }
-            telegraphingByOwner[shape.OwnerId] = telegraphingByOwner.GetValueOrDefault(shape.OwnerId) + 1;
-        }
-
-        var capped = new HashSet<long>();
-        foreach ((long ownerId, int count) in telegraphingByOwner)
-        {
-            if (count >= Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER)
-            {
-                capped.Add(ownerId);
-            }
-        }
-        return capped;
-    }
 
     public void ProcessSunCrossfires(MatchRuntime runtime, DateTime nowUtc)
     {
@@ -93,11 +37,6 @@ internal sealed class MatchOrbAttackService(
         }
         var players = runtime.GetAlivePlayers();
         var allSessions = runtime.GetSessions().Where(session => !session.IsGameEnded).ToList();
-        if (!SwarmCrossfireEnabled)
-        {
-            return;
-        }
-
         var shapes = runtime.SunCrossfireShapes;
         IReadOnlyList<Monster>? monsterTargets = null;
         for (int index = shapes.Count - 1; index >= 0; index--)
@@ -319,7 +258,7 @@ internal sealed class MatchOrbAttackService(
                 combatDamage.ScheduleMonsterHit(runtime, new PendingMonsterHit(target.CombatTargetId, vortex.OwnerId, monsterDamage, nowUtc));
                 if (vortex.AppliesSlow)
                 {
-                    target.ApplySlow(OrbData.WaveSlowSeconds, nowUtc);
+                    target.ApplySlow(Config.SWARM_WAVE_SLOW_SECONDS, nowUtc);
                 }
 
                 int monsterId = (runtime.Monsters.FindAliveByCombatTarget(target.CombatTargetId)?.MonsterId ?? 0);
@@ -354,7 +293,7 @@ internal sealed class MatchOrbAttackService(
                 {
                     continue;
                 }
-                participant.StatusEffects.Apply(PlayerStatusEffectKind.WaveSlow, nowUtc.AddSeconds(OrbData.WaveSlowSeconds));
+                participant.StatusEffects.Apply(PlayerStatusEffectKind.WaveSlow, nowUtc.AddSeconds(Config.SWARM_WAVE_SLOW_SECONDS));
                 var victimSession = participant.Session;
                 if (victimSession != null && vortex.OwnerId != 0)
                 {
@@ -364,7 +303,7 @@ internal sealed class MatchOrbAttackService(
                         TargetPlayerId = participant.PlayerId,
                         AreaType = vortex.Area,
                         Effect = CombatStatusEffectKind.WaveOrbSlow,
-                        DurationMs = (int)(OrbData.WaveSlowSeconds * 1000f)
+                        DurationMs = (int)(Config.SWARM_WAVE_SLOW_SECONDS * 1000f)
                     });
                     victimSession.TrySend(packet);
                 }

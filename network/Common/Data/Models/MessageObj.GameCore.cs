@@ -111,19 +111,6 @@ namespace network.common.data.models
     }
 
 
-    /// <summary>
-    /// 자동 전투 당사자가 아닌 같은 구역 관전자에게만 보내는 월드 이펙트 이벤트다.
-    /// HUD 피해, 카메라 흔들기, 탈락 사유 표시는 이 메시지로 처리하지 않는다.
-    /// </summary>
-    [MessagePackObject]
-    public class G_TO_C_PROXIMITY_ATTACK_VFX : IMessagePackObject
-    {
-        [Key("attackerPlayerId")] public long AttackerPlayerId { get; set; }
-        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
-        [Key("areaType")] public AreaType AreaType { get; set; }
-        [Key("weaponItemId")] public int WeaponItemId { get; set; }
-    }
-
     [MessagePackObject]
     public class G_TO_C_ORB_EFFECT_STATE : IMessagePackObject
     {

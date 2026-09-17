@@ -18,8 +18,6 @@ internal static class GameServerTestAccess
     internal static MatchCombatService GetCombat(this GameServer server, long matchingId) =>
         Read<MatchCombatService>(GetLoop(server, matchingId));
 
-    internal static MatchCombatActorBuilder GetActorBuilder(this GameServer server, long matchingId) =>
-        Read<MatchCombatActorBuilder>(GetCombat(server, matchingId));
 
     internal static MatchTickLoop GetLoop(GameServer server, long matchingId)
     {
@@ -29,6 +27,9 @@ internal static class GameServerTestAccess
         return runtime.TickLoop ??= factory(runtime, TimeProvider.System);
     }
     internal static PlayerOrbGrowthService GetOrbGrowth(this GameServer server) => Read<PlayerOrbGrowthService>(server);
+
+    internal static PlayerOrbService GetPlayerOrbs(this GameServer server, long matchingId) =>
+        Read<PlayerOrbService>(GetCombat(server, matchingId));
 
     internal static MatchEntryFailureHandler GetEntryFailureHandler(this GameServer server) =>
         Read<MatchEntryFailureHandler>(server);
@@ -71,7 +72,7 @@ internal static class GameServerTestAccess
             var combat = new MatchCombatService(
                 health, combatDamage, results,
                 new PlayerOrbService(health, combatDamage, orbTrails),
-                orbTrails, trailCuts, new MatchCombatActorBuilder(orbTrails), new MatchAutoAttackService(),
+                orbTrails, trailCuts,
                 new MatchOrbAttackService(health, combatDamage), decisions, new MonsterCombatService());
 
             return new MatchTickLoop(runtime, runtimes, logger, groundPickup,

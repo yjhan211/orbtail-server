@@ -43,7 +43,7 @@ public sealed class MatchOwnedBotsTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         float expected = (boots ? Config.BOOTS_MOVE_SPEED_MULTIPLIER : 1f) *
             (bare ? Config.SWARM_BARE_MOVE_SPEED_MULTIPLIER : 1f) *
-            (waveSlow ? network.common.data.OrbData.WaveSlowMoveSpeedMultiplier : 1f);
+            (waveSlow ? network.common.Config.SWARM_WAVE_SLOW_MOVE_SPEED_MULTIPLIER : 1f);
         Assert.Equal(expected, network.common.data.helpers.MovementSpeed.GetMultiplier(
             Array.Empty<InGameItemInfo>(), boots, bare, waveSlow));
     }

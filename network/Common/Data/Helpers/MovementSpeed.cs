@@ -12,10 +12,10 @@ namespace network.common.data.helpers
         public static float GetMultiplier(IEnumerable<InGameItemInfo> orbs,
             bool bootsActive, bool bareSpeedActive, bool waveSlowActive)
         {
-            float wind = OrbData.GetWindMoveSpeedMultiplier(orbs);
+            float wind = OrbData.GetMoveSpeedMultiplier(orbs);
             float boots = bootsActive ? Config.BOOTS_MOVE_SPEED_MULTIPLIER : 1f;
             float bare = bareSpeedActive ? Config.SWARM_BARE_MOVE_SPEED_MULTIPLIER : 1f;
-            float waveSlow = waveSlowActive ? OrbData.WaveSlowMoveSpeedMultiplier : 1f;
+            float waveSlow = waveSlowActive ? Config.SWARM_WAVE_SLOW_MOVE_SPEED_MULTIPLIER : 1f;
             return wind * boots * bare * waveSlow;
         }
     }

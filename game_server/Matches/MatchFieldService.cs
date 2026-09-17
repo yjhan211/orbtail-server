@@ -29,8 +29,6 @@ internal class MatchFieldService(
                 .AsReadOnly(),
             LazyThreadSafetyMode.ExecutionAndPublication);
 
-    private static int BaseDamagePerTick => SwarmConfigData.GetInt("SWARM_FIELD_BASE_DAMAGE_PER_TICK", 12);
-    private static int DamagePerExtraCell => SwarmConfigData.GetInt("SWARM_FIELD_DAMAGE_PER_EXTRA_CELL", 5);
 
     public virtual void ProcessClosureTick(MatchRuntime runtime)
     {
@@ -234,7 +232,7 @@ internal class MatchFieldService(
         {
             return 0;
         }
-        return BaseDamagePerTick + (int)(over * DamagePerExtraCell);
+        return Config.SWARM_FIELD_BASE_DAMAGE_PER_TICK + (int)(over * Config.SWARM_FIELD_DAMAGE_PER_EXTRA_CELL);
     }
 
     internal readonly record struct MatchSettlementCandidate(

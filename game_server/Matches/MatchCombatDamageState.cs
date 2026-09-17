@@ -7,6 +7,5 @@ namespace game_server.matches;
 internal sealed class MatchCombatDamageState
 {
     public List<PendingMonsterHit> PendingMonsterHits { get; } = new();
-    public List<(ProximityCombatAttack Attack, DateTime DueAtUtc)> PendingPvpHits { get; } = new();
     public Random CriticalRng { get; } = new();
 }

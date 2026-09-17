@@ -88,7 +88,6 @@ namespace network.common.data
         public int Tier { get; private set; }
         public float AttackRange { get; private set; }
         public int Damage { get; private set; }
-        public float AttackIntervalSeconds { get; private set; }
         public int OrbMaxHp { get; private set; }
         public float TierScale { get; private set; }
         public float StatTierWeight { get; private set; }
@@ -105,7 +104,6 @@ namespace network.common.data
                 Tier = int.Parse(row["tier"], CultureInfo.InvariantCulture),
                 AttackRange = float.Parse(row["attack_range"], CultureInfo.InvariantCulture),
                 Damage = int.Parse(row["damage"], CultureInfo.InvariantCulture),
-                AttackIntervalSeconds = float.Parse(row["attack_interval_seconds"], CultureInfo.InvariantCulture),
                 OrbMaxHp = row.ContainsKey("orb_max_hp")
                     ? int.Parse(row["orb_max_hp"], CultureInfo.InvariantCulture)
                     : 0,
@@ -123,8 +121,7 @@ namespace network.common.data
                 throw new ArgumentException($"Invalid battle item combat data: item_id={definition.ItemId}");
             }
 
-            if (definition.AttackRange <= 0f || definition.Damage <= 0 ||
-                definition.AttackIntervalSeconds <= 0f)
+            if (definition.AttackRange <= 0f || definition.Damage <= 0)
             {
                 throw new ArgumentException($"Invalid battle item combat data: item_id={definition.ItemId}");
             }

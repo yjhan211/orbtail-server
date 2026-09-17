@@ -102,7 +102,7 @@ internal class BotBehaviorService(
             }
         }
 
-        if (!OrbData.TryGetOrbItemId(preferredGroupId, 1, out int targetItemId))
+        if (!OrbData.TryGetItemId(preferredGroupId, 1, out int targetItemId))
         {
             return false;
         }
@@ -443,7 +443,6 @@ internal class BotBehaviorService(
         return null;
     }
 
-
     private bool TrySelectSummonStoneTarget(MatchRuntime runtime, Bot bot, out Cell? target)
     {
         target = null;
@@ -535,7 +534,6 @@ internal class BotBehaviorService(
         }
         return currentCell.Clone();
     }
-
 
     public bool CanCutTrail(Bot bot, int healthBefore, DateTime nowUtc, int cutCost)
     {

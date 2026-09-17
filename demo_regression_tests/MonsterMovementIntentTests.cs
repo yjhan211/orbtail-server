@@ -20,11 +20,17 @@ public sealed class MonsterMovementIntentTests
         var destination = TestMapPosition.In(AreaType.S2Library1);
         var origin = monster.Position;
         float direction = Math.Sign(destination.X - origin.X);
-        var far = new game_server.players.Player(new PlayerInfo { PlayerId = 1 }) { Position = TestMapPosition.In(AreaType.S2Library1, direction * 0.2f)
+        var far = new game_server.players.Player(new PlayerInfo { PlayerId = 1 })
+        {
+            Position = TestMapPosition.In(AreaType.S2Library1, direction * 0.2f)
         };
-        var near = new game_server.players.Player(new PlayerInfo { PlayerId = 2 }) { Position = destination
+        var near = new game_server.players.Player(new PlayerInfo { PlayerId = 2 })
+        {
+            Position = destination
         };
-        var eliminated = new game_server.players.Player(new PlayerInfo { PlayerId = 3 }) { Position = origin,
+        var eliminated = new game_server.players.Player(new PlayerInfo { PlayerId = 3 })
+        {
+            Position = origin,
             Status = PlayerMatchStatus.ELIMINATED
         };
         bool found = new MonsterBehaviorService().TrySelectChaseTarget(monster, [far, near, eliminated], out var target);
@@ -50,11 +56,13 @@ public sealed class MonsterMovementIntentTests
             Alive = true,
             Position = TestMapPosition.In(AreaType.S2Corridor9), ChaseTargetPlayerId = 1
         };
-        var previous = new game_server.players.Player(new PlayerInfo { PlayerId = 1 }) {
+        var previous = new game_server.players.Player(new PlayerInfo { PlayerId = 1 })
+        {
 
             Position = TestMapPosition.In(sameArea ? AreaType.S2Corridor9 : AreaType.S2Library1, 0.3f + previousOffset * 0.01f)
         };
-        var nearest = new game_server.players.Player(new PlayerInfo { PlayerId = 2 }) {
+        var nearest = new game_server.players.Player(new PlayerInfo { PlayerId = 2 })
+        {
             Position = TestMapPosition.In(AreaType.S2Corridor9, 0.1f + offset * 0.01f)
         };
         bool found = new MonsterBehaviorService().TrySelectChaseTarget(monster, [previous, nearest], out var target);
@@ -70,7 +78,9 @@ public sealed class MonsterMovementIntentTests
     public void ChaseContinuesAcrossAreasWhenNoLocalPlayerExists()
     {
         var monster = new Monster { Alive = true, Position = TestMapPosition.In(AreaType.S2Corridor9), ChaseTargetPlayerId = 7 };
-        var player = new game_server.players.Player(new PlayerInfo { PlayerId = 7 }) { Position = TestMapPosition.In(AreaType.S2Library1)
+        var player = new game_server.players.Player(new PlayerInfo { PlayerId = 7 })
+        {
+            Position = TestMapPosition.In(AreaType.S2Library1)
         };
         Assert.True(new MonsterBehaviorService().TrySelectChaseTarget(monster, [player], out var target));
         Assert.Same(player, target);
@@ -96,14 +106,15 @@ public sealed class MonsterMovementIntentTests
             Alive = true,
             WaveSlowUntilUtc = slowed ? now.AddSeconds(1) : now
         };
-        var target = new game_server.players.Player(new PlayerInfo { PlayerId = 1 }) {
+        var target = new game_server.players.Player(new PlayerInfo { PlayerId = 1 })
+        {
 
             Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP,
                 GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9))
         };
         var request = new MonsterBehaviorService().CreateMovementRequest(runtime, monster, [target], now);
         float expected = Config.SWARM_MONSTER_MOVE_SPEED;
-        if (slowed) expected *= OrbData.WaveSlowMoveSpeedMultiplier;
+        if (slowed) expected *= Config.SWARM_WAVE_SLOW_MOVE_SPEED_MULTIPLIER;
         if (offsetSeconds >= 0) expected *= (float)Config.SWARM_MONSTER_ESCALATION_STAGE2_MOVE_SPEED_MULTIPLIER;
         Assert.Equal(expected, request.Speed);
         Assert.NotNull(request.DestinationCell);
@@ -154,7 +165,7 @@ public sealed class MonsterMovementIntentTests
         var movement = new MatchMoveService(null!, behavior);
         var now = DateTime.UtcNow;
 
-        var request = MovementPreparationTestSteps.Monster(behavior, runtime, monster, [new game_server.players.Player(new PlayerInfo { PlayerId = 1 }) {  Position = target }], now);
+        var request = MovementPreparationTestSteps.Monster(behavior, runtime, monster, [new game_server.players.Player(new PlayerInfo { PlayerId = 1 }) { Position = target }], now);
         Assert.Same(position, monster.Position);
         Assert.Equal(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target), request.DestinationCell);
         Assert.True(request.Speed > 0);
@@ -187,7 +198,7 @@ public sealed class MonsterMovementIntentTests
         var behavior = new MonsterBehaviorService();
         var now = DateTime.UtcNow.AddHours(1);
 
-        var request = MovementPreparationTestSteps.Monster(behavior, runtime, monster, [new game_server.players.Player(new PlayerInfo { PlayerId = 1 }) {  Position = target }], now);
+        var request = MovementPreparationTestSteps.Monster(behavior, runtime, monster, [new game_server.players.Player(new PlayerInfo { PlayerId = 1 }) { Position = target }], now);
         Assert.True(monster.Alive);
         Assert.Empty(monster.Movement.Waypoints);
         Assert.Equal(0f, request.Speed);
@@ -253,12 +264,14 @@ public sealed class MonsterMovementIntentTests
         };
         monster.Movement.LastProcessedAtUtc = now.AddSeconds(-0.05);
         runtime.Monsters.Entities.Add(monster.MonsterId, monster);
-        runtime.RegisterPlayer(new game_server.players.Player(new PlayerInfo { PlayerId = 77 }) { Health = 100,
+        runtime.RegisterPlayer(new game_server.players.Player(new PlayerInfo { PlayerId = 77 })
+        {
+            Health = 100,
             Position = destination
         });
         var behavior = new MonsterBehaviorService();
         var request = behavior.CreateMovementRequest(runtime, monster,
-            [new game_server.players.Player(new PlayerInfo { PlayerId = 77 }) {  Position = destination }], now);
+            [new game_server.players.Player(new PlayerInfo { PlayerId = 77 }) { Position = destination }], now);
         if (reachable)
             Assert.Equal(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, destination), request.DestinationCell);
         else

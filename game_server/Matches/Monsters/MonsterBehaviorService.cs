@@ -24,7 +24,7 @@ internal sealed class MonsterBehaviorService
         float speed = Config.SWARM_MONSTER_MOVE_SPEED;
         if (now < monster.WaveSlowUntilUtc)
         {
-            speed *= OrbData.WaveSlowMoveSpeedMultiplier;
+            speed *= Config.SWARM_WAVE_SLOW_MOVE_SPEED_MULTIPLIER;
         }
         if (runtime.Monsters.IsInitialized)
         {

@@ -19,14 +19,9 @@ public sealed class MatchOrbAttackServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947604);
         var service = new MatchOrbAttackService(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService());
-        var attacks = new PlayerOrbService(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService(), new PlayerOrbTrailService());
-        var owner = new Player(new PlayerInfo { PlayerId = 11 });
         var now = DateTime.UtcNow;
         Assert.Throws<InvalidOperationException>(() => service.ProcessSunCrossfires(match, now));
         Assert.Throws<InvalidOperationException>(() => service.ProcessSunBurns(match, now));
-        Assert.Throws<InvalidOperationException>(() => service.CollectSunCrossfireAnchoredTargets(match));
-        Assert.Throws<InvalidOperationException>(() => service.CollectSunCrossfireCappedOwners(match, now));
-        Assert.Throws<InvalidOperationException>(() => attacks.TryStartSunCrossfire(match, owner, default, now));
         using (match.Enter())
         {
             var victim = new Player(new PlayerInfo { PlayerId = 12 });
@@ -36,7 +31,6 @@ public sealed class MatchOrbAttackServiceTests
             match.TryMarkEnded();
             service.ProcessSunBurns(match, now.AddSeconds(10));
             Assert.Equal(before, victim.StatusEffects.SunBurn);
-            Assert.False(attacks.TryStartSunCrossfire(match, owner, default, now));
         }
     }
 
@@ -128,39 +122,6 @@ public sealed class MatchOrbAttackServiceTests
     private static readonly DateTime NowUtc = new(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
 
     [Fact]
-    public void ShapeQueries_PreserveTelegraphBoundariesAnchorsAndRemovalLifecycle()
-    {
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
-        var match = store.GetOrCreate(43000);
-        var service = CreateService(store);
-        var shapes = match.SunCrossfireShapes;
-        SwarmCrossfireShape first = CreateShape(eventId: 1, ownerId: 10, anchorCombatTargetId: 101, armedAtUtc: NowUtc.AddSeconds(1));
-        SwarmCrossfireShape second = CreateShape(eventId: 2, ownerId: 10, anchorCombatTargetId: 102, armedAtUtc: NowUtc.AddSeconds(2));
-        using var scope = MatchRuntimeStore.Enter(match);
-
-        shapes.Add(first);
-        shapes.Add(second);
-
-        Assert.Equal(2, MatchOrbAttackService.CountTelegraphing(shapes, 10, NowUtc));
-        Assert.Contains(10, service.CollectSunCrossfireCappedOwners(match, NowUtc));
-        Assert.Equal(
-            [(10L, 101L), (10L, 102L)],
-            service.CollectSunCrossfireAnchoredTargets(match).OrderBy(anchor => anchor.CombatTargetId));
-
-        Assert.Equal(1, MatchOrbAttackService.CountTelegraphing(shapes, 10, NowUtc.AddSeconds(1)));
-        Assert.DoesNotContain(10, service.CollectSunCrossfireCappedOwners(match, NowUtc.AddSeconds(1)));
-
-        shapes.RemoveAt(1);
-        Assert.Single(shapes);
-        Assert.Equal([(10L, 101L)], service.CollectSunCrossfireAnchoredTargets(match));
-
-        shapes.RemoveAt(0);
-        Assert.Empty(shapes);
-        Assert.Empty(service.CollectSunCrossfireAnchoredTargets(match));
-        Assert.Empty(service.CollectSunCrossfireCappedOwners(match, NowUtc));
-    }
-
-    [Fact]
     public void SunBurn_TicksOnInclusiveDueBoundaryRefreshesPayloadAndExpiresAfterLastTick()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
@@ -199,36 +160,6 @@ public sealed class MatchOrbAttackServiceTests
     private static MatchOrbAttackService CreateService(MatchRuntimeStore store) =>
         new(TestGameSessionServices.CreateHealthService(store), TestGameSessionServices.CreateCombatDamageService());
 
-    private static SwarmCrossfireShape CreateShape(
-        long eventId,
-        long ownerId,
-        long anchorCombatTargetId,
-        DateTime armedAtUtc,
-        Vector3f? origin = null,
-        Vector3f? end = null,
-        float groundLength = 6f,
-        float halfWidth = 0.35f,
-        float sweepSpeed = 4.5f) =>
-        new()
-        {
-            EventId = eventId,
-            OwnerId = ownerId,
-            WeaponItemId = 101,
-            Damage = 10,
-            Area = AreaType.S2Gym1,
-            Origin = origin ?? new Vector3f(0f, 0f, 0f),
-            End = end ?? new Vector3f(6f, 0f, 0f),
-            GroundLength = groundLength,
-            HalfWidth = halfWidth,
-            BlastRadius = 0.5f,
-            SweepSpeed = sweepSpeed,
-            ArmedAtUtc = armedAtUtc,
-            ExpiresAtUtc = armedAtUtc.AddSeconds(2),
-            AnchorMonsterId = 301,
-            AnchorCombatTargetId = anchorCombatTargetId,
-            LastFront = -halfWidth
-        };
-
     [Fact]
     public void WaveWaitsForTargetAndFuseThenDetonatesOnce()
     {
@@ -248,11 +179,11 @@ public sealed class MatchOrbAttackServiceTests
             attacks.ActivateOrbs(match, owner, now);
             Assert.Empty(match.PendingWaveAttacks);
             long key = orb.ItemUid;
-            var readyAt = owner.Orbs.GetNextWaveOrbAttackAtUtc(key)!.Value;
+            var readyAt = owner.Orbs.GetNextOrbAttackAtUtc(key)!.Value;
             Assert.True(readyAt > now);
             attacks.ActivateOrbs(match, owner, readyAt);
             Assert.Empty(match.PendingWaveAttacks);
-            Assert.Equal(readyAt, owner.Orbs.GetNextWaveOrbAttackAtUtc(key)!.Value);
+            Assert.Equal(readyAt, owner.Orbs.GetNextOrbAttackAtUtc(key)!.Value);
             victim.Position = trails.GetOrbPosition(match, owner, 0, owner.Position, PlayerOrbTrailService.GetOrbTiersInOrder(match, owner));
             attacks.ActivateOrbs(match, owner, readyAt);
             var pending = Assert.Single(match.PendingWaveAttacks);
@@ -311,10 +242,10 @@ public sealed class MatchOrbAttackServiceTests
             match.RegisterPlayer(second);
             var orb = first.Orbs.AddOrb(107000030);
             attacks.ActivateOrbs(match, first, now);
-            Assert.NotNull(first.Orbs.GetNextWaveOrbAttackAtUtc(orb.ItemUid));
-            Assert.Null(second.Orbs.GetNextWaveOrbAttackAtUtc(orb.ItemUid));
+            Assert.NotNull(first.Orbs.GetNextOrbAttackAtUtc(orb.ItemUid));
+            Assert.Null(second.Orbs.GetNextOrbAttackAtUtc(orb.ItemUid));
             first.Status = PlayerMatchStatus.ELIMINATED;
-            var readyAt = first.Orbs.GetNextWaveOrbAttackAtUtc(orb.ItemUid)!.Value;
+            var readyAt = first.Orbs.GetNextOrbAttackAtUtc(orb.ItemUid)!.Value;
             attacks.ActivateOrbs(match, first, readyAt);
             Assert.Empty(match.PendingWaveAttacks);
         }

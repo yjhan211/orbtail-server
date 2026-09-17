@@ -1,3 +1,4 @@
+using network.common;
 using network.common.data;
 using network.common.data.models;
 
@@ -27,33 +28,47 @@ public class PlayerOrbState
         return count;
     }
 
-    internal bool TryBeginOrbAttack(long itemUid, DateTime nowUtc, double intervalSeconds)
+    internal bool IsOrbAttackReady(long itemUid, DateTime nowUtc)
     {
-        if (!IsOrbAttackReady(itemUid, nowUtc))
+        double intervalSeconds = GetAttackIntervalSeconds(itemUid);
+        if (intervalSeconds <= 0d)
         {
             return false;
         }
-
-        ScheduleNextOrbAttack(itemUid, nowUtc, intervalSeconds);
-        return true;
-    }
-
-    internal bool IsOrbAttackReady(long itemUid, DateTime nowUtc) => !_nextAttackAtUtc.TryGetValue(itemUid, out var nextAttackAtUtc) || nowUtc >= nextAttackAtUtc;
-
-    internal bool UpdateWaveOrbAttackReadiness(long itemUid, DateTime nowUtc, double intervalSeconds, double firstPhase)
-    {
+        // 첫 발동은 시작 시간만 심고 false로 돌려서 일제 발동 방지
         if (!_nextAttackAtUtc.TryGetValue(itemUid, out var nextAttackAtUtc))
         {
-            ScheduleNextOrbAttack(itemUid, nowUtc, intervalSeconds * firstPhase);
+            double firstPhase = 0.5d + itemUid % 977 / 977d; // 0.5~1.5배
+            _nextAttackAtUtc[itemUid] = nowUtc.AddSeconds(intervalSeconds * firstPhase);
             return false;
         }
         return nowUtc >= nextAttackAtUtc;
     }
 
-    internal void ScheduleNextOrbAttack(long itemUid, DateTime nowUtc, double intervalSeconds) =>
-        _nextAttackAtUtc[itemUid] = nowUtc.AddSeconds(intervalSeconds);
+    internal void ScheduleNextOrbAttack(long itemUid, DateTime nowUtc) =>
+        _nextAttackAtUtc[itemUid] = nowUtc.AddSeconds(GetAttackIntervalSeconds(itemUid));
 
-    internal DateTime? GetNextWaveOrbAttackAtUtc(long itemUid) =>
+    internal double GetAttackIntervalSeconds(long itemUid)
+    {
+        if (!_items.TryGetValue(itemUid, out var item) || !OrbData.TryGetOrbGroupAndTier(item.ItemId, out int orbGroupId, out _))
+        {
+            return 0d;
+        }
+
+        switch (orbGroupId)
+        {
+            case OrbGroupIds.Wind:
+                return Config.SWARM_WIND_BLADE_TICK_SECONDS;
+            case OrbGroupIds.Wave:
+                return Config.SWARM_WAVE_VORTEX_INTERVAL_SECONDS;
+            case OrbGroupIds.Sun:
+                return Config.SWARM_CROSSFIRE_SUN_INTERVAL_SECONDS;
+            default:
+                return 0d;
+        }
+    }
+
+    internal DateTime? GetNextOrbAttackAtUtc(long itemUid) =>
         _nextAttackAtUtc.TryGetValue(itemUid, out var nextAttackAtUtc) ? nextAttackAtUtc : null;
 
     internal void RemoveAttackTimers(long itemUid)
@@ -150,7 +165,7 @@ public class PlayerOrbState
         float power = 0f;
         foreach (var item in _items.Values)
         {
-            power += OrbData.GetSwarmStatTierWeight(GetOrbTier(item.ItemId));
+            power += BattleItemCombatData.GetStatTierWeight(GetOrbTier(item.ItemId));
         }
         return power;
     }

@@ -250,7 +250,7 @@ public sealed class MatchGameplayServiceTests
             waveAttacks.ProcessWaveDetonations(match, now);
             Assert.True(human.Health < network.common.Config.MAX_HEALTH);
             Assert.Equal(human.Health, bot.Health);
-            Assert.Equal(now.AddSeconds(network.common.data.OrbData.WaveSlowSeconds), human.StatusEffects.GetExpiresAt(PlayerStatusEffectKind.WaveSlow));
+            Assert.Equal(now.AddSeconds(network.common.Config.SWARM_WAVE_SLOW_SECONDS), human.StatusEffects.GetExpiresAt(PlayerStatusEffectKind.WaveSlow));
             Assert.Equal(human.StatusEffects.GetExpiresAt(PlayerStatusEffectKind.WaveSlow), bot.StatusEffects.GetExpiresAt(PlayerStatusEffectKind.WaveSlow));
             Assert.Null(human.Session);
             Assert.Null(bot.Session);

@@ -90,8 +90,6 @@ namespace network.common
         G_TO_C_GROUND_ITEM_PICKUP_RESULT,
         G_TO_C_MATCH_START_COUNTDOWN,
 
-        // 자동 전투 제3자 관전용 투사체 이펙트
-        G_TO_C_PROXIMITY_ATTACK_VFX,
         G_TO_C_ORB_EFFECT_STATE,
         // 제거된 자연 재고 메시지의 번호는 재사용하지 않는다.
         G_TO_C_MONSTER_INFO = G_TO_C_ORB_EFFECT_STATE + 2,

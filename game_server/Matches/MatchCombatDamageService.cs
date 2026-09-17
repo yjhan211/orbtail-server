@@ -1,6 +1,5 @@
 using game_server.matches.monsters;
 using game_server.players;
-using game_server.players.bots;
 using game_server.sessions;
 using MessagePack;
 using network.common;
@@ -17,8 +16,6 @@ namespace game_server.matches;
 internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
 {
     private const int SwarmRingVfxKindRetaliationBlocked = 6;
-    private static double SwarmCriticalChance => SwarmConfigData.GetDouble("SWARM_CRITICAL_CHANCE", 0.15d);
-    private static float SwarmCriticalMultiplier => SwarmConfigData.GetFloat("SWARM_CRITICAL_MULTIPLIER", 2f);
 
     private static bool RollCritical(MatchRuntime runtime, double chance) => runtime.CombatDamage.CriticalRng.NextDouble() < chance;
 
@@ -29,38 +26,6 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
             throw new InvalidOperationException("Combat damage requires the match lock.");
         }
         runtime.CombatDamage.PendingMonsterHits.Add(hit);
-    }
-
-    public void SchedulePvpHit(MatchRuntime runtime, ProximityCombatAttack attack, DateTime dueAtUtc)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Combat damage requires the match lock.");
-        }
-        runtime.CombatDamage.PendingPvpHits.Add((attack, dueAtUtc));
-    }
-
-    public void ProcessPendingPvpHits(MatchRuntime runtime, PlayerHealthService healthService, DateTime nowUtc, IReadOnlyList<Player> players, List<GameClientSession> sessions)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Combat damage requires the match lock.");
-        }
-        for (int index = runtime.CombatDamage.PendingPvpHits.Count - 1; index >= 0; index--)
-        {
-            var pending = runtime.CombatDamage.PendingPvpHits[index];
-            if (nowUtc < pending.DueAtUtc)
-            {
-                continue;
-            }
-
-            runtime.CombatDamage.PendingPvpHits.RemoveAt(index);
-            ApplySwarmPvpAttack(runtime, healthService, pending.Attack, players, sessions, broadcastVfx: false);
-            if (runtime.IsEnded)
-            {
-                return;
-            }
-        }
     }
 
     internal static int ConsumeSwarmPvpDamage(Player victim, int rawDamage)
@@ -237,8 +202,8 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         {
             throw new InvalidOperationException("Combat damage requires the match lock.");
         }
-        critical = RollCritical(runtime, SwarmCriticalChance);
-        return critical ? Math.Max(damage + 1, (int)MathF.Round(damage * SwarmCriticalMultiplier)) : damage;
+        critical = RollCritical(runtime, Config.SWARM_CRITICAL_CHANCE);
+        return critical ? Math.Max(damage + 1, (int)MathF.Round(damage * Config.SWARM_CRITICAL_MULTIPLIER)) : damage;
     }
 
     private void SpawnSwarmSummonStone(MatchRuntime runtime, Monster defeated, int groundStoneReward, int heartReward)
@@ -322,7 +287,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         }
         if (victim.StatusEffects.IsActive(PlayerStatusEffectKind.Wound, DateTime.UtcNow) && RollCritical(runtime, Config.SWARM_WIND_WOUND_CRIT_CHANCE))
         {
-            shock = Math.Max(shock + 1, (int)MathF.Round(shock * SwarmCriticalMultiplier));
+            shock = Math.Max(shock + 1, (int)MathF.Round(shock * Config.SWARM_CRITICAL_MULTIPLIER));
         }
 
         var owner = runtime.GetPlayer(ownerId);
@@ -363,57 +328,6 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         }
     }
 
-    public void ApplySwarmPvpAttack(MatchRuntime runtime, PlayerHealthService healthService,
-        ProximityCombatAttack attack,
-        IReadOnlyList<Player> players,
-        List<GameClientSession> allSessions,
-        bool broadcastVfx = true,
-        bool sendAttackerFeedback = true)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Combat damage requires the match lock.");
-        }
-        if (runtime.IsEnded)
-        {
-            return;
-        }
-        var nowUtc = DateTime.UtcNow;
-        if (runtime.CutRetaliationWindows.TryGetValue((attack.AttackerPlayerId, attack.TargetPlayerId), out var guardWindow) && nowUtc < guardWindow.ExpiresAtUtc)
-        {
-            SendSwarmRetaliationVfx(runtime, attack.AttackerPlayerId, attack.TargetPlayerId, attack.Area, SwarmRingVfxKindRetaliationBlocked, 0f, allSessions);
-            return;
-        }
-
-        var target = players.FirstOrDefault(player => player.PlayerId == attack.TargetPlayerId);
-        if (target == null || target.IsEliminated)
-        {
-            return;
-        }
-        int healthDamage = ConsumeSwarmPvpDamage(target, attack.Damage);
-        var attacker = runtime.GetPlayer(attack.AttackerPlayerId);
-        int attackerHealth = attacker?.Health ?? -1;
-        if (healthDamage > 0)
-        {
-            ApplyProximityAutoCombatHit(runtime, healthService, target, attack.AttackerPlayerId, attack.Area, attack.WeaponItemId, healthDamage, sourceHealth: attackerHealth);
-        }
-        else
-        {
-            RecordCombatContact(runtime, target, attack.AttackerPlayerId, DateTime.UtcNow);
-        }
-
-        int targetHealth = target.Health;
-        if (healthDamage > 0 && sendAttackerFeedback)
-        {
-            QueuePlayerHitNotification(runtime, attacker, attack.TargetPlayerId, attack.Area, attack.WeaponItemId, healthDamage, targetHealth);
-        }
-
-        if (broadcastVfx)
-        {
-            BroadcastSwarmAttackVfxToTargetAndObservers(attack, allSessions);
-        }
-    }
-
     public void SendSwarmRetaliationVfx(MatchRuntime runtime, long cutterId, long victimId, AreaType area, int kind, float seconds, List<GameClientSession> allSessions)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -443,27 +357,6 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
             {
                 session.TrySend(packet);
             }
-        }
-    }
-
-    public static void BroadcastSwarmAttackVfxToTargetAndObservers(ProximityCombatAttack attack, IReadOnlyCollection<GameClientSession> sessions)
-    {
-        foreach (var observer in sessions)
-        {
-            if (!observer.PlayerId.HasValue || observer.PlayerId.Value == attack.AttackerPlayerId || observer.Player.GameInfo.ObjectInfo.Area != attack.Area)
-            {
-                continue;
-            }
-
-            using var packet = Packet.Create((int)Protocol.G_TO_C_PROXIMITY_ATTACK_VFX);
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_PROXIMITY_ATTACK_VFX
-            {
-                AttackerPlayerId = attack.AttackerPlayerId,
-                TargetPlayerId = attack.TargetPlayerId,
-                AreaType = attack.Area,
-                WeaponItemId = attack.WeaponItemId
-            }));
-            observer.TrySend(packet);
         }
     }
 
