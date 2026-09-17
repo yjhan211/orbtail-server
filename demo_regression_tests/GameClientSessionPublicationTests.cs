@@ -111,14 +111,12 @@ public sealed class GameClientSessionPublicationTests
         }
     }
 
-    [Theory]
-    [InlineData(Config.SUMMON_STONE_GROUND_ITEM_ID)]
-    [InlineData(Config.BOOTS_GROUND_ITEM_ID)]
-    public void BotPickupAfterLandingNeedsNoReactionDelayAndAppliesReward(int itemId)
+    [Fact]
+    public void BotPickupAfterLandingNeedsNoReactionDelayAndAppliesReward()
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, -101, AreaType.S2Corridor9);
-        var item = fixture.SpawnAtSession(session, itemId);
+        var item = fixture.SpawnAtSession(session, Config.SUMMON_STONE_GROUND_ITEM_ID);
         var match = session.Match;
         var bot = new game_server.players.bots.Bot { PlayerId = -102 };
         var player = bot.Player;
@@ -137,10 +135,7 @@ public sealed class GameClientSessionPublicationTests
             pickup.PickUp(match, player);
         }
         Assert.Null(match.GroundItems.GetItem(item.GroundItemUid));
-        if (itemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
-            Assert.Equal(1, TestGameSessionServices.SummonStones(match, player.PlayerId).StoneCount);
-        else
-            Assert.True(bot.BootsSpeedUntilUtc > DateTime.UtcNow);
+        Assert.Equal(1, TestGameSessionServices.SummonStones(match, player.PlayerId).StoneCount);
     }
 
     [Theory]
@@ -718,7 +713,6 @@ public sealed class GameClientSessionPublicationTests
 
     [Theory]
     [InlineData(Config.SUMMON_STONE_GROUND_ITEM_ID, Protocol.G_TO_C_SUMMON_STONE_STATE)]
-    [InlineData(Config.BOOTS_GROUND_ITEM_ID, null)]
     [InlineData(107000010, Protocol.G_TO_C_ORB_UPDATE)]
     public async Task GroundPickup_SuccessBranches_PreserveSubtypePrefixAndCommonSuffix(
         int itemId,

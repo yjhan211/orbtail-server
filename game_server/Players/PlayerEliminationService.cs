@@ -53,11 +53,6 @@ internal sealed class PlayerEliminationService(MatchResultService matchResults, 
             var droppedItemIds = new List<int>();
             foreach (var item in removedItems)
             {
-                if (!PlayerPickupService.ShouldDropOnElimination(item.ItemId))
-                {
-                    continue;
-                }
-
                 for (int count = 0; count < item.Count; count++)
                 {
                     droppedItemIds.Add(item.ItemId);

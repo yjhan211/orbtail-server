@@ -622,9 +622,8 @@ internal class BotBehaviorService(
     {
         var now = nowUtc ?? DateTime.UtcNow;
         var orbs = bot.Player.Orbs.GetAllOrbs();
-        bool bootsActive = now < bot.BootsSpeedUntilUtc;
         bool bareSpeedActive = !bot.Player.Orbs.HasAnyOrb() && now < bot.SwarmBareSpeedUntilUtc;
         bool waveSlowActive = bot.Player.StatusEffects.IsActive(PlayerStatusEffectKind.WaveSlow, now);
-        return MovementSpeed.GetMultiplier(orbs, bootsActive, bareSpeedActive, waveSlowActive);
+        return MovementSpeed.GetMultiplier(orbs, bootsActive: false, bareSpeedActive, waveSlowActive);
     }
 }

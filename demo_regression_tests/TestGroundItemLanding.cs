@@ -13,4 +13,12 @@ internal static class TestGroundItemLanding
         foreach (long id in spawnedAt.Keys.ToArray())
             spawnedAt[id] = DateTimeOffset.UtcNow.AddSeconds(-ageSeconds);
     }
+
+    // 쌓인 획득 후보를 꺼내고 비운다. 서비스가 틱에서 하는 소진과 같은 동작이다.
+    public static game_server.players.Player.ReachableItem[] TakeReachableItems(game_server.players.Player player)
+    {
+        var items = player.ReachableItems.Values.ToArray();
+        player.ReachableItems.Clear();
+        return items;
+    }
 }

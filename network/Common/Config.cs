@@ -171,6 +171,7 @@ namespace network.common
 
         /// <summary>일반 몹 하트 드롭 확률</summary>
         public static double SWARM_MONSTER_SUPPLY_HEART_DROP_CHANCE => SwarmConfigData.GetDouble("SWARM_MONSTER_SUPPLY_HEART_DROP_CHANCE", 0.03d);
+        public static int SWARM_HEART_RECOVERY => SwarmConfigData.GetInt("SWARM_HEART_RECOVERY", 105);
 
         /// <summary>구역 전멸 뒤 보충 휴지(초)</summary>
         public static double SWARM_MONSTER_SUPPLY_WIPE_REST_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_SUPPLY_WIPE_REST_SECONDS", 2d);

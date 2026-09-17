@@ -20,11 +20,11 @@ public sealed class GroundItemLandingTests
 
         var outside = new Vector3f(item.PositionX + radius + 0.01f, item.PositionY, 0);
         PlayerPickupService.AddReachableItemsInArea(player, items, AreaType.S2Corridor9, outside, outside);
-        Assert.Empty(PlayerPickupService.TakeReachableItems(player));
+        Assert.Empty(TestGroundItemLanding.TakeReachableItems(player));
 
         var inside = new Vector3f(item.PositionX + radius - 0.01f, item.PositionY, 0);
         PlayerPickupService.AddReachableItemsInArea(player, items, AreaType.S2Corridor9, inside, inside);
-        Assert.Single(PlayerPickupService.TakeReachableItems(player));
+        Assert.Single(TestGroundItemLanding.TakeReachableItems(player));
     }
 
     [Fact]
@@ -40,14 +40,14 @@ public sealed class GroundItemLandingTests
         var duration = TimeSpan.FromSeconds(Config.GetGroundItemLandingSeconds(MathF.Sqrt(dx * dx + dy * dy)));
         clock.Advance(duration - TimeSpan.FromTicks(1));
         PlayerPickupService.AddReachableItemsInArea(player, items, AreaType.S2Corridor9, at, at);
-        Assert.Empty(PlayerPickupService.TakeReachableItems(player));
+        Assert.Empty(TestGroundItemLanding.TakeReachableItems(player));
         Assert.True(items.IsLanding(item.GroundItemUid));
 
         clock.Advance(TimeSpan.FromTicks(1));
         Assert.False(items.IsLanding(item.GroundItemUid));
-        Assert.Empty(PlayerPickupService.TakeReachableItems(player)); // 공중에서 지나친 기록이 착지 뒤 살아나지 않는다.
+        Assert.Empty(TestGroundItemLanding.TakeReachableItems(player)); // 공중에서 지나친 기록이 착지 뒤 살아나지 않는다.
         PlayerPickupService.AddReachableItemsInArea(player, items, AreaType.S2Corridor9, at, at);
-        Assert.Single(PlayerPickupService.TakeReachableItems(player));
+        Assert.Single(TestGroundItemLanding.TakeReachableItems(player));
     }
 
     private sealed class Clock : TimeProvider
