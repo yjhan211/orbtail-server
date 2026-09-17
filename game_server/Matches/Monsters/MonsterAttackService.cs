@@ -70,7 +70,6 @@ internal sealed class MonsterAttackService(MatchCombatDamageService combatDamage
 
             monster.NextContactAtUtc = now.AddSeconds(monster.AttackCooldownValue);
             player.StatusEffects.Apply(PlayerStatusEffectKind.MonsterContactImmunity, now.AddSeconds(Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS));
-            monster.ChaseTargetPlayerId = player.PlayerId;
             victim = player;
             return true;
         }

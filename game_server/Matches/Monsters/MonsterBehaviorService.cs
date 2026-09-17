@@ -5,12 +5,12 @@ using network.common.data;
 namespace game_server.matches.monsters;
 
 /// <summary>
-///     몬스터의 탐지·추격 대상을 결정한다.
+///     몬스터의 추격 대상을 결정한다.
 ///     경로 계획과 이동 실행은 MatchMoveService가 담당한다.
 /// </summary>
 internal sealed class MonsterBehaviorService
 {
-    public MovementRequest CreateMovementRequest(MatchRuntime runtime, Monster monster, IReadOnlyList<Player> participants, DateTime now)
+    public MovementRequest CreateMovementRequest(MatchRuntime runtime, Monster monster, IReadOnlyList<Player> participants, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -21,80 +21,64 @@ internal sealed class MonsterBehaviorService
             return new MovementRequest(null, 0f);
         }
 
+        var target = SelectChaseTarget(monster, participants);
+        monster.ChaseTargetPlayerId = target?.PlayerId ?? 0;
+        if (target == null)
+        {
+            return new MovementRequest(null, 0f);
+        }
+
         float speed = Config.SWARM_MONSTER_MOVE_SPEED;
-        if (runtime.Monsters.IsInitialized)
+        if (runtime.Monsters.IsInitialized && (nowUtc - runtime.Monsters.StartsAtUtc).TotalSeconds >= Config.SWARM_MONSTER_ESCALATION_STAGE2_AT_SECONDS)
         {
-            double elapsedSeconds = (now - runtime.Monsters.StartsAtUtc).TotalSeconds;
-            if (elapsedSeconds >= Config.SWARM_MONSTER_ESCALATION_STAGE2_AT_SECONDS)
-            {
-                speed *= Config.SWARM_MONSTER_ESCALATION_STAGE2_MOVE_SPEED_MULTIPLIER;
-            }
+            speed *= Config.SWARM_MONSTER_ESCALATION_STAGE2_MOVE_SPEED_MULTIPLIER;
         }
 
-        if (TrySelectChaseTarget(monster, participants, out var target))
-        {
-            var destinationCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target.Position!);
-            if (destinationCell.Equals(monster.Info.ObjectInfo.Cell))
-            {
-                return new MovementRequest(destinationCell, 0f);
-            }
-            return new MovementRequest(destinationCell, speed);
-        }
-
-        monster.ChaseTargetPlayerId = 0;
-        return new MovementRequest(null, 0f);
+        var destinationCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target.Position!);
+        return new MovementRequest(destinationCell, destinationCell.Equals(monster.Info.ObjectInfo.Cell) ? 0f : speed);
     }
 
-    internal bool TrySelectChaseTarget(Monster monster, IReadOnlyList<Player> participants, out Player target)
+    internal static Player? SelectChaseTarget(Monster monster, IReadOnlyList<Player> participants)
     {
-        // 구역 우선순위를 적용할 수 있도록 같은 구역과 다른 구역의 후보를 따로 보관
         Player? nearestSameAreaPlayer = null;
         Player? nearestOtherAreaPlayer = null;
-        float nearestOtherAreaDistanceSquared = float.MaxValue;
         float nearestSameAreaDistanceSquared = float.MaxValue;
+        float nearestOtherAreaDistanceSquared = float.MaxValue;
         var monsterInfo = monster.Info.ObjectInfo;
         var monsterArea = GameMapData.GetCurrentArea(monsterInfo.MapId, monsterInfo.Cell);
         foreach (var participant in participants)
         {
-            var participantInfo = participant.GameInfo.ObjectInfo;
-            var participantArea = GameMapData.GetCurrentArea(participantInfo.MapId, participantInfo.Cell);
-            if (participantArea == AreaType.None || participant.IsEliminated || participant.Position == null)
+            if (participant.IsEliminated || participant.Position == null)
             {
                 continue;
             }
+            var participantInfo = participant.GameInfo.ObjectInfo;
+            var participantArea = GameMapData.GetCurrentArea(participantInfo.MapId, participantInfo.Cell);
+            if (participantArea == AreaType.None)
+            {
+                continue;
+            }
+
             // XY 직선거리로 비교
             float dx = participant.Position.X - monster.Position.X;
             float dy = participant.Position.Y - monster.Position.Y;
             float distanceSquared = dx * dx + dy * dy;
-            // 다른 구역 후보
-            if (participantArea != monsterArea)
+            if (participantArea == monsterArea)
             {
-                if (distanceSquared >= nearestOtherAreaDistanceSquared)
+                if (distanceSquared < nearestSameAreaDistanceSquared)
                 {
-                    continue;
+                    nearestSameAreaDistanceSquared = distanceSquared;
+                    nearestSameAreaPlayer = participant;
                 }
+                continue;
+            }
+            if (distanceSquared < nearestOtherAreaDistanceSquared)
+            {
                 nearestOtherAreaDistanceSquared = distanceSquared;
                 nearestOtherAreaPlayer = participant;
-                continue;
             }
-            // 같은 구역 후보
-            if (distanceSquared >= nearestSameAreaDistanceSquared)
-            {
-                continue;
-            }
-            nearestSameAreaDistanceSquared = distanceSquared;
-            nearestSameAreaPlayer = participant;
         }
 
-        // 다른 구역의 후보가 더 가깝더라도 같은 구역에 유효한 후보가 있으면 먼저 선택한다.
-        target = (nearestSameAreaPlayer ?? nearestOtherAreaPlayer);
-        if (target == null)
-        {
-            // 유효한 후보가 없다. 호출부에서 추적 ID를 지우고 정지 요청을 만든다.
-            return false;
-        }
-
-        monster.ChaseTargetPlayerId = target.PlayerId;
-        return true;
+        return nearestSameAreaPlayer ?? nearestOtherAreaPlayer;
     }
 }

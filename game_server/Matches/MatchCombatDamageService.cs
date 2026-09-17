@@ -118,19 +118,6 @@ internal sealed class MatchCombatDamageService(PlayerHealthService healthService
         }
 
         var monsterArea = GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell);
-        monster.ChaseTargetPlayerId = attackerId;
-        foreach (var mate in runtime.Monsters.Entities.Values)
-        {
-            if (!mate.Alive || mate.ChaseTargetPlayerId != 0)
-            {
-                continue;
-            }
-            if (GameMapData.GetCurrentArea(mate.Info.ObjectInfo.MapId, mate.Info.ObjectInfo.Cell) == monsterArea)
-            {
-                mate.ChaseTargetPlayerId = attackerId;
-            }
-        }
-
         bool killed = monster.ApplyDamage(damage, nowUtc);
         synchronization.QueueMonsterHitForAttacker(runtime, runtime.GetPlayer(attackerId), monsterId, area, weaponItemId, damage, critical, showDamageOnly: true);
         if (!killed)

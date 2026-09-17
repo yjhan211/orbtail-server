@@ -33,13 +33,8 @@ public sealed class MonsterMovementIntentTests
             Position = origin,
             Status = PlayerMatchStatus.ELIMINATED
         };
-        bool found = new MonsterBehaviorService().TrySelectChaseTarget(monster, [far, near, eliminated], out var target);
-        Assert.Equal(expectedId != 0, found);
-        if (found)
-        {
-            Assert.Equal(expectedId, target.PlayerId);
-            Assert.Equal(expectedId, monster.ChaseTargetPlayerId);
-        }
+        var target = MonsterBehaviorService.SelectChaseTarget(monster, [far, near, eliminated]);
+        Assert.Equal(expectedId, target?.PlayerId ?? 0);
     }
 
     [Theory]
@@ -65,13 +60,8 @@ public sealed class MonsterMovementIntentTests
         {
             Position = TestMapPosition.In(AreaType.S2Corridor9, 0.1f + offset * 0.01f)
         };
-        bool found = new MonsterBehaviorService().TrySelectChaseTarget(monster, [previous, nearest], out var target);
-        Assert.Equal(expectedId != 0, found);
-        if (found)
-        {
-            Assert.Equal(expectedId, target.PlayerId);
-            Assert.Equal(expectedId, monster.ChaseTargetPlayerId);
-        }
+        var target = MonsterBehaviorService.SelectChaseTarget(monster, [previous, nearest]);
+        Assert.Equal(expectedId, target?.PlayerId ?? 0);
     }
 
     [Fact]
@@ -82,8 +72,7 @@ public sealed class MonsterMovementIntentTests
         {
             Position = TestMapPosition.In(AreaType.S2Library1)
         };
-        Assert.True(new MonsterBehaviorService().TrySelectChaseTarget(monster, [player], out var target));
-        Assert.Same(player, target);
+        Assert.Same(player, MonsterBehaviorService.SelectChaseTarget(monster, [player]));
     }
 
     [Theory]
