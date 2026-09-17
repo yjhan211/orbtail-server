@@ -92,7 +92,6 @@ internal sealed class MatchRuntime
 
     // 전투와 오브
     public Random CriticalRng { get; } = new();
-    public Dictionary<(long CutterId, long VictimId), CutRetaliationWindow> CutRetaliationWindows { get; } = new();
     public List<PendingSunAttack> PendingSunAttacks { get; } = new();
     public List<PendingWaveAttack> PendingWaveAttacks { get; } = new();
     public List<PendingWindAttack> PendingWindAttacks { get; } = new();

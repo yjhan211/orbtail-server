@@ -81,11 +81,10 @@ public sealed class PlayerConditionTests
     }
 
     [Fact]
-    public void StartSleepIgnoresHealingLockAndDoesNotRestartSleep()
+    public void StartSleepDoesNotRestartSleep()
     {
         var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var condition = new Player(new PlayerInfo { PlayerId = 1 }) { Health = 50 };
-        condition.StatusEffects.Apply(PlayerStatusEffectKind.HealingBlocked, now.AddSeconds(5));
         Assert.True(condition.TryStartSleep());
         Assert.True(condition.IsSleeping);
         Assert.Equal(0, _health.GetSleepRecovery(condition, now.AddSeconds(5), Config.MAX_HEALTH));
@@ -168,7 +167,7 @@ public sealed class PlayerConditionTests
     }
 
     [Fact]
-    public void SleepWaitsForWarmupAndDoesNotReplayBlockedTicks()
+    public void SleepWaitsForWarmupAndPaysMissedTicksOnce()
     {
         var start = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var state = new Player(new PlayerInfo { PlayerId = 1 }) { State = PlayerState.SLEEP, Health = 80 };
@@ -176,7 +175,8 @@ public sealed class PlayerConditionTests
         Assert.Equal(0, _health.GetSleepRecovery(state, start.AddMilliseconds(999), 100));
         Assert.Equal(5, _health.GetSleepRecovery(state, start.AddSeconds(1), 100));
         Assert.Equal(0, _health.GetSleepRecovery(state, start.AddSeconds(1), 100));
-        state.StatusEffects.Apply(PlayerStatusEffectKind.HealingBlocked, start.AddSeconds(4));
+        // 정산이 밀렸으면 밀린 횟수를 한 번에 지급하고, 같은 시각에 다시 지급하지 않는다.
+        Assert.Equal(10, _health.GetSleepRecovery(state, start.AddSeconds(3), 100));
         Assert.Equal(0, _health.GetSleepRecovery(state, start.AddSeconds(3), 100));
         Assert.Equal(5, _health.GetSleepRecovery(state, start.AddSeconds(4), 100));
     }

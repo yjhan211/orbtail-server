@@ -4,11 +4,11 @@ namespace game_server.players;
 
 internal enum PlayerStatusEffectKind
 {
-    HealingBlocked,
     WaveSlow,
     Wound,
     WindShockImmunity,
     MonsterContactImmunity,
+    TailCutGuard,
     Sleep,
     SunBurn
 }
@@ -83,7 +83,7 @@ internal sealed class PlayerStatusEffects
         }
 
         _effects[PlayerStatusEffectKind.Sleep] = sleep with { ProcessedRecoveryCount = due };
-        if (IsActive(PlayerStatusEffectKind.HealingBlocked, nowUtc) || health >= maxHealth)
+        if (health >= maxHealth)
         {
             return 0;
         }

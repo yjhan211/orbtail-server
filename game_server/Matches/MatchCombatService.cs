@@ -82,7 +82,7 @@ internal class MatchCombatService(
         }
 
         orbTrails.UpdateTrails(runtime, players);
-        trailCuts.ProcessTick(runtime, nowUtc, players, sessions);
+        trailCuts.ProcessTick(runtime, nowUtc, players);
         orbAttacks.ProcessTick(runtime, nowUtc);
         foreach (var damage in monsterContactDamages)
         {

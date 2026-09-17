@@ -102,7 +102,6 @@ public class Player
 
     // 절단 판정·전투 누적 상태
     internal Vector3f? TrailLastTickPosition { get; set; }
-    internal Dictionary<long, DateTime> OrbCutLatches { get; } = new();
     public int PvpDamageDealt { get; set; }
 
     // 매치 참가·탈락 상태

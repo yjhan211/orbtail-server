@@ -64,7 +64,7 @@ internal static class GameServerTestAccess
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotBehaviorService>.Instance);
         var field = new MatchFieldService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchFieldService>.Instance, orbTrails, health,
             cleanup, matchEliminations, results);
-        var trailCuts = new MatchTrailCutService(orbTrails, combatDamage, decisions);
+        var trailCuts = new MatchTrailCutService(orbTrails, combatDamage);
         var groundPickup = new PlayerPickupService(health,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<PlayerPickupService>.Instance);
         Func<MatchRuntime, TimeProvider, MatchTickLoop> createLoop = (runtime, clock) =>

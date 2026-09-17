@@ -91,12 +91,47 @@ public sealed class MatchGameplayServiceTests
         }
     }
 
+    [Fact]
+    public void TailCutGuardBlocksEveryCutterUntilItExpires()
+    {
+        TestGameData.EnsureBattleItemCombatLoaded();
+        using var provider = GameServerDependencyInjectionTests.CreateProvider();
+        var service = provider.GetRequiredService<MatchTrailCutService>();
+        var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947803);
+        var cutter = new game_server.players.Player(new PlayerInfo { PlayerId = 303 });
+        var owner = new game_server.players.Player(new PlayerInfo { PlayerId = 404 });
+        var now = DateTime.UtcNow;
+        using (match.Enter())
+        {
+            match.RegisterPlayer(cutter);
+            match.RegisterPlayer(owner);
+            Assert.True(TestGameSessionServices.Orbs(match, owner.PlayerId).TryAddOrbWithCapacity(107000010, 1, out _));
+            owner.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, network.common.AreaType.S2Gym1));
+            owner.Position = TestMapPosition.In(network.common.AreaType.S2Gym1, 0, -1);
+            var chains = new Dictionary<long, List<Vector3f>>
+            {
+                [owner.PlayerId] = [TestMapPosition.In(network.common.AreaType.S2Gym1)]
+            };
+            cutter.Position = TestMapPosition.In(network.common.AreaType.S2Gym1, 0.7f, 0.15f);
+            cutter.TrailLastTickPosition = TestMapPosition.In(network.common.AreaType.S2Gym1, -0.7f, 0.15f);
+
+            // 다른 누군가에게 방금 잘린 상대는 이 절단자도 자를 수 없다.
+            owner.StatusEffects.Apply(PlayerStatusEffectKind.TailCutGuard, now.AddSeconds(1));
+            service.ProcessTrailCut(match, cutter, chains, now);
+            Assert.Single(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllOrbs());
+
+            // 보호가 끝나면 같은 돌진으로 잘린다.
+            service.ProcessTrailCut(match, cutter, chains, now.AddSeconds(1));
+            Assert.Empty(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllOrbs());
+        }
+    }
+
     [Theory]
     [InlineData(101, 100)]
     [InlineData(-101, 100)]
     [InlineData(101, 35)]
     [InlineData(-101, 35)]
-    public void TailCutUsesPlayerHealthWithoutConnection(long cutterId, int health)
+    public void TailCutCostsNoHealthForHumansAndBots(long cutterId, int health)
     {
         TestGameData.EnsureBattleItemCombatLoaded();
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
@@ -116,26 +151,18 @@ public sealed class MatchGameplayServiceTests
             Assert.Single(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllOrbs());
             owner.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(network.common.AreaType.S2Gym1)));
             owner.Position = TestMapPosition.In(network.common.AreaType.S2Gym1, 0, -1);
-            var orbPointsByOwner = new Dictionary<long, List<Vector3f>> { [owner.PlayerId] = [TestMapPosition.In(network.common.AreaType.S2Gym1)] };
+            var orbPointsByOwner = new Dictionary<long, List<Vector3f>>
+            {
+                [owner.PlayerId] = [TestMapPosition.In(network.common.AreaType.S2Gym1)]
+            };
             cutter.Position = TestMapPosition.In(network.common.AreaType.S2Gym1, 0.7f, 0.15f);
-            service.ProcessTrailCut(match, cutter,
-                TestMapPosition.In(network.common.AreaType.S2Gym1, -0.7f, 0.15f), TestMapPosition.In(network.common.AreaType.S2Gym1, 0.7f, 0.15f), orbPointsByOwner, now,
-                new List<game_server.sessions.GameClientSession>());
+            cutter.TrailLastTickPosition = TestMapPosition.In(network.common.AreaType.S2Gym1, -0.7f, 0.15f);
+            service.ProcessTrailCut(match, cutter, orbPointsByOwner, now);
 
-            if (health == 35)
-            {
-                Assert.Equal(health, cutter.Health);
-                Assert.Single(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllOrbs());
-                return;
-            }
-            Assert.Equal(initialHealth - 35, cutter.Health);
+            // 절단은 체력을 깎지 않고, 체력이 낮아도 자를 수 있다.
+            Assert.Equal(initialHealth, cutter.Health);
             Assert.Empty(TestGameSessionServices.Orbs(match, owner.PlayerId).GetAllOrbs());
-            Assert.True(cutter.StatusEffects.GetExpiresAt(PlayerStatusEffectKind.HealingBlocked) >= now.AddSeconds(8));
-            if (cutterId < 0)
-            {
-                Assert.Equal(now, bot.LastTrailCutAtUtc);
-                Assert.True(bot.LastDamagedAtUtc >= now);
-            }
+            Assert.Equal(now.AddSeconds(network.common.Config.SWARM_TAIL_CUT_GUARD_SECONDS), owner.StatusEffects.GetExpiresAt(PlayerStatusEffectKind.TailCutGuard));
         }
     }
 
@@ -371,7 +398,6 @@ public sealed class MatchGameplayServiceTests
             service.UpdateSleep(match, [bot], now);
             Assert.False(bot.Player.IsSleeping);
             enemy.Player.Position = new Vector3f(1000, 1000, 0);
-            bot.Player.StatusEffects.Apply(PlayerStatusEffectKind.HealingBlocked, now.AddSeconds(8));
             service.UpdateSleep(match, [bot], now.AddSeconds(7));
             Assert.True(bot.Player.IsSleeping);
             service.UpdateSleep(match, [bot], now.AddSeconds(8));
@@ -406,26 +432,6 @@ public sealed class MatchGameplayServiceTests
             Assert.Equal(originalPosition, bot.Player.Position);
             Assert.True(bot.Player.IsSleeping);
             Assert.Equal(network.common.PlayerState.SLEEP, match.Bots.GetPlayerObjectInfo(bot.PlayerId)!.State);
-        }
-    }
-    [Fact]
-    public void BotCut_UsesProvidedCostAndMatchCooldown()
-    {
-        using var provider = GameServerDependencyInjectionTests.CreateProvider();
-        var service = provider.GetRequiredService<BotBehaviorService>();
-        var store = provider.GetRequiredService<MatchRuntimeStore>();
-        var match = store.GetOrCreate(947705);
-        var now = DateTime.UtcNow;
-        var bot = new Bot { PlayerId = 11 };
-        using (MatchRuntimeStore.Enter(match))
-        {
-            int half = (int)(network.common.Config.MAX_HEALTH * 0.5f);
-            Assert.True(service.CanCutTrail(bot, half + 5, now, 5));
-            Assert.False(service.CanCutTrail(bot, half + 5, now, 6));
-            bot.LastTrailCutAtUtc = now;
-            Assert.False(service.CanCutTrail(bot, network.common.Config.MAX_HEALTH, now.AddSeconds(5), 5));
-            Assert.True(service.CanCutTrail(bot, network.common.Config.MAX_HEALTH, now.AddSeconds(6), 5));
-            match.TryMarkEnded();
         }
     }
 }

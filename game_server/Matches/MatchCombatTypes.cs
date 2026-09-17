@@ -29,11 +29,6 @@ public readonly record struct PendingWaveAttack(
     bool AppliesSlow,
     bool IsPublished = false);
 
-public sealed class CutRetaliationWindow
-{
-    public DateTime ExpiresAtUtc;
-}
-
 /// <summary>발동된 태양 공격의 직선 하나. 앞머리 위치와 맞은 대상 집합은 매치 잠금 안에서 틱마다 전진한다.</summary>
 public sealed class PendingSunAttack
 {

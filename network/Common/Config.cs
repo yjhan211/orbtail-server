@@ -30,8 +30,6 @@ namespace network.common
         public static double SWARM_BOT_DAMAGED_FLEE_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_DAMAGED_FLEE_SECONDS", 6d);
         public static float SWARM_BOT_WOUNDED_ENTER_RATIO => SwarmConfigData.GetFloat("SWARM_BOT_WOUNDED_ENTER_RATIO", 0.4f);
         public static float SWARM_BOT_WOUNDED_EXIT_RATIO => SwarmConfigData.GetFloat("SWARM_BOT_WOUNDED_EXIT_RATIO", 0.55f);
-        public static float SWARM_BOT_CUT_MIN_HEALTH_RATIO => SwarmConfigData.GetFloat("SWARM_BOT_CUT_MIN_HEALTH_RATIO", 0.5f);
-        public static double SWARM_BOT_CUT_COOLDOWN_SECONDS => SwarmConfigData.GetDouble("SWARM_BOT_CUT_COOLDOWN_SECONDS", 6d);
 
         public static int[] SWARM_BOT_DEFAULT_WEAR_ITEM_IDS => SwarmConfigData.GetIntArray("SWARM_BOT_DEFAULT_WEAR_ITEM_IDS", new[] { 101000003, 102000003, 104000005, 105000005, 106000003 });
         public static int[] SWARM_BOT_CUSTOMIZATION_ITEM_IDS => SwarmConfigData.GetIntArray("SWARM_BOT_CUSTOMIZATION_ITEM_IDS", new[] { 103000001, 103000004, 103000005, 103000006 });
@@ -141,7 +139,7 @@ namespace network.common
         ///     내 꼬리를 자른 상대의 본체 공격만 무효가 된다(#227 7단계) — 제3자·잔상은
         ///     그대로 들어온다. 서버가 잔광 VFX와 같은 시점·지속으로 보낸다.
         /// </summary>
-        public const int RETALIATION_STATUS_EFFECT_ID = 1104;
+        public const int TAIL_CUT_GUARD_STATUS_EFFECT_ID = 1104;
 
         /// <summary>침수 (#268): 파도 소용돌이 피격 — 5초 이동 감속 디버프.</summary>
         public const int WAVE_SOAKED_STATUS_EFFECT_ID = 1105;
@@ -537,14 +535,8 @@ namespace network.common
         public static double SWARM_CRITICAL_CHANCE => SwarmConfigData.GetDouble("SWARM_CRITICAL_CHANCE", 0.15d);
         public static float SWARM_CRITICAL_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_CRITICAL_MULTIPLIER", 2f);
 
-        /// <summary>
-        ///     꼬리 절단 — 절단자는 체력 비용을 치르고 잠시 수면 회복이 막힌다. 같은 오브는 억제 창 안에서 한 번만 잘리고,
-        ///     피해자는 반격 보호 창 동안 그 절단자에게 다시 잘리지 않는다.
-        /// </summary>
-        public static int SWARM_SINGLE_CUT_HEALTH_COST => SwarmConfigData.GetInt("SWARM_SINGLE_CUT_HEALTH_COST", 35);
-        public static double SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS => SwarmConfigData.GetDouble("SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS", 8d);
-        public static double SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS => SwarmConfigData.GetDouble("SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS", 0.8d);
-        public static double SWARM_CUT_RETALIATION_WINDOW_SECONDS => SwarmConfigData.GetDouble("SWARM_CUT_RETALIATION_WINDOW_SECONDS", 1.2d);
+        public static float SWARM_TRAIL_CUT_ORB_HIT_Y_OFFSET => SwarmConfigData.GetFloat("SWARM_TRAIL_CUT_ORB_HIT_Y_OFFSET", 0.15f);
+        public static double SWARM_TAIL_CUT_GUARD_SECONDS => SwarmConfigData.GetDouble("SWARM_TAIL_CUT_GUARD_SECONDS", 1.2d);
 
         /// <summary>
         ///     공명 보너스 — 그 계열이 꼬리의 과반일 때만 붙고, 크기는 오브 수로 쌓인다(첫 오브 + 추가 오브당, 상한).

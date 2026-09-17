@@ -32,7 +32,7 @@ namespace network.common.data.models
 
     public enum CombatEntityKind { Player = 0, Monster = 1 }
     public enum HealthRecoveryKind { Sleep = 1 }
-    public enum CombatStatusEffectKind { WaveOrbSlow = 0, SunBurn = 1, WindOrbWound = 2, CutRetaliationGuard = 3 }
+    public enum CombatStatusEffectKind { WaveOrbSlow = 0, SunBurn = 1, WindOrbWound = 2, TailCutGuard = 3 }
 
     /// <summary>사람·봇·몬스터의 이동 공간 정보. 오브 위상은 플레이어에게만 적용한다.</summary>
     [MessagePackObject]

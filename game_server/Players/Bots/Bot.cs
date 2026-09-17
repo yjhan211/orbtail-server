@@ -42,7 +42,6 @@ public class Bot
     public (AreaType Area, Cell Cell)? ExplorationTarget { get; set; }
     public DateTime LastDamagedAtUtc { get; set; } = DateTime.MinValue;
     public (Cell Destination, DateTime SelectedAtUtc)? MonsterAvoidanceTarget { get; set; }
-    public DateTime? LastTrailCutAtUtc { get; set; }
     public bool Wounded { get; set; }
     public DateTime BootsSpeedUntilUtc { get; set; } = DateTime.MinValue;
     public DateTime SwarmBareSpeedUntilUtc { get; set; } = DateTime.MinValue;

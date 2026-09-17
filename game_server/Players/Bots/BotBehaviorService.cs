@@ -535,15 +535,6 @@ internal class BotBehaviorService(
         return currentCell.Clone();
     }
 
-    public bool CanCutTrail(Bot bot, int healthBefore, DateTime nowUtc, int cutCost)
-    {
-        if (healthBefore - cutCost < Config.MAX_HEALTH * Config.SWARM_BOT_CUT_MIN_HEALTH_RATIO)
-        {
-            return false;
-        }
-        return bot.LastTrailCutAtUtc is not { } lastCutAtUtc || (nowUtc - lastCutAtUtc).TotalSeconds >= Config.SWARM_BOT_CUT_COOLDOWN_SECONDS;
-    }
-
     public void UpdateSleep(MatchRuntime runtime, IReadOnlyList<Bot> bots, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))

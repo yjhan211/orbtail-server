@@ -84,7 +84,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters, Pl
             return;
         }
 
-        RecordCombatContact(runtime, victim, sourcePlayerId, nowUtc);
+        MarkAttacked(runtime, victim, sourcePlayerId, nowUtc);
         if (runtime.GetPlayer(sourcePlayerId) is { } attackerPlayer)
         {
             attackerPlayer.PvpDamageDealt += damage;
@@ -112,7 +112,11 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters, Pl
         runtime.PendingCombatHits.Enqueue((session, hit));
     }
 
-    public void RecordCombatContact(MatchRuntime runtime, Player victim, long attackerId, DateTime nowUtc)
+    /// <summary>
+    ///     공격당한 플레이어의 반응을 처리한다. 진행 중인 문 열기를 끊고, 봇이면 도주 판단에 쓰는 피격 시각과 공격자를 남긴다.
+    ///     몬스터에게 맞았을 때는 attackerId를 0으로 넘기며, 이때 봇의 마지막 공격자는 바꾸지 않는다.
+    /// </summary>
+    internal void MarkAttacked(MatchRuntime runtime, Player victim, long attackerId, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -148,7 +152,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters, Pl
             return;
         }
 
-        RecordCombatContact(runtime, victim, 0, nowUtc);
+        MarkAttacked(runtime, victim, 0, nowUtc);
         var session = victim.Session;
         healthService.ApplyDamage(runtime, victim, damage);
 
@@ -243,6 +247,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters, Pl
         QueuePlayerHitNotification(runtime, owner, victim.PlayerId, area, weaponItemId, shock, victim.Health, isPeriodicDamage);
     }
 
+    /// <summary>오브 공격이 건 상태 효과를 당한 플레이어의 세션에 알린다. 세션이 없는 봇은 건너뛴다.</summary>
     public void QueueStatusEffect(MatchRuntime runtime, Player target, long sourcePlayerId, AreaType area, CombatStatusEffectKind effect, float seconds)
     {
         if (target.Session is not { PlayerId: not null } session)
@@ -258,6 +263,31 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters, Pl
             Effect = effect,
             DurationMs = (int)(seconds * 1000f)
         });
+    }
+
+    /// <summary>같은 구역에 있는 세션 전원에게 틱 끝에 보낼 패킷을 넣는다. 본문은 한 번만 직렬화한다.</summary>
+    public void QueueAreaEffect<T>(MatchRuntime runtime, AreaType area, Protocol protocol, T body) where T : IMessagePackObject
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat damage requires the match lock.");
+        }
+
+        byte[]? serialized = null;
+        foreach (var session in runtime.GetSessions())
+        {
+            if (session.IsGameEnded || !session.PlayerId.HasValue)
+            {
+                continue;
+            }
+            if (GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) != area)
+            {
+                continue;
+            }
+
+            serialized ??= MessagePackSerializer.Serialize(body);
+            runtime.PendingCombatEffects.Enqueue((session, protocol, serialized));
+        }
     }
 
     public void QueueSessionEffect<T>(MatchRuntime runtime, GameClientSession session, Protocol protocol, T body) where T : IMessagePackObject

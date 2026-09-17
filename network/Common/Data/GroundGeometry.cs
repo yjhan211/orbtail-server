@@ -80,14 +80,6 @@ namespace network.common.data
             return nearestAlong < float.MaxValue;
         }
 
-        /// <summary>점이 오브 판정 타원 안에 있는지 — 래치 이탈 재무장 판정.</summary>
-        public static bool IsInsideOrbHitEllipse(Vector3f point, Vector3f orbHitPoint)
-        {
-            float dx = (point.X - orbHitPoint.X) / OrbHitRadius;
-            float dy = (point.Y - orbHitPoint.Y) * GroundYScale / OrbHitRadius;
-            return dx * dx + dy * dy <= 1f;
-        }
-
         /// <summary>이동 선분이 오브(점)를 관통했는지 — 바닥면 공간의 최근접점을 타원으로 판정한다.</summary>
         public static bool TrySegmentHitsPoint(Vector3f from, Vector3f to, Vector3f point, out float t)
         {

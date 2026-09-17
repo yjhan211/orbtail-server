@@ -52,7 +52,7 @@ public sealed class BotDoorStateTests
             bot.Player.Interactions.Begin(702000113, 0);
             bot.Player.State = PlayerState.EXPLORE_1;
             var now = DateTime.UtcNow;
-            new game_server.matches.MatchCombatDamageService(null!, null!).RecordCombatContact(runtime, bot.Player, 1, now);
+            new game_server.matches.MatchCombatDamageService(null!, null!).MarkAttacked(runtime, bot.Player, 1, now);
 
             Assert.Equal(PlayerState.IDLE, bot.Player.State);
             Assert.Null(bot.Player.Interactions.PendingInteractId);
