@@ -17,7 +17,6 @@ internal sealed class PlayerOrbService(PlayerOrbTrailService orbTrails)
         {
             throw new InvalidOperationException("Orb attack activation requires the match lock.");
         }
-
         if (runtime.IsEnded || owner.IsEliminated || owner.Position == null)
         {
             return;
@@ -36,13 +35,9 @@ internal sealed class PlayerOrbService(PlayerOrbTrailService orbTrails)
 
         float attackMultiplier = OrbData.GetAttackMultiplier(orderedOrbs);
         bool appliesSlow = OrbData.IsResonating(orderedOrbs, OrbGroupIds.Wave);
-        var orbTiers = orderedOrbs.Select(orb => PlayerOrbState.GetOrbTier(orb.ItemId)).ToList();
+        var orbTiers = PlayerOrbTrailService.GetOrbTiersInOrder(runtime, owner);
         for (int ordinal = 0; ordinal < orderedOrbs.Count; ordinal++)
         {
-            if (runtime.IsEnded)
-            {
-                return;
-            }
             var orb = orderedOrbs[ordinal];
             if (!OrbData.TryGetOrbGroupAndTier(orb.ItemId, out int orbGroupId, out int tier))
             {
@@ -53,15 +48,16 @@ internal sealed class PlayerOrbService(PlayerOrbTrailService orbTrails)
                 continue;
             }
 
+            // 발동하지 못한 오브는 공격 주기를 쓰지 않고 다음 틱에 다시 시도
             var orbPosition = orbTrails.GetOrbPosition(runtime, owner, ordinal, owner.Position, orbTiers);
-            bool consumeAttackInterval = orbGroupId switch
+            bool activated = orbGroupId switch
             {
                 OrbGroupIds.Wind => ActivateWindOrb(runtime, owner, orb, tier, orbPosition, attackMultiplier),
                 OrbGroupIds.Wave => ActivateWaveOrb(runtime, owner, orb, orbPosition, attackMultiplier, appliesSlow, nowUtc),
                 OrbGroupIds.Sun => ActivateSunOrb(runtime, owner, orb, ordinal, tier, orbPosition, attackMultiplier, nowUtc),
                 _ => false
             };
-            if (consumeAttackInterval)
+            if (activated)
             {
                 owner.Orbs.ScheduleNextOrbAttack(orb.ItemUid, nowUtc);
             }
@@ -72,75 +68,18 @@ internal sealed class PlayerOrbService(PlayerOrbTrailService orbTrails)
     {
         var ownerArea = owner.CurrentArea;
         float range = Config.TierValue(Config.SWARM_SUN_RANGE_BY_TIER, tier);
-        var (monsters, players) = MatchOrbTarget.CollectTargetsInRadius(runtime, owner.PlayerId, ownerArea, origin, range);
-
-        // 이미 겨눈 표적은 제외
-        var anchoredTargets = new HashSet<(ObjectType Type, long Id)>();
-        foreach (var shape in runtime.PendingSunAttacks)
-        {
-            if (shape.OwnerId == owner.PlayerId)
-            {
-                anchoredTargets.Add(shape.AnchorTarget);
-            }
-        }
-
-        var candidates = new List<(ObjectType Type, long Id, Vector3f Position)>(players.Count + monsters.Count);
-        foreach (var player in players)
-        {
-            if (!anchoredTargets.Contains((ObjectType.PLAYER, player.PlayerId)))
-            {
-                candidates.Add((ObjectType.PLAYER, player.PlayerId, player.Position!));
-            }
-        }
-        foreach (var monster in monsters)
-        {
-            if (!anchoredTargets.Contains((ObjectType.MONSTER, monster.MonsterId)))
-            {
-                candidates.Add((ObjectType.MONSTER, monster.MonsterId, monster.Position));
-            }
-        }
-
-        int bestPriority = int.MaxValue;
-        float nearestDistance = float.MaxValue;
-        (ObjectType Type, long Id) target = default;
-        Vector3f? anchor = null;
-        foreach (var candidate in candidates)
-        {
-            int priority = candidate.Type == ObjectType.PLAYER ? 0 : 1;
-            float distance = GroundGeometry.GroundDistance(origin, candidate.Position);
-            if (priority > bestPriority)
-            {
-                continue;
-            }
-            if (priority == bestPriority)
-            {
-                if (distance > nearestDistance)
-                {
-                    continue;
-                }
-                if (distance.Equals(nearestDistance) && candidate.Id >= target.Id)
-                {
-                    continue;
-                }
-            }
-            bestPriority = priority;
-            nearestDistance = distance;
-            target = (candidate.Type, candidate.Id);
-            anchor = candidate.Position;
-        }
-        if (anchor == null)
+        if (!TrySelectSunTarget(runtime, owner, ownerArea, origin, range, out var target, out var anchor) || anchor == null)
         {
             return false;
         }
 
+        // 셀 차이가 더 큰 축으로 발사
         var mapId = Config.SWARM_MATCH_MAP;
         var originCell = MapCoordinateConverter.WorldToCell(mapId, origin);
         var targetCell = MapCoordinateConverter.WorldToCell(mapId, anchor);
         origin = MapCoordinateConverter.CellToWorld(mapId, originCell);
         int dx = targetCell.X - originCell.X;
         int dy = targetCell.Y - originCell.Y;
-
-        // 셀 차이가 더 큰 축으로 발사
         int stepX = 0;
         int stepY = 0;
         if (Math.Abs(dx) >= Math.Abs(dy))
@@ -152,15 +91,12 @@ internal sealed class PlayerOrbService(PlayerOrbTrailService orbTrails)
             stepY = dy >= 0 ? 1 : -1;
         }
 
-        var nextCell = new Cell(originCell.X + stepX, originCell.Y + stepY);
-        var nextPosition = MapCoordinateConverter.CellToWorld(mapId, nextCell);
+        // 최대 사거리 안에서 같은 구역의 마지막 셀 중심까지
+        var nextPosition = MapCoordinateConverter.CellToWorld(mapId, new Cell(originCell.X + stepX, originCell.Y + stepY));
         float groundLengthPerCell = GroundGeometry.GroundDistance(origin, nextPosition);
-        float maxGroundLength = Config.SWARM_SUN_MAX_GROUND_LENGTH;
-        int maxCellSteps = (int)MathF.Floor(maxGroundLength / groundLengthPerCell);
+        int maxCellSteps = (int)MathF.Floor(Config.SWARM_SUN_MAX_GROUND_LENGTH / groundLengthPerCell);
         var endCell = originCell;
         bool detonateAtWall = false;
-
-        // 최대 사거리 안에서 같은 구역의 마지막 셀 중심까지 발사한다.
         for (int step = 1; step <= maxCellSteps; step++)
         {
             int cellX = originCell.X + stepX * step;
@@ -172,26 +108,21 @@ internal sealed class PlayerOrbService(PlayerOrbTrailService orbTrails)
             }
             endCell = new Cell(cellX, cellY);
         }
-        var endPosition = MapCoordinateConverter.CellToWorld(mapId, endCell);
-        float selectedLength = GroundGeometry.GroundDistance(origin, endPosition);
-        if (selectedLength < 0.5)
+
+        float length = GroundGeometry.GroundDistance(origin, MapCoordinateConverter.CellToWorld(mapId, endCell));
+        if (length < 0.5f)
         {
-            // 발사 거리가 반 칸 이내면 생략
             return false;
         }
 
-        float width = Config.TierValue(Config.SWARM_SUN_WIDTH_BY_TIER, tier);
-        int damage = OrbData.GetAttackDamage(orb.ItemId, attackMultiplier, Config.SWARM_SUN_DAMAGE_MULTIPLIER);
-
-        float sweepSeconds = (selectedLength + width) / Config.SWARM_SUN_SWEEP_SPEED;
-        long eventId = PendingSunAttack.AllocateEventId();
+        float sweepSeconds = (length + OrbData.GetSunWidth(orb.ItemId)) / Config.SWARM_SUN_SWEEP_SPEED;
         var armedAtUtc = nowUtc.AddSeconds(Config.SWARM_SUN_ORB_ATTACK_WINDUP_SECONDS);
         runtime.PendingSunAttacks.Add(new PendingSunAttack
         {
-            EventId = eventId,
+            EventId = PendingSunAttack.AllocateEventId(),
             OwnerId = owner.PlayerId,
             WeaponItemId = orb.ItemId,
-            Damage = damage,
+            Damage = OrbData.GetAttackDamage(orb.ItemId, attackMultiplier, Config.SWARM_SUN_DAMAGE_MULTIPLIER),
             Area = ownerArea,
             OriginCell = originCell,
             EndCell = endCell,
@@ -201,14 +132,62 @@ internal sealed class PlayerOrbService(PlayerOrbTrailService orbTrails)
             OwnerOrbOrdinal = ordinal,
             AnchorTarget = target
         });
-
         return true;
     }
 
-    /// <summary>
-    ///     범위 안에 대상이 있으면 파도 공격의 위치·피해량·기폭 시각을 저장한다.
-    ///     실제 피격 대상은 기폭 시 다시 판정하며, 대상이 없으면 공격 주기를 소비하지 않는다.
-    /// </summary>
+    private static bool TrySelectSunTarget(MatchRuntime runtime, Player owner, AreaType ownerArea, Vector3f origin, float range, out (ObjectType Type, long Id) target, out Vector3f? anchor)
+    {
+        target = default;
+        anchor = null;
+        var anchoredTargets = new HashSet<(ObjectType Type, long Id)>();
+        foreach (var shape in runtime.PendingSunAttacks)
+        {
+            if (shape.OwnerId == owner.PlayerId)
+            {
+                anchoredTargets.Add(shape.AnchorTarget);
+            }
+        }
+
+        var (monsters, players) = MatchOrbTarget.CollectTargetsInRadius(runtime, owner.PlayerId, ownerArea, origin, range);
+        float nearestDistance = float.MaxValue;
+        foreach (var player in players)
+        {
+            if (anchoredTargets.Contains((ObjectType.PLAYER, player.PlayerId)))
+            {
+                continue;
+            }
+            float distance = GroundGeometry.GroundDistance(origin, player.Position!);
+            if (distance > nearestDistance || (distance.Equals(nearestDistance) && player.PlayerId >= target.Id))
+            {
+                continue;
+            }
+            nearestDistance = distance;
+            target = (ObjectType.PLAYER, player.PlayerId);
+            anchor = player.Position;
+        }
+        if (anchor != null)
+        {
+            return true;
+        }
+
+        foreach (var monster in monsters)
+        {
+            if (anchoredTargets.Contains((ObjectType.MONSTER, monster.MonsterId)))
+            {
+                continue;
+            }
+            float distance = GroundGeometry.GroundDistance(origin, monster.Position);
+            if (distance > nearestDistance || (distance.Equals(nearestDistance) && monster.MonsterId >= target.Id))
+            {
+                continue;
+            }
+            nearestDistance = distance;
+            target = (ObjectType.MONSTER, monster.MonsterId);
+            anchor = monster.Position;
+        }
+        return anchor != null;
+    }
+
     private bool ActivateWaveOrb(MatchRuntime runtime, Player owner, InGameItemInfo orb, Vector3f orbPosition, float attackMultiplier, bool appliesSlow, DateTime nowUtc)
     {
         var ownerArea = owner.CurrentArea;
@@ -228,10 +207,6 @@ internal sealed class PlayerOrbService(PlayerOrbTrailService orbTrails)
         return true;
     }
 
-    /// <summary>
-    ///     바람 공격의 범위와 피해량을 계산해 대기열에 등록한다. 같은 틱에 MatchOrbAttackService가 적용한다.
-    ///     대상 유무와 관계없이 공격 주기를 소비한다.
-    /// </summary>
     private bool ActivateWindOrb(MatchRuntime runtime, Player owner, InGameItemInfo orb, int tier, Vector3f orbPosition, float attackMultiplier)
     {
         float radius = Config.TierValue(Config.SWARM_WIND_BLADE_RADIUS_BY_TIER, tier);
