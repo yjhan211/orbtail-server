@@ -121,7 +121,8 @@ public partial class GameClientSession
 
     private readonly Dictionary<int, MonsterInfo> _publishedMonsterStates = new();
 
-    internal void SendMonsterSnapshot(IReadOnlyDictionary<AreaType, List<MonsterInfo>> snapshotsByArea, bool fullSnapshot = true)
+    // 입장한 세션에 현재 구역의 몬스터 전체를 맞춘다. 이후의 등장·변경·퇴장은 틱 끝 동기화가 보낸다.
+    internal void SendMonsterSnapshot(IReadOnlyDictionary<AreaType, List<MonsterInfo>> snapshotsByArea)
     {
         var entries = new G_TO_C_OBJECT_ENTER();
         var changed = new List<MonsterInfo>();
@@ -144,16 +145,13 @@ public partial class GameClientSession
         }
         SendObjectEntries(entries);
         SendChangedMonsterStates(changed);
-        if (fullSnapshot)
+        var leaves = new List<ObjectIdentity>();
+        foreach (var identity in PublishedObjects)
         {
-            var leaves = new List<ObjectIdentity>();
-            foreach (var identity in PublishedObjects)
-            {
-                if (identity.Type == ObjectType.MONSTER && !visibleIds.Contains(identity.Id))
-                    leaves.Add(new ObjectIdentity { Type = identity.Type, Id = identity.Id });
-            }
-            SendObjectLeaves(leaves);
+            if (identity.Type == ObjectType.MONSTER && !visibleIds.Contains(identity.Id))
+                leaves.Add(new ObjectIdentity { Type = identity.Type, Id = identity.Id });
         }
+        SendObjectLeaves(leaves);
     }
 
     internal bool HasMonsterStateChanged(MonsterInfo monster)

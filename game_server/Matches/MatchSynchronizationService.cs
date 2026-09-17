@@ -20,6 +20,7 @@ internal sealed class MatchSynchronizationService
         public IReadOnlyList<GameClientSession> Sessions { get; } = sessions;
         public long ServerTimestamp { get; } = new DateTimeOffset(nowUtc).ToUnixTimeMilliseconds();
         public Dictionary<GameClientSession, List<InteractableInfo>> InteractableUpdates { get; init; } = new();
+        public Dictionary<GameClientSession, List<MonsterInfo>> RemovedMonsters { get; init; } = new();
         public Dictionary<GameClientSession, List<ObjectIdentity>> Leaves { get; init; } = new();
         public Dictionary<GameClientSession, G_TO_C_OBJECT_ENTER> Entries { get; init; } = new();
         public List<MatchOrbVisual> OrbVisuals { get; set; } = new();
@@ -225,6 +226,7 @@ internal sealed class MatchSynchronizationService
             CollectOrbVisuals(runtime, players, batch);
             CollectOrbRankings(runtime, batch);
         }
+        CollectRemovedMonsters(runtime, batch);
         CollectObjectLeaves(runtime, batch);
         SendBatch(runtime, batch);
 
@@ -565,6 +567,31 @@ internal sealed class MatchSynchronizationService
         };
     }
 
+    internal void CollectRemovedMonsters(MatchRuntime runtime, SyncBatch batch)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Synchronization requires the match lock.");
+        }
+        foreach (var removed in runtime.PendingRemovedMonsters)
+        {
+            foreach (var session in batch.Sessions)
+            {
+                if (!session.PublishedObjects.Contains((ObjectType.MONSTER, removed.MonsterId)))
+                {
+                    continue;
+                }
+                if (!batch.RemovedMonsters.TryGetValue(session, out var states))
+                {
+                    states = [];
+                    batch.RemovedMonsters.Add(session, states);
+                }
+                states.Add(removed);
+            }
+        }
+        runtime.PendingRemovedMonsters.Clear();
+    }
+
     internal void CollectObjectLeaves(MatchRuntime runtime, SyncBatch batch)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -613,6 +640,11 @@ internal sealed class MatchSynchronizationService
         foreach (var (session, snapshot) in batch.InteractableUpdates)
         {
             session.SendInteractableInfos(snapshot);
+        }
+        // 죽은 상태가 퇴장보다 먼저 가야 클라이언트가 사망 연출을 낸다.
+        foreach (var (session, removedMonsters) in batch.RemovedMonsters)
+        {
+            session.SendChangedMonsterStates(removedMonsters);
         }
         foreach (var (session, objects) in batch.Leaves)
         {

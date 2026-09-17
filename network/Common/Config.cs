@@ -236,8 +236,6 @@ namespace network.common
         /// <summary>행군 속도 개체별 지터 비율</summary>
         public static float SWARM_MONSTER_MARCH_SPEED_JITTER => SwarmConfigData.GetFloat("SWARM_MONSTER_MARCH_SPEED_JITTER", 0.1f);
 
-        /// <summary>파도 문양 일반 몹 접촉 쿨다운(초) — 스플래시라 길다</summary>
-        public static float SWARM_MONSTER_WAVE_INSIGNIA_ATTACK_COOLDOWN_SECONDS => SwarmConfigData.GetFloat("SWARM_MONSTER_WAVE_INSIGNIA_ATTACK_COOLDOWN_SECONDS", 2.2f);
 
         /// <summary>비점유 구역 잔상 회수 유예(초)</summary>
         public static double SWARM_MONSTER_STRANDED_GRACE_SECONDS => SwarmConfigData.GetDouble("SWARM_MONSTER_STRANDED_GRACE_SECONDS", 6d);

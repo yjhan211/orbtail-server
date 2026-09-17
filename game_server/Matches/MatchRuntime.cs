@@ -80,6 +80,7 @@ internal sealed class MatchRuntime
 
     internal Dictionary<(ObjectType Type, long Id), MatchObjectSnapshot> SynchronizedObjects { get; } = new();
     internal Dictionary<long, PlayerState> SynchronizedPlayerStates { get; } = new();
+    internal List<MonsterInfo> PendingRemovedMonsters { get; } = new();
     internal Queue<(GameClientSession Session, G_TO_C_COMBAT_HIT Hit)> PendingCombatHits { get; } = new();
     internal Queue<(GameClientSession Session, Protocol Protocol, byte[] Body)> PendingCombatEffects { get; } = new();
     public string? OrbRankingsSignature { get; set; }
@@ -334,14 +335,7 @@ internal sealed class MatchRuntime
 
         monster.Alive = false;
         Monsters.Entities.Remove(monster.MonsterId);
-        var states = new Dictionary<AreaType, List<MonsterInfo>>
-        {
-            [GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell)] = [monster.ToMonsterInfo()]
-        };
-        foreach (var session in GetSessions())
-        {
-            session.SendMonsterSnapshot(states, fullSnapshot: false);
-        }
+        PendingRemovedMonsters.Add(monster.ToMonsterInfo());
     }
 
     public MatchLockScope Enter()
@@ -402,6 +396,7 @@ internal sealed class MatchRuntime
                     }
                 }
                 PendingCombatEffects.Clear();
+                PendingRemovedMonsters.Clear();
                 TickLoop?.Stop();
                 foreach (var player in _players.Values)
                 {
