@@ -19,7 +19,7 @@ public sealed class PlayerMovementCompletionTests
         player.GameInfo.ObjectInfo.Position = new Vector3f(10, 10, 0);
         player.GameInfo.ObjectInfo.Velocity = new Vector3f(speed, 0, 0);
 
-        PlayerMovementService.CompleteMovement(runtime, player);
+        PlayerMovementService.CancelDoorOpeningIfMoved(runtime, player);
 
         Assert.Equal(expected, player.State);
     }
@@ -29,6 +29,6 @@ public sealed class PlayerMovementCompletionTests
     {
         var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(987641);
         var player = new Player(new PlayerInfo { PlayerId = 1 });
-        Assert.Throws<InvalidOperationException>(() => PlayerMovementService.CompleteMovement(runtime, player));
+        Assert.Throws<InvalidOperationException>(() => PlayerMovementService.CancelDoorOpeningIfMoved(runtime, player));
     }
 }

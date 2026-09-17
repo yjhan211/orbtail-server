@@ -68,7 +68,7 @@ internal class MatchMoveService(
         {
             if (actor.Result.Changed && actor.Player != null)
             {
-                PlayerMovementService.CompleteMovement(runtime, actor.Player);
+                PlayerMovementService.CancelDoorOpeningIfMoved(runtime, actor.Player);
             }
         }
     }

@@ -13,19 +13,19 @@ namespace game_server.players;
 /// </summary>
 internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logger)
 {
-    private const float MinimumReceiptDeltaSeconds = 0f;
     private const float MaximumReceiptDeltaSeconds = 0.25f;
     public const float InitialReceiptDeltaSeconds = 0.05f;
     public const float MaximumSpeedUnitsPerSecond = 10f;
 
     public static bool IsFinite(Vector3f value) => float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
+
     public static float ClampMoveDeltaTime(double elapsedSeconds)
     {
         if (double.IsNaN(elapsedSeconds) || double.IsInfinity(elapsedSeconds))
         {
             return InitialReceiptDeltaSeconds;
         }
-        return Math.Clamp((float)elapsedSeconds, MinimumReceiptDeltaSeconds, MaximumReceiptDeltaSeconds);
+        return Math.Clamp((float)elapsedSeconds, 0f, MaximumReceiptDeltaSeconds);
     }
 
     /// <summary>플레이어별 수신 시각을 갱신하고 이동 검증에 사용할 경과 시간을 제한한다.</summary>
@@ -33,10 +33,14 @@ internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logge
     {
         long previous = player.LastMoveProcessedTimestamp;
         player.LastMoveProcessedTimestamp = timestamp;
-        if (previous == 0) return InitialReceiptDeltaSeconds;
+        if (previous == 0)
+        {
+            return InitialReceiptDeltaSeconds;
+        }
         double elapsedSeconds = (timestamp - previous) / (double)System.Diagnostics.Stopwatch.Frequency;
         return ClampMoveDeltaTime(elapsedSeconds);
     }
+
     private static Vector3f ClampVelocity(Vector3f velocity)
     {
         float speed = velocity.Magnitude();
@@ -50,97 +54,72 @@ internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logge
             throw new InvalidOperationException("Movement processing requires the match lock.");
         }
 
-        long playerId = player.PlayerId;
         var mapId = Config.SWARM_MATCH_MAP;
         var lastPosition = player.Position;
-        var lastValidCell = player.Cell;
-        var clientPos = msg.Position;
-        var velocity = msg.Velocity;
+        var lastCell = player.Cell;
+        var position = new Vector3f(msg.Position.X, msg.Position.Y, 0f);
         bool requiresClientCorrection = false;
-        var validatedVelocity = ClampVelocity(velocity);
-        clientPos = new Vector3f(clientPos.X, clientPos.Y, 0f);
-
-        float speed = velocity.Magnitude();
-        if (speed > MaximumSpeedUnitsPerSecond)
-        {
-            if (lastPosition != null)
-            {
-                clientPos = new Vector3f(lastPosition.X + validatedVelocity.X * deltaTime, lastPosition.Y + validatedVelocity.Y * deltaTime, 0);
-                requiresClientCorrection = true;
-            }
-        }
 
         if (lastPosition != null)
         {
-            var delta = clientPos - lastPosition;
-            float distance = delta.Magnitude();
+            var delta = position - lastPosition;
             float maxDistance = MaximumSpeedUnitsPerSecond * deltaTime;
-
-            if (distance > maxDistance)
+            if (delta.Magnitude() > maxDistance)
             {
                 var direction = delta.Normalized();
-                clientPos = new Vector3f(lastPosition.X + direction.X * maxDistance, lastPosition.Y + direction.Y * maxDistance, 0);
-                validatedVelocity = direction * MaximumSpeedUnitsPerSecond;
+                position = new Vector3f(lastPosition.X + direction.X * maxDistance, lastPosition.Y + direction.Y * maxDistance, 0);
                 requiresClientCorrection = true;
             }
         }
 
-        var clientCell = MapCoordinateConverter.WorldToCell(mapId, clientPos);
-        bool destinationBlocked = !GameMapData.IsMoveablePosition(mapId, clientCell);
-        bool pathBlocked = !destinationBlocked && lastPosition != null && lastValidCell != null && !MapTraversal.IsTraversable(lastValidCell, clientCell, candidate => GameMapData.IsMoveablePosition(mapId, candidate));
-        if (destinationBlocked || pathBlocked)
+        var cell = MapCoordinateConverter.WorldToCell(mapId, position);
+        bool destinationBlocked = !GameMapData.IsMoveablePosition(mapId, cell);
+        bool pathBlocked = !destinationBlocked && lastPosition != null && lastCell != null && !MapTraversal.IsTraversable(lastCell, cell, candidate => GameMapData.IsMoveablePosition(mapId, candidate));
+        bool blocked = destinationBlocked || pathBlocked;
+        if (blocked)
         {
-            logger.LogWarning("Player {PlayerId} blocked movement: DestinationBlocked={DestinationBlocked}, PathBlocked={PathBlocked}", playerId, destinationBlocked, pathBlocked);
-            clientPos = lastPosition ?? clientPos;
-            validatedVelocity = new Vector3f();
+            logger.LogWarning("Player {PlayerId} blocked movement: DestinationBlocked={DestinationBlocked}, PathBlocked={PathBlocked}", player.PlayerId, destinationBlocked, pathBlocked);
+            position = lastPosition ?? position;
+            cell = MapCoordinateConverter.WorldToCell(mapId, position);
             requiresClientCorrection = true;
         }
-        else
+
+        var velocity = ClampVelocity(msg.Velocity);
+        if (blocked)
         {
-            if (lastPosition != null && deltaTime > 0f)
-            {
-                var acceptedDelta = clientPos - lastPosition;
-                validatedVelocity = ClampVelocity(new Vector3f(acceptedDelta.X / deltaTime, acceptedDelta.Y / deltaTime, 0f));
-            }
-            else if (lastPosition != null)
-            {
-                validatedVelocity = new Vector3f();
-            }
+            velocity = new Vector3f();
+        }
+        else if (lastPosition != null)
+        {
+            var acceptedDelta = position - lastPosition;
+            velocity = deltaTime > 0f
+                ? ClampVelocity(new Vector3f(acceptedDelta.X / deltaTime, acceptedDelta.Y / deltaTime, 0f))
+                : new Vector3f();
         }
 
-        var validation = new ValidatedMovement(clientPos, validatedVelocity, requiresClientCorrection);
-        var validatedPosition = validation.Position;
-        var currentCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, validatedPosition);
         var oldArea = player.CurrentArea;
-        var newArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, currentCell);
-        var previousCell = player.Position != null ? MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, player.Position) : currentCell;
-
-        if (newArea != oldArea && newArea != AreaType.None)
+        var newArea = GameMapData.GetCurrentArea(mapId, cell);
+        bool areaChanged = newArea != oldArea && newArea != AreaType.None;
+        if (areaChanged && match.Doors.GetBlockingDoor(oldArea, newArea, lastCell ?? cell, cell) is { } lockedDoor)
         {
-            var transitionDoor = match.Doors.GetBlockingDoor(oldArea, newArea, previousCell, currentCell);
-            if (transitionDoor != null)
-            {
-                logger.LogWarning("Player {PlayerId} blocked crossing {CurrentArea}→{NewArea} (locked door: {DoorId})", playerId, oldArea, newArea, transitionDoor.DoorId);
-                // 문 셀로 옮기지 않고 마지막 승인 위치를 유지한다.
-                player.GameInfo.ObjectInfo.Velocity = new Vector3f();
-                return true;
-            }
+            logger.LogWarning("Player {PlayerId} blocked crossing {CurrentArea}→{NewArea} (locked door: {DoorId})", player.PlayerId, oldArea, newArea, lockedDoor.DoorId);
+            player.GameInfo.ObjectInfo.Velocity = new Vector3f();
+            return true;
         }
 
         player.TryStopSleep();
-        PlayerPickupService.AddReachableItemsForMovement(match, player, player.Position ?? validatedPosition, validatedPosition, newArea);
-        player.ApplyValidatedMovement(validation.Position, validation.Velocity, msg.Rotation);
-
-        if (newArea != oldArea && newArea != AreaType.None)
+        PlayerPickupService.AddReachableItemsForMovement(match, player, lastPosition ?? position, position, newArea);
+        player.ApplyValidatedMovement(position, velocity, msg.Rotation);
+        if (areaChanged)
         {
-            logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}", player.PlayerId, currentCell.X, currentCell.Y, oldArea, newArea);
+            logger.LogDebug("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}", player.PlayerId, cell.X, cell.Y, oldArea, newArea);
         }
 
-        CompleteMovement(match, player);
+        CancelDoorOpeningIfMoved(match, player);
         return requiresClientCorrection;
     }
 
-    public static void CompleteMovement(MatchRuntime runtime, Player player)
+    public static void CancelDoorOpeningIfMoved(MatchRuntime runtime, Player player)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -153,6 +132,4 @@ internal sealed class PlayerMovementService(ILogger<PlayerMovementService> logge
             player.State = PlayerState.IDLE;
         }
     }
-
-    internal readonly record struct ValidatedMovement(Vector3f Position, Vector3f Velocity, bool RequiresCorrection);
 }

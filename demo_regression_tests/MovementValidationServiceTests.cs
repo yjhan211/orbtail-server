@@ -88,14 +88,18 @@ public sealed class MovementValidationServiceTests
 
         var result = ProcessMovement(position, cell, position, velocity, 0.05f);
 
-        Assert.True(result.RequiresCorrection);
+        // 위치가 정상이면 주장한 속도가 과해도 보정하지 않는다. 속도는 실제 이동량에서 다시 구하므로 상한을 넘지 못한다.
+        Assert.False(result.RequiresCorrection);
         Assert.InRange(result.Velocity.Magnitude(), 0f, PlayerMovementService.MaximumSpeedUnitsPerSecond + 0.001f);
         Assert.True((result.Position - position).Magnitude() <= PlayerMovementService.MaximumSpeedUnitsPerSecond * 0.05f + 0.001f);
         Assert.Equal(30f, velocity.X);
         Assert.Equal(40f, velocity.Y);
     }
 
-    private PlayerMovementService.ValidatedMovement ProcessMovement(Vector3f position, Cell cell, Vector3f input, Vector3f velocity, float deltaTime)
+    // 검증 결과를 단언하기 쉽게 묶는 테스트용 값이다.
+    private readonly record struct ValidatedMovement(Vector3f Position, Vector3f Velocity, bool RequiresCorrection);
+
+    private ValidatedMovement ProcessMovement(Vector3f position, Cell cell, Vector3f input, Vector3f velocity, float deltaTime)
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(948012);
@@ -110,7 +114,7 @@ public sealed class MovementValidationServiceTests
                 Position = input,
                 Velocity = velocity
             }, deltaTime);
-            return new PlayerMovementService.ValidatedMovement(player.Position!, player.Velocity, correction);
+            return new ValidatedMovement(player.Position!, player.Velocity, correction);
         }
     }
 

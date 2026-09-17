@@ -163,19 +163,16 @@ public sealed class GameClientSessionConnectPublicationTests
     {
         using var fixture = new ConnectFixture();
         var session = fixture.CreateSession(74016, 8115, _ => true);
-        var movement = new PlayerMovementService.ValidatedMovement(
-            new Vector3f(10.25f, 20.75f, 0f), new Vector3f(2f, 3f, 0f), false);
-
         using (session.Match.Enter())
         {
-            session.Player.ApplyValidatedMovement(movement.Position, movement.Velocity, 45f);
+            session.Player.ApplyValidatedMovement(new Vector3f(10.25f, 20.75f, 0f), new Vector3f(2f, 3f, 0f), 45f);
             var snapshot = session.Player.CreateGameObjectInfo();
             Assert.Equal(10.25f, snapshot.Position.X);
             Assert.Equal(20.75f, snapshot.Position.Y);
             Assert.Equal(2f, snapshot.Velocity.X);
             Assert.Equal(3f, snapshot.Velocity.Y);
             Assert.Equal(45f, snapshot.Rotation);
-            var expectedCell = network.common.data.MapCoordinateConverter.WorldToCell(network.common.Config.SWARM_MATCH_MAP, movement.Position);
+            var expectedCell = network.common.data.MapCoordinateConverter.WorldToCell(network.common.Config.SWARM_MATCH_MAP, new Vector3f(10.25f, 20.75f, 0f));
             Assert.Equal(expectedCell.X, snapshot.Cell.X);
             Assert.Equal(expectedCell.Y, snapshot.Cell.Y);
         }
