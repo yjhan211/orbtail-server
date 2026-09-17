@@ -52,7 +52,7 @@ public sealed class SwarmArenaTickOrderTests
         string syncSource = ReadNormalizedSource(FindRepositoryRoot(), "game_server", "Matches", "MatchSynchronizationService.cs");
         AssertInOrder(
             ReadMethodSlice(syncSource, "public void ProcessTick(", "    internal void CollectInteractableUpdates("),
-            "CollectOrbVisuals(runtime,",
+            "MatchOrbVisual.Build(runtime,",
             "CollectOrbRankings(runtime,",
             "SendBatch(runtime,");
         AssertInOrder(

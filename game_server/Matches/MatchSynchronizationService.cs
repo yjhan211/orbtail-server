@@ -1,9 +1,9 @@
-using network.common.data;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.sessions;
 using MessagePack;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 using network.packets;
 
@@ -17,6 +17,8 @@ internal sealed class MatchSynchronizationService
 {
     internal sealed class SyncBatch(DateTime nowUtc, IReadOnlyList<GameClientSession> sessions)
     {
+        private Dictionary<GameClientSession, AreaType>? _observerAreas;
+
         public IReadOnlyList<GameClientSession> Sessions { get; } = sessions;
         public long ServerTimestamp { get; } = new DateTimeOffset(nowUtc).ToUnixTimeMilliseconds();
         public Dictionary<GameClientSession, List<InteractableInfo>> InteractableUpdates { get; init; } = new();
@@ -30,6 +32,57 @@ internal sealed class MatchSynchronizationService
         public Dictionary<GameClientSession, List<G_TO_C_SUN_ORB_ATTACK>> SunAttacks { get; init; } = new();
         public Dictionary<GameClientSession, List<G_TO_C_WAVE_ORB_ATTACK>> WaveAttacks { get; init; } = new();
         public G_TO_C_ORB_RANKINGS? OrbRankings { get; set; }
+
+        public IReadOnlyDictionary<GameClientSession, AreaType> ObserverAreas
+        {
+            get
+            {
+                if (_observerAreas != null)
+                {
+                    return _observerAreas;
+                }
+                _observerAreas = new Dictionary<GameClientSession, AreaType>();
+                foreach (var session in Sessions)
+                {
+                    if (session.Player.IsEliminated)
+                    {
+                        continue;
+                    }
+                    _observerAreas.Add(session, GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell));
+                }
+                return _observerAreas;
+            }
+        }
+
+        public G_TO_C_OBJECT_ENTER GetEntries(GameClientSession session)
+        {
+            if (!Entries.TryGetValue(session, out var entries))
+            {
+                entries = new G_TO_C_OBJECT_ENTER();
+                Entries.Add(session, entries);
+            }
+            return entries;
+        }
+
+        public G_TO_C_MOVE GetMoves(GameClientSession session)
+        {
+            if (!Moves.TryGetValue(session, out var message))
+            {
+                message = new G_TO_C_MOVE { ServerTimestamp = ServerTimestamp };
+                Moves.Add(session, message);
+            }
+            return message;
+        }
+
+        public static List<T> GetList<T>(Dictionary<GameClientSession, List<T>> lists, GameClientSession session)
+        {
+            if (!lists.TryGetValue(session, out var list))
+            {
+                list = [];
+                lists.Add(session, list);
+            }
+            return list;
+        }
     }
 
     public void InitializeComparisonSnapshots(MatchRuntime runtime)
@@ -223,7 +276,7 @@ internal sealed class MatchSynchronizationService
         CollectWaveAttacks(runtime, batch, nowUtc);
         if (isGameplayActive && runtime.Mode != MatchMode.SoloMapValidation)
         {
-            CollectOrbVisuals(runtime, players, batch);
+            batch.OrbVisuals = MatchOrbVisual.Build(runtime, players);
             CollectOrbRankings(runtime, batch);
         }
         CollectRemovedMonsters(runtime, batch);
@@ -254,15 +307,14 @@ internal sealed class MatchSynchronizationService
         {
             throw new InvalidOperationException("Synchronization requires the match lock.");
         }
-        var openDoors = runtime.Doors.GetOpenDoors().ToHashSet();
-        foreach (var session in batch.Sessions)
+        var openDoors = new HashSet<int>(runtime.Doors.GetOpenDoors());
+        foreach (var (session, sessionArea) in batch.ObserverAreas)
         {
-            if (session.Player.IsEliminated || GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) == AreaType.None)
+            if (sessionArea == AreaType.None)
             {
                 continue;
             }
-
-            if (session.PublishedInteractionArea != GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) || !session.PublishedOpenDoors.SetEquals(openDoors))
+            if (session.PublishedInteractionArea != sessionArea || !session.PublishedOpenDoors.SetEquals(openDoors))
             {
                 batch.InteractableUpdates[session] = session.GetInteractableInfos();
             }
@@ -276,24 +328,23 @@ internal sealed class MatchSynchronizationService
             throw new InvalidOperationException("Synchronization requires the match lock.");
         }
         var areaItems = new Dictionary<AreaType, List<GroundItemInfo>>();
-        foreach (var session in batch.Sessions)
+        foreach (var (session, sessionArea) in batch.ObserverAreas)
         {
-            var area = GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell);
-            if (session.Player.IsEliminated || area == AreaType.None) continue;
-            if (!areaItems.TryGetValue(area, out var items))
+            if (sessionArea == AreaType.None)
             {
-                items = runtime.GroundItems.GetItemsInArea(area);
-                areaItems.Add(area, items);
+                continue;
+            }
+            if (!areaItems.TryGetValue(sessionArea, out var items))
+            {
+                items = runtime.GroundItems.GetItemsInArea(sessionArea);
+                areaItems.Add(sessionArea, items);
             }
             foreach (var item in items)
             {
-                if (session.PublishedObjects.Contains((ObjectType.ITEM, item.GroundItemUid))) continue;
-                if (!batch.Entries.TryGetValue(session, out var entries))
+                if (!session.PublishedObjects.Contains((ObjectType.ITEM, item.GroundItemUid)))
                 {
-                    entries = new G_TO_C_OBJECT_ENTER();
-                    batch.Entries.Add(session, entries);
+                    batch.GetEntries(session).Items.Add(item);
                 }
-                entries.Items.Add(item);
             }
         }
     }
@@ -304,41 +355,29 @@ internal sealed class MatchSynchronizationService
         {
             throw new InvalidOperationException("Synchronization requires the match lock.");
         }
-        if (runtime.IsEnded)
-        {
-            throw new InvalidOperationException("Cannot synchronize after the match has ended.");
-        }
         var info = player.GameInfo.ObjectInfo;
+        var playerArea = GameMapData.GetCurrentArea(info.MapId, info.Cell);
         bool stateChanged = !runtime.SynchronizedPlayerStates.TryGetValue(player.PlayerId, out var previousState) || previousState != player.State;
         GamePlayerInfo? snapshot = null;
-        foreach (var session in batch.Sessions)
+        foreach (var (session, sessionArea) in batch.ObserverAreas)
         {
-            if (session.Player.IsEliminated)
+            if (sessionArea != playerArea)
             {
                 continue;
             }
-            bool isSelf = session.Player.PlayerId == player.PlayerId;
-            if (GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) != GameMapData.GetCurrentArea(info.MapId, info.Cell)) continue;
-            bool known = isSelf || session.PublishedObjects.Contains((ObjectType.PLAYER, player.PlayerId));
+
+            bool known = session.Player.PlayerId == player.PlayerId || session.PublishedObjects.Contains((ObjectType.PLAYER, player.PlayerId));
             if (!known)
             {
-                if (!batch.Entries.TryGetValue(session, out var entries))
-                {
-                    entries = new G_TO_C_OBJECT_ENTER();
-                    batch.Entries.Add(session, entries);
-                }
                 snapshot ??= player.CreatePlayerObjectInfo();
-                entries.Players.Add(snapshot);
+                batch.GetEntries(session).Players.Add(snapshot);
                 continue;
             }
-            if (!stateChanged) continue;
-            if (!batch.PlayerUpdates.TryGetValue(session, out var updates))
+            if (stateChanged)
             {
-                updates = [];
-                batch.PlayerUpdates.Add(session, updates);
+                snapshot ??= player.CreatePlayerObjectInfo();
+                SyncBatch.GetList(batch.PlayerUpdates, session).Add(snapshot);
             }
-            snapshot ??= player.CreatePlayerObjectInfo();
-            updates.Add(snapshot);
         }
         CollectMovementUpdates(runtime, info, batch, stateChanged);
     }
@@ -349,35 +388,26 @@ internal sealed class MatchSynchronizationService
         {
             throw new InvalidOperationException("Synchronization requires the match lock.");
         }
-        if (runtime.IsEnded)
-        {
-            throw new InvalidOperationException("Cannot synchronize after the match has ended.");
-        }
         var snapshot = monster.ToMonsterInfo();
-        foreach (var session in batch.Sessions)
+        var monsterArea = GameMapData.GetCurrentArea(snapshot.ObjectInfo.MapId, snapshot.ObjectInfo.Cell);
+        foreach (var (session, sessionArea) in batch.ObserverAreas)
         {
-            if (session.Player.IsEliminated || GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) != GameMapData.GetCurrentArea(snapshot.ObjectInfo.MapId, snapshot.ObjectInfo.Cell)) continue;
+            if (sessionArea != monsterArea)
+            {
+                continue;
+            }
             if (!session.PublishedObjects.Contains((ObjectType.MONSTER, monster.MonsterId)))
             {
-                if (!snapshot.IsAlive) continue;
-                if (!batch.Entries.TryGetValue(session, out var entries))
+                if (snapshot.IsAlive)
                 {
-                    entries = new G_TO_C_OBJECT_ENTER();
-                    batch.Entries.Add(session, entries);
+                    batch.GetEntries(session).Monsters.Add(snapshot);
                 }
-                entries.Monsters.Add(snapshot);
                 continue;
             }
-            if (!session.HasMonsterStateChanged(snapshot))
+            if (session.HasMonsterStateChanged(snapshot))
             {
-                continue;
+                SyncBatch.GetList(batch.MonsterUpdates, session).Add(snapshot);
             }
-            if (!batch.MonsterUpdates.TryGetValue(session, out var changedMonsters))
-            {
-                changedMonsters = [];
-                batch.MonsterUpdates.Add(session, changedMonsters);
-            }
-            changedMonsters.Add(snapshot);
         }
     }
 
@@ -387,45 +417,26 @@ internal sealed class MatchSynchronizationService
         {
             throw new InvalidOperationException("Synchronization requires the match lock.");
         }
-        if (runtime.IsEnded)
+        if (!stateChanged && runtime.SynchronizedObjects.TryGetValue((info.ObjectType, info.ObjectId), out var previous) && previous.Matches(info))
         {
-            throw new InvalidOperationException("Cannot synchronize after the match has ended.");
+            return;
         }
-        if (runtime.SynchronizedObjects.TryGetValue((info.ObjectType, info.ObjectId), out var previous))
-        {
-            if (!stateChanged && previous.Matches(info))
-            {
-                return;
-            }
-        }
+
+        var objectArea = GameMapData.GetCurrentArea(info.MapId, info.Cell);
         GameObjectInfo? snapshot = null;
-        foreach (var session in batch.Sessions)
+        foreach (var (session, sessionArea) in batch.ObserverAreas)
         {
-            if (session.Player.IsEliminated)
+            if (sessionArea != objectArea)
             {
                 continue;
-            }
-            bool inArea = GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) == GameMapData.GetCurrentArea(info.MapId, info.Cell);
-            if (!inArea)
-            {
-                continue;
-            }
-            if (!batch.Moves.TryGetValue(session, out var message))
-            {
-                message = new G_TO_C_MOVE { ServerTimestamp = batch.ServerTimestamp };
-                batch.Moves.Add(session, message);
             }
             snapshot ??= info.Clone();
-            message.Objects.Add(snapshot);
+            batch.GetMoves(session).Objects.Add(snapshot);
         }
     }
 
-    internal void CollectSunAttacks(MatchRuntime runtime, SyncBatch batch, DateTime nowUtc)
+    private static void CollectSunAttacks(MatchRuntime runtime, SyncBatch batch, DateTime nowUtc)
     {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Synchronization requires the match lock.");
-        }
         foreach (var shape in runtime.PendingSunAttacks)
         {
             if (shape.IsPublished)
@@ -450,28 +461,18 @@ internal sealed class MatchSynchronizationService
                 DetonateAtEnd = shape.DetonateAtEnd,
                 OwnerOrbOrdinal = shape.OwnerOrbOrdinal
             };
-            foreach (var session in batch.Sessions)
+            foreach (var (session, sessionArea) in batch.ObserverAreas)
             {
-                if (session.Player.IsEliminated || GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) != shape.Area)
+                if (sessionArea == shape.Area)
                 {
-                    continue;
+                    SyncBatch.GetList(batch.SunAttacks, session).Add(message);
                 }
-                if (!batch.SunAttacks.TryGetValue(session, out var attacks))
-                {
-                    attacks = new List<G_TO_C_SUN_ORB_ATTACK>();
-                    batch.SunAttacks.Add(session, attacks);
-                }
-                attacks.Add(message);
             }
         }
     }
 
-    internal void CollectWaveAttacks(MatchRuntime runtime, SyncBatch batch, DateTime nowUtc)
+    private static void CollectWaveAttacks(MatchRuntime runtime, SyncBatch batch, DateTime nowUtc)
     {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Synchronization requires the match lock.");
-        }
         for (int index = 0; index < runtime.PendingWaveAttacks.Count; index++)
         {
             var vortex = runtime.PendingWaveAttacks[index];
@@ -488,30 +489,14 @@ internal sealed class MatchSynchronizationService
                 Radius = vortex.Radius,
                 FuseSeconds = MathF.Max(0f, (float)(vortex.ExplodeAtUtc - nowUtc).TotalSeconds)
             };
-            foreach (var session in batch.Sessions)
+            foreach (var (session, sessionArea) in batch.ObserverAreas)
             {
-                if (session.Player.IsEliminated || GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) != vortex.Area)
+                if (sessionArea == vortex.Area)
                 {
-                    continue;
+                    SyncBatch.GetList(batch.WaveAttacks, session).Add(message);
                 }
-                if (!batch.WaveAttacks.TryGetValue(session, out var attacks))
-                {
-                    attacks = new List<G_TO_C_WAVE_ORB_ATTACK>();
-                    batch.WaveAttacks.Add(session, attacks);
-                }
-                attacks.Add(message);
             }
         }
-    }
-
-    internal void CollectOrbVisuals(MatchRuntime runtime, IReadOnlyList<Player> players, SyncBatch batch)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Synchronization requires the match lock.");
-        }
-
-        batch.OrbVisuals = MatchOrbVisual.Build(runtime, players);
     }
 
     internal void CollectOrbRankings(MatchRuntime runtime, SyncBatch batch)
@@ -567,26 +552,16 @@ internal sealed class MatchSynchronizationService
         };
     }
 
-    internal void CollectRemovedMonsters(MatchRuntime runtime, SyncBatch batch)
+    private static void CollectRemovedMonsters(MatchRuntime runtime, SyncBatch batch)
     {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Synchronization requires the match lock.");
-        }
         foreach (var removed in runtime.PendingRemovedMonsters)
         {
             foreach (var session in batch.Sessions)
             {
-                if (!session.PublishedObjects.Contains((ObjectType.MONSTER, removed.MonsterId)))
+                if (session.PublishedObjects.Contains((ObjectType.MONSTER, removed.MonsterId)))
                 {
-                    continue;
+                    SyncBatch.GetList(batch.RemovedMonsters, session).Add(removed);
                 }
-                if (!batch.RemovedMonsters.TryGetValue(session, out var states))
-                {
-                    states = [];
-                    batch.RemovedMonsters.Add(session, states);
-                }
-                states.Add(removed);
             }
         }
         runtime.PendingRemovedMonsters.Clear();
@@ -609,19 +584,15 @@ internal sealed class MatchSynchronizationService
         }
         foreach (var session in batch.Sessions)
         {
+            var sessionArea = batch.ObserverAreas.GetValueOrDefault(session, AreaType.None);
             foreach (var identity in session.PublishedObjects)
             {
                 var area = identity.Type == ObjectType.ITEM ? runtime.GroundItems.GetItemArea(identity.Id) : areas.GetValueOrDefault(identity, AreaType.None);
-                if (!session.Player.IsEliminated && area != AreaType.None && area == GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell))
+                if (area != AreaType.None && area == sessionArea)
                 {
                     continue;
                 }
-                if (!batch.Leaves.TryGetValue(session, out var leaves))
-                {
-                    leaves = [];
-                    batch.Leaves.Add(session, leaves);
-                }
-                leaves.Add(new ObjectIdentity { Type = identity.Type, Id = identity.Id });
+                SyncBatch.GetList(batch.Leaves, session).Add(new ObjectIdentity { Type = identity.Type, Id = identity.Id });
             }
         }
     }

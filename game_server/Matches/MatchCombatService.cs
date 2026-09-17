@@ -1,7 +1,6 @@
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
-using network.common;
 using network.common.data.models;
 
 namespace game_server.matches;

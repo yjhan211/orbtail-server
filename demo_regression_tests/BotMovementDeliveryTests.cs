@@ -844,7 +844,7 @@ public sealed class BotMovementDeliveryTests
     }
 
     [Fact]
-    public void ExternalMovementRequiresLockAndRejectsEndedMatch()
+    public void SynchronizationRequiresLockAndRejectsEndedMatch()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(44003);
@@ -853,8 +853,9 @@ public sealed class BotMovementDeliveryTests
         Assert.Throws<InvalidOperationException>(() => service.CollectMovementUpdates(match, new GameObjectInfo(), batch));
         using (match.Enter())
         {
+            // 끝난 매치는 모으는 단계가 아니라 보내는 단계가 막는다.
             match.TryMarkEnded();
-            Assert.Throws<InvalidOperationException>(() => service.CollectMovementUpdates(match, new GameObjectInfo(), batch));
+            Assert.Throws<InvalidOperationException>(() => service.SendBatch(match, batch));
         }
     }
 
