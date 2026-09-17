@@ -51,8 +51,8 @@ internal static class TestMatchTickServices
                 }, _clock);
         }
 
-        public long LastAreaClosureSecond => ReadInterval("_lastAreaClosureSecond");
-        public long LastEnvironmentInterval => ReadInterval("_lastEnvironmentInterval");
+        public long LastAreaClosureSecond => _runtime.LastAreaClosureSecond;
+        public long LastEnvironmentInterval => _runtime.LastFieldDamageInterval;
         public bool TryBeginAreaClosureTick(DateTime now, DateTime? startedAt)
         {
             int before = _closureCalls;
@@ -70,10 +70,6 @@ internal static class TestMatchTickServices
             _loop.Stop();
 
         }
-
-        private long ReadInterval(string field) => (long)typeof(MatchTickLoop)
-            .GetField(field, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .GetValue(_loop)!;
 
         private void RunTick(DateTime now, DateTime? startedAt)
         {
@@ -105,10 +101,7 @@ internal static class TestMatchTickServices
         }
     }
 
-    public static void ForceNextEnvironmentalTick(MatchTickLoop loop) =>
-        typeof(MatchTickLoop)
-            .GetField("_lastEnvironmentInterval", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .SetValue(loop, -1L);
+    public static void ForceNextEnvironmentalTick(MatchRuntime runtime) => runtime.LastFieldDamageInterval = -1;
 
 
 
@@ -126,9 +119,9 @@ internal static class TestMatchTickServices
     }
 
     private sealed class Field(Action<MatchRuntime, List<GameClientSession>> damage, Action<MatchRuntime> closure)
-        : MatchFieldService(null!, null!, null!, null!, null!, null!)
+        : MatchFieldService(null!, null!, null!, null!, null!, null!, null!)
     {
-        public override void ProcessDamageTick(MatchRuntime runtime) => damage(runtime, runtime.GetSessions());
+        public override void ProcessDamageTick(MatchRuntime runtime, DateTime nowUtc) => damage(runtime, runtime.GetSessions());
         public override void ProcessClosureTick(MatchRuntime runtime) => closure(runtime);
     }
 }

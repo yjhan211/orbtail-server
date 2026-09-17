@@ -74,12 +74,15 @@ public sealed class SwarmArenaTickOrderTests
             "public void ProcessClosureTick(",
             "    public void ProcessDamageTick(");
 
-        // 독립 루프의 매치 잠금 안에서 1초 주기를 확인하고 폐쇄 틱을 돌린다.
+        // 독립 루프는 매치 잠금 안에서 필드 틱을 부르고, 1초 주기 확인과 폐쇄 틱은 필드 서비스가 맡는다.
         string runner = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs");
         AssertInOrder(runner,
             "using var scope = runtime.Enter();",
-            "_lastAreaClosureSecond = elapsedSeconds;",
-            "field.ProcessClosureTick(runtime);");
+            "field.ProcessTick(runtime, utcNow);");
+        string fieldService = ReadNormalizedSource(root, "game_server", "Matches", "MatchFieldService.cs");
+        AssertInOrder(fieldService,
+            "runtime.LastAreaClosureSecond = elapsedSeconds;",
+            "ProcessClosureTick(runtime);");
         Assert.DoesNotContain("TryEnter", tick);
 
         // 폐쇄 처리는 문 상태만 바꾼다. 문 변경 전송은 틱 끝 동기화가 담당한다.

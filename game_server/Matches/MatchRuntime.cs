@@ -18,52 +18,9 @@ namespace game_server.matches;
 /// </summary>
 internal sealed class MatchRuntime
 {
-    // 사망·회수 상태는 기존 스냅샷으로 즉시 알리고, 실행 목록에는 남기지 않는다.
-    internal void RemoveMonster(Monster monster)
-    {
-        if (!Monitor.IsEntered(MatchLock))
-        {
-            throw new InvalidOperationException("Monster removal requires the match lock.");
-        }
-        if (!Monsters.Entities.TryGetValue(monster.MonsterId, out var current) ||
-            !ReferenceEquals(current, monster))
-        {
-            return;
-        }
-
-        monster.Alive = false;
-        Monsters.Entities.Remove(monster.MonsterId);
-        var states = new Dictionary<AreaType, List<MonsterInfo>>
-        {
-            [GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell)] = [monster.ToMonsterInfo()]
-        };
-        foreach (var session in GetSessions())
-        {
-            session.SendMonsterSnapshot(states, fullSnapshot: false);
-        }
-    }
-    internal Dictionary<(ObjectType Type, long Id), MatchObjectSnapshot> SynchronizedObjects { get; } = new();
-    internal Dictionary<long, PlayerState> SynchronizedPlayerStates { get; } = new();
-    internal Queue<(GameClientSession Session, G_TO_C_COMBAT_HIT Hit)> PendingCombatHits { get; } = new();
-    internal Queue<(GameClientSession Session, Protocol Protocol, byte[] Body)> PendingCombatEffects { get; } = new();
-
-    public bool IsEnded => Volatile.Read(ref _ended) != 0;
-    public object MatchLock { get; } = new();
-
-    public bool IsSetupComplete => Volatile.Read(ref _isSetupComplete);
-    public MatchMode Mode { get; private set; }
-    public IReadOnlyDictionary<long, Cell> SpawnCells { get; private set; } = new Dictionary<long, Cell>();
-
-    private readonly Dictionary<long, Player> _players = new();
-    private int _aliveCount;
-
     private readonly MatchRuntimeStore _runtimeStore;
     private readonly MatchSessionCleanupService _matchSessionCleanup;
     private readonly ILogger<MatchRuntime> _logger;
-
-    private readonly HashSet<long> _readyPlayerIds = [];
-    private DateTime? _entryDeadlineUtc;
-    private DateTime? _startsAtUtc;
 
     private bool _isSetupComplete;
     private int _ended;
@@ -71,7 +28,12 @@ internal sealed class MatchRuntime
     private bool _cleanupStarted;
     private MatchTickLoop? _tickLoop;
 
-    internal readonly List<Action> AfterRelease = new();
+    private readonly Dictionary<long, Player> _players = new();
+    private int _aliveCount;
+
+    private readonly HashSet<long> _readyPlayerIds = [];
+    private DateTime? _entryDeadlineUtc;
+    private DateTime? _startsAtUtc;
 
     internal MatchRuntime(MatchRuntimeStore runtimeStore, long matchingId, ILogger<MatchRuntime> logger, MatchSessionCleanupService matchSessionCleanup)
     {
@@ -85,30 +47,42 @@ internal sealed class MatchRuntime
         Monsters = new MatchMonsters();
     }
 
-    // 매치 식별과 수명·잠금
     public long MatchingId { get; }
-    public MatchBots Bots { get; }
-    public MatchMonsters Monsters { get; }
-
-    // 전투와 오브
-    public Random CriticalRng { get; } = new();
-    public List<PendingSunAttack> PendingSunAttacks { get; } = new();
-    public List<PendingWaveAttack> PendingWaveAttacks { get; } = new();
-    public List<PendingWindAttack> PendingWindAttacks { get; } = new();
-
-    // 아이템과 재화
-    public MatchGroundItemState GroundItems { get; }
-
-    // 맵과 진행 상태
-    public MatchDoorState Doors { get; } = new();
-    public MatchAreaClosureState Closures { get; }
-
-    // 틱 실행과 일정
+    public object MatchLock { get; } = new();
+    public bool IsEnded => Volatile.Read(ref _ended) != 0;
+    public bool IsSetupComplete => Volatile.Read(ref _isSetupComplete);
+    public MatchMode Mode { get; private set; }
+    public IReadOnlyDictionary<long, Cell> SpawnCells { get; private set; } = new Dictionary<long, Cell>();
     internal MatchTickLoop? TickLoop
     {
         get => Volatile.Read(ref _tickLoop);
         set => Interlocked.Exchange(ref _tickLoop, value);
     }
+    internal readonly List<Action> AfterRelease = new();
+
+    public DateTime? EntryDeadlineUtc { get { using (Enter()) return _entryDeadlineUtc; } }
+    public DateTime? StartsAtUtc { get { using (Enter()) return _startsAtUtc; } }
+
+    public MatchBots Bots { get; }
+    public MatchMonsters Monsters { get; }
+    public MatchGroundItemState GroundItems { get; }
+    public MatchDoorState Doors { get; } = new();
+    public MatchAreaClosureState Closures { get; }
+
+    public Random CriticalRng { get; } = new();
+    public List<PendingSunAttack> PendingSunAttacks { get; } = new();
+    public List<PendingWaveAttack> PendingWaveAttacks { get; } = new();
+    public List<PendingWindAttack> PendingWindAttacks { get; } = new();
+
+    public long LastFieldDamageInterval { get; set; }
+    public long LastAreaClosureSecond { get; set; }
+    public bool InitialFieldStateSent { get; set; }
+
+    internal Dictionary<(ObjectType Type, long Id), MatchObjectSnapshot> SynchronizedObjects { get; } = new();
+    internal Dictionary<long, PlayerState> SynchronizedPlayerStates { get; } = new();
+    internal Queue<(GameClientSession Session, G_TO_C_COMBAT_HIT Hit)> PendingCombatHits { get; } = new();
+    internal Queue<(GameClientSession Session, Protocol Protocol, byte[] Body)> PendingCombatEffects { get; } = new();
+    public string? OrbRankingsSignature { get; set; }
 
     public void InitializeMatch(MatchMode mode, IReadOnlyDictionary<long, Cell> spawnCells, IReadOnlyList<PlayerInfo> playerRoster)
     {
@@ -168,7 +142,46 @@ internal sealed class MatchRuntime
         }
     }
 
-    public PlayerOrbState GetOrbs(long playerId) => GetPlayer(playerId)?.Orbs ?? new PlayerOrbState();
+    public void BeginEntry(long playerId)
+    {
+        using (Enter())
+        {
+            if (IsEnded || !IsSetupComplete || playerId <= 0 || GetPlayer(playerId) == null)
+            {
+                return;
+            }
+            _entryDeadlineUtc ??= DateTime.UtcNow + MatchingRedisKeys.EntryTimeout;
+        }
+    }
+
+    public void MarkPlayerReady(long playerId)
+    {
+        using (Enter())
+        {
+            if (IsEnded || !_entryDeadlineUtc.HasValue || playerId <= 0 || GetPlayer(playerId) == null)
+            {
+                return;
+            }
+            _readyPlayerIds.Add(playerId);
+            if (_players.Values.Any(player => player.PlayerId > 0 && !_readyPlayerIds.Contains(player.PlayerId)))
+            {
+                return;
+            }
+            _startsAtUtc ??= DateTime.UtcNow.AddSeconds(5);
+        }
+    }
+
+    public bool IsGameplayActive(DateTime? utcNow = null)
+    {
+        using (Enter())
+            return !IsEnded && _startsAtUtc.HasValue && (utcNow ?? DateTime.UtcNow) >= _startsAtUtc.Value;
+    }
+
+    public bool IsEntryTimedOut(DateTime utcNow)
+    {
+        using (Enter())
+            return !IsEnded && !_startsAtUtc.HasValue && _entryDeadlineUtc.HasValue && utcNow >= _entryDeadlineUtc.Value;
+    }
 
     public Player? GetPlayer(long playerId)
     {
@@ -182,6 +195,8 @@ internal sealed class MatchRuntime
             return entry;
         }
     }
+
+    public PlayerOrbState GetOrbs(long playerId) => GetPlayer(playerId)?.Orbs ?? new PlayerOrbState();
 
     public List<Player> GetAlivePlayers()
     {
@@ -203,7 +218,6 @@ internal sealed class MatchRuntime
     {
         using (Enter())
         {
-            // 로스터 전달용 복사본만 만든다. 계정 프로필은 매치에서 보관하지 않는다.
             var profiles = new List<PlayerInfo>(_players.Count);
             foreach (var participant in _players.Values)
             {
@@ -215,6 +229,21 @@ internal sealed class MatchRuntime
                 });
             }
             return profiles;
+        }
+    }
+
+    public List<GameClientSession> GetSessions()
+    {
+        using (Enter())
+        {
+            var sessions = new List<GameClientSession>();
+            foreach (var player in _players.Values)
+            {
+                var session = player.Session;
+                if (session != null)
+                    sessions.Add(session);
+            }
+            return sessions;
         }
     }
 
@@ -240,22 +269,6 @@ internal sealed class MatchRuntime
 
             _logger.LogInformation("플레이어 탈락: MatchingId={MatchingId}, PlayerId={PlayerId}, 사유={Reason}, 생존={Alive}", MatchingId, playerId, reason, _aliveCount);
             return true;
-        }
-    }
-
-    /// <summary>사람·봇 참가자 중 현재 연결이 있는 세션만 복사해 반환한다.</summary>
-    public List<GameClientSession> GetSessions()
-    {
-        using (Enter())
-        {
-            var sessions = new List<GameClientSession>();
-            foreach (var player in _players.Values)
-            {
-                var session = player.Session;
-                if (session != null)
-                    sessions.Add(session);
-            }
-            return sessions;
         }
     }
 
@@ -307,50 +320,28 @@ internal sealed class MatchRuntime
         }
     }
 
-    public DateTime? EntryDeadlineUtc { get { using (Enter()) return _entryDeadlineUtc; } }
-    public DateTime? StartsAtUtc { get { using (Enter()) return _startsAtUtc; } }
-    public string? OrbRankingsSignature { get; set; }
-    public bool InitialFieldStateSent { get; set; }
-
-    public void BeginEntry(long playerId)
+    internal void RemoveMonster(Monster monster)
     {
-        using (Enter())
+        if (!Monitor.IsEntered(MatchLock))
         {
-            if (IsEnded || !IsSetupComplete || playerId <= 0 || GetPlayer(playerId) == null)
-            {
-                return;
-            }
-            _entryDeadlineUtc ??= DateTime.UtcNow + MatchingRedisKeys.EntryTimeout;
+            throw new InvalidOperationException("Monster removal requires the match lock.");
         }
-    }
-
-    public void MarkPlayerReady(long playerId)
-    {
-        using (Enter())
+        if (!Monsters.Entities.TryGetValue(monster.MonsterId, out var current) ||
+            !ReferenceEquals(current, monster))
         {
-            if (IsEnded || !_entryDeadlineUtc.HasValue || playerId <= 0 || GetPlayer(playerId) == null)
-            {
-                return;
-            }
-            _readyPlayerIds.Add(playerId);
-            if (_players.Values.Any(player => player.PlayerId > 0 && !_readyPlayerIds.Contains(player.PlayerId)))
-            {
-                return;
-            }
-            _startsAtUtc ??= DateTime.UtcNow.AddSeconds(5);
+            return;
         }
-    }
 
-    public bool IsGameplayActive(DateTime? utcNow = null)
-    {
-        using (Enter())
-            return !IsEnded && _startsAtUtc.HasValue && (utcNow ?? DateTime.UtcNow) >= _startsAtUtc.Value;
-    }
-
-    public bool IsEntryTimedOut(DateTime utcNow)
-    {
-        using (Enter())
-            return !IsEnded && !_startsAtUtc.HasValue && _entryDeadlineUtc.HasValue && utcNow >= _entryDeadlineUtc.Value;
+        monster.Alive = false;
+        Monsters.Entities.Remove(monster.MonsterId);
+        var states = new Dictionary<AreaType, List<MonsterInfo>>
+        {
+            [GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell)] = [monster.ToMonsterInfo()]
+        };
+        foreach (var session in GetSessions())
+        {
+            session.SendMonsterSnapshot(states, fullSnapshot: false);
+        }
     }
 
     public MatchLockScope Enter()

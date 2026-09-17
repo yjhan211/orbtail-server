@@ -97,16 +97,22 @@ internal sealed class PlayerPickupService(PlayerHealthService healthService, ILo
         return items;
     }
 
-    public void PickUp(MatchRuntime match, IReadOnlyCollection<Player> players)
+    // 매 틱 생존자의 획득 후보를 확정한다. 입장 대기와 시작 카운트다운 동안은 줍지 않는다.
+    public void ProcessTick(MatchRuntime match, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(match.MatchLock))
         {
             throw new InvalidOperationException("Automatic pickup requires the match lock.");
         }
+        if (!match.IsGameplayActive(nowUtc))
+        {
+            return;
+        }
 
+        var players = match.GetAlivePlayers();
         foreach (var stale in match.GetPlayers())
         {
-            if (!players.Contains(stale))
+            if (stale.IsEliminated)
             {
                 stale.ReachableItems.Clear();
             }

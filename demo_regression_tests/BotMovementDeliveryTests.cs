@@ -415,6 +415,33 @@ public sealed class BotMovementDeliveryTests
     }
 
     [Fact]
+    public void FieldStateIsQueuedByClosureTickAndPublishedAtTickEnd()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(44112);
+        var recipient = AddRecipient(store, 44112, 1, AreaType.S2Gym1, []);
+        using var scope = runtime.Enter();
+        var now = DateTime.UtcNow;
+        runtime.StartGameplay(now);
+        var synchronization = new MatchSynchronizationService();
+        synchronization.InitializeComparisonSnapshots(runtime);
+        var field = new MatchFieldService(NullLogger<MatchFieldService>.Instance, new game_server.players.PlayerOrbTrailService(), null!, null!, null!, null!, synchronization);
+
+        // 폐쇄 틱은 대기열에 넣기만 한다. 실제 전송은 같은 틱 끝의 동기화가 한다.
+        field.ProcessClosureTick(runtime);
+        Assert.Empty(recipient.Packets);
+        synchronization.ProcessTick(runtime, now);
+        Assert.Contains(recipient.Packets, packet => packet.Protocol == Protocol.G_TO_C_SWARM_FIELD_STATE);
+
+        // 매치당 한 번만 보낸다.
+        recipient.Packets.Clear();
+        field.ProcessClosureTick(runtime);
+        synchronization.ProcessTick(runtime, now.AddMilliseconds(50));
+        Assert.DoesNotContain(recipient.Packets, packet => packet.Protocol == Protocol.G_TO_C_SWARM_FIELD_STATE);
+    }
+
+    [Fact]
     public void OrbVisualsAndRankingsArePublishedAtTickEndOnlyWhenChanged()
     {
         TestGameData.EnsureBattleItemCombatLoaded();

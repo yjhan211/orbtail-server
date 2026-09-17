@@ -1250,7 +1250,7 @@ public sealed class GameClientSessionPublicationTests
         TestGameSessionServices.SetMovementProperty(current, "Position", new Vector3f(item.PositionX + 20, item.PositionY, 0));
         using (match.Enter())
             new PlayerPickupService(TestGameSessionServices.CreateHealthService(fixture.Store), NullLogger<PlayerPickupService>.Instance)
-                .PickUp(match, new[] { current.Player });
+                .PickUp(match, current.Player);
 
         Assert.Equal(0, TestGameSessionServices.SummonStones(current.Match, current.PlayerId!.Value).StoneCount);
         Assert.NotNull(match.GroundItems.GetItem(item.GroundItemUid));

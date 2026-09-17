@@ -43,7 +43,7 @@ public sealed class MatchFieldServiceTests
             Assert.Empty(match.GetSessions());
             Assert.True(MatchFieldService.GetDamagePerTick(match, first.Position, DateTime.UtcNow) >= 2);
 
-            service.ProcessDamageTick(match);
+            service.ProcessDamageTick(match, DateTime.UtcNow);
 
             Assert.Equal(0, first.Health);
             Assert.Equal(0, second.Health);
@@ -59,7 +59,7 @@ public sealed class MatchFieldServiceTests
     {
         var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947001);
         var service = CreateService();
-        Assert.Throws<InvalidOperationException>(() => service.ProcessDamageTick(match));
+        Assert.Throws<InvalidOperationException>(() => service.ProcessDamageTick(match, DateTime.UtcNow));
         Assert.Throws<InvalidOperationException>(() => service.ProcessClosureTick(match));
     }
 
@@ -71,7 +71,7 @@ public sealed class MatchFieldServiceTests
         lock (match.MatchLock)
         {
             match.TryMarkEnded();
-            service.ProcessDamageTick(match);
+            service.ProcessDamageTick(match, DateTime.UtcNow);
             Assert.True(match.IsEnded);
         }
     }
@@ -127,7 +127,7 @@ public sealed class MatchFieldServiceTests
         }
 
         lock (match.MatchLock)
-            CreateService().ProcessDamageTick(match);
+            CreateService().ProcessDamageTick(match, DateTime.UtcNow);
 
         Assert.Equal(healthBefore, bots.Select(bot => bot.Player.Health).ToArray());
         Assert.All(bots, bot => Assert.False(bot.Player.IsEliminated));
@@ -141,6 +141,6 @@ public sealed class MatchFieldServiceTests
         var results = new MatchResultService(NullLogger.Instance);
         return new MatchFieldService(NullLogger<MatchFieldService>.Instance, new game_server.players.PlayerOrbTrailService(), TestGameSessionServices.CreateHealthService(store),
             new MatchCleanupService(store, NullLogger.Instance),
-            eliminations, results);
+            eliminations, results, new MatchSynchronizationService());
     }
 }

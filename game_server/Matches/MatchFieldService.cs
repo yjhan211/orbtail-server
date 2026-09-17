@@ -1,10 +1,8 @@
 using game_server.players;
-using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
-using network.packets;
 
 namespace game_server.matches;
 
@@ -19,16 +17,61 @@ internal class MatchFieldService(
     PlayerHealthService healthService,
     MatchCleanupService matchCleanup,
     PlayerEliminationService matchEliminations,
-    MatchResultService matchResults)
+    MatchResultService matchResults,
+    MatchSynchronizationService synchronization)
 {
-    internal static readonly Lazy<IReadOnlyList<(AreaType Area, int ClosureAtSeconds)>> SwarmFieldClosureSchedule =
-        new(() => SwarmPressureField.GetKnownAreas()
-                .Select(area => (Area: area, ClosureAtSeconds: SwarmPressureField.GetAreaClosureSeconds(area)))
-                .OrderBy(entry => entry.ClosureAtSeconds)
-                .ToList()
-                .AsReadOnly(),
-            LazyThreadSafetyMode.ExecutionAndPublication);
+    internal static readonly Lazy<IReadOnlyList<(AreaType Area, int ClosureAtSeconds)>> SwarmFieldClosureSchedule = new(BuildClosureSchedule, LazyThreadSafetyMode.ExecutionAndPublication);
 
+    private static IReadOnlyList<(AreaType Area, int ClosureAtSeconds)> BuildClosureSchedule()
+    {
+        var indexed = new List<(AreaType Area, int ClosureAtSeconds, int Index)>();
+        foreach (var area in SwarmPressureField.GetKnownAreas())
+        {
+            indexed.Add((area, SwarmPressureField.GetAreaClosureSeconds(area), indexed.Count));
+        }
+        indexed.Sort(static (left, right) =>
+        {
+            int byTime = left.ClosureAtSeconds.CompareTo(right.ClosureAtSeconds);
+            return byTime != 0 ? byTime : left.Index.CompareTo(right.Index);
+        });
+
+        var schedule = new List<(AreaType Area, int ClosureAtSeconds)>(indexed.Count);
+        foreach (var entry in indexed)
+        {
+            schedule.Add((entry.Area, entry.ClosureAtSeconds));
+        }
+        return schedule.AsReadOnly();
+    }
+
+    public void ProcessTick(MatchRuntime runtime, DateTime nowUtc)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Field tick requires the match lock.");
+        }
+        if (!runtime.IsGameplayActive(nowUtc) || runtime.StartsAtUtc is not { } startedAtUtc)
+        {
+            return;
+        }
+
+        long elapsedSeconds = (nowUtc - startedAtUtc).Ticks / TimeSpan.TicksPerSecond;
+        long damageInterval = elapsedSeconds / Config.ENVIRONMENTAL_TICK_INTERVAL_SECONDS;
+        if (damageInterval > runtime.LastFieldDamageInterval)
+        {
+            runtime.LastFieldDamageInterval = damageInterval;
+            ProcessDamageTick(runtime, nowUtc);
+            if (runtime.IsEnded)
+            {
+                return;
+            }
+        }
+
+        if (elapsedSeconds > runtime.LastAreaClosureSecond)
+        {
+            runtime.LastAreaClosureSecond = elapsedSeconds;
+            ProcessClosureTick(runtime);
+        }
+    }
 
     public virtual void ProcessClosureTick(MatchRuntime runtime)
     {
@@ -37,47 +80,37 @@ internal class MatchFieldService(
             throw new InvalidOperationException("Closure tick requires the match lock.");
         }
 
-        var sessions = runtime.GetSessions();
         var closures = runtime.Closures;
         closures.InitializeMatching(SwarmFieldClosureSchedule.Value);
         if (!runtime.InitialFieldStateSent)
         {
             runtime.InitialFieldStateSent = true;
-            using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_FIELD_STATE);
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_FIELD_STATE
+            synchronization.QueueBroadcastPacket(runtime, Protocol.G_TO_C_SWARM_FIELD_STATE, new G_TO_C_SWARM_FIELD_STATE
             {
                 StartedAtUnixMs = new DateTimeOffset(closures.GameStartTime!.Value).ToUnixTimeMilliseconds()
-            }));
-            foreach (var session in sessions)
-            {
-                session.TrySend(packet);
-            }
+            });
         }
 
         var closedAreas = closures.CloseDueAreas();
-        foreach (var area in closedAreas)
-        {
-            logger.LogInformation("Area closed: MatchingId={MatchingId}, Area={Area}", runtime.MatchingId, area);
-            using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSED
-            {
-                AreaType = area,
-                IsClosed = true
-            }));
-            foreach (var session in sessions)
-            {
-                session.TrySend(packet);
-            }
-        }
-
         if (closedAreas.Count == 0)
         {
             return;
         }
 
+        var closedAreaSet = new HashSet<AreaType>();
+        foreach (var area in closedAreas)
+        {
+            closedAreaSet.Add(area);
+            logger.LogInformation("Area closed: MatchingId={MatchingId}, Area={Area}", runtime.MatchingId, area);
+            synchronization.QueueBroadcastPacket(runtime, Protocol.G_TO_C_AREA_CLOSED, new G_TO_C_AREA_CLOSED
+            {
+                AreaType = area,
+                IsClosed = true
+            });
+        }
+
         runtime.Doors.CloseDoorsForAreas(closedAreas);
 
-        var closedAreaSet = closedAreas.ToHashSet();
         foreach (var owner in runtime.GetAlivePlayers())
         {
             if (owner.Position is not { } ownerPosition)
@@ -119,26 +152,18 @@ internal class MatchFieldService(
                 owner.Session?.SendOrbUpdate(orb);
             }
 
-            using var ringPacket = Packet.Create((int)Protocol.G_TO_C_ORB_TAIL_CUT);
-            ringPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_TAIL_CUT
+            synchronization.QueueAreaPacket(runtime, cutArea, Protocol.G_TO_C_ORB_TAIL_CUT, new G_TO_C_ORB_TAIL_CUT
             {
                 CutterPlayerId = owner.PlayerId,
                 VictimPlayerId = owner.PlayerId,
                 FromOrdinal = firstClosedOrdinal,
                 X = firstClosedOrbPosition.X,
                 Y = firstClosedOrbPosition.Y
-            }));
-            foreach (var viewer in runtime.GetPlayers())
-            {
-                if (GameMapData.GetCurrentArea(viewer.GameInfo.ObjectInfo.MapId, viewer.GameInfo.ObjectInfo.Cell) == cutArea)
-                {
-                    viewer.Session?.TrySend(ringPacket);
-                }
-            }
+            });
         }
     }
 
-    public virtual void ProcessDamageTick(MatchRuntime runtime)
+    public virtual void ProcessDamageTick(MatchRuntime runtime, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -149,7 +174,6 @@ internal class MatchFieldService(
             return;
         }
 
-        long matchingId = runtime.MatchingId;
         var alivePlayers = runtime.GetAlivePlayers();
         int aliveCount = alivePlayers.Count;
         if (aliveCount <= 1)
@@ -160,44 +184,48 @@ internal class MatchFieldService(
                 matchResults.FinalizeMatch(runtime, lastPlayerId);
                 return;
             }
-            matchCleanup.EndBotOnlyMatchIfSettled(matchingId, lastPlayerId);
+            matchCleanup.EndBotOnlyMatchIfSettled(runtime.MatchingId, lastPlayerId);
             return;
         }
 
-        var nowUtc = DateTime.UtcNow;
-        var targets = alivePlayers.Select(player => (Player: player, HealthBefore: player.Health, Damage: GetDamagePerTick(runtime, player.Position, nowUtc))).ToList();
-        foreach (var target in targets)
+        var lethalCandidates = new List<MatchSettlementCandidate>();
+        foreach (var player in alivePlayers)
         {
-            if (target.Damage == 0)
+            int healthBefore = player.Health;
+            int damage = GetDamagePerTick(runtime, player.Position, nowUtc);
+            if (damage == 0)
             {
                 continue;
             }
-            healthService.ApplyDamage(runtime, target.Player, target.Damage, handleElimination: false);
-        }
 
-        var lethalTargets = targets.Where(target => target.Damage > 0 && target.HealthBefore - target.Damage <= 0).ToList();
-        if (lethalTargets.Count == 0)
+            healthService.ApplyDamage(runtime, player, damage, handleElimination: false);
+            if (healthBefore - damage <= 0)
+            {
+                lethalCandidates.Add(new MatchSettlementCandidate(player.PlayerId, healthBefore, player.PvpDamageDealt, damage));
+            }
+        }
+        if (lethalCandidates.Count == 0)
         {
             return;
         }
 
-        var resolution = ResolveEliminationOrder(lethalTargets.Select(target => new MatchSettlementCandidate(target.Player.PlayerId, target.HealthBefore, target.Player.PvpDamageDealt, target.Damage)));
-        var eliminationBestToWorst = resolution.BestToWorst.ToList();
-        if (lethalTargets.Count == aliveCount)
-        {
-            eliminationBestToWorst.RemoveAt(0);
-        }
-
+        var resolution = ResolveEliminationOrder(lethalCandidates);
         if (resolution.BestToWorst.Count > 1)
         {
-            logger.LogInformation("Simultaneous elimination tie-break: MatchingId={MatchingId}, Criterion={Criterion}, BestToWorst={Order}", runtime.MatchingId, resolution.DecisiveCriterion, string.Join(",", resolution.BestToWorst.Select(candidate => candidate.PlayerId)));
+            var order = new List<long>(resolution.BestToWorst.Count);
+            foreach (var candidate in resolution.BestToWorst)
+            {
+                order.Add(candidate.PlayerId);
+            }
+            logger.LogInformation("Simultaneous elimination tie-break: MatchingId={MatchingId}, Criterion={Criterion}, BestToWorst={Order}", runtime.MatchingId, resolution.DecisiveCriterion, string.Join(",", order));
         }
 
+        int firstEliminatedIndex = lethalCandidates.Count == aliveCount ? 1 : 0;
         int rank = aliveCount;
-        foreach (var candidate in eliminationBestToWorst.AsEnumerable().Reverse())
+        for (int index = resolution.BestToWorst.Count - 1; index >= firstEliminatedIndex; index--)
         {
-            var target = lethalTargets.First(entry => entry.Player.PlayerId == candidate.PlayerId);
-            matchEliminations.EliminatePlayer(runtime, target.Player, EliminationReason.PRESSURE_FIELD, deferGameOver: true, forcedRank: rank);
+            var target = runtime.GetPlayer(resolution.BestToWorst[index].PlayerId)!;
+            matchEliminations.EliminatePlayer(runtime, target, EliminationReason.PRESSURE_FIELD, deferGameOver: true, forcedRank: rank);
             rank--;
         }
 
@@ -239,16 +267,44 @@ internal class MatchFieldService(
         int TotalPvpDamage,
         int FieldDamage);
 
+
     internal static (IReadOnlyList<MatchSettlementCandidate> BestToWorst, MatchTieBreakCriterion DecisiveCriterion) ResolveEliminationOrder(IEnumerable<MatchSettlementCandidate> candidates)
     {
-        var ordered = candidates
-            .DistinctBy(candidate => candidate.PlayerId)
-            .OrderByDescending(candidate => candidate.PreDamageHealth)
-            .ThenByDescending(candidate => candidate.TotalPvpDamage)
-            .ThenBy(candidate => candidate.FieldDamage)
-            .ThenBy(candidate => candidate.PlayerId < 0)
-            .ThenBy(candidate => candidate.PlayerId)
-            .ToList();
+        var ordered = new List<MatchSettlementCandidate>();
+        var seenPlayerIds = new HashSet<long>();
+        foreach (var candidate in candidates)
+        {
+            if (seenPlayerIds.Add(candidate.PlayerId))
+            {
+                ordered.Add(candidate);
+            }
+        }
+
+        ordered.Sort(static (left, right) =>
+        {
+            int byHealth = right.PreDamageHealth.CompareTo(left.PreDamageHealth);
+            if (byHealth != 0)
+            {
+                return byHealth;
+            }
+            int byPvpDamage = right.TotalPvpDamage.CompareTo(left.TotalPvpDamage);
+            if (byPvpDamage != 0)
+            {
+                return byPvpDamage;
+            }
+            int byFieldDamage = left.FieldDamage.CompareTo(right.FieldDamage);
+            if (byFieldDamage != 0)
+            {
+                return byFieldDamage;
+            }
+            bool leftIsBot = left.PlayerId < 0;
+            bool rightIsBot = right.PlayerId < 0;
+            if (leftIsBot != rightIsBot)
+            {
+                return leftIsBot ? 1 : -1;
+            }
+            return left.PlayerId.CompareTo(right.PlayerId);
+        });
 
         var criterion = MatchTieBreakCriterion.SingleCandidate;
         if (ordered.Count > 1)

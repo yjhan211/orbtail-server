@@ -1,18 +1,13 @@
 using game_server.matches.monsters;
 using game_server.players;
 using Microsoft.Extensions.Logging;
-using network.common;
 
 namespace game_server.matches;
 
 /// <summary>
 ///     매치 하나의 게임 로직을 50ms 주기로 순서대로 실행한다.
-///     매치 잠금 안에서 입장 마감 확인, 아이템 획득, 몬스터 공급, 공통 이동, 전투,
-///     환경 정산, 구역 폐쇄 확인 후 최종 상태를 동기화한다.
-///
-///     카운트다운 중에는 입장 확인, 몬스터 공급·등장 알림과 전투 준비만 수행한다.
-///     환경 정산은 시작 후 5초마다, 구역 폐쇄 확인은 1초마다 수행하며,
-///     처리가 늦어져도 밀린 횟수를 몰아서 실행하지 않는다.
+///     매치 잠금 안에서 입장 마감 확인, 아이템 획득, 몬스터 공급, 공통 이동, 전투, 필드 틱을 돌린 뒤 최종 상태를 동기화한다.
+///     루프는 순서만 정하며, 시작 전에 무엇을 건너뛸지, 몇 초마다 돌지는 각 서비스가 정한다.
 ///
 ///     처리 중 매치가 끝나거나 예외가 발생하면 해당 틱의 나머지 단계를 중단한다.
 ///     예외는 로그로 남기고 다음 틱을 계속한다.
@@ -31,10 +26,8 @@ internal sealed class MatchTickLoop(
     MatchSynchronizationService synchronization,
     TimeProvider? timeProvider = null)
 {
+    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private readonly PeriodicTimer _timer = new(TimeSpan.FromMilliseconds(50), timeProvider ?? TimeProvider.System);
-
-    private long _lastAreaClosureSecond;
-    private long _lastEnvironmentInterval;
     private int _stopping;
 
     public Task Completion { get; private set; } = Task.CompletedTask;
@@ -74,7 +67,7 @@ internal sealed class MatchTickLoop(
     internal void ProcessTick()
     {
         long matchingId = runtime.MatchingId;
-        if (Volatile.Read(ref _stopping) != 0 || !ReferenceEquals(matchRuntimes.GetOrNull(matchingId), runtime) || runtime.IsEnded)
+        if (Volatile.Read(ref _stopping) != 0 || runtime.IsEnded || !ReferenceEquals(matchRuntimes.GetOrNull(matchingId), runtime))
         {
             return;
         }
@@ -85,21 +78,17 @@ internal sealed class MatchTickLoop(
             return;
         }
 
-        var utcNow = (timeProvider ?? TimeProvider.System).GetUtcNow().UtcDateTime;
+        var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
         if (runtime.IsEntryTimedOut(utcNow))
         {
             entryFailureHandler.AbortMatchForEntryFailure(runtime);
             return;
         }
 
-        bool isGameplayActive = runtime.IsGameplayActive(utcNow);
-        if (isGameplayActive)
+        playerPickups.ProcessTick(runtime, utcNow);
+        if (runtime.IsEnded)
         {
-            playerPickups.PickUp(runtime, runtime.GetAlivePlayers());
-            if (runtime.IsEnded)
-            {
-                return;
-            }
+            return;
         }
 
         monsterSpawns.ProcessTick(runtime, utcNow);
@@ -109,39 +98,19 @@ internal sealed class MatchTickLoop(
         {
             return;
         }
+
         combat.ProcessTick(runtime, utcNow);
         if (runtime.IsEnded)
         {
             return;
         }
 
-        if (!isGameplayActive)
+        field.ProcessTick(runtime, utcNow);
+        if (runtime.IsEnded)
         {
-            synchronization.ProcessTick(runtime, utcNow);
             return;
         }
 
-        var startedAt = runtime.StartsAtUtc;
-        if (startedAt.HasValue)
-        {
-            long elapsedSeconds = (utcNow - startedAt.Value).Ticks / TimeSpan.TicksPerSecond;
-            long currentEnvironmentInterval = elapsedSeconds / Config.ENVIRONMENTAL_TICK_INTERVAL_SECONDS;
-            if (currentEnvironmentInterval > _lastEnvironmentInterval)
-            {
-                _lastEnvironmentInterval = currentEnvironmentInterval;
-                field.ProcessDamageTick(runtime);
-                if (runtime.IsEnded)
-                {
-                    return;
-                }
-            }
-
-            if (elapsedSeconds > _lastAreaClosureSecond)
-            {
-                _lastAreaClosureSecond = elapsedSeconds;
-                field.ProcessClosureTick(runtime);
-            }
-        }
         synchronization.ProcessTick(runtime, utcNow);
     }
 }

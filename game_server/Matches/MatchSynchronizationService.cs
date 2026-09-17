@@ -149,6 +149,21 @@ internal sealed class MatchSynchronizationService
         }
     }
 
+    public void QueueBroadcastPacket<T>(MatchRuntime runtime, Protocol protocol, T body) where T : IMessagePackObject
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Synchronization requires the match lock.");
+        }
+
+        byte[]? serialized = null;
+        foreach (var session in runtime.GetSessions())
+        {
+            serialized ??= MessagePackSerializer.Serialize(body);
+            runtime.PendingCombatEffects.Enqueue((session, protocol, serialized));
+        }
+    }
+
     public void QueueStatusEffect(MatchRuntime runtime, Player target, long sourcePlayerId, AreaType area, CombatStatusEffectKind effect, float seconds)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))

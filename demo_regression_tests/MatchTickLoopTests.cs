@@ -40,7 +40,7 @@ public sealed class MatchTickLoopTests
             (_, _) => Process("combat"),
             (_, _) => Process("environment"), _ => Process("movement"), _ => { });
         fixture.Loops.Add(loop);
-        TestMatchTickServices.ForceNextEnvironmentalTick(loop);
+        TestMatchTickServices.ForceNextEnvironmentalTick(fixture.Match);
 
         Assert.Same(failure, Assert.Throws<InvalidOperationException>(loop.ProcessTick));
         Assert.Equal(stages.Take(Array.IndexOf(stages, failingStage) + 1), called);
@@ -74,7 +74,7 @@ public sealed class MatchTickLoopTests
             }, _ => { });
 
         fixture.Loops.Add(loop);
-        TestMatchTickServices.ForceNextEnvironmentalTick(loop);
+        TestMatchTickServices.ForceNextEnvironmentalTick(fixture.Match);
         loop.ProcessTick();
         Assert.Equal(new[] { "movement", "combat", "environment" }, steps);
         Assert.All(locksHeld, Assert.True);
@@ -203,7 +203,7 @@ public sealed class MatchTickLoopTests
             (_, _) => steps.Add("environment"), _ => steps.Add("movement"), _ => { });
 
         fixture.Loops.Add(loop);
-        TestMatchTickServices.ForceNextEnvironmentalTick(loop);
+        TestMatchTickServices.ForceNextEnvironmentalTick(fixture.Match);
         loop.ProcessTick();
         Assert.Equal(new[] { "movement", "combat" }, steps);
     }
