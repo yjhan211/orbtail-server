@@ -4,12 +4,6 @@ using network.common.data.models;
 
 namespace game_server.matches;
 
-public readonly record struct MonsterContactDamage(
-    int MonsterId,
-    long TargetPlayerId,
-    AreaType Area,
-    int Damage);
-
 /// <summary>이번 틱에 발동된 바람 칼날. 같은 틱의 오브 공격 처리에서 적용하고 비운다.</summary>
 public readonly record struct PendingWindAttack(
     long OwnerId,

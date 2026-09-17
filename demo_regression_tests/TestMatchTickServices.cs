@@ -116,7 +116,7 @@ internal static class TestMatchTickServices
         : MatchCombatService(null!, null!, null!,
             null!, null!, null!, null!, null!)
     {
-        public override void ProcessTick(MatchRuntime runtime) => run(runtime.MatchingId, runtime.GetSessions());
+        public override void ProcessTick(MatchRuntime runtime, DateTime nowUtc) => run(runtime.MatchingId, runtime.GetSessions());
     }
 
     private sealed class Movement(Action<MatchRuntime> run)

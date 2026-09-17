@@ -8,7 +8,6 @@ namespace game_server.matches;
 
 /// <summary>
 ///     매치의 전투 틱을 조율한다.
-///     궤적·절단, 오브 공격, 몬스터 접촉, 봇 판단, 표시 갱신을 순서대로 부르고 피해 적용은 각 서비스에 위임한다.
 /// </summary>
 internal class MatchCombatService(
     PlayerHealthService healthService,
@@ -20,30 +19,19 @@ internal class MatchCombatService(
     BotBehaviorService botBehavior,
     MonsterCombatService monsterCombat)
 {
-    public virtual void ProcessTick(MatchRuntime runtime)
+    public virtual void ProcessTick(MatchRuntime runtime, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Combat tick requires the match lock.");
         }
-        if (runtime.IsEnded)
-        {
-            return;
-        }
-
-        if (runtime.Mode == MatchMode.SoloMapValidation)
+        if (runtime.IsEnded || runtime.Mode == MatchMode.SoloMapValidation || !runtime.IsGameplayActive(nowUtc))
         {
             return;
         }
 
         var players = runtime.GetAlivePlayers();
         if (players.Count == 0)
-        {
-            return;
-        }
-
-        var nowUtc = DateTime.UtcNow;
-        if (!runtime.IsGameplayActive())
         {
             return;
         }
@@ -73,30 +61,16 @@ internal class MatchCombatService(
             throw new InvalidOperationException("Combat tick requires the match lock.");
         }
 
-        if (!runtime.Monsters.IsInitialized)
-        {
-            return;
-        }
-
         foreach (var monster in runtime.Monsters.Entities.Values)
         {
             if (runtime.IsEnded)
             {
                 return;
             }
-
-            if (!monsterCombat.TryStartContactAttack(runtime, monster, players, nowUtc, out var contact))
+            if (monsterCombat.TryStartContactAttack(runtime, monster, players, nowUtc, out var victim))
             {
-                continue;
+                combatDamage.ApplyMonsterContactHit(runtime, victim, monster.MonsterId, Config.ScaleSwarmDamageTaken(monster.ContactDamageValue), nowUtc);
             }
-
-            var victim = runtime.GetPlayer(contact.TargetPlayerId);
-            if (victim == null || victim.IsEliminated)
-            {
-                continue;
-            }
-
-            combatDamage.ApplyMonsterContactHit(runtime, victim, contact.MonsterId, Config.ScaleSwarmDamageTaken(contact.Damage), nowUtc);
         }
     }
 }

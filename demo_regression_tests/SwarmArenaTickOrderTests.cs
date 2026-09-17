@@ -17,14 +17,14 @@ public sealed class SwarmArenaTickOrderTests
         string inactiveGameplayBranch = MaskCommentsAndLiterals(
             ReadBracedBlockAfterMarker(
                 arenaTickSource,
-                "if (!runtime.IsGameplayActive())"));
+                "if (runtime.IsEnded || runtime.Mode == MatchMode.SoloMapValidation || !runtime.IsGameplayActive(nowUtc))"));
         AssertInOrder(
             inactiveGameplayBranch,
             "return;");
 
         AssertInOrder(
             arenaTick,
-            "if (!runtime.IsGameplayActive())",
+            "!runtime.IsGameplayActive(nowUtc)",
             "orbTrails.UpdateTrails(",
             "trailCuts.ProcessTick(",
             "orbAttacks.ProcessTick(",

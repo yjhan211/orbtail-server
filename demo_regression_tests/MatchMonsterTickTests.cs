@@ -153,7 +153,7 @@ public class MatchMonsterTickTests
         DateTime now = StartUtc.AddSeconds(0.25);
         var manager = CreateManager();
         Vector3f center = AreaCenter(AreaType.S2Corridor9);
-        var damageEvents = new List<MonsterContactDamage>();
+        var damageEvents = new List<ContactEvent>();
         var firstTick = manager.Tick(Participants(center), true, now);
         Assert.NotEmpty(firstTick.SpawnedMonsters);
         damageEvents.AddRange(firstTick.PlayerDamage);
@@ -232,7 +232,7 @@ public class MatchMonsterTickTests
         var monster = manager.GetVisualStates().First(state => state.IsAlive);
         var onMonster = new Vector3f(monster.ObjectInfo.Position.X, monster.ObjectInfo.Position.Y, 0f);
 
-        var damageEvents = new List<MonsterContactDamage>();
+        var damageEvents = new List<ContactEvent>();
         for (double elapsed = 0.5d; elapsed <= 9d; elapsed += 0.25d)
         {
             now = StartUtc.AddSeconds(elapsed);
@@ -341,7 +341,10 @@ public class MatchMonsterTickTests
     private static Arena CreateManager(long matchingId = 217001) => new(matchingId);
 
     /// <summary>틱이 만든 접촉 피해와 그 틱에 새로 태어난 개체.</summary>
-    private sealed record TickResult(IReadOnlyList<MonsterContactDamage> PlayerDamage, IReadOnlyList<Monster> SpawnedMonsters);
+    // 접촉 판정이 누구를 얼마나 물었는지 테스트가 확인하려고 모으는 기록.
+    private sealed record ContactEvent(int MonsterId, long TargetPlayerId, AreaType Area, int Damage);
+
+    private sealed record TickResult(IReadOnlyList<ContactEvent> PlayerDamage, IReadOnlyList<Monster> SpawnedMonsters);
 
     // 운영 계약이 아니라 테스트에서 참가자의 위치를 지정하기 위한 입력 자료다.
     private readonly record struct ParticipantInput(long PlayerId, AreaType Area, Vector3f Position);
@@ -396,12 +399,12 @@ public class MatchMonsterTickTests
                     _movement.ProcessTick(Runtime, nowUtc);
                 }
                 var contactPlayers = participants.Select(participant => Runtime.GetPlayer(participant.PlayerId)!).ToList();
-                var monsterContactDamages = new List<MonsterContactDamage>();
+                var monsterContactDamages = new List<ContactEvent>();
                 foreach (var monster in Runtime.Monsters.Entities.Values.ToList())
                 {
-                    if (_monsterCombat.TryStartContactAttack(Runtime, monster, contactPlayers, nowUtc, out var contact))
+                    if (_monsterCombat.TryStartContactAttack(Runtime, monster, contactPlayers, nowUtc, out var victim))
                     {
-                        monsterContactDamages.Add(contact);
+                        monsterContactDamages.Add(new ContactEvent(monster.MonsterId, victim.PlayerId, GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell), monster.ContactDamageValue));
                     }
                 }
                 var spawned = Runtime.Monsters.Entities.Values.Where(monster => !known.Contains(monster.MonsterId)).ToList();

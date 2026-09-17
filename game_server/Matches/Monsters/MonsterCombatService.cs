@@ -17,15 +17,15 @@ internal readonly record struct MonsterDamageResult(Monster? Monster, bool Kille
 /// </summary>
 internal sealed class MonsterCombatService
 {
-    public bool TryStartContactAttack(MatchRuntime runtime, Monster monster, IReadOnlyList<Player> players, DateTime now, out MonsterContactDamage contact)
+    public bool TryStartContactAttack(MatchRuntime runtime, Monster monster, IReadOnlyList<Player> players, DateTime now, out Player victim)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Monster combat service requires the match lock.");
         }
 
-        contact = default;
-        if (!monster.Alive || now < monster.NextContactAtUtc)
+        victim = null!;
+        if (!runtime.Monsters.IsInitialized || !monster.Alive || now < monster.NextContactAtUtc)
         {
             return false;
         }
@@ -55,7 +55,7 @@ internal sealed class MonsterCombatService
             monster.NextContactAtUtc = now.AddSeconds(monster.AttackCooldownValue);
             player.StatusEffects.Apply(PlayerStatusEffectKind.MonsterContactImmunity, now.AddSeconds(Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS));
             monster.ChaseTargetPlayerId = player.PlayerId;
-            contact = new MonsterContactDamage(monster.MonsterId, player.PlayerId, monsterArea, monster.ContactDamageValue);
+            victim = player;
             return true;
         }
 

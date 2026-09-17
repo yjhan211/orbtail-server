@@ -323,12 +323,12 @@ public sealed class MatchGameplayServiceTests
         using (MatchRuntimeStore.Enter(match))
         {
             match.TryMarkEnded();
-            combat.ProcessTick(match);
+            combat.ProcessTick(match, DateTime.UtcNow);
         }
         Assert.Null(store.GetOrNull(match.MatchingId));
         using (match.Enter())
         {
-            combat.ProcessTick(match);
+            combat.ProcessTick(match, DateTime.UtcNow);
         }
         Assert.Null(store.GetOrNull(match.MatchingId));
     }

@@ -109,7 +109,7 @@ internal sealed class MatchTickLoop(
         {
             return;
         }
-        combat.ProcessTick(runtime);
+        combat.ProcessTick(runtime, utcNow);
         if (runtime.IsEnded)
         {
             return;
