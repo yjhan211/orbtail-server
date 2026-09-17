@@ -1,28 +1,92 @@
 using game_server.matches.monsters;
 using game_server.players;
-using MessagePack;
 using network.common;
 using network.common.data;
 using network.common.data.models;
-using network.packets;
 
 namespace game_server.matches;
 
 /// <summary>
-///     발동된 오브 공격을 매치 틱에서 진행한다. 태양 공격의 이동·벽 폭발·화상과 파도 공격의 기폭·감속을 처리한다.
+///     발동된 오브 공격을 처리한다. 태양 공격의 이동·화상, 파도 공격의 기폭·감속, 바람 공격의 즉시 피해·상처를 담당한다.
 ///     공격 상태는 MatchRuntime과 Player가 보관하며, 피해 적용은 MatchCombatDamageService에 위임한다.
 /// </summary>
 internal sealed class MatchOrbAttackService(
     PlayerHealthService healthService,
     MatchCombatDamageService combatDamage)
 {
-    private const float SwarmGroundYScale = GroundGeometry.GroundYScale;
-    private const float SwarmCrossfirePlayerRadius = GroundGeometry.PlayerRadius;
-    private const float SwarmCrossfirePlayerBodyHeight = 0.9f;
-    private const float SwarmCrossfireMonsterRadius = GroundGeometry.MonsterRadius;
     private static long _lastEventId;
 
     public static long AllocateEventId() => Interlocked.Increment(ref _lastEventId);
+
+
+    internal void ProcessWindAttack(MatchRuntime runtime, Player owner, int weaponItemId, Vector3f orbPosition, float radius, int damage, DateTime nowUtc)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Wind orb attacks require the match lock.");
+        }
+        if (runtime.IsEnded)
+        {
+            return;
+        }
+        var ownerArea = owner.GameInfo.ObjectInfo.Area;
+        var (monsters, players) = CollectTargetsInRadius(runtime, owner.PlayerId, ownerArea, orbPosition, radius, padBodyRadius: true);
+        if (monsters.Count == 0 && players.Count == 0)
+        {
+            return;
+        }
+
+        if (monsters.Count > 0)
+        {
+            var activeSessions = runtime.GetSessions().Where(session => !session.IsGameEnded).ToList();
+            foreach (var monster in monsters)
+            {
+                int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, damage, out bool critical);
+                combatDamage.ApplySwarmMonsterHitNow(runtime, monster.MonsterId, owner.PlayerId, weaponItemId, ownerArea, monsterDamage, critical, nowUtc, activeSessions);
+            }
+        }
+
+        if (players.Count == 0)
+        {
+            return;
+        }
+
+        var alivePlayers = runtime.GetAlivePlayers();
+        foreach (var participant in players)
+        {
+            if (!participant.StatusEffects.TryApply(PlayerStatusEffectKind.WindShockImmunity, nowUtc, Config.SWARM_WIND_BLADE_VICTIM_IMMUNE_SECONDS))
+            {
+                continue;
+            }
+
+            combatDamage.ApplySwarmShock(runtime, healthService, owner.PlayerId, weaponItemId, ownerArea, participant.PlayerId, alivePlayers);
+            if (runtime.IsEnded)
+            {
+                return;
+            }
+
+            if (participant.IsEliminated)
+            {
+                continue;
+            }
+
+            participant.StatusEffects.Apply(PlayerStatusEffectKind.Wound, nowUtc.AddSeconds(Config.SWARM_WIND_WOUND_SECONDS));
+            var victimSession = participant.Session;
+            if (victimSession is not { PlayerId: not null })
+            {
+                continue;
+            }
+
+            combatDamage.QueueSessionEffect(runtime, victimSession, Protocol.G_TO_C_STATUS_EFFECT, new G_TO_C_STATUS_EFFECT
+            {
+                SourcePlayerId = owner.PlayerId,
+                TargetPlayerId = participant.PlayerId,
+                AreaType = ownerArea,
+                Effect = CombatStatusEffectKind.WindOrbWound,
+                DurationMs = (int)(Config.SWARM_WIND_WOUND_SECONDS * 1000f)
+            });
+        }
+    }
 
     public void ProcessSunCrossfires(MatchRuntime runtime, DateTime nowUtc)
     {
@@ -48,7 +112,7 @@ internal sealed class MatchOrbAttackService(
             }
 
             float sweepEnd = shape.GroundLength + shape.HalfWidth;
-            float front = nowUtc >= shape.ExpiresAtUtc ? sweepEnd : -shape.HalfWidth + (float)(nowUtc - shape.ArmedAtUtc).TotalSeconds * shape.SweepSpeed;
+            float front = nowUtc >= shape.ExpiresAtUtc ? sweepEnd : -shape.HalfWidth + (float)(nowUtc - shape.ArmedAtUtc).TotalSeconds * Config.SWARM_CROSSFIRE_SUN_SWEEP_SPEED;
             front = MathF.Min(front, sweepEnd);
             float lastFront = shape.LastFront;
             shape.LastFront = front;
@@ -56,19 +120,19 @@ internal sealed class MatchOrbAttackService(
 
             foreach (var monster in monsterTargets)
             {
-                if (monster.Area != shape.Area || shape.HitMonsters.Contains(monster.CombatTargetId))
+                if (monster.Area != shape.Area || shape.HitMonsters.Contains(monster.MonsterId))
                 {
                     continue;
                 }
 
-                if (!IsSunCrossfireSweptBody(shape, monster.Position, lastFront, front, SwarmCrossfireMonsterRadius, GroundGeometry.MonsterBodyHeight))
+                if (!IsSunCrossfireSweptBody(shape, monster.Position, lastFront, front, GroundGeometry.MonsterRadius, GroundGeometry.MonsterBodyHeight))
                 {
                     continue;
                 }
 
-                shape.HitMonsters.Add(monster.CombatTargetId);
+                shape.HitMonsters.Add(monster.MonsterId);
                 int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, shape.Damage, out bool critical);
-                combatDamage.ApplySwarmMonsterHitNow(runtime, monster.CombatTargetId, monster.MonsterId, shape.OwnerId, shape.WeaponItemId, shape.Area, monsterDamage, critical, nowUtc, allSessions);
+                combatDamage.ApplySwarmMonsterHitNow(runtime, monster.MonsterId, shape.OwnerId, shape.WeaponItemId, shape.Area, monsterDamage, critical, nowUtc, allSessions);
             }
 
             foreach (var participant in players)
@@ -83,7 +147,7 @@ internal sealed class MatchOrbAttackService(
                     continue;
                 }
 
-                if (!IsSunCrossfireSweptBody(shape, participant.Position!, lastFront, front, SwarmCrossfirePlayerRadius, SwarmCrossfirePlayerBodyHeight))
+                if (!IsSunCrossfireSweptBody(shape, participant.Position!, lastFront, front, GroundGeometry.PlayerRadius, GroundGeometry.PlayerBodyHeight))
                 {
                     continue;
                 }
@@ -97,7 +161,7 @@ internal sealed class MatchOrbAttackService(
                 participant.StatusEffects.SunBurn = new PlayerStatusEffects.SunBurnState(shape.OwnerId, shape.WeaponItemId, shape.Area, nowUtc.AddSeconds(Config.SWARM_SUN_BURN_SECONDS), nowUtc.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS));
                 if (participant.Session is { PlayerId: not null } victimSession && shape.OwnerId != 0)
                 {
-                    using var burnPacket = PacketMaker.G_TO_C_STATUS_EFFECT(new()
+                    combatDamage.QueueSessionEffect(runtime, victimSession, Protocol.G_TO_C_STATUS_EFFECT, new G_TO_C_STATUS_EFFECT
                     {
                         SourcePlayerId = shape.OwnerId,
                         TargetPlayerId = participant.PlayerId,
@@ -105,7 +169,6 @@ internal sealed class MatchOrbAttackService(
                         Effect = CombatStatusEffectKind.SunBurn,
                         DurationMs = (int)(Config.SWARM_SUN_BURN_SECONDS * 1000f)
                     });
-                    victimSession.TrySend(burnPacket);
                 }
             }
 
@@ -113,85 +176,24 @@ internal sealed class MatchOrbAttackService(
                 continue;
 
             shapes.RemoveAt(index);
-            if (shape.DetonateAtWall)
-            {
-                float axisOriginX = shape.Origin.X;
-                float axisOriginY = shape.Origin.Y * SwarmGroundYScale;
-                float axisLength = MathF.Max(shape.GroundLength, 1e-4f);
-                float axisUnitX = (shape.End.X - axisOriginX) / axisLength;
-                float axisUnitY = (shape.End.Y * SwarmGroundYScale - axisOriginY) / axisLength;
-                var detonation = new Vector3f(axisOriginX + axisUnitX * shape.GroundLength, (axisOriginY + axisUnitY * shape.GroundLength) / SwarmGroundYScale, 0f);
-                using var detonationPacket = Packet.Create((int)Protocol.G_TO_C_SUN_ORB_ATTACK);
-                detonationPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SUN_ORB_ATTACK
-                {
-                    EventId = shape.EventId,
-                    OwnerPlayerId = shape.OwnerId,
-                    WeaponItemId = shape.WeaponItemId,
-                    Shape = Config.SWARM_CROSSFIRE_SHAPE_DETONATE,
-                    OriginX = detonation.X,
-                    OriginY = detonation.Y,
-                    EndX = detonation.X,
-                    EndY = detonation.Y,
-                    Width = shape.BlastRadius,
-                    TelegraphSeconds = 0f,
-                    ActiveSeconds = 0f,
-                    AnchorMonsterId = shape.AnchorMonsterId,
-                    OwnerOrbOrdinal = 0
-                }));
-                foreach (var session in allSessions)
-                {
-                    if (session.PlayerId.HasValue && !session.Player.IsEliminated && session.Player.GameInfo.ObjectInfo.Area == shape.Area)
-                    {
-                        session.TrySend(detonationPacket);
-                    }
-                }
-            }
-            else
-            {
-            }
         }
     }
 
     private static bool IsSunCrossfireSweptBody(SwarmCrossfireShape shape, Vector3f position, float fromFront, float toFront, float radiusPadding, float bodyHeight)
     {
-        float length = shape.GroundLength;
+        var origin = shape.Origin;
+        var end = shape.End;
+        float length = GroundGeometry.GroundDistance(origin, end);
         if (length <= 0f)
         {
             return false;
         }
 
-        float ax = shape.Origin.X;
-        float ay = shape.Origin.Y * SwarmGroundYScale;
-        float ux = (shape.End.X - ax) / length;
-        float uy = (shape.End.Y * SwarmGroundYScale - ay) / length;
-        float reach = shape.HalfWidth + radiusPadding;
-        float bodyStart = -Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
-        float bodyEnd = bodyHeight - Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
-        for (float bodyY = bodyStart; bodyY <= bodyEnd + 0.001f; bodyY += 0.45f)
-        {
-            float px = position.X;
-            float py = (position.Y + bodyY) * SwarmGroundYScale;
-            float along = (px - ax) * ux + (py - ay) * uy;
-            float perpendicular = MathF.Abs((px - ax) * uy - (py - ay) * ux);
-            if (perpendicular > reach)
-            {
-                continue;
-            }
-
-            float clampedAlong = Math.Clamp(along, 0f, length);
-            float dxToSegment = along - clampedAlong;
-            if (dxToSegment * dxToSegment + perpendicular * perpendicular > reach * reach)
-            {
-                continue;
-            }
-
-            if (along > fromFront && along <= toFront + radiusPadding)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        float originGroundY = origin.Y * GroundGeometry.GroundYScale;
+        float unitX = (end.X - origin.X) / length;
+        float unitY = (end.Y * GroundGeometry.GroundYScale - originGroundY) / length;
+        return GroundGeometry.TryGetNearestBodyAlongOnLine(origin.X, originGroundY, unitX, unitY, length, shape.HalfWidth + radiusPadding, position, bodyHeight, out float along)
+               && along > fromFront && along <= toFront + radiusPadding;
     }
 
     public void ProcessSunBurns(MatchRuntime runtime, DateTime nowUtc)
@@ -227,6 +229,57 @@ internal sealed class MatchOrbAttackService(
         }
     }
 
+    internal static bool HasTargetInRadius(MatchRuntime runtime, long ownerId, AreaType area, Vector3f center, float radius)
+    {
+        foreach (var monster in runtime.Monsters.GetCombatTargets())
+        {
+            if (monster.Area == area && GroundGeometry.IsWithinGroundRadius(center, monster.Position, radius + GroundGeometry.MonsterRadius))
+            {
+                return true;
+            }
+        }
+        foreach (var player in runtime.GetAlivePlayers())
+        {
+            if (player.PlayerId == ownerId || player.Position == null || player.GameInfo.ObjectInfo.Area != area)
+            {
+                continue;
+            }
+            if (GroundGeometry.IsWithinGroundRadius(center, player.Position, radius + GroundGeometry.PlayerRadius))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    internal static (List<Monster> Monsters, List<Player> Players) CollectTargetsInRadius(MatchRuntime runtime, long ownerId, AreaType area, Vector3f center, float radius, bool padBodyRadius)
+    {
+        float monsterRadius = padBodyRadius ? radius + GroundGeometry.MonsterRadius : radius;
+        var monsters = new List<Monster>();
+        foreach (var monster in runtime.Monsters.GetCombatTargets())
+        {
+            if (monster.Area == area && GroundGeometry.IsWithinGroundRadius(center, monster.Position, monsterRadius))
+            {
+                monsters.Add(monster);
+            }
+        }
+
+        float playerRadius = padBodyRadius ? radius + GroundGeometry.PlayerRadius : radius;
+        var players = new List<Player>();
+        foreach (var participant in runtime.GetAlivePlayers())
+        {
+            if (participant.PlayerId == ownerId || participant.Position == null || participant.GameInfo.ObjectInfo.Area != area)
+            {
+                continue;
+            }
+            if (GroundGeometry.IsWithinGroundRadius(center, participant.Position, playerRadius))
+            {
+                players.Add(participant);
+            }
+        }
+        return (monsters, players);
+    }
+
     public void ProcessWaveDetonations(MatchRuntime runtime, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -241,49 +294,25 @@ internal sealed class MatchOrbAttackService(
                 continue;
             runtime.PendingWaveAttacks.RemoveAt(index);
 
-            var players = runtime.GetAlivePlayers();
             var owner = runtime.GetPlayer(vortex.OwnerId);
-            foreach (var target in runtime.Monsters.GetCombatTargets())
+            var (monsters, players) = CollectTargetsInRadius(runtime, vortex.OwnerId, vortex.Area, vortex.Position, vortex.Radius, padBodyRadius: true);
+            foreach (var target in monsters)
             {
-                if (target.Area != vortex.Area)
-                {
-                    continue;
-                }
-                if (!GroundGeometry.IsWithinGroundRadius(vortex.Position, target.Position, vortex.Radius))
-                {
-                    continue;
-                }
                 int monsterDamage = combatDamage.RollSwarmCriticalDamage(runtime, vortex.Damage, out bool critical);
                 target.ReserveDamage(monsterDamage);
-                combatDamage.ScheduleMonsterHit(runtime, new PendingMonsterHit(target.CombatTargetId, vortex.OwnerId, monsterDamage, nowUtc));
+                combatDamage.ScheduleMonsterHit(runtime, new PendingMonsterHit(target.MonsterId, vortex.OwnerId, monsterDamage, nowUtc));
                 if (vortex.AppliesSlow)
                 {
                     target.ApplySlow(Config.SWARM_WAVE_SLOW_SECONDS, nowUtc);
                 }
 
-                int monsterId = (runtime.Monsters.FindAliveByCombatTarget(target.CombatTargetId)?.MonsterId ?? 0);
-                if (monsterId <= 0)
-                {
-                    continue;
-                }
-
-                combatDamage.QueueMonsterHitNotification(runtime, owner, monsterId, vortex.Area, vortex.SourceItemId, monsterDamage, critical, showDamageOnly: true);
+                combatDamage.QueueMonsterHitNotification(runtime, owner, target.MonsterId, vortex.Area, vortex.SourceItemId, monsterDamage, critical, showDamageOnly: true);
             }
 
+            var alivePlayers = runtime.GetAlivePlayers();
             foreach (var participant in players)
             {
-                if (participant.IsEliminated || participant.PlayerId == vortex.OwnerId || participant.GameInfo.ObjectInfo.Area != vortex.Area || participant.Position == null)
-                {
-                    continue;
-                }
-
-                if (!GroundGeometry.IsWithinGroundRadius(vortex.Position, participant.Position,
-                        vortex.Radius + GroundGeometry.PlayerRadius))
-                {
-                    continue;
-                }
-
-                combatDamage.ApplySwarmShock(runtime, healthService, vortex.OwnerId, vortex.SourceItemId, vortex.Area, participant.PlayerId, players, Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER);
+                combatDamage.ApplySwarmShock(runtime, healthService, vortex.OwnerId, vortex.SourceItemId, vortex.Area, participant.PlayerId, alivePlayers, Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER);
                 if (runtime.IsEnded)
                 {
                     return;
@@ -297,7 +326,7 @@ internal sealed class MatchOrbAttackService(
                 var victimSession = participant.Session;
                 if (victimSession != null && vortex.OwnerId != 0)
                 {
-                    using var packet = PacketMaker.G_TO_C_STATUS_EFFECT(new G_TO_C_STATUS_EFFECT
+                    combatDamage.QueueSessionEffect(runtime, victimSession, Protocol.G_TO_C_STATUS_EFFECT, new G_TO_C_STATUS_EFFECT
                     {
                         SourcePlayerId = vortex.OwnerId,
                         TargetPlayerId = participant.PlayerId,
@@ -305,7 +334,6 @@ internal sealed class MatchOrbAttackService(
                         Effect = CombatStatusEffectKind.WaveOrbSlow,
                         DurationMs = (int)(Config.SWARM_WAVE_SLOW_SECONDS * 1000f)
                     });
-                    victimSession.TrySend(packet);
                 }
             }
         }

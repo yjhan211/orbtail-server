@@ -112,7 +112,7 @@ public sealed class GameServerDependencyInjectionTests
         var health = provider.GetRequiredService<PlayerHealthService>();
         Assert.Same(health, provider.GetRequiredService<PlayerHealthService>());
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        foreach (var type in new[] { typeof(MatchCombatService), typeof(game_server.players.PlayerOrbService),
+        foreach (var type in new[] { typeof(MatchCombatService), typeof(game_server.matches.MatchOrbAttackService),
                      typeof(game_server.matches.MatchFieldService), typeof(game_server.players.PlayerPickupService) })
         {
             var service = provider.GetRequiredService(type);

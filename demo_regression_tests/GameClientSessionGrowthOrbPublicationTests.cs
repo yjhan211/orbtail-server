@@ -220,8 +220,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
         Assert.Equal(2, runtime.SunCrossfireShapes.Count);
         Assert.Equal(new[] { human.PlayerId, bot.PlayerId }, runtime.SunCrossfireShapes.Select(shape => shape.OwnerId));
-        Assert.Equal(bot.PlayerId, runtime.SunCrossfireShapes[0].AnchorCombatTargetId);
-        Assert.Equal(human.PlayerId, runtime.SunCrossfireShapes[1].AnchorCombatTargetId);
+        Assert.Equal((ObjectType.PLAYER, bot.PlayerId), runtime.SunCrossfireShapes[0].AnchorTarget);
+        Assert.Equal((ObjectType.PLAYER, human.PlayerId), runtime.SunCrossfireShapes[1].AnchorTarget);
         Assert.Equal(runtime.SunCrossfireShapes[0].Damage, runtime.SunCrossfireShapes[1].Damage);
         Assert.Null(human.Session);
         Assert.Null(bot.Session);

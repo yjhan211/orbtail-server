@@ -15,8 +15,6 @@ namespace game_server.matches;
 /// </summary>
 internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
 {
-    private const int SwarmRingVfxKindRetaliationBlocked = 6;
-
     private static bool RollCritical(MatchRuntime runtime, double chance) => runtime.CombatDamage.CriticalRng.NextDouble() < chance;
 
     public void ScheduleMonsterHit(MatchRuntime runtime, PendingMonsterHit hit)
@@ -219,7 +217,6 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
 
     public void ApplySwarmMonsterHitNow(
         MatchRuntime runtime,
-        long combatTargetId,
         int monsterId,
         long attackerId,
         int weaponItemId,
@@ -233,7 +230,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         {
             throw new InvalidOperationException("Combat damage requires the match lock.");
         }
-        var damageResult = monsters.ApplyMonsterDamage(runtime, combatTargetId, attackerId, damage, nowUtc);
+        var damageResult = monsters.ApplyMonsterDamage(runtime, monsterId, attackerId, damage, nowUtc);
         if (!damageResult.Applied)
         {
             return;
@@ -316,11 +313,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
             }
 
             runtime.CombatDamage.PendingMonsterHits.RemoveAt(index);
-            var damageResult = monsters.ApplyMonsterDamage(runtime, hit.CombatTargetId, hit.AttackerId, hit.Damage, nowUtc);
-            if (damageResult.Applied)
-            {
-            }
-
+            var damageResult = monsters.ApplyMonsterDamage(runtime, hit.MonsterId, hit.AttackerId, hit.Damage, nowUtc);
             if (damageResult.Applied && damageResult.Killed && damageResult.Monster != null)
             {
                 SettleSwarmMonsterKill(runtime, damageResult, hit.AttackerId, sessions);
@@ -328,36 +321,12 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters)
         }
     }
 
-    public void SendSwarmRetaliationVfx(MatchRuntime runtime, long cutterId, long victimId, AreaType area, int kind, float seconds, List<GameClientSession> allSessions)
+    public void QueueSessionEffect<T>(MatchRuntime runtime, GameClientSession session, Protocol protocol, T body) where T : IMessagePackObject
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Combat damage requires the match lock.");
         }
-        using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_RING_EFFECT);
-        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_RING_EFFECT
-        {
-            OwnerPlayerId = cutterId,
-            CenterX = 0f,
-            CenterY = 0f,
-            Radius = seconds,
-            Kind = kind,
-            VictimPlayerId = victimId,
-            FromOrdinal = 0
-        }));
-
-        foreach (var session in allSessions)
-        {
-            if (!session.PlayerId.HasValue || session.Player.GameInfo.ObjectInfo.Area != area)
-            {
-                continue;
-            }
-
-            if (session.PlayerId.Value == victimId || session.PlayerId.Value == cutterId)
-            {
-                session.TrySend(packet);
-            }
-        }
+        runtime.PendingCombatEffects.Enqueue((session, protocol, MessagePackSerializer.Serialize(body)));
     }
-
 }

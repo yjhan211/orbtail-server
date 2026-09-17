@@ -21,7 +21,6 @@ public sealed class Monster
     };
 
     public int MonsterId { get => Info.MonsterId; init => Info.MonsterId = value; }
-    public long CombatTargetId { get; init; }
     public MonsterInsignia Insignia
     {
         get => _insignia;
@@ -62,8 +61,6 @@ public sealed class Monster
     public int PhaseTier { get => Info.Phase; set => Info.Phase = value; }
     public int PendingDamage { get; set; }
     public MovementState Movement { get; } = new();
-
-    public static bool IsCombatTargetId(long actorId) => actorId < -1_000_000_000_000L;
 
     public void ReserveDamage(int damage)
     {

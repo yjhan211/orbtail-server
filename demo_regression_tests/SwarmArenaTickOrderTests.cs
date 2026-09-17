@@ -75,7 +75,7 @@ public sealed class SwarmArenaTickOrderTests
             "runtime.Doors.CloseDoorsForAreas(",
             "DestroyOrbsFromOrdinal(",
             "SendOrbUpdate(",
-            "Protocol.G_TO_C_ORB_RING_EFFECT");
+            "Protocol.G_TO_C_ORB_TAIL_CUT");
         Assert.DoesNotContain("catch", tick);
     }
 

@@ -1,4 +1,3 @@
-using network.common.data;
 using System.Reflection;
 using game_server.matches;
 using game_server.players.bots;
@@ -6,6 +5,7 @@ using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 using network.core;
 using network.packets;
@@ -540,7 +540,7 @@ public sealed class BotMovementDeliveryTests
         synchronization.ProcessTick(runtime, now);
 
         Assert.Equal(Protocol.G_TO_C_OBJECT_ENTER, recipient.Packets[0].Protocol);
-        Assert.Single(recipient.Packets.Where(packet => packet.Protocol == Protocol.G_TO_C_MOVE));
+        Assert.Single(recipient.Packets, packet => packet.Protocol == Protocol.G_TO_C_MOVE);
         Assert.Equal(2, recipient.Read<G_TO_C_MOVE>(Protocol.G_TO_C_MOVE).Objects.Count);
         Assert.Empty(elsewhere.Packets);
         recipient.Packets.Clear();
@@ -689,8 +689,8 @@ public sealed class BotMovementDeliveryTests
         {
             objects.Add((new GameObjectInfo
             {
-            MapId = network.common.Config.SWARM_MATCH_MAP, ObjectType = ObjectType.PLAYER, ObjectId = movement.BotPlayerId,
-                 Cell = movement.ToCell, Position = movement.Position,
+                MapId = network.common.Config.SWARM_MATCH_MAP, ObjectType = ObjectType.PLAYER, ObjectId = movement.BotPlayerId,
+                Cell = movement.ToCell, Position = movement.Position,
                 Velocity = movement.Velocity, Rotation = movement.Rotation
             }, movement.FromArea));
         }
@@ -800,6 +800,52 @@ public sealed class BotMovementDeliveryTests
         }
     }
 
+    // 태양 예고와 파도 링은 발동 시점이 아니라 틱 끝 동기화가 도형·예약 상태에서 한 번만 발행한다.
+    [Fact]
+    public void SunAndWaveTelegraphsArePublishedOnceBySynchronization()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(44007);
+        var recipient = AddRecipient(store, 44007, 101, AreaType.S2Corridor9, []);
+        var elsewhere = AddRecipient(store, 44007, 102, AreaType.S2Library1, []);
+        using var scope = runtime.Enter();
+        var now = DateTime.UtcNow;
+        runtime.StartGameplay(now);
+        var originCell = network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
+        runtime.SunCrossfireShapes.Add(new SwarmCrossfireShape
+        {
+            EventId = 7, OwnerId = 101, WeaponItemId = 107000010, Damage = 10,
+            Area = AreaType.S2Corridor9,
+            OriginCell = originCell,
+            EndCell = new network.common.data.models.Cell(originCell.X + 3, originCell.Y),
+            ArmedAtUtc = now.AddSeconds(1), ExpiresAtUtc = now.AddSeconds(2),
+            DetonateAtEnd = true, OwnerOrbOrdinal = 2
+        });
+        runtime.PendingWaveAttacks.Add(new PendingWaveAttack(
+            101, AreaType.S2Corridor9, network.common.data.MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, originCell),
+            5, 1.8f, 107000030, now.AddSeconds(1), false));
+        Assert.Empty(recipient.Packets);
+
+        var synchronization = new MatchSynchronizationService();
+        synchronization.ProcessTick(runtime, now.AddMilliseconds(50));
+
+        var sun = recipient.Read<G_TO_C_SUN_ORB_ATTACK>(Protocol.G_TO_C_SUN_ORB_ATTACK);
+        Assert.Equal(7, sun.EventId);
+        Assert.True(sun.DetonateAtEnd);
+        Assert.Equal(2, sun.OwnerOrbOrdinal);
+        Assert.Equal(1f, sun.ActiveSeconds, 3);
+        Assert.Equal(0.95f, sun.TelegraphSeconds, 3);
+        var wave = recipient.Read<G_TO_C_WAVE_ORB_ATTACK>(Protocol.G_TO_C_WAVE_ORB_ATTACK);
+        Assert.Equal(1.8f, wave.Radius);
+        Assert.Equal(0.95f, wave.FuseSeconds, 3);
+        Assert.DoesNotContain(elsewhere.Packets, packet => packet.Protocol is Protocol.G_TO_C_SUN_ORB_ATTACK or Protocol.G_TO_C_WAVE_ORB_ATTACK);
+
+        recipient.Packets.Clear();
+        synchronization.ProcessTick(runtime, now.AddMilliseconds(100));
+        Assert.DoesNotContain(recipient.Packets, packet => packet.Protocol is Protocol.G_TO_C_SUN_ORB_ATTACK or Protocol.G_TO_C_WAVE_ORB_ATTACK);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -840,7 +886,7 @@ public sealed class BotMovementDeliveryTests
 
         runtime.Monsters.Initialize(now);
         var combat = new game_server.matches.monsters.MonsterCombatService();
-        combat.ApplyMonsterDamage(runtime, monster.CombatTargetId, 101, 5, now);
+        combat.ApplyMonsterDamage(runtime, monster.MonsterId, 101, 5, now);
         Assert.Empty(recipient.Packets);
         new MatchSynchronizationService().ProcessTick(runtime, now.AddMilliseconds(50));
         Assert.Equal(5, Assert.Single(recipient.Read<G_TO_C_MONSTER_INFO>(Protocol.G_TO_C_MONSTER_INFO).Monsters).CurrentHealth);
@@ -927,7 +973,7 @@ public sealed class BotMovementDeliveryTests
         var info = new GameObjectInfo
         {
             ObjectType = ObjectType.PLAYER, ObjectId = 42, MapId = Config.SWARM_MATCH_MAP,
-             Cell = new Cell(3, 4), Position = new Vector3f(10, 20, 0),
+            Cell = new Cell(3, 4), Position = new Vector3f(10, 20, 0),
             Velocity = new Vector3f(1, 2, 0), Rotation = 30
         };
         using var packet = PacketMaker.G_TO_C_MOVE(info, 123456);

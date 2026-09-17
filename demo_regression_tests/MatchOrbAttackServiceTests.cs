@@ -5,6 +5,7 @@ using game_server.players.bots;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 
 namespace demo_regression_tests;
@@ -12,6 +13,27 @@ namespace demo_regression_tests;
 public sealed class MatchOrbAttackServiceTests
 {
     public MatchOrbAttackServiceTests() => TestGameData.EnsureBattleItemCombatLoaded();
+
+    [Theory]
+    [InlineData(1, 0, 1)]
+    [InlineData(-1, 0, 3)]
+    [InlineData(0, 1, 3)]
+    [InlineData(0, -1, 1)]
+    public void CellShapeUsesEndpointCenters(int dx, int dy, int lengthCells)
+    {
+        var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Gym1);
+        var shape = new SwarmCrossfireShape
+        {
+            OriginCell = cell, EndCell = new Cell(cell.X + dx * lengthCells, cell.Y + dy * lengthCells)
+        };
+        var origin = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
+        var next = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, new Cell(cell.X + dx, cell.Y + dy));
+
+        Assert.Equal(origin, shape.Origin);
+        Assert.Equal(origin.X + (next.X - origin.X) * lengthCells, shape.End.X);
+        Assert.Equal(origin.Y + (next.Y - origin.Y) * lengthCells, shape.End.Y);
+        Assert.InRange(MathF.Abs(shape.GroundLength - GroundGeometry.GroundDistance(origin, next) * lengthCells), 0f, 0.0001f);
+    }
 
     [Fact]
     public void EntryPointsRequireMatchLockAndEndedMatchDoesNotAdvanceBurns()
@@ -47,22 +69,24 @@ public sealed class MatchOrbAttackServiceTests
         match.RegisterPlayer(victim.Player);
         using (MatchRuntimeStore.Enter(match))
         {
+            var originCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, TestMapPosition.In(AreaType.S2Gym1));
             var shape = new SwarmCrossfireShape
             {
                 EventId = 1, OwnerId = 11, WeaponItemId = 107000010, Damage = 10,
-                Area = AreaType.S2Gym1, Origin = TestMapPosition.In(AreaType.S2Gym1),
-                End = TestMapPosition.In(AreaType.S2Gym1, 6), GroundLength = 6, HalfWidth = 0.35f,
-                SweepSpeed = 5, ArmedAtUtc = now.AddSeconds(1), ExpiresAtUtc = now.AddSeconds(3),
-                LastFront = -0.35f, DetonateAtWall = false
+                Area = AreaType.S2Gym1,
+                OriginCell = originCell,
+                EndCell = new Cell(originCell.X + 8, originCell.Y),
+                ArmedAtUtc = now.AddSeconds(1), ExpiresAtUtc = now.AddSeconds(3)
             };
             match.SunCrossfireShapes.Add(shape);
             owner.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Gym1)));
-            owner.Player.Position = victim.Player.Position = TestMapPosition.In(AreaType.S2Gym1, 2, Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y);
+            var hitCell = new Cell(shape.OriginCell.X + 2, shape.OriginCell.Y);
+            owner.Player.Position = victim.Player.Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, hitCell);
             service.ProcessSunCrossfires(match, now);
             Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
             Assert.Empty(shape.HitVictims);
 
-            var hitAt = now.AddSeconds(1.6);
+            var hitAt = shape.ArmedAtUtc.AddSeconds(3f / Config.SWARM_CROSSFIRE_SUN_SWEEP_SPEED);
             service.ProcessSunCrossfires(match, hitAt);
             int healthAfterHit = victim.Player.Health;
             Assert.InRange(healthAfterHit, 1, Config.MAX_HEALTH - 1);

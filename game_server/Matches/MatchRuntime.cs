@@ -44,6 +44,7 @@ internal sealed class MatchRuntime
     internal Dictionary<(ObjectType Type, long Id), MatchObjectSnapshot> SynchronizedObjects { get; } = new();
     internal Dictionary<long, PlayerState> SynchronizedPlayerStates { get; } = new();
     internal Queue<(GameClientSession Session, G_TO_C_COMBAT_HIT Hit)> PendingCombatHits { get; } = new();
+    internal Queue<(GameClientSession Session, Protocol Protocol, byte[] Body)> PendingCombatEffects { get; } = new();
 
     public bool IsEnded => Volatile.Read(ref _ended) != 0;
     public object MatchLock { get; } = new();
@@ -411,6 +412,7 @@ internal sealed class MatchRuntime
                         _logger.LogWarning(ex, "Terminal combat hit publication failed: MatchingId={MatchingId}", MatchingId);
                     }
                 }
+                PendingCombatEffects.Clear();
                 TickLoop?.Stop();
                 foreach (var player in _players.Values)
                 {

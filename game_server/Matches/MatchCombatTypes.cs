@@ -1,4 +1,5 @@
 using network.common;
+using network.common.data;
 using network.common.data.models;
 
 namespace game_server.matches;
@@ -10,7 +11,7 @@ public readonly record struct MonsterContactDamage(
     int Damage);
 
 public readonly record struct PendingMonsterHit(
-    long CombatTargetId,
+    int MonsterId,
     long AttackerId,
     int Damage,
     DateTime ApplyAtUtc);
@@ -23,7 +24,8 @@ public readonly record struct PendingWaveAttack(
     float Radius,
     int SourceItemId,
     DateTime ExplodeAtUtc,
-    bool AppliesSlow);
+    bool AppliesSlow,
+    bool IsPublished = false);
 
 public sealed class CutRetaliationWindow
 {
@@ -38,18 +40,20 @@ public sealed class SwarmCrossfireShape
     public int WeaponItemId { get; init; }
     public int Damage { get; init; }
     public AreaType Area { get; init; }
-    public Vector3f Origin { get; init; } = new(0f, 0f, 0f);
-    public Vector3f End { get; init; } = new(0f, 0f, 0f);
-    public float GroundLength { get; init; }
-    public float HalfWidth { get; init; }
-    public float BlastRadius { get; init; }
-    public float SweepSpeed { get; init; }
+    public Cell OriginCell { get; init; } = new(0, 0);
+    public Cell EndCell { get; init; } = new(0, 0);
+    public Vector3f Origin => MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, OriginCell);
+    public Vector3f End => MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, EndCell);
+    public float GroundLength => GroundGeometry.GroundDistance(Origin, End);
+    public float HalfWidth => Config.TierValue(Config.SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER, OrbData.TryGetOrbGroupAndTier(WeaponItemId, out _, out int tier) ? tier : 1) * 0.5f;
     public DateTime ArmedAtUtc { get; init; }
     public DateTime ExpiresAtUtc { get; init; }
-    public bool DetonateAtWall { get; init; }
-    public int AnchorMonsterId { get; init; }
-    public long AnchorCombatTargetId { get; init; }
-    public float LastFront { get; set; }
+    public bool DetonateAtEnd { get; init; }
+    public int OwnerOrbOrdinal { get; init; }
+    public bool IsPublished { get; set; }
+    public (ObjectType Type, long Id) AnchorTarget { get; init; }
+    private float? _lastFront;
+    public float LastFront { get => _lastFront ?? -HalfWidth; set => _lastFront = value; }
     public HashSet<long> HitVictims { get; } = new();
-    public HashSet<long> HitMonsters { get; } = new();
+    public HashSet<int> HitMonsters { get; } = new();
 }

@@ -70,23 +70,9 @@ public sealed class MatchMonsters
         return targets;
     }
 
-    public Monster? FindByCombatTarget(long combatTargetId)
-    {
-        foreach (var candidate in Entities.Values)
-        {
-            if (candidate.CombatTargetId == combatTargetId)
-            {
-                return candidate;
-            }
-        }
-        return null;
-    }
+    public Monster? Find(int monsterId) => Entities.GetValueOrDefault(monsterId);
 
-    public Monster? FindAliveByCombatTarget(long combatTargetId)
-    {
-        var monster = FindByCombatTarget(combatTargetId);
-        return monster is { Alive: true } ? monster : null;
-    }
+    public Monster? FindAlive(int monsterId) => Find(monsterId) is { Alive: true } monster ? monster : null;
 
     internal void Release()
     {

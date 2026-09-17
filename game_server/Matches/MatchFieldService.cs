@@ -119,16 +119,14 @@ internal class MatchFieldService(
                 owner.Session?.SendOrbUpdate(orb);
             }
 
-            using var ringPacket = Packet.Create((int)Protocol.G_TO_C_ORB_RING_EFFECT);
-            ringPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_RING_EFFECT
+            using var ringPacket = Packet.Create((int)Protocol.G_TO_C_ORB_TAIL_CUT);
+            ringPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_TAIL_CUT
             {
-                OwnerPlayerId = owner.PlayerId,
-                CenterX = firstClosedOrbPosition.X,
-                CenterY = firstClosedOrbPosition.Y,
-                Radius = PlayerOrbTrailService.CutFlashRadius,
-                Kind = PlayerOrbTrailService.CutVfxKind,
+                CutterPlayerId = owner.PlayerId,
                 VictimPlayerId = owner.PlayerId,
-                FromOrdinal = firstClosedOrdinal
+                FromOrdinal = firstClosedOrdinal,
+                X = firstClosedOrbPosition.X,
+                Y = firstClosedOrbPosition.Y
             }));
             foreach (var viewer in runtime.GetPlayers())
             {

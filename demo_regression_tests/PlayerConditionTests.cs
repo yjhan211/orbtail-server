@@ -8,6 +8,9 @@ namespace demo_regression_tests;
 
 public sealed class PlayerConditionTests
 {
+    // 위치·셀 변환은 맵 정보가 있어야 한다 — 실행 순서와 무관하게 게임 데이터를 먼저 올린다.
+    public PlayerConditionTests() => UserServerMatchingTestData.EnsureGameDataLoaded();
+
     // 수면 회복 계산은 탈락 처리나 전송 의존성을 사용하지 않는다.
     private readonly PlayerHealthService _health = new(null!, Microsoft.Extensions.Logging.Abstractions.NullLogger<PlayerHealthService>.Instance);
 

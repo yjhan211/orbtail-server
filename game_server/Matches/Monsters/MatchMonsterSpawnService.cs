@@ -11,7 +11,6 @@ namespace game_server.matches.monsters;
 internal sealed class MatchMonsterSpawnService
 {
     private const int FirstMonsterId = 7_000_000;
-    private const long FirstCombatTargetId = -4_000_000_000_000_000_000L;
     private static readonly int InsigniaCount = Enum.GetValues<MonsterInsignia>().Length;
 
     private static int GetSupplyPhaseIndex(double elapsedSeconds)
@@ -129,7 +128,6 @@ internal sealed class MatchMonsterSpawnService
             var monster = new Monster
             {
                 MonsterId = FirstMonsterId + serial,
-                CombatTargetId = FirstCombatTargetId - serial,
                 Insignia = insignia,
                 Position = position,
                 Health = maxHp,

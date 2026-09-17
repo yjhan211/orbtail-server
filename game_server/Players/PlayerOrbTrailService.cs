@@ -12,8 +12,6 @@ namespace game_server.players;
 /// </summary>
 internal sealed class PlayerOrbTrailService
 {
-    internal const float CutFlashRadius = 0.7f;
-    internal const int CutVfxKind = 1;
     private const float SwarmTrailSampleMinDistance = 0.08f;
     private const float SwarmTrailTeleportResetDistance = 5f;
 

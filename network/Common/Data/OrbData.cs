@@ -24,14 +24,16 @@ namespace network.common.data
             return BattleItemCombatData.Get(itemId)?.Damage ?? 0;
         }
 
+        public static int GetAttackDamage(int itemId, float attackMultiplier, float seriesMultiplier) =>
+            Math.Max(1, (int)MathF.Round(GetAttackDamage(itemId) * attackMultiplier * seriesMultiplier));
+
         public static float GetWaveVortexRadius(int itemId)
         {
             if (!TryGetOrbGroupAndTier(itemId, out int orbGroupId, out int tier) || orbGroupId != OrbGroupIds.Wave)
             {
                 return 0f;
             }
-            float[] radiusByTier = Config.SWARM_WAVE_VORTEX_RADIUS_BY_TIER;
-            return radiusByTier[Math.Min(tier, radiusByTier.Length) - 1];
+            return Config.TierValue(Config.SWARM_WAVE_VORTEX_RADIUS_BY_TIER, tier);
         }
 
         public static int GetDraftTierByElapsed(double? elapsedSeconds) =>

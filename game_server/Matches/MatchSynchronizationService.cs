@@ -1,10 +1,10 @@
-using MessagePack;
-using game_server.sessions;
-using game_server.players;
 using game_server.matches.monsters;
-using network.packets;
+using game_server.players;
+using game_server.sessions;
+using MessagePack;
 using network.common;
 using network.common.data.models;
+using network.packets;
 
 namespace game_server.matches;
 
@@ -24,6 +24,8 @@ internal sealed class MatchSynchronizationService
         public Dictionary<GameClientSession, G_TO_C_OBJECT_ENTER> Entries { get; init; } = new();
         public Dictionary<GameClientSession, List<ObjectIdentity>> Leaves { get; init; } = new();
         public Dictionary<GameClientSession, List<InteractableInfo>> InteractableUpdates { get; init; } = new();
+        public Dictionary<GameClientSession, List<G_TO_C_SUN_ORB_ATTACK>> SunAttacks { get; init; } = new();
+        public Dictionary<GameClientSession, List<G_TO_C_WAVE_ORB_ATTACK>> WaveAttacks { get; init; } = new();
     }
 
     public void InitializeComparisonSnapshots(MatchRuntime runtime)
@@ -75,6 +77,8 @@ internal sealed class MatchSynchronizationService
                 CollectMovementUpdates(runtime, monster.Info.ObjectInfo, batch);
             }
         }
+        CollectSunAttacks(runtime, batch, nowUtc);
+        CollectWaveAttacks(runtime, batch, nowUtc);
         CollectObjectLeaves(runtime, batch);
         SendBatch(runtime, batch);
 
@@ -319,6 +323,106 @@ internal sealed class MatchSynchronizationService
         }
     }
 
+    internal void CollectSunAttacks(MatchRuntime runtime, SyncBatch batch, DateTime nowUtc)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Synchronization collection requires the match lock.");
+        }
+        foreach (var shape in runtime.SunCrossfireShapes)
+        {
+            if (shape.IsPublished)
+            {
+                continue;
+            }
+            shape.IsPublished = true;
+            var origin = shape.Origin;
+            var end = shape.End;
+            var message = new G_TO_C_SUN_ORB_ATTACK
+            {
+                EventId = shape.EventId,
+                OwnerPlayerId = shape.OwnerId,
+                WeaponItemId = shape.WeaponItemId,
+                OriginX = origin.X,
+                OriginY = origin.Y,
+                EndX = end.X,
+                EndY = end.Y,
+                Width = shape.HalfWidth * 2f,
+                // 발행이 늦어진 만큼 예고를 줄여 보낸다 — 서버의 발사 시각(ArmedAtUtc)은 움직이지 않는다.
+                TelegraphSeconds = MathF.Max(0f, (float)(shape.ArmedAtUtc - nowUtc).TotalSeconds),
+                ActiveSeconds = (float)(shape.ExpiresAtUtc - shape.ArmedAtUtc).TotalSeconds,
+                DetonateAtEnd = shape.DetonateAtEnd,
+                OwnerOrbOrdinal = shape.OwnerOrbOrdinal
+            };
+            foreach (var session in batch.Sessions)
+            {
+                if (session.Player.IsEliminated || session.Player.GameInfo.ObjectInfo.Area != shape.Area)
+                {
+                    continue;
+                }
+                if (!batch.SunAttacks.TryGetValue(session, out var attacks))
+                {
+                    attacks = new List<G_TO_C_SUN_ORB_ATTACK>();
+                    batch.SunAttacks.Add(session, attacks);
+                }
+                attacks.Add(message);
+            }
+        }
+    }
+
+    /// <summary>아직 알리지 않은 파도 소용돌이 예약의 예고를 같은 구역 관찰자별로 모은다. 기폭까지 남은 시간은 예약 상태에서 계산한다.</summary>
+    internal void CollectWaveAttacks(MatchRuntime runtime, SyncBatch batch, DateTime nowUtc)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Synchronization collection requires the match lock.");
+        }
+        for (int index = 0; index < runtime.PendingWaveAttacks.Count; index++)
+        {
+            var vortex = runtime.PendingWaveAttacks[index];
+            if (vortex.IsPublished)
+            {
+                continue;
+            }
+            runtime.PendingWaveAttacks[index] = vortex with { IsPublished = true };
+            var message = new G_TO_C_WAVE_ORB_ATTACK
+            {
+                OwnerPlayerId = vortex.OwnerId,
+                CenterX = vortex.Position.X,
+                CenterY = vortex.Position.Y,
+                Radius = vortex.Radius,
+                FuseSeconds = MathF.Max(0f, (float)(vortex.ExplodeAtUtc - nowUtc).TotalSeconds)
+            };
+            foreach (var session in batch.Sessions)
+            {
+                if (session.Player.IsEliminated || session.Player.GameInfo.ObjectInfo.Area != vortex.Area)
+                {
+                    continue;
+                }
+                if (!batch.WaveAttacks.TryGetValue(session, out var attacks))
+                {
+                    attacks = new List<G_TO_C_WAVE_ORB_ATTACK>();
+                    batch.WaveAttacks.Add(session, attacks);
+                }
+                attacks.Add(message);
+            }
+        }
+    }
+
+    internal static void SendPendingCombatEffects(MatchRuntime runtime)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat effect publication requires the match lock.");
+        }
+        while (runtime.PendingCombatEffects.TryDequeue(out var effect))
+        {
+            using var packet = Packet.Create((int)effect.Protocol);
+            packet.SetBody(effect.Body);
+            effect.Session.TrySend(packet);
+        }
+    }
+
     internal void SendBatch(MatchRuntime runtime, SyncBatch batch)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -357,5 +461,24 @@ internal sealed class MatchSynchronizationService
             packet.SetBody(MessagePackSerializer.Serialize(message));
             session.TrySend(packet);
         }
+        foreach (var (session, attacks) in batch.SunAttacks)
+        {
+            foreach (var attack in attacks)
+            {
+                using var packet = Packet.Create((int)Protocol.G_TO_C_SUN_ORB_ATTACK);
+                packet.SetBody(MessagePackSerializer.Serialize(attack));
+                session.TrySend(packet);
+            }
+        }
+        foreach (var (session, attacks) in batch.WaveAttacks)
+        {
+            foreach (var attack in attacks)
+            {
+                using var packet = Packet.Create((int)Protocol.G_TO_C_WAVE_ORB_ATTACK);
+                packet.SetBody(MessagePackSerializer.Serialize(attack));
+                session.TrySend(packet);
+            }
+        }
+        SendPendingCombatEffects(runtime);
     }
 }

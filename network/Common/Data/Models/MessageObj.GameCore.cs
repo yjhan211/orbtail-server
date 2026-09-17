@@ -32,7 +32,7 @@ namespace network.common.data.models
 
     public enum CombatEntityKind { Player = 0, Monster = 1 }
     public enum HealthRecoveryKind { Sleep = 1 }
-    public enum CombatStatusEffectKind { WaveOrbSlow = 0, SunBurn = 1, WindOrbWound = 2 }
+    public enum CombatStatusEffectKind { WaveOrbSlow = 0, SunBurn = 1, WindOrbWound = 2, CutRetaliationGuard = 3 }
 
     /// <summary>사람·봇·몬스터의 이동 공간 정보. 오브 위상은 플레이어에게만 적용한다.</summary>
     [MessagePackObject]
@@ -123,28 +123,31 @@ namespace network.common.data.models
         [Key("gauge")] public int BodyHealth { get; set; } = -1;
     }
 
-    /// <summary>오브 링 연출의 공통 식별값. 기존 패킷 번호를 유지한다.</summary>
-    public enum OrbRingEffectKind
+    /// <summary>
+    ///     꼬리 절단 통지. 같은 구역에 브로드캐스트 — 클라는 잘린 순번부터 꼬리 섬광과 파열 연출을 낸다.
+    ///     구역 폐쇄로 부서질 때는 절단자와 피해자가 같다.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_ORB_TAIL_CUT : IMessagePackObject
     {
-        WaveOrb = 2
+        [Key("cutterId")] public long CutterPlayerId { get; set; }
+        [Key("victimId")] public long VictimPlayerId { get; set; }
+        [Key("fromOrdinal")] public int FromOrdinal { get; set; }
+        [Key("x")] public float X { get; set; }
+        [Key("y")] public float Y { get; set; }
     }
 
     /// <summary>
-    ///     오브 공용 링 연출. 같은 구역에 브로드캐스트 — 링 중심·반경.
-    ///     Kind: 0=포위 완성, 1=절단 파열, 2=파도오브 소용돌이 예고 — 클라가 색·효과음을 분기한다.
+    ///     파도오브 공격 예고. 서버가 소용돌이 자리·반경·기폭까지 남은 시간을 확정해 같은 구역에 알린다 — 표시 = 판정.
     /// </summary>
     [MessagePackObject]
-    public class G_TO_C_ORB_RING_EFFECT : IMessagePackObject
+    public class G_TO_C_WAVE_ORB_ATTACK : IMessagePackObject
     {
         [Key("ownerId")] public long OwnerPlayerId { get; set; }
         [Key("centerX")] public float CenterX { get; set; }
         [Key("centerY")] public float CenterY { get; set; }
         [Key("radius")] public float Radius { get; set; }
-        [Key("kind")] public int Kind { get; set; }
-
-        // 절단(kind 1) 전용: 잘린 열의 주인과 절단 시작 순번 — 클라가 꼬리 섬광을 그린다.
-        [Key("victimId")] public long VictimPlayerId { get; set; }
-        [Key("ord")] public int FromOrdinal { get; set; }
+        [Key("fuseSeconds")] public float FuseSeconds { get; set; }
     }
 
     /// <summary>
@@ -159,7 +162,6 @@ namespace network.common.data.models
         [Key("eventId")] public long EventId { get; set; }
         [Key("ownerId")] public long OwnerPlayerId { get; set; }
         [Key("weaponItemId")] public int WeaponItemId { get; set; }
-        [Key("shape")] public int Shape { get; set; }
         [Key("originX")] public float OriginX { get; set; }
         [Key("originY")] public float OriginY { get; set; }
         [Key("endX")] public float EndX { get; set; }
@@ -167,10 +169,7 @@ namespace network.common.data.models
         [Key("width")] public float Width { get; set; }
         [Key("telegraphSeconds")] public float TelegraphSeconds { get; set; }
         [Key("activeSeconds")] public float ActiveSeconds { get; set; }
-        [Key("anchorMonsterId")] public int AnchorMonsterId { get; set; }
-
-        // 발사한 오브의 열 순번 — 클라는 서버 원점 대신 자기가 그리는 그 슬롯 위치에서 선을 시작한다
-        // (서버 꼬리 좌표와 클라 슬롯이 어긋나 "오브가 아닌 곳에서 나가는" 것처럼 보이던 문제).
+        [Key("detonateAtEnd")] public bool DetonateAtEnd { get; set; }
         [Key("ownerOrbOrdinal")] public int OwnerOrbOrdinal { get; set; }
     }
 

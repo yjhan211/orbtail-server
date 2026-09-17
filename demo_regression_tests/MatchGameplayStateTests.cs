@@ -141,7 +141,7 @@ public sealed class MatchGameplayStateTests
         first.SunCrossfireShapes.Add(CreateCrossfireShape(
             eventId: 11,
             ownerId: playerId,
-            anchorCombatTargetId: 7001,
+            anchorPlayerId: 7001,
             armedAtUtc: nowUtc.AddSeconds(1)));
         GetOrRegisterPlayer(first, playerId).StatusEffects.SunBurn = new PlayerStatusEffects.SunBurnState(playerId, 101, AreaType.S2Gym1, nowUtc.AddSeconds(3), nowUtc.AddSeconds(1));
 
@@ -152,7 +152,7 @@ public sealed class MatchGameplayStateTests
         second.SunCrossfireShapes.Add(CreateCrossfireShape(
             eventId: 12,
             ownerId: playerId,
-            anchorCombatTargetId: 7001,
+            anchorPlayerId: 7001,
             armedAtUtc: nowUtc.AddSeconds(1)));
         GetOrRegisterPlayer(second, playerId).StatusEffects.SunBurn = new PlayerStatusEffects.SunBurnState(playerId + 1, 202, AreaType.S2Gym1, nowUtc.AddSeconds(4), nowUtc.AddSeconds(2));
 
@@ -181,7 +181,7 @@ public sealed class MatchGameplayStateTests
         removed.SunCrossfireShapes.Add(CreateCrossfireShape(
             eventId: 11,
             ownerId: removedPlayerId,
-            anchorCombatTargetId: 7001,
+            anchorPlayerId: 7001,
             armedAtUtc: crossfireNowUtc.AddSeconds(1)));
         GetOrRegisterPlayer(removed, removedPlayerId).StatusEffects.SunBurn = new PlayerStatusEffects.SunBurnState(removedPlayerId, 101, AreaType.S2Gym1, crossfireNowUtc.AddSeconds(3d), crossfireNowUtc.AddSeconds(1d));
 
@@ -191,7 +191,7 @@ public sealed class MatchGameplayStateTests
         sibling.SunCrossfireShapes.Add(CreateCrossfireShape(
             eventId: 12,
             ownerId: siblingPlayerId,
-            anchorCombatTargetId: 8001,
+            anchorPlayerId: 8001,
             armedAtUtc: crossfireNowUtc.AddSeconds(1)));
         GetOrRegisterPlayer(sibling, siblingPlayerId).StatusEffects.SunBurn = new PlayerStatusEffects.SunBurnState(siblingPlayerId, 202, AreaType.S2Gym1, crossfireNowUtc.AddSeconds(4d), crossfireNowUtc.AddSeconds(2d));
 
@@ -253,7 +253,7 @@ public sealed class MatchGameplayStateTests
     private static SwarmCrossfireShape CreateCrossfireShape(
         long eventId,
         long ownerId,
-        long anchorCombatTargetId,
+        long anchorPlayerId,
         DateTime armedAtUtc) =>
         new()
         {
@@ -262,16 +262,10 @@ public sealed class MatchGameplayStateTests
             WeaponItemId = 101,
             Damage = 10,
             Area = AreaType.S2Gym1,
-            Origin = new Vector3f(0f, 0f, 0f),
-            End = new Vector3f(6f, 0f, 0f),
-            GroundLength = 6f,
-            HalfWidth = 0.35f,
-            BlastRadius = 0.5f,
-            SweepSpeed = 4.5f,
+            OriginCell = new Cell(0, 0),
+            EndCell = new Cell(8, 0),
             ArmedAtUtc = armedAtUtc,
             ExpiresAtUtc = armedAtUtc.AddSeconds(2),
-            AnchorMonsterId = 301,
-            AnchorCombatTargetId = anchorCombatTargetId,
-            LastFront = -0.35f
+            AnchorTarget = (ObjectType.PLAYER, anchorPlayerId)
         };
 }

@@ -1,11 +1,10 @@
 using game_server.players.bots;
-using network.common;
-using network.common.data;
-
 namespace demo_regression_tests;
 
 public sealed class BotPathTests
 {
+    public BotPathTests() => UserServerMatchingTestData.EnsureGameDataLoaded();
+
     [Fact]
     public void ClearingPathRemovesWaypointsAndResetsIndex()
     {

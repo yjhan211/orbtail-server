@@ -13,18 +13,18 @@ public sealed class MonsterStateBehaviorTests
             Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance).GetOrCreate(987637);
         using var scope = runtime.Enter();
         runtime.Monsters.Initialize(Now);
-        var monster = new Monster { MonsterId = 1, CombatTargetId = -11, Alive = true, Health = 10 };
+        var monster = new Monster { MonsterId = 1, Alive = true, Health = 10 };
         runtime.Monsters.Entities[1] = monster;
         var combat = new MonsterCombatService();
 
-        var result = combat.ApplyMonsterDamage(runtime, -11, 1, 10, Now);
+        var result = combat.ApplyMonsterDamage(runtime, 1, 1, 10, Now);
 
         Assert.True(result.Killed);
         Assert.Same(monster, result.Monster);
         Assert.Empty(runtime.Monsters.Entities);
         Assert.Empty(runtime.Monsters.GetVisualStatesByArea());
         Assert.False(monster.ToMonsterInfo().IsAlive);
-        Assert.False(combat.ApplyMonsterDamage(runtime, -11, 1, 10, Now).Applied);
+        Assert.False(combat.ApplyMonsterDamage(runtime, 1, 1, 10, Now).Applied);
     }
     [Fact]
     public void LethalDamage_RecordsDeathOnce()
@@ -63,7 +63,7 @@ public sealed class MonsterStateBehaviorTests
     public void CombatTargets_IncludeNewMonstersAndExcludeDeadAndFullyReservedMonsters()
     {
         var state = new MatchMonsters();
-        var ready = new Monster { MonsterId = 1, CombatTargetId = -11, Alive = true, Health = 10 };
+        var ready = new Monster { MonsterId = 1, Alive = true, Health = 10 };
         state.Entities[1] = ready;
         state.Entities[2] = new Monster { Alive = true, Health = 10 };
         state.Entities[3] = new Monster { Alive = false, Health = 10 };
@@ -71,10 +71,10 @@ public sealed class MonsterStateBehaviorTests
         Assert.Equal(2, state.GetCombatTargets().Count);
         Assert.Contains(ready, state.GetCombatTargets());
         Assert.Contains(state.Entities[2], state.GetCombatTargets());
-        Assert.Same(ready, state.FindAliveByCombatTarget(-11));
+        Assert.Same(ready, state.FindAlive(1));
         ready.ApplyDamage(10, Now);
-        Assert.Null(state.FindAliveByCombatTarget(-11));
-        Assert.Same(ready, state.FindByCombatTarget(-11));
+        Assert.Null(state.FindAlive(1));
+        Assert.Same(ready, state.Find(1));
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public sealed class MonsterStateBehaviorTests
         var runtime = TestGameSessionServices.CreateMatchRuntimeStore(
             Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance).GetOrCreate(987636);
         using var scope = runtime.Enter();
-        var removed = new Monster { MonsterId = 1, CombatTargetId = -11, Alive = true, Health = 10 };
+        var removed = new Monster { MonsterId = 1, Alive = true, Health = 10 };
         runtime.Monsters.Entities[1] = removed;
         runtime.Monsters.Entities[2] = new Monster { MonsterId = 2, Alive = true };
 
@@ -92,7 +92,7 @@ public sealed class MonsterStateBehaviorTests
 
         Assert.False(removed.Alive);
         Assert.Single(runtime.Monsters.Entities);
-        Assert.Null(runtime.Monsters.FindByCombatTarget(-11));
+        Assert.Null(runtime.Monsters.Find(1));
         Assert.False(removed.ApplyDamage(10, Now));
     }
 }

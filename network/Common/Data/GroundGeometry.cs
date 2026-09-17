@@ -15,10 +15,17 @@ namespace network.common.data
         /// <summary>플레이어 몸통 반경. 교차사격·칼날·소용돌이 판정과 회피 공용.</summary>
         public const float PlayerRadius = 0.25f;
 
+        /// <summary>태양 공격의 플레이어 몸통 판정 높이(월드 Y 단위).</summary>
+        public const float PlayerBodyHeight = 0.9f;
+
+        /// <summary>몬스터 몸통 반경. 오브 공격 판정 공용.</summary>
         public const float MonsterRadius = 0.3f;
 
         /// <summary>태양 공격의 몬스터 몸통 판정 높이(월드 Y 단위).</summary>
         public const float MonsterBodyHeight = 0.6f;
+
+        /// <summary>몸통 세로 샘플 간격(월드 Y 단위). 궤도 중심 오프셋만큼 내린 밑면부터 머리까지 훑는다.</summary>
+        public const float BodySampleStep = 0.45f;
 
         /// <summary>꼬리 절단의 오브 판정 타원 반경(바닥면 단위). 이웃 오브 오차와 부양 스프라이트를 보정한다.</summary>
         private const float OrbHitRadius = 0.42f;
@@ -39,6 +46,38 @@ namespace network.common.data
             float dx = to.X - from.X;
             float dy = (to.Y - from.Y) * GroundYScale;
             return MathF.Sqrt(dx * dx + dy * dy);
+        }
+
+        /// <summary>
+        ///     바닥 좌표의 선(원점·단위 방향·길이)에 몸통이 걸리면 걸린 샘플 중 가장 앞쪽의 축 위 거리를 돌려준다.
+        ///     폭은 reach(반폭 + 몸통 반경)이고 양 끝은 둥글다. 태양 선의 방향 선택과 앞머리 쓸기가 같은 판정을 쓴다.
+        /// </summary>
+        public static bool TryGetNearestBodyAlongOnLine(float originX, float originGroundY, float unitX, float unitY, float length, float reach, Vector3f position, float bodyHeight, out float nearestAlong)
+        {
+            nearestAlong = float.MaxValue;
+            float bodyStart = -Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
+            float bodyEnd = bodyHeight - Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
+            for (float bodyY = bodyStart; bodyY <= bodyEnd + 0.001f; bodyY += BodySampleStep)
+            {
+                float relativeX = position.X - originX;
+                float relativeY = (position.Y + bodyY) * GroundYScale - originGroundY;
+                float along = relativeX * unitX + relativeY * unitY;
+                float perpendicular = MathF.Abs(relativeX * unitY - relativeY * unitX);
+                if (perpendicular > reach)
+                {
+                    continue;
+                }
+
+                float overshoot = along - Math.Clamp(along, 0f, length);
+                if (overshoot * overshoot + perpendicular * perpendicular > reach * reach)
+                {
+                    continue;
+                }
+
+                nearestAlong = MathF.Min(nearestAlong, along);
+            }
+
+            return nearestAlong < float.MaxValue;
         }
 
         /// <summary>점이 오브 판정 타원 안에 있는지 — 래치 이탈 재무장 판정.</summary>

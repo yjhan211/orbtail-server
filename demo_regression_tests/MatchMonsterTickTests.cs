@@ -129,18 +129,18 @@ public class MatchMonsterTickTests
         {
             var monster = new Monster
             {
-                MonsterId = 7000000 + index, CombatTargetId = -4000000000000000000L - index,
+                MonsterId = 7000000 + index,
                 Position = network.common.data.MapCoordinateConverter.CellToWorld(network.common.Config.SWARM_MATCH_MAP, network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Corridor9))), Kind = kind, Health = 10, Alive = true,
                 SummonStoneReward = reward
             };
             runtime.Monsters.Entities.Add(monster.MonsterId, monster);
-            var hit = combat.ApplyMonsterDamage(runtime, monster.CombatTargetId, 1, 1, StartUtc);
+            var hit = combat.ApplyMonsterDamage(runtime, monster.MonsterId, 1, 1, StartUtc);
             Assert.False(hit.Killed);
             Assert.Equal(0, hit.SummonStoneReward);
-            var kill = combat.ApplyMonsterDamage(runtime, monster.CombatTargetId, 1, 9, StartUtc);
+            var kill = combat.ApplyMonsterDamage(runtime, monster.MonsterId, 1, 9, StartUtc);
             Assert.True(kill.Killed);
             Assert.Equal(reward, kill.SummonStoneReward);
-            var duplicate = combat.ApplyMonsterDamage(runtime, monster.CombatTargetId, 1, 10, StartUtc);
+            var duplicate = combat.ApplyMonsterDamage(runtime, monster.MonsterId, 1, 10, StartUtc);
             Assert.False(duplicate.Killed);
             Assert.Equal(0, duplicate.SummonStoneReward);
         }
@@ -211,14 +211,14 @@ public class MatchMonsterTickTests
             .First(state => state.IsAlive && state.Kind == 0);
         var target = manager.GetCombatTargets().First(candidate =>
             candidate.MonsterId == skeleton.MonsterId);
-        var result = manager.ApplyMonsterDamage(target.CombatTargetId, attackerPlayerId: 1, skeleton.MaxHealth);
+        var result = manager.ApplyMonsterDamage(target.MonsterId, attackerPlayerId: 1, skeleton.MaxHealth);
 
         Assert.True(result.Applied);
         Assert.True(result.Killed);
         Assert.Equal(target.MonsterId, result.Monster!.MonsterId);
         Assert.DoesNotContain(
             manager.GetCombatTargets(),
-            candidate => candidate.CombatTargetId == target.CombatTargetId);
+            candidate => candidate.MonsterId == target.MonsterId);
     }
 
     [Fact]
@@ -403,11 +403,11 @@ public class MatchMonsterTickTests
             }
         }
 
-        public MonsterDamageResult ApplyMonsterDamage(long combatTargetId, long attackerPlayerId, int damage)
+        public MonsterDamageResult ApplyMonsterDamage(int monsterId, long attackerPlayerId, int damage)
         {
             using (Runtime.Enter())
             {
-                return _monsterCombat.ApplyMonsterDamage(Runtime, combatTargetId, attackerPlayerId, damage, _lastNow);
+                return _monsterCombat.ApplyMonsterDamage(Runtime, monsterId, attackerPlayerId, damage, _lastNow);
             }
         }
 

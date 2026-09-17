@@ -22,7 +22,6 @@ internal sealed class MatchTrailCutService(
     private const float SwarmTrailCutMaxSegmentLength = 2f;
     private const float SwarmTrailCutMinSegmentLengthSquared = 0.0004f;
     private const float SwarmTrailCutOrbHitYOffset = 0.15f;
-    private const int SwarmRingVfxKindRetaliationGuard = 5;
 
     public void ProcessTick(MatchRuntime runtime, DateTime nowUtc, IReadOnlyList<Player> players, List<GameClientSession> sessions)
     {
@@ -215,24 +214,36 @@ internal sealed class MatchTrailCutService(
             runtime.CutRetaliationWindows[guardKey] = guardOnVictim;
         }
         guardOnVictim.ExpiresAtUtc = nowUtc.AddSeconds(Config.SWARM_CUT_RETALIATION_WINDOW_SECONDS);
-        combatDamage.SendSwarmRetaliationVfx(runtime, cutterId, victimId, cutArea, SwarmRingVfxKindRetaliationGuard, (float)Config.SWARM_CUT_RETALIATION_WINDOW_SECONDS, allSessions);
+        foreach (var guardViewer in new[] { victim, cutter })
+        {
+            if (guardViewer.Session is not { PlayerId: not null } guardSession)
+            {
+                continue;
+            }
+            combatDamage.QueueSessionEffect(runtime, guardSession, Protocol.G_TO_C_STATUS_EFFECT, new G_TO_C_STATUS_EFFECT
+            {
+                SourcePlayerId = cutterId,
+                TargetPlayerId = victimId,
+                AreaType = cutArea,
+                Effect = CombatStatusEffectKind.CutRetaliationGuard,
+                DurationMs = (int)(Config.SWARM_CUT_RETALIATION_WINDOW_SECONDS * 1000d)
+            });
+        }
 
         foreach (var destroyedOrb in destroyedOrbs)
         {
             victim.Session?.SendOrbUpdate(destroyedOrb);
         }
 
-        using (var ringPacket = Packet.Create((int)Protocol.G_TO_C_ORB_RING_EFFECT))
+        using (var ringPacket = Packet.Create((int)Protocol.G_TO_C_ORB_TAIL_CUT))
         {
-            ringPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_RING_EFFECT
+            ringPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_TAIL_CUT
             {
-                OwnerPlayerId = cutterId,
-                CenterX = cutOrbPosition.X,
-                CenterY = cutOrbPosition.Y,
-                Radius = PlayerOrbTrailService.CutFlashRadius,
-                Kind = PlayerOrbTrailService.CutVfxKind,
+                CutterPlayerId = cutterId,
                 VictimPlayerId = victimId,
-                FromOrdinal = cutOrdinal
+                FromOrdinal = cutOrdinal,
+                X = cutOrbPosition.X,
+                Y = cutOrbPosition.Y
             }));
             foreach (var session in allSessions)
             {

@@ -63,6 +63,44 @@ public sealed class PlayerOrbServiceTests
         }
     }
 
+    [Theory]
+    [InlineData(1f, 1f)]
+    [InlineData(-1f, -1f)]
+    [InlineData(-1f, 1f)]
+    [InlineData(1f, -1f)]
+    public void SunSelectsCellAxisNearestAnchor(float directionX, float directionY)
+    {
+        using var provider = GameServerDependencyInjectionTests.CreateProvider();
+        var runtime = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(948604);
+        var attacks = provider.GetRequiredService<PlayerOrbService>();
+        var trails = provider.GetRequiredService<PlayerOrbTrailService>();
+        var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, MatchSpawnData.GetCorridorAnchor(1));
+        var owner = new Player(new PlayerInfo { PlayerId = 11 }) { Position = position };
+        var victim = new Player(new PlayerInfo { PlayerId = 12 }) { Position = position };
+        var now = DateTime.UtcNow;
+        using (runtime.Enter())
+        {
+            runtime.RegisterPlayer(owner);
+            runtime.RegisterPlayer(victim);
+            owner.Orbs.AddOrb(107000010);
+            var origin = trails.GetOrbPosition(runtime, owner, 0, position, PlayerOrbTrailService.GetOrbTiersInOrder(runtime, owner));
+            var originCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, origin);
+            int stepX = directionX == directionY ? (int)directionX : 0;
+            int stepY = directionX == directionY ? 0 : (int)directionY;
+            victim.Position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP,
+                new Cell(originCell.X + stepX, originCell.Y + stepY));
+            attacks.ActivateOrbs(runtime, owner, now);
+            attacks.ActivateOrbs(runtime, owner, now.AddSeconds(3));
+            var shape = Assert.Single(runtime.SunCrossfireShapes);
+            Assert.Equal(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, originCell), shape.Origin);
+            Assert.Equal(Math.Sign(directionX), Math.Sign(shape.End.X - shape.Origin.X));
+            Assert.Equal(Math.Sign(directionY), Math.Sign(shape.End.Y - shape.Origin.Y));
+            float dx = Math.Abs(shape.End.X - shape.Origin.X);
+            float dy = Math.Abs(shape.End.Y - shape.Origin.Y) * GroundGeometry.GroundYScale;
+            Assert.InRange(Math.Abs(dx - dy), 0f, 0.001f);
+        }
+    }
+
     [Fact]
     public void SunProjectilesOutliveOwner()
     {
@@ -89,6 +127,15 @@ public sealed class PlayerOrbServiceTests
             var shape = Assert.Single(runtime.SunCrossfireShapes);
             Assert.Equal(owner.PlayerId, shape.OwnerId);
             Assert.Equal(area, shape.Area);
+
+            // 선은 셀 축을 따라 구역이 바뀌는 셀 면에서 끝난다 — 끝점 바로 안쪽은 같은 구역, 바로 바깥은 다른 구역.
+            int stepX = Math.Sign(shape.EndCell.X - shape.OriginCell.X);
+            int stepY = Math.Sign(shape.EndCell.Y - shape.OriginCell.Y);
+            var outsideCell = new Cell(shape.EndCell.X + stepX, shape.EndCell.Y + stepY);
+            Assert.Equal(MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, shape.EndCell), shape.End);
+            Assert.Equal(area, GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, shape.EndCell));
+            Assert.NotEqual(area, GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, outsideCell));
+            Assert.True(shape.GroundLength <= Config.SWARM_CROSSFIRE_SUN_MAX_GROUND_LENGTH);
 
             // 탈락한 소유자는 더 쏘지 않지만 이미 나간 투사체는 끝까지 간다.
             owner.Status = PlayerMatchStatus.ELIMINATED;

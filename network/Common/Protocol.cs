@@ -102,8 +102,8 @@ namespace network.common
         G_TO_C_ORB_RANKINGS,
 
 
-        // 오브 공용 링 연출 — 파도 공격 예고, 꼬리 절단, 포위 효과.
-        G_TO_C_ORB_RING_EFFECT,
+        // 꼬리 절단 통지 — 잘린 자리·순번을 같은 구역에 알려 섬광·파열 연출을 낸다.
+        G_TO_C_ORB_TAIL_CUT,
 
 
         // 태양오브 공격 예고·폭발 — 서버가 확정한 공격의
@@ -126,6 +126,9 @@ namespace network.common
         G_TO_C_STATUS_EFFECT,
         G_TO_C_OBJECT_ENTER,
         G_TO_C_OBJECT_LEAVE,
+
+        // 파도오브 공격 예고 — 서버가 확정한 소용돌이 자리·반경·기폭까지 남은 시간. 같은 구역에 브로드캐스트, 표시 = 판정.
+        G_TO_C_WAVE_ORB_ATTACK,
         END
     }
 

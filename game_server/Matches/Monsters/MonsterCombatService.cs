@@ -55,7 +55,7 @@ internal sealed class MonsterCombatService
         }
     }
 
-    public MonsterDamageResult ApplyMonsterDamage(MatchRuntime runtime, long combatTargetId, long attackerPlayerId, int damage, DateTime nowUtc)
+    public MonsterDamageResult ApplyMonsterDamage(MatchRuntime runtime, int monsterId, long attackerPlayerId, int damage, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -67,7 +67,7 @@ internal sealed class MonsterCombatService
             return MonsterDamageResult.None;
         }
 
-        var monster = state.FindByCombatTarget(combatTargetId);
+        var monster = state.Find(monsterId);
         if (monster != null)
         {
             monster.ReleaseReservedDamage(damage);

@@ -502,7 +502,7 @@ namespace network.common
         ///     벽 없는 끝점에서는 폭발 없이 소멸한다. 예고 시간에는 고정된 시안색 바닥 경로선이
         ///     차오르고, 발사 순간 0.22초 점멸·페이드한 뒤 비행은 꼬리 없는 태양 구체가 전달한다.
         /// </summary>
-        public static float SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS => SwarmConfigData.GetFloat("SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS", 0.25f);
+        public static float SWARM_SUN_ORB_ATTACK_WINDUP_SECONDS => SwarmConfigData.GetFloat("SWARM_SUN_ORB_ATTACK_WINDUP_SECONDS", 0.25f);
         // 서버 앞머리 속도. 클라 투사체는 패킷의 ActiveSeconds(= 실제 벽까지 거리/속도)를 그대로 써
         // 표시와 판정의 도착 시간을 맞춘다.
         public static float SWARM_CROSSFIRE_SUN_SWEEP_SPEED => SwarmConfigData.GetFloat("SWARM_CROSSFIRE_SUN_SWEEP_SPEED", 7.5f);
@@ -514,6 +514,10 @@ namespace network.common
         /// </summary>
         public static double SWARM_CROSSFIRE_SUN_INTERVAL_SECONDS => SwarmConfigData.GetDouble("SWARM_CROSSFIRE_SUN_INTERVAL_SECONDS", 1.6d);
         public static float SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER", 2f);
+
+        /// <summary>티어별 CSV 배열(T1|T2|T3)에서 티어 값을 고른다. 범위 밖 티어는 양끝으로 맞춘다.</summary>
+        public static float TierValue(float[] valuesByTier, int tier) =>
+            valuesByTier[Math.Clamp(tier, 1, valuesByTier.Length) - 1];
 
         /// <summary>
         ///     태양 투사체의 판정 폭(T1/T2/T3, 바닥면 단위) — 이 안에 몸이 걸리면 닿은 것.
@@ -591,15 +595,6 @@ namespace network.common
         private static readonly float[] DefaultSunBlastRadiusByTier = { 1.1f, 1.3f, 1.5f };
         public static float[] SWARM_CROSSFIRE_SUN_BLAST_RADIUS_BY_TIER =>
             SwarmConfigData.GetFloatArray("SWARM_CROSSFIRE_SUN_BLAST_RADIUS_BY_TIER", DefaultSunBlastRadiusByTier);
-
-        /// <summary>교차사격 모양 종류 — 패킷·로그·클라 렌더가 공유하는 식별자.</summary>
-        public const int SWARM_CROSSFIRE_SHAPE_LINE = 1;
-
-        /// <summary>
-        ///     교차사격 폭발 통지 — 같은 패킷(G_TO_C_SUN_ORB_ATTACK)을 재사용한다: EventId = 터진 모양,
-        ///     OriginX/Y = 폭발 지점(월드), Width = 폭발 반경(바닥면). 클라는 날아가던 투사체를 그 자리에서 터뜨린다.
-        /// </summary>
-        public const int SWARM_CROSSFIRE_SHAPE_DETONATE = 2;
 
         // ===== 6칸 빌드 (#232 4단계) =====
         /// <summary>

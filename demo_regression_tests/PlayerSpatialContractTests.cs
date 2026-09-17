@@ -9,6 +9,9 @@ namespace demo_regression_tests;
 
 public sealed class PlayerSpatialContractTests
 {
+    // 위치·셀 변환은 맵 정보가 있어야 한다 — 실행 순서와 무관하게 게임 데이터를 먼저 올린다.
+    public PlayerSpatialContractTests() => UserServerMatchingTestData.EnsureGameDataLoaded();
+
     [Fact]
     public void AreaIsDerivedFromMapAndCellAndNeverSerialized()
     {
@@ -179,7 +182,7 @@ public sealed class PlayerSpatialContractTests
         WearItemIdList = [101000003],
         ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, 42, MapId.Camp, new Cell(3, 4))
         {
-MapId = network.common.Config.SWARM_MATCH_MAP,
+            MapId = network.common.Config.SWARM_MATCH_MAP,
             Position = new Vector3f(3.25f, 4.75f, 0),
             Velocity = new Vector3f(1.5f, -0.5f, 0),
             Rotation = 75f
