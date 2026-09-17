@@ -12,41 +12,30 @@ namespace game_server.matches;
 ///     완료 알림은 매치 잠금이 풀린 뒤 실행한다.
 ///     탈락자에게 보여 줄 중간 결과표도 생성한다.
 /// </summary>
-internal sealed class MatchResultService(
-    MatchRuntimeStore matchRuntimes,
-    ILogger logger)
+internal sealed class MatchResultService(ILogger logger)
 {
-    public void FinalizeMatch(long matchingId,
-        long winnerId,
-        MatchEndReason endReason = MatchEndReason.LastSurvivor,
-        MatchTieBreakCriterion tieBreakCriterion = MatchTieBreakCriterion.None,
-        bool isTimeout = false)
+    public void FinalizeMatch(MatchRuntime runtime, long winnerId, MatchEndReason endReason = MatchEndReason.LastSurvivor, MatchTieBreakCriterion tieBreakCriterion = MatchTieBreakCriterion.None)
     {
-        var runtime = matchRuntimes.GetOrNull(matchingId);
-        if (runtime == null)
+        if (!Monitor.IsEntered(runtime.MatchLock))
         {
-            logger.LogDebug("Terminal match result preparation rejected: MatchingId={MatchingId}", matchingId);
-            return;
+            throw new InvalidOperationException("Match finalization requires the match lock.");
         }
 
-        using var scope = runtime.Enter();
-        if (endReason != MatchEndReason.LastSurvivor && !runtime.IsEnded)
-        {
-            logger.LogInformation("Swarm match resolved: matchingId={MatchingId}, WinnerId={WinnerId}, Criterion={Criterion}", matchingId, winnerId, tieBreakCriterion);
-        }
-
+        long matchingId = runtime.MatchingId;
         if (!runtime.TryMarkEnded())
         {
             logger.LogDebug("Duplicate match finalization ignored: MatchingId={MatchingId}", matchingId);
             return;
         }
 
+        logger.LogInformation("Match ended: MatchingId={MatchingId}, Reason={Reason}, WinnerId={WinnerId}, TieBreak={TieBreak}", matchingId, endReason, winnerId, tieBreakCriterion);
+
         var sessionSnapshot = runtime.GetSessions();
         var players = BuildPlayerResults(runtime, winnerId);
         byte[] resultPayload = MessagePackSerializer.Serialize(new G_TO_C_GAME_RESULT
         {
             WinnerId = winnerId,
-            IsTimeout = isTimeout,
+            IsTimeout = endReason == MatchEndReason.OrbScoreTimeout,
             Players = players
         });
 
@@ -72,7 +61,7 @@ internal sealed class MatchResultService(
                 var endMessage = new G_TO_C_GAME_END
                 {
                     MatchingId = matchingId,
-                    IsEscaped = !isTimeout && session.PlayerId == winnerId
+                    IsEscaped = session.PlayerId == winnerId
                 };
                 endPacket.SetBody(MessagePackSerializer.Serialize(endMessage));
                 session.TrySend(endPacket);
@@ -106,23 +95,11 @@ internal sealed class MatchResultService(
         {
             throw new InvalidOperationException("Score timeout requires the match lock.");
         }
-        if (runtime.TimeoutResultProcessed || runtime.IsEnded)
+        if (runtime.IsEnded || runtime.StartsAtUtc is not { } startedAtUtc)
         {
             return false;
         }
-
-        var startedAtUtc = runtime.StartsAtUtc;
-        if (startedAtUtc == null)
-        {
-            if (!runtime.FallbackStartedAtUtc.HasValue)
-            {
-                runtime.FallbackStartedAtUtc = nowUtc;
-                return false;
-            }
-            startedAtUtc = runtime.FallbackStartedAtUtc.Value;
-        }
-
-        if ((nowUtc - startedAtUtc.Value).TotalSeconds < Config.SWARM_MATCH_DURATION_SECONDS)
+        if ((nowUtc - startedAtUtc).TotalSeconds < Config.SWARM_MATCH_DURATION_SECONDS)
         {
             return false;
         }
@@ -133,23 +110,16 @@ internal sealed class MatchResultService(
             var (orbCount, tierSum) = runtime.GetOrbs(player.PlayerId).GetOrbScore();
             candidates.Add((player.PlayerId, orbCount, tierSum, player.Health));
         }
-        candidates = candidates
-            .OrderByDescending(candidate => candidate.OrbCount)
-            .ThenByDescending(candidate => candidate.TierSum)
-            .ThenByDescending(candidate => candidate.Health)
-            .ThenBy(candidate => candidate.PlayerId)
-            .ToList();
+        candidates.Sort(CompareOrbScore);
 
         long winnerId = candidates.Count > 0 ? candidates[0].PlayerId : 0;
-        runtime.TimeoutResultProcessed = true;
         var scoreLog = new List<string>();
         foreach (var candidate in candidates)
         {
             scoreLog.Add($"{candidate.PlayerId}:{candidate.OrbCount}:{candidate.TierSum}");
         }
         logger.LogInformation("Match score result: MatchingId={MatchingId}, Scores={Scores}", runtime.MatchingId, string.Join(",", scoreLog));
-
-        FinalizeMatch(runtime.MatchingId, winnerId, MatchEndReason.OrbScoreTimeout);
+        FinalizeMatch(runtime, winnerId, MatchEndReason.OrbScoreTimeout);
         return true;
     }
 
@@ -186,15 +156,49 @@ internal sealed class MatchResultService(
         return AssignRankings(playerResults, winnerId);
     }
 
+    internal static int CompareOrbScore((long PlayerId, int OrbCount, int TierSum, int Health) left, (long PlayerId, int OrbCount, int TierSum, int Health) right)
+    {
+        int byOrbs = right.OrbCount.CompareTo(left.OrbCount);
+        if (byOrbs != 0)
+        {
+            return byOrbs;
+        }
+        int byTierSum = right.TierSum.CompareTo(left.TierSum);
+        if (byTierSum != 0)
+        {
+            return byTierSum;
+        }
+        int byHealth = right.Health.CompareTo(left.Health);
+        return byHealth != 0 ? byHealth : left.PlayerId.CompareTo(right.PlayerId);
+    }
+
     internal static List<GameResultPlayerInfo> AssignRankings(IEnumerable<GameResultPlayerInfo> players, long winnerId = 0)
     {
-        var ordered = players
-            .Where(player => player.PlayerId != 0)
-            .OrderByDescending(player => winnerId != 0 && player.PlayerId == winnerId)
-            .ThenBy(player => player.Rank > 0 ? player.Rank : 0)
-            .ThenByDescending(player => player.OrbCount)
-            .ThenBy(player => player.PlayerId)
-            .ToList();
+        var ordered = new List<GameResultPlayerInfo>();
+        foreach (var player in players)
+        {
+            if (player.PlayerId != 0)
+            {
+                ordered.Add(player);
+            }
+        }
+
+        ordered.Sort((left, right) =>
+        {
+            bool leftWon = winnerId != 0 && left.PlayerId == winnerId;
+            bool rightWon = winnerId != 0 && right.PlayerId == winnerId;
+            if (leftWon != rightWon)
+            {
+                return leftWon ? -1 : 1;
+            }
+            int byRank = Math.Max(left.Rank, 0).CompareTo(Math.Max(right.Rank, 0));
+            if (byRank != 0)
+            {
+                return byRank;
+            }
+            int byOrbs = right.OrbCount.CompareTo(left.OrbCount);
+            return byOrbs != 0 ? byOrbs : left.PlayerId.CompareTo(right.PlayerId);
+        });
 
         for (int i = 0; i < ordered.Count; i++)
         {

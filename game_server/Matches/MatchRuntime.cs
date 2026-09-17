@@ -309,9 +309,6 @@ internal sealed class MatchRuntime
 
     public DateTime? EntryDeadlineUtc { get { using (Enter()) return _entryDeadlineUtc; } }
     public DateTime? StartsAtUtc { get { using (Enter()) return _startsAtUtc; } }
-    public DateTime? FallbackStartedAtUtc { get; set; }
-
-    public bool TimeoutResultProcessed { get; set; }
     public string? OrbRankingsSignature { get; set; }
     public bool InitialFieldStateSent { get; set; }
 

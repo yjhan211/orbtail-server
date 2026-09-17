@@ -157,7 +157,7 @@ internal class MatchFieldService(
             long lastPlayerId = aliveCount == 1 ? alivePlayers[0].PlayerId : 0;
             if (lastPlayerId > 0)
             {
-                matchResults.FinalizeMatch(matchingId, lastPlayerId);
+                matchResults.FinalizeMatch(runtime, lastPlayerId);
                 return;
             }
             matchCleanup.EndBotOnlyMatchIfSettled(matchingId, lastPlayerId);
@@ -204,7 +204,7 @@ internal class MatchFieldService(
         (bool isGameOver, long? winnerId) = runtime.CheckGameOver();
         if (isGameOver && winnerId.HasValue)
         {
-            matchResults.FinalizeMatch(matchingId, winnerId.Value, MatchEndReason.PressureFieldSettlement, resolution.DecisiveCriterion);
+            matchResults.FinalizeMatch(runtime, winnerId.Value, MatchEndReason.PressureFieldSettlement, resolution.DecisiveCriterion);
         }
     }
 

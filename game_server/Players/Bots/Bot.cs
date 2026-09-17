@@ -19,9 +19,7 @@ public class Bot
         if (wounded && ratio >= Config.SWARM_BOT_WOUNDED_EXIT_RATIO)
         {
             Wounded = false;
-            return;
         }
-
     }
 
     public Player Player { get; } = new(new PlayerInfo())
@@ -32,10 +30,7 @@ public class Bot
     public long PlayerId
     {
         get => Player.PlayerId;
-        set
-        {
-            Player.GameInfo.ObjectInfo.ObjectId = value;
-        }
+        init => Player.GameInfo.ObjectInfo.ObjectId = value;
     }
     public long LastAttackerPlayerId { get; set; }
     public MovementState Movement { get; } = new();

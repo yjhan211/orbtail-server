@@ -58,7 +58,7 @@ internal static class GameServerTestAccess
         var matchEliminations = TestGameSessionServices.CreateEliminationService(runtimes, logger);
         var health = TestGameSessionServices.CreateHealthService(runtimes);
         var combatDamage = TestGameSessionServices.CreateCombatDamageService(health);
-        var results = new MatchResultService(runtimes, logger);
+        var results = new MatchResultService(logger);
         var interactions = new PlayerInteractionService();
         var decisions = new BotBehaviorService(growth, interactions,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotBehaviorService>.Instance);

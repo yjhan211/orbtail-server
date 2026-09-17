@@ -138,7 +138,7 @@ public sealed class MatchFieldServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var sessions = new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance);
         var eliminations = TestGameSessionServices.CreateEliminationService(store, NullLogger.Instance);
-        var results = new MatchResultService(store, NullLogger.Instance);
+        var results = new MatchResultService(NullLogger.Instance);
         return new MatchFieldService(NullLogger<MatchFieldService>.Instance, new game_server.players.PlayerOrbTrailService(), TestGameSessionServices.CreateHealthService(store),
             new MatchCleanupService(store, NullLogger.Instance),
             eliminations, results);

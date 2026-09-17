@@ -56,7 +56,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         });
         Assert.True(lockHeld.Wait(TimeSpan.FromSeconds(5)));
 
-        Task terminal = Task.Run(() => fixture.Results.FinalizeMatch(matchingId, winner.PlayerId!.Value, MatchEndReason.PressureFieldSettlement));
+        Task terminal = Task.Run(() => fixture.FinalizeMatch(matchingId, winner.PlayerId!.Value));
         try
         {
             await Task.Delay(100);
@@ -150,7 +150,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         Task[] finalizers = sessions.Select(session => Task.Run(() =>
         {
             Assert.True(start.Wait(TimeSpan.FromSeconds(5)));
-            fixture.Results.FinalizeMatch(matchingId, session.PlayerId!.Value, MatchEndReason.PressureFieldSettlement);
+            fixture.FinalizeMatch(matchingId, session.PlayerId!.Value);
         })).ToArray();
         start.Set();
         await Task.WhenAll(finalizers).WaitAsync(TimeSpan.FromSeconds(5));
@@ -197,7 +197,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         fixture.ConnectionFor(resultFailure).ThrowOnceOn = Protocol.G_TO_C_GAME_RESULT;
         fixture.ConnectionFor(endFailure).ThrowOnceOn = Protocol.G_TO_C_GAME_END;
 
-        fixture.Results.FinalizeMatch(matchingId, markFailure.PlayerId!.Value, MatchEndReason.PressureFieldSettlement);
+        fixture.FinalizeMatch(matchingId, markFailure.PlayerId!.Value);
 
         Assert.Single(fixture.ConnectionFor(markFailure)
             .DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT));
@@ -233,24 +233,33 @@ public sealed class GameClientSessionTerminalPublicationTests
     }
 
     [Fact]
+    public void FinalizeMatch_RequiresMatchLock()
+    {
+        using var fixture = new TerminalFixture();
+        var runtime = fixture.Store.GetOrCreate(73992);
+        Assert.Throws<InvalidOperationException>(() => fixture.Results.FinalizeMatch(runtime, 101));
+        Assert.False(runtime.IsEnded);
+    }
+
+    [Fact]
     public void EndMatch_MissingOrTerminalMatchDoesNotPublishAgain()
     {
         using var fixture = new TerminalFixture();
-        fixture.Results.FinalizeMatch(73990, 101, MatchEndReason.PressureFieldSettlement);
+        fixture.FinalizeMatch(73990, 101);
         Assert.Empty(fixture.Deliveries);
 
         var runtime = fixture.Store.GetOrCreate(73991);
         using (runtime.Enter())
         {
             Assert.True(runtime.TryMarkEnded());
-            fixture.Results.FinalizeMatch(73991, 101, MatchEndReason.PressureFieldSettlement);
+            fixture.FinalizeMatch(73991, 101);
             Assert.Empty(fixture.Deliveries);
             Assert.Equal(0, fixture.CleanupCount);
         }
 
         // terminal 매치는 최외곽 scope 해제 시 한 번 정리된다.
         Assert.Equal(1, fixture.CleanupCount);
-        fixture.Results.FinalizeMatch(73991, 101, MatchEndReason.PressureFieldSettlement);
+        fixture.FinalizeMatch(73991, 101);
         Assert.Equal(1, fixture.CleanupCount);
         Assert.Empty(fixture.Deliveries);
     }
@@ -288,7 +297,22 @@ public sealed class GameClientSessionTerminalPublicationTests
         public ConcurrentDictionary<long, int> LifecycleDispatchCounts { get; } = new();
         public TimelineLogger Logger { get; }
 
-        public MatchResultService Results => new(Store, Logger);
+        public MatchResultService Results => new(Logger);
+
+        // 운영 호출부처럼 매치 잠금을 잡고 종료를 확정한다. 없는 매치는 확정할 대상이 없어 아무것도 하지 않는다.
+        public void FinalizeMatch(long matchingId, long winnerId)
+        {
+            var runtime = Store.GetOrNull(matchingId);
+            if (runtime == null)
+            {
+                return;
+            }
+
+            using (runtime.Enter())
+            {
+                Results.FinalizeMatch(runtime, winnerId, MatchEndReason.PressureFieldSettlement);
+            }
+        }
         public long? ThrowPrepareCompletionForPlayerId { get; set; }
         public MatchRuntime? TrackedRuntime { get; set; }
         public bool? LockHeldDuringLifecycle { get; private set; }

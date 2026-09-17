@@ -508,32 +508,23 @@ internal sealed class MatchSynchronizationService
             return;
         }
 
-        var entries = new List<(long PlayerId, int Orbs, int TierSum)>();
+        var entries = new List<(long PlayerId, int OrbCount, int TierSum, int Health)>();
         foreach (var player in runtime.GetPlayers())
         {
             if (player.IsEliminated)
             {
-                entries.Add((player.PlayerId, 0, 0));
+                entries.Add((player.PlayerId, 0, 0, 0));
                 continue;
             }
             var (orbCount, tierSum) = runtime.GetOrbs(player.PlayerId).GetOrbScore();
-            entries.Add((player.PlayerId, orbCount, tierSum));
+            entries.Add((player.PlayerId, orbCount, tierSum, player.Health));
         }
         if (entries.Count == 0)
         {
             return;
         }
 
-        entries.Sort(static (left, right) =>
-        {
-            int byOrbs = right.Orbs.CompareTo(left.Orbs);
-            if (byOrbs != 0)
-            {
-                return byOrbs;
-            }
-            int byTierSum = right.TierSum.CompareTo(left.TierSum);
-            return byTierSum != 0 ? byTierSum : left.PlayerId.CompareTo(right.PlayerId);
-        });
+        entries.Sort(MatchResultService.CompareOrbScore);
 
         var playerIds = new List<long>(entries.Count);
         var orbCounts = new List<int>(entries.Count);
@@ -541,8 +532,8 @@ internal sealed class MatchSynchronizationService
         foreach (var entry in entries)
         {
             playerIds.Add(entry.PlayerId);
-            orbCounts.Add(entry.Orbs);
-            signatureParts.Add($"{entry.PlayerId}:{entry.Orbs}");
+            orbCounts.Add(entry.OrbCount);
+            signatureParts.Add($"{entry.PlayerId}:{entry.OrbCount}");
         }
 
         string signature = string.Join("|", signatureParts);

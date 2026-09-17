@@ -178,7 +178,7 @@ internal static class TestGameSessionServices
         MatchRuntimeStore store,
         Microsoft.Extensions.Logging.ILogger logger)
     {
-        var results = new MatchResultService(store, logger);
+        var results = new MatchResultService(logger);
         return new PlayerEliminationService(results, logger);
     }
     public static MatchCleanupService CreateMatchCleanupService() =>

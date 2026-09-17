@@ -67,6 +67,31 @@ public sealed class MatchGameplayServiceTests
     }
 
     [Fact]
+    public void RankingsBreakOrbTiesByHealthLikeTheTimeoutWinner()
+    {
+        TestGameData.EnsureBattleItemCombatLoaded();
+        using var provider = GameServerDependencyInjectionTests.CreateProvider();
+        var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947805);
+        using (match.Enter())
+        {
+            var weaker = new game_server.players.Player(new PlayerInfo { PlayerId = 101 }) { Health = 40 };
+            var stronger = new game_server.players.Player(new PlayerInfo { PlayerId = 102 }) { Health = 90 };
+            match.RegisterPlayer(weaker);
+            match.RegisterPlayer(stronger);
+            Assert.True(TestGameSessionServices.Orbs(match, 101).TryAddOrbWithCapacity(107000010, 8, out _));
+            Assert.True(TestGameSessionServices.Orbs(match, 102).TryAddOrbWithCapacity(107000010, 8, out _));
+
+            // 오브 수와 티어가 같으면 체력이 높은 쪽이 화면 순위에서도 앞선다. ID는 101이 작지만 뒤로 간다.
+            new MatchSynchronizationService().CollectOrbRankings(match,
+                new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, new List<game_server.sessions.GameClientSession> { TestGameSessionServices.CreateRecipientSession() }));
+            Assert.Equal("102:1|101:1", match.OrbRankingsSignature);
+
+            // 시간 만료 때 승자를 정하는 비교도 같은 함수라 같은 플레이어가 이긴다.
+            Assert.True(MatchResultService.CompareOrbScore((102, 1, 1, 90), (101, 1, 1, 40)) < 0);
+        }
+    }
+
+    [Fact]
     public void RankingsUseAllPlayersAndGiveEliminatedPlayersZeroPoints()
     {
         TestGameData.EnsureBattleItemCombatLoaded();

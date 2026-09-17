@@ -1,4 +1,3 @@
-using game_server.matches;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -11,11 +10,7 @@ namespace game_server.matches;
 ///     잠금을 푼 뒤 서버 간 실패 알림과 매칭 예약 정리를 시작한다.
 ///     교체된 이전 세션의 실패가 현재 세션의 매치를 중단하지 않도록 확인한다.
 /// </summary>
-internal sealed class MatchEntryFailureHandler(
-    MatchRuntimeStore matchRuntimes,
-    GameSessionRegistry sessions,
-    MatchSessionCleanupService lifecycle,
-    ILogger logger) : IMatchEntryFailureHandler
+internal sealed class MatchEntryFailureHandler(MatchRuntimeStore matchRuntimes, GameSessionRegistry sessions, MatchSessionCleanupService lifecycle, ILogger logger) : IMatchEntryFailureHandler
 {
     public void Handle(GameClientSession session)
     {

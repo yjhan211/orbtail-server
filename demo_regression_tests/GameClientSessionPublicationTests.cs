@@ -254,6 +254,25 @@ public sealed class GameClientSessionPublicationTests
         Assert.Empty(fixture.ConnectionFor(session).AttemptedProtocols);
     }
     [Fact]
+    public void ScoreTimeoutResultReportsTimeoutAndStillMarksWinnerAsEscaped()
+    {
+        using var fixture = new SessionFixture();
+        var winner = fixture.CreateSession(70001, 101, (AreaType)50);
+        var loser = fixture.CreateSession(70001, 102, (AreaType)50);
+        var results = new MatchResultService(NullLogger.Instance);
+
+        using (winner.Match.Enter())
+        {
+            results.FinalizeMatch(winner.Match, 101, MatchEndReason.OrbScoreTimeout);
+        }
+
+        // 시간 만료로 끝났다는 것은 결과에 실리고, 승자는 그래도 승리 화면을 본다.
+        Assert.True(fixture.ConnectionFor(winner).DeserializeSingle<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT).IsTimeout);
+        Assert.True(fixture.ConnectionFor(winner).DeserializeSingle<G_TO_C_GAME_END>(Protocol.G_TO_C_GAME_END).IsEscaped);
+        Assert.False(fixture.ConnectionFor(loser).DeserializeSingle<G_TO_C_GAME_END>(Protocol.G_TO_C_GAME_END).IsEscaped);
+    }
+
+    [Fact]
     public void CombatHit_UsesConfirmedHealthAndExplicitDotFlag()
     {
         using var fixture = new SessionFixture();

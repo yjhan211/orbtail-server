@@ -111,6 +111,6 @@ internal sealed class PlayerEliminationService(MatchResultService matchResults, 
         {
             return;
         }
-        matchResults.FinalizeMatch(matchingId, winnerId ?? 0, eliminatedBot == null ? MatchEndReason.LastSurvivor : MatchEndReason.LastSurvivorAfterCombat);
+        matchResults.FinalizeMatch(runtime, winnerId ?? 0, eliminatedBot == null ? MatchEndReason.LastSurvivor : MatchEndReason.LastSurvivorAfterCombat);
     }
 }

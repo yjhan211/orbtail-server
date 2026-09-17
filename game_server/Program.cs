@@ -108,9 +108,7 @@ internal static class Program
             sp.GetRequiredService<ILogger<GameMatchEntryService>>(),
             sp.GetRequiredService<GameEntryTicketService>(),
             sp.GetRequiredService<GameServerNodeOptions>()));
-        services.AddSingleton<MatchResultService>(sp => new MatchResultService(
-            sp.GetRequiredService<MatchRuntimeStore>(),
-            sp.GetRequiredService<ILogger<MatchResultService>>()));
+        services.AddSingleton<MatchResultService>(sp => new MatchResultService(sp.GetRequiredService<ILogger<MatchResultService>>()));
         services.AddSingleton<PlayerEliminationService>(sp => new PlayerEliminationService(
             sp.GetRequiredService<MatchResultService>(),
             sp.GetRequiredService<ILogger<PlayerEliminationService>>()));
