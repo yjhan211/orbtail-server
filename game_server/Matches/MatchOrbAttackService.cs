@@ -11,7 +11,8 @@ namespace game_server.matches;
 /// </summary>
 internal sealed class MatchOrbAttackService(
     MatchCombatDamageService combatDamage,
-    PlayerOrbService playerOrbs)
+    PlayerOrbService playerOrbs,
+    MatchSynchronizationService synchronization)
 {
     /// <summary>
     ///     이미 존재하는 공격을 먼저 정산하고
@@ -74,7 +75,7 @@ internal sealed class MatchOrbAttackService(
                     continue;
                 }
                 participant.StatusEffects.Apply(PlayerStatusEffectKind.WaveSlow, nowUtc.AddSeconds(Config.SWARM_WAVE_SLOW_SECONDS));
-                combatDamage.QueueStatusEffect(runtime, participant, attack.OwnerId, attack.Area, CombatStatusEffectKind.WaveOrbSlow, Config.SWARM_WAVE_SLOW_SECONDS);
+                synchronization.QueueStatusEffect(runtime, participant, attack.OwnerId, attack.Area, CombatStatusEffectKind.WaveOrbSlow, Config.SWARM_WAVE_SLOW_SECONDS);
             }
         }
     }
@@ -136,7 +137,7 @@ internal sealed class MatchOrbAttackService(
                     continue;
                 }
                 participant.StatusEffects.ApplySunBurn(new PlayerStatusEffects.SunBurnState(attack.OwnerId, attack.WeaponItemId, attack.Area, nowUtc.AddSeconds(Config.SWARM_SUN_BURN_SECONDS), nowUtc.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS)));
-                combatDamage.QueueStatusEffect(runtime, participant, attack.OwnerId, attack.Area, CombatStatusEffectKind.SunBurn, Config.SWARM_SUN_BURN_SECONDS);
+                synchronization.QueueStatusEffect(runtime, participant, attack.OwnerId, attack.Area, CombatStatusEffectKind.SunBurn, Config.SWARM_SUN_BURN_SECONDS);
             }
             if (front < sweepEnd)
             {
@@ -223,7 +224,7 @@ internal sealed class MatchOrbAttackService(
                     continue;
                 }
                 participant.StatusEffects.Apply(PlayerStatusEffectKind.Wound, nowUtc.AddSeconds(Config.SWARM_WIND_WOUND_SECONDS));
-                combatDamage.QueueStatusEffect(runtime, participant, owner.PlayerId, ownerArea, CombatStatusEffectKind.WindOrbWound, Config.SWARM_WIND_WOUND_SECONDS);
+                synchronization.QueueStatusEffect(runtime, participant, owner.PlayerId, ownerArea, CombatStatusEffectKind.WindOrbWound, Config.SWARM_WIND_WOUND_SECONDS);
             }
         }
         runtime.PendingWindAttacks.Clear();

@@ -9,113 +9,23 @@ using network.common.data.models;
 namespace game_server.matches;
 
 /// <summary>
-///     플레이어·몬스터 피해를 적용하고, 틱 끝에 보낼 피격 알림과 상태 효과 알림을 모은다.
+///     플레이어·몬스터 피해를 적용하고, 피해에 따르는 부수 효과(피격 알림·교전 표시·처치 보상)를 한 곳에서 처리한다.
 ///     플레이어의 체력 변경·탈락 처리는 PlayerHealthService에 위임한다.
 /// </summary>
-internal sealed class MatchCombatDamageService(MonsterCombatService monsters, PlayerHealthService healthService)
+internal sealed class MatchCombatDamageService(MonsterCombatService monsters, PlayerHealthService healthService, MatchSynchronizationService synchronization)
 {
     private static bool RollCritical(MatchRuntime runtime, double chance) => runtime.CriticalRng.NextDouble() < chance;
-    internal void QueuePlayerHitNotification(MatchRuntime runtime, Player? attacker, long targetPlayerId, AreaType area, int weaponItemId, int damage, int targetHealth, bool isPeriodicDamage = false)
+
+    public int RollCriticalDamage(MatchRuntime runtime, int damage, out bool critical)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Combat damage requires the match lock.");
         }
-        if (attacker == null || attacker.PlayerId == 0 || targetPlayerId == 0)
-        {
-            return;
-        }
-
-        var hit = new G_TO_C_COMBAT_HIT
-        {
-            AttackerId = attacker.PlayerId,
-            TargetId = targetPlayerId,
-            AreaType = area,
-            WeaponItemId = weaponItemId,
-            Damage = damage,
-            AttackerHealth = attacker.Health,
-            TargetHealth = targetHealth,
-            IsDot = isPeriodicDamage
-        };
-        if (attacker.Session != null)
-        {
-            runtime.PendingCombatHits.Enqueue((attacker.Session, hit));
-        }
+        critical = RollCritical(runtime, Config.SWARM_CRITICAL_CHANCE);
+        return critical ? Math.Max(damage + 1, (int)MathF.Round(damage * Config.SWARM_CRITICAL_MULTIPLIER)) : damage;
     }
 
-    internal void QueueMonsterHitNotification(MatchRuntime runtime, Player? attacker, int monsterId, AreaType area,
-        int weaponItemId, int damage, bool critical = false, bool showDamageOnly = false)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Combat damage requires the match lock.");
-        }
-
-        if (attacker == null || attacker.PlayerId == 0 || attacker.IsEliminated || monsterId < 0 || weaponItemId <= 0 || damage <= 0)
-        {
-            return;
-        }
-        var hit = new G_TO_C_COMBAT_HIT
-        {
-            AttackerId = attacker.PlayerId,
-            TargetId = monsterId,
-            TargetKind = CombatEntityKind.Monster,
-            AreaType = area,
-            WeaponItemId = weaponItemId,
-            Damage = damage,
-            AttackerHealth = attacker.Health,
-            IsCritical = critical,
-            ShowDamageOnly = showDamageOnly
-        };
-        if (attacker.Session != null)
-        {
-            runtime.PendingCombatHits.Enqueue((attacker.Session, hit));
-        }
-    }
-
-    public void ApplyPlayerHit(MatchRuntime runtime, Player victim, long sourcePlayerId, AreaType area, int weaponItemId, int damage, DateTime nowUtc, bool isPeriodicDamage = false, int sourceHealth = -1)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Combat damage requires the match lock.");
-        }
-        if (runtime.IsEnded || victim.IsEliminated || damage <= 0)
-        {
-            return;
-        }
-
-        MarkAttacked(runtime, victim, sourcePlayerId, nowUtc);
-        if (runtime.GetPlayer(sourcePlayerId) is { } attackerPlayer)
-        {
-            attackerPlayer.PvpDamageDealt += damage;
-        }
-
-        var session = victim.Session;
-        healthService.ApplyDamage(runtime, victim, damage, sourcePlayerId);
-
-        if (session == null)
-        {
-            return;
-        }
-
-        var hit = new G_TO_C_COMBAT_HIT
-        {
-            AttackerId = sourcePlayerId,
-            TargetId = victim.PlayerId,
-            AreaType = area,
-            WeaponItemId = weaponItemId,
-            Damage = damage,
-            AttackerHealth = sourcePlayerId == victim.PlayerId ? victim.Health : sourceHealth,
-            TargetHealth = victim.Health,
-            IsDot = isPeriodicDamage
-        };
-        runtime.PendingCombatHits.Enqueue((session, hit));
-    }
-
-    /// <summary>
-    ///     공격당한 플레이어의 반응을 처리한다. 진행 중인 문 열기를 끊고, 봇이면 도주 판단에 쓰는 피격 시각과 공격자를 남긴다.
-    ///     몬스터에게 맞았을 때는 attackerId를 0으로 넘기며, 이때 봇의 마지막 공격자는 바꾸지 않는다.
-    /// </summary>
     internal void MarkAttacked(MatchRuntime runtime, Player victim, long attackerId, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -141,6 +51,40 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters, Pl
         bot.LastDamagedAtUtc = nowUtc;
     }
 
+    public void ApplyPlayerHit(MatchRuntime runtime, Player victim, long sourcePlayerId, AreaType area, int weaponItemId, int damage, DateTime nowUtc, bool isPeriodicDamage = false, int sourceHealth = -1)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Combat damage requires the match lock.");
+        }
+        if (runtime.IsEnded || victim.IsEliminated || damage <= 0)
+        {
+            return;
+        }
+
+        MarkAttacked(runtime, victim, sourcePlayerId, nowUtc);
+        if (runtime.GetPlayer(sourcePlayerId) is { } attackerPlayer)
+        {
+            attackerPlayer.PvpDamageDealt += damage;
+        }
+
+        var session = victim.Session;
+        healthService.ApplyDamage(runtime, victim, damage, sourcePlayerId);
+
+        var hit = new G_TO_C_COMBAT_HIT
+        {
+            AttackerId = sourcePlayerId,
+            TargetId = victim.PlayerId,
+            AreaType = area,
+            WeaponItemId = weaponItemId,
+            Damage = damage,
+            AttackerHealth = sourcePlayerId == victim.PlayerId ? victim.Health : sourceHealth,
+            TargetHealth = victim.Health,
+            IsDot = isPeriodicDamage
+        };
+        synchronization.QueueCombatHit(runtime, session, hit);
+    }
+
     public void ApplyMonsterContactHit(MatchRuntime runtime, Player victim, int monsterId, int damage, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -153,34 +97,20 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters, Pl
         }
 
         MarkAttacked(runtime, victim, 0, nowUtc);
-        var session = victim.Session;
+        var victimSession = victim.Session;
+        var area = GameMapData.GetCurrentArea(victim.GameInfo.ObjectInfo.MapId, victim.GameInfo.ObjectInfo.Cell);
         healthService.ApplyDamage(runtime, victim, damage);
-
-        if (session == null)
-        {
-            return;
-        }
 
         var hit = new G_TO_C_COMBAT_HIT
         {
             AttackerId = monsterId,
             AttackerKind = CombatEntityKind.Monster,
             TargetId = victim.PlayerId,
-            AreaType = GameMapData.GetCurrentArea(victim.GameInfo.ObjectInfo.MapId, victim.GameInfo.ObjectInfo.Cell),
+            AreaType = area,
             Damage = damage,
             TargetHealth = victim.Health
         };
-        runtime.PendingCombatHits.Enqueue((session, hit));
-    }
-
-    public int RollCriticalDamage(MatchRuntime runtime, int damage, out bool critical)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Combat damage requires the match lock.");
-        }
-        critical = RollCritical(runtime, Config.SWARM_CRITICAL_CHANCE);
-        return critical ? Math.Max(damage + 1, (int)MathF.Round(damage * Config.SWARM_CRITICAL_MULTIPLIER)) : damage;
+        synchronization.QueueAreaCombatHit(runtime, area, hit, victimSession);
     }
 
     public void ApplyMonsterHit(MatchRuntime runtime, int monsterId, long attackerId, int weaponItemId, AreaType area, int damage, bool critical, DateTime nowUtc)
@@ -196,7 +126,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters, Pl
         }
 
         var attacker = runtime.GetPlayer(attackerId);
-        QueueMonsterHitNotification(runtime, attacker, monsterId, area, weaponItemId, damage, critical, showDamageOnly: true);
+        synchronization.QueueMonsterHitForAttacker(runtime, attacker, monsterId, area, weaponItemId, damage, critical, showDamageOnly: true);
         if (!damageResult.Killed || damageResult.Monster is not { } defeated)
         {
             return;
@@ -244,58 +174,6 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters, Pl
         var owner = runtime.GetPlayer(ownerId);
         int ownerHealth = owner?.Health ?? -1;
         ApplyPlayerHit(runtime, victim, ownerId, area, weaponItemId, shock, nowUtc, isPeriodicDamage, ownerHealth);
-        QueuePlayerHitNotification(runtime, owner, victim.PlayerId, area, weaponItemId, shock, victim.Health, isPeriodicDamage);
-    }
-
-    /// <summary>오브 공격이 건 상태 효과를 당한 플레이어의 세션에 알린다. 세션이 없는 봇은 건너뛴다.</summary>
-    public void QueueStatusEffect(MatchRuntime runtime, Player target, long sourcePlayerId, AreaType area, CombatStatusEffectKind effect, float seconds)
-    {
-        if (target.Session is not { PlayerId: not null } session)
-        {
-            return;
-        }
-
-        QueueSessionEffect(runtime, session, Protocol.G_TO_C_STATUS_EFFECT, new G_TO_C_STATUS_EFFECT
-        {
-            SourcePlayerId = sourcePlayerId,
-            TargetPlayerId = target.PlayerId,
-            AreaType = area,
-            Effect = effect,
-            DurationMs = (int)(seconds * 1000f)
-        });
-    }
-
-    /// <summary>같은 구역에 있는 세션 전원에게 틱 끝에 보낼 패킷을 넣는다. 본문은 한 번만 직렬화한다.</summary>
-    public void QueueAreaEffect<T>(MatchRuntime runtime, AreaType area, Protocol protocol, T body) where T : IMessagePackObject
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Combat damage requires the match lock.");
-        }
-
-        byte[]? serialized = null;
-        foreach (var session in runtime.GetSessions())
-        {
-            if (session.IsGameEnded || !session.PlayerId.HasValue)
-            {
-                continue;
-            }
-            if (GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) != area)
-            {
-                continue;
-            }
-
-            serialized ??= MessagePackSerializer.Serialize(body);
-            runtime.PendingCombatEffects.Enqueue((session, protocol, serialized));
-        }
-    }
-
-    public void QueueSessionEffect<T>(MatchRuntime runtime, GameClientSession session, Protocol protocol, T body) where T : IMessagePackObject
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Combat damage requires the match lock.");
-        }
-        runtime.PendingCombatEffects.Enqueue((session, protocol, MessagePackSerializer.Serialize(body)));
+        synchronization.QueuePlayerHitForAttacker(runtime, owner, victim.PlayerId, area, weaponItemId, shock, victim.Health, isPeriodicDamage);
     }
 }

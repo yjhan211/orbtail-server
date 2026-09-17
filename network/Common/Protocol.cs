@@ -93,8 +93,8 @@ namespace network.common
         G_TO_C_ORB_EFFECT_STATE,
         // 제거된 자연 재고 메시지의 번호는 재사용하지 않는다.
         G_TO_C_MONSTER_INFO = G_TO_C_ORB_EFFECT_STATE + 2,
-        G_TO_C_MONSTER_ATTACK_VFX,
-        G_TO_C_SUMMON_STONE_STATE,
+        // 제거된 몬스터 공격 연출 메시지의 번호는 재사용하지 않는다.
+        G_TO_C_SUMMON_STONE_STATE = G_TO_C_MONSTER_INFO + 2,
         C_TO_G_SUMMON_ORB,
         G_TO_C_SUMMON_ORB_RESULT,
 

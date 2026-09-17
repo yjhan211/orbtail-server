@@ -174,23 +174,29 @@ public sealed class MatchGameplayServiceTests
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var service = provider.GetRequiredService<MatchCombatService>();
         var match = provider.GetRequiredService<MatchRuntimeStore>().GetOrCreate(947801);
+        var now = DateTime.UtcNow;
+        var position = TestMapPosition.In(network.common.AreaType.S2Gym1);
         var player = new game_server.players.Player(new PlayerInfo { PlayerId = playerId })
         {
-            Health = 100
+            Health = 100,
+            Position = position
         };
         using (match.Enter())
         {
             match.RegisterPlayer(player);
+            match.Monsters.Initialize(now);
+            match.Monsters.Entities[1] = new game_server.matches.monsters.Monster { MonsterId = 1, Alive = true, Health = 10, Position = position, ContactDamageValue = 12 };
             player.Interactions.Begin(702000101, 0);
-            service.ApplySwarmParticipantDamage(match,
-                new MonsterContactDamage(1, playerId, GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell), 12), [], DateTime.UtcNow);
+
+            // 몬스터와 겹쳐 선 플레이어는 세션이 없어도 물리고, 진행 중인 문 열기가 끊긴다.
+            service.ProcessMonsterContacts(match, [player], now);
             Assert.Equal(100 - network.common.Config.ScaleSwarmDamageTaken(12), player.Health);
             Assert.False(player.Interactions.TryComplete(702000101, 3000, TimeSpan.FromSeconds(3), out _));
 
+            // 탈락한 플레이어는 공격 간격과 면역 창이 지나도 물리지 않는다.
             player.Status = network.common.PlayerMatchStatus.ELIMINATED;
             int health = player.Health;
-            service.ApplySwarmParticipantDamage(match,
-                new MonsterContactDamage(1, playerId, GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell), 12), [], DateTime.UtcNow);
+            service.ProcessMonsterContacts(match, [player], now.AddSeconds(10));
             Assert.Equal(health, player.Health);
         }
     }

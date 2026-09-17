@@ -156,8 +156,8 @@ public sealed class GameClientSessionPublicationTests
         var combat = TestGameSessionServices.CreateCombatDamageService();
         using (session.Match.Enter())
         {
-            combat.QueuePlayerHitNotification(session.Match, player, 999, (AreaType)50, 123, 7, 61);
-            combat.QueueMonsterHitNotification(session.Match, player, 42, (AreaType)50, 123, 9);
+            new MatchSynchronizationService().QueuePlayerHitForAttacker(session.Match, player, 999, (AreaType)50, 123, 7, 61);
+            new MatchSynchronizationService().QueueMonsterHitForAttacker(session.Match, player, 42, (AreaType)50, 123, 9);
         }
         Assert.Equal(37, player.Health);
         Assert.False(player.IsEliminated);
@@ -333,7 +333,12 @@ public sealed class GameClientSessionPublicationTests
         {
             new MatchSynchronizationService().SendBatch(session.Match, new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, session.Match.GetSessions()));
         }
-        var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
+        // 몬스터 접촉 알림은 같은 구역 전원이 받는다. 내가 맞은 것과, 옆에서 봇이 맞은 것 두 건이 온다.
+        var hits = fixture.ConnectionFor(session).DeserializeAll<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
+        Assert.Equal(2, hits.Count);
+        var observed = Assert.Single(hits, item => item.TargetId == bot.PlayerId);
+        Assert.Equal(CombatEntityKind.Monster, observed.AttackerKind);
+        var hit = Assert.Single(hits, item => item.TargetId == session.Player.PlayerId);
         Assert.Equal(CombatEntityKind.Monster, hit.AttackerKind);
         Assert.Equal(42, hit.AttackerId);
         Assert.Equal(5, hit.Damage);
@@ -356,7 +361,7 @@ public sealed class GameClientSessionPublicationTests
         var combat = TestGameSessionServices.CreateCombatDamageService();
         using (session.Match.Enter())
         {
-            combat.QueueMonsterHitNotification(session.Match, session.Player, 42, (AreaType)50, 123, 9, critical: true, showDamageOnly: true);
+            new MatchSynchronizationService().QueueMonsterHitForAttacker(session.Match, session.Player, 42, (AreaType)50, 123, 9, critical: true, showDamageOnly: true);
         }
         using (session.Match.Enter())
         {
@@ -402,7 +407,7 @@ public sealed class GameClientSessionPublicationTests
         session.Player.Health = 37;
         using (session.Match.Enter())
         {
-            combat.QueuePlayerHitNotification(session.Match, session.Player, 999, (AreaType)50, 123, 7, targetHealth: 61);
+            new MatchSynchronizationService().QueuePlayerHitForAttacker(session.Match, session.Player, 999, (AreaType)50, 123, 7, targetHealth: 61);
         }
         using (session.Match.Enter())
         {

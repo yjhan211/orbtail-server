@@ -16,33 +16,36 @@ internal readonly record struct MonsterDamageResult(bool Applied, bool Killed, M
 /// </summary>
 internal sealed class MonsterCombatService
 {
-    public void CollectContactDamage(MatchRuntime runtime, Monster monster, IReadOnlyList<Player> players, DateTime now, List<MonsterContactDamage> contacts)
+    public bool TryStartContactAttack(MatchRuntime runtime, Monster monster, IReadOnlyList<Player> players, DateTime now, out MonsterContactDamage contact)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Monster combat service requires the match lock.");
         }
-        if (now < monster.NextContactAtUtc)
+
+        contact = default;
+        if (!monster.Alive || now < monster.NextContactAtUtc)
         {
-            return;
+            return false;
         }
 
+        var monsterArea = GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell);
         float attackRange = monster.AttackRangeValue > Monster.BaseContactRadius ? monster.AttackRangeValue : Monster.GetContactRadius(monster.Kind);
-        const float verticalScale = 2f;
         foreach (var player in players)
         {
             var position = player.Position;
-            if (position == null || GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell) != GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell))
+            if (position == null || player.IsEliminated)
             {
                 continue;
             }
-            float dx = monster.Position.X - position.X;
-            float dy = (monster.Position.Y - position.Y) * verticalScale;
-            if (dx * dx + dy * dy > attackRange * attackRange)
+            if (GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell) != monsterArea)
             {
                 continue;
             }
-
+            if (!GroundGeometry.IsWithinGroundRadius(monster.Position, position, attackRange))
+            {
+                continue;
+            }
             if (player.StatusEffects.IsActive(PlayerStatusEffectKind.MonsterContactImmunity, now))
             {
                 continue;
@@ -51,9 +54,11 @@ internal sealed class MonsterCombatService
             monster.NextContactAtUtc = now.AddSeconds(monster.AttackCooldownValue);
             player.StatusEffects.Apply(PlayerStatusEffectKind.MonsterContactImmunity, now.AddSeconds(Config.SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS));
             monster.ChaseTargetPlayerId = player.PlayerId;
-            contacts.Add(new MonsterContactDamage(monster.MonsterId, player.PlayerId, GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell), monster.ContactDamageValue));
-            break;
+            contact = new MonsterContactDamage(monster.MonsterId, player.PlayerId, monsterArea, monster.ContactDamageValue);
+            return true;
         }
+
+        return false;
     }
 
     public MonsterDamageResult ApplyMonsterDamage(MatchRuntime runtime, int monsterId, long attackerPlayerId, int damage, DateTime nowUtc)

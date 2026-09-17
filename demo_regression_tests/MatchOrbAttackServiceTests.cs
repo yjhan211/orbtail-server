@@ -40,7 +40,7 @@ public sealed class MatchOrbAttackServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947604);
-        var service = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store)), new PlayerOrbService(new PlayerOrbTrailService()));
+        var service = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store)), new PlayerOrbService(new PlayerOrbTrailService()), new MatchSynchronizationService());
         var now = DateTime.UtcNow;
         Assert.Throws<InvalidOperationException>(() => service.ProcessSunAttacks(match, now));
         Assert.Throws<InvalidOperationException>(() => service.ProcessSunBurns(match, now));
@@ -61,7 +61,7 @@ public sealed class MatchOrbAttackServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947601);
-        var service = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance)), new PlayerOrbService(new PlayerOrbTrailService()));
+        var service = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance)), new PlayerOrbService(new PlayerOrbTrailService()), new MatchSynchronizationService());
         var now = DateTime.UtcNow;
         var owner = new Bot { PlayerId = 11 };
         var victim = new Bot { PlayerId = 12 };
@@ -109,7 +109,7 @@ public sealed class MatchOrbAttackServiceTests
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(947602);
         var second = store.GetOrCreate(947603);
-        var service = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance)), new PlayerOrbService(new PlayerOrbTrailService()));
+        var service = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance)), new PlayerOrbService(new PlayerOrbTrailService()), new MatchSynchronizationService());
         var now = DateTime.UtcNow;
         var burned = new Bot { PlayerId = 12 };
         using (MatchRuntimeStore.Enter(first))
@@ -182,7 +182,7 @@ public sealed class MatchOrbAttackServiceTests
         Assert.Null(victim.Player.StatusEffects.SunBurn);
     }
     private static MatchOrbAttackService CreateService(MatchRuntimeStore store) =>
-        new(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store)), new PlayerOrbService(new PlayerOrbTrailService()));
+        new(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store)), new PlayerOrbService(new PlayerOrbTrailService()), new MatchSynchronizationService());
 
     [Fact]
     public void WaveWaitsForTargetAndFuseThenDetonatesOnce()

@@ -9,10 +9,9 @@ namespace game_server.matches;
 ///     플레이어의 이동 경로와 상대 오브 꼬리의 교차를 판정하고, 오브 파괴와 반격 보호를 처리한다.
 ///     절단 통지와 반격 보호 알림은 틱 끝에 발행되도록 대기열에 넣는다.
 /// </summary>
-internal sealed class MatchTrailCutService(PlayerOrbTrailService orbTrails, MatchCombatDamageService combatDamage)
+internal sealed class MatchTrailCutService(PlayerOrbTrailService orbTrails, MatchCombatDamageService combatDamage, MatchSynchronizationService synchronization)
 {
-    internal readonly record struct OrbChainPoint(long ItemUid, Vector3f Position);
-    private readonly record struct TrailCutHit(Player Victim, int Ordinal, long OrbUid, Vector3f OrbPosition);
+    private readonly record struct TrailCutHit(Player Victim, int Ordinal, Vector3f OrbPosition);
 
     public void ProcessTick(MatchRuntime runtime, DateTime nowUtc, IReadOnlyList<Player> players)
     {
@@ -21,7 +20,7 @@ internal sealed class MatchTrailCutService(PlayerOrbTrailService orbTrails, Matc
             throw new InvalidOperationException("Trail cuts require the match lock.");
         }
 
-        var chainsByOwner = new Dictionary<long, List<OrbChainPoint>>();
+        var chainsByOwner = new Dictionary<long, List<Vector3f>>();
         foreach (var owner in players)
         {
             var position = owner.Position;
@@ -35,10 +34,10 @@ internal sealed class MatchTrailCutService(PlayerOrbTrailService orbTrails, Matc
                 continue;
             }
             var orbTiers = PlayerOrbTrailService.GetOrbTiersInOrder(runtime, owner);
-            var chain = new List<OrbChainPoint>(orbs.Count);
+            var chain = new List<Vector3f>(orbs.Count);
             for (int ordinal = 0; ordinal < orbs.Count; ordinal++)
             {
-                chain.Add(new OrbChainPoint(orbs[ordinal].ItemUid, orbTrails.GetOrbPosition(runtime, owner, ordinal, position, orbTiers)));
+                chain.Add(orbTrails.GetOrbPosition(runtime, owner, ordinal, position, orbTiers));
             }
             chainsByOwner[owner.PlayerId] = chain;
         }
@@ -62,7 +61,7 @@ internal sealed class MatchTrailCutService(PlayerOrbTrailService orbTrails, Matc
 
     }
 
-    internal void ProcessTrailCut(MatchRuntime runtime, Player cutter, Dictionary<long, List<OrbChainPoint>> chainsByOwner, DateTime nowUtc)
+    internal void ProcessTrailCut(MatchRuntime runtime, Player cutter, Dictionary<long, List<Vector3f>> chainsByOwner, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -114,7 +113,7 @@ internal sealed class MatchTrailCutService(PlayerOrbTrailService orbTrails, Matc
             victim.Session?.SendOrbUpdate(destroyedOrb);
         }
 
-        combatDamage.QueueAreaEffect(runtime, cutterArea, Protocol.G_TO_C_ORB_TAIL_CUT, new G_TO_C_ORB_TAIL_CUT
+        synchronization.QueueAreaPacket(runtime, cutterArea, Protocol.G_TO_C_ORB_TAIL_CUT, new G_TO_C_ORB_TAIL_CUT
         {
             CutterPlayerId = cutterId,
             VictimPlayerId = victim.PlayerId,
@@ -125,7 +124,7 @@ internal sealed class MatchTrailCutService(PlayerOrbTrailService orbTrails, Matc
 
         // 꼬리를 잘린 플레이어는 잠시동안 다시 잘리지 않음
         victim.StatusEffects.Apply(PlayerStatusEffectKind.TailCutGuard, nowUtc.AddSeconds(Config.SWARM_TAIL_CUT_GUARD_SECONDS));
-        combatDamage.QueueAreaEffect(runtime, cutterArea, Protocol.G_TO_C_STATUS_EFFECT, new G_TO_C_STATUS_EFFECT
+        synchronization.QueueAreaPacket(runtime, cutterArea, Protocol.G_TO_C_STATUS_EFFECT, new G_TO_C_STATUS_EFFECT
         {
             SourcePlayerId = cutterId,
             TargetPlayerId = victim.PlayerId,
@@ -136,7 +135,7 @@ internal sealed class MatchTrailCutService(PlayerOrbTrailService orbTrails, Matc
         combatDamage.MarkAttacked(runtime, victim, cutterId, nowUtc);
     }
 
-    private static bool TryFindCut(MatchRuntime runtime, Player cutter, AreaType cutterArea, Dictionary<long, List<OrbChainPoint>> chainsByOwner, DateTime nowUtc, out TrailCutHit hit)
+    private static bool TryFindCut(MatchRuntime runtime, Player cutter, AreaType cutterArea, Dictionary<long, List<Vector3f>> chainsByOwner, DateTime nowUtc, out TrailCutHit hit)
     {
         hit = default;
         bool found = false;
@@ -171,13 +170,13 @@ internal sealed class MatchTrailCutService(PlayerOrbTrailService orbTrails, Matc
 
             for (int ordinal = 0; ordinal < chain.Count; ordinal++)
             {
-                var orbPosition = chain[ordinal].Position;
+                var orbPosition = chain[ordinal];
                 var orbHitPoint = new Vector3f(orbPosition.X, orbPosition.Y + Config.SWARM_TRAIL_CUT_ORB_HIT_Y_OFFSET, 0f);
 
                 bool crossed = GroundGeometry.TrySegmentHitsPoint(previousPosition, currentPosition, orbHitPoint, out float crossingT);
                 if (!crossed)
                 {
-                    var linkStart = ordinal == 0 ? owner.Position : chain[ordinal - 1].Position;
+                    var linkStart = ordinal == 0 ? owner.Position : chain[ordinal - 1];
                     crossed = GroundGeometry.TrySegmentIntersection(previousPosition, currentPosition, linkStart, orbPosition, out crossingT);
                 }
                 if (!crossed)
@@ -189,7 +188,7 @@ internal sealed class MatchTrailCutService(PlayerOrbTrailService orbTrails, Matc
                     continue;
                 }
                 nearestCrossingT = crossingT;
-                hit = new TrailCutHit(owner, ordinal, chain[ordinal].ItemUid, orbPosition);
+                hit = new TrailCutHit(owner, ordinal, orbPosition);
                 found = true;
             }
         }

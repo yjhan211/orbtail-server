@@ -17,14 +17,14 @@ internal sealed class MatchSynchronizationService
 {
     internal sealed class SyncBatch(DateTime nowUtc, IReadOnlyList<GameClientSession> sessions)
     {
-        public long ServerTimestamp { get; } = new DateTimeOffset(nowUtc).ToUnixTimeMilliseconds();
         public IReadOnlyList<GameClientSession> Sessions { get; } = sessions;
-        public Dictionary<GameClientSession, G_TO_C_MOVE> Moves { get; init; } = new();
-        public Dictionary<GameClientSession, List<MonsterInfo>> MonsterUpdates { get; init; } = new();
-        public Dictionary<GameClientSession, List<GamePlayerInfo>> PlayerUpdates { get; init; } = new();
-        public Dictionary<GameClientSession, G_TO_C_OBJECT_ENTER> Entries { get; init; } = new();
-        public Dictionary<GameClientSession, List<ObjectIdentity>> Leaves { get; init; } = new();
+        public long ServerTimestamp { get; } = new DateTimeOffset(nowUtc).ToUnixTimeMilliseconds();
         public Dictionary<GameClientSession, List<InteractableInfo>> InteractableUpdates { get; init; } = new();
+        public Dictionary<GameClientSession, List<ObjectIdentity>> Leaves { get; init; } = new();
+        public Dictionary<GameClientSession, G_TO_C_OBJECT_ENTER> Entries { get; init; } = new();
+        public Dictionary<GameClientSession, List<GamePlayerInfo>> PlayerUpdates { get; init; } = new();
+        public Dictionary<GameClientSession, List<MonsterInfo>> MonsterUpdates { get; init; } = new();
+        public Dictionary<GameClientSession, G_TO_C_MOVE> Moves { get; init; } = new();
         public Dictionary<GameClientSession, List<G_TO_C_SUN_ORB_ATTACK>> SunAttacks { get; init; } = new();
         public Dictionary<GameClientSession, List<G_TO_C_WAVE_ORB_ATTACK>> WaveAttacks { get; init; } = new();
     }
@@ -44,6 +44,129 @@ internal sealed class MatchSynchronizationService
         {
             runtime.SynchronizedObjects.TryAdd((ObjectType.MONSTER, monster.MonsterId), new MatchObjectSnapshot(monster.Info.ObjectInfo));
         }
+    }
+
+    public void QueueCombatHit(MatchRuntime runtime, GameClientSession? session, G_TO_C_COMBAT_HIT hit)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Synchronization requires the match lock.");
+        }
+        if (session != null)
+        {
+            runtime.PendingCombatHits.Enqueue((session, hit));
+        }
+    }
+
+    public void QueueAreaCombatHit(MatchRuntime runtime, AreaType area, G_TO_C_COMBAT_HIT hit, GameClientSession? alwaysInclude)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Synchronization requires the match lock.");
+        }
+        if (alwaysInclude != null)
+        {
+            runtime.PendingCombatHits.Enqueue((alwaysInclude, hit));
+        }
+
+        foreach (var session in runtime.GetSessions())
+        {
+            if (ReferenceEquals(session, alwaysInclude) || session.IsGameEnded || !session.PlayerId.HasValue)
+            {
+                continue;
+            }
+            if (GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) == area)
+            {
+                runtime.PendingCombatHits.Enqueue((session, hit));
+            }
+        }
+    }
+
+    public void QueuePlayerHitForAttacker(MatchRuntime runtime, Player? attacker, long targetPlayerId, AreaType area, int weaponItemId, int damage, int targetHealth, bool isPeriodicDamage = false)
+    {
+        if (attacker == null || attacker.PlayerId == 0 || targetPlayerId == 0)
+        {
+            return;
+        }
+
+        QueueCombatHit(runtime, attacker.Session, new G_TO_C_COMBAT_HIT
+        {
+            AttackerId = attacker.PlayerId,
+            TargetId = targetPlayerId,
+            AreaType = area,
+            WeaponItemId = weaponItemId,
+            Damage = damage,
+            AttackerHealth = attacker.Health,
+            TargetHealth = targetHealth,
+            IsDot = isPeriodicDamage
+        });
+    }
+
+    public void QueueMonsterHitForAttacker(MatchRuntime runtime, Player? attacker, int monsterId, AreaType area, int weaponItemId, int damage, bool critical = false, bool showDamageOnly = false)
+    {
+        if (attacker == null || attacker.PlayerId == 0 || attacker.IsEliminated || monsterId < 0 || weaponItemId <= 0 || damage <= 0)
+        {
+            return;
+        }
+
+        QueueCombatHit(runtime, attacker.Session, new G_TO_C_COMBAT_HIT
+        {
+            AttackerId = attacker.PlayerId,
+            TargetId = monsterId,
+            TargetKind = CombatEntityKind.Monster,
+            AreaType = area,
+            WeaponItemId = weaponItemId,
+            Damage = damage,
+            AttackerHealth = attacker.Health,
+            IsCritical = critical,
+            ShowDamageOnly = showDamageOnly
+        });
+    }
+
+    public void QueueAreaPacket<T>(MatchRuntime runtime, AreaType area, Protocol protocol, T body) where T : IMessagePackObject
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Synchronization requires the match lock.");
+        }
+
+        byte[]? serialized = null;
+        foreach (var session in runtime.GetSessions())
+        {
+            if (session.IsGameEnded || !session.PlayerId.HasValue)
+            {
+                continue;
+            }
+            if (GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell) != area)
+            {
+                continue;
+            }
+
+            serialized ??= MessagePackSerializer.Serialize(body);
+            runtime.PendingCombatEffects.Enqueue((session, protocol, serialized));
+        }
+    }
+
+    public void QueueStatusEffect(MatchRuntime runtime, Player target, long sourcePlayerId, AreaType area, CombatStatusEffectKind effect, float seconds)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Synchronization requires the match lock.");
+        }
+        if (target.Session is not { PlayerId: not null } session)
+        {
+            return;
+        }
+
+        byte[] serialized = MessagePackSerializer.Serialize(new G_TO_C_STATUS_EFFECT
+        {
+            SourcePlayerId = sourcePlayerId,
+            TargetPlayerId = target.PlayerId,
+            AreaType = area,
+            Effect = effect,
+            DurationMs = (int)(seconds * 1000f)
+        });
+        runtime.PendingCombatEffects.Enqueue((session, Protocol.G_TO_C_STATUS_EFFECT, serialized));
     }
 
     public void ProcessTick(MatchRuntime runtime, DateTime nowUtc)
@@ -105,7 +228,7 @@ internal sealed class MatchSynchronizationService
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
-            throw new InvalidOperationException("Area state collection requires the match lock.");
+            throw new InvalidOperationException("Synchronization requires the match lock.");
         }
         var openDoors = runtime.Doors.GetOpenDoors().ToHashSet();
         foreach (var session in batch.Sessions)
@@ -126,7 +249,7 @@ internal sealed class MatchSynchronizationService
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
-            throw new InvalidOperationException("Ground item collection requires the match lock.");
+            throw new InvalidOperationException("Synchronization requires the match lock.");
         }
         var areaItems = new Dictionary<AreaType, List<GroundItemInfo>>();
         foreach (var session in batch.Sessions)
@@ -155,11 +278,11 @@ internal sealed class MatchSynchronizationService
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
-            throw new InvalidOperationException("Synchronization collection requires the match lock.");
+            throw new InvalidOperationException("Synchronization requires the match lock.");
         }
         if (runtime.IsEnded)
         {
-            throw new InvalidOperationException("Cannot collect synchronization after the match has ended.");
+            throw new InvalidOperationException("Cannot synchronize after the match has ended.");
         }
         var info = player.GameInfo.ObjectInfo;
         bool stateChanged = !runtime.SynchronizedPlayerStates.TryGetValue(player.PlayerId, out var previousState) || previousState != player.State;
@@ -200,11 +323,11 @@ internal sealed class MatchSynchronizationService
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
-            throw new InvalidOperationException("Synchronization collection requires the match lock.");
+            throw new InvalidOperationException("Synchronization requires the match lock.");
         }
         if (runtime.IsEnded)
         {
-            throw new InvalidOperationException("Cannot collect synchronization after the match has ended.");
+            throw new InvalidOperationException("Cannot synchronize after the match has ended.");
         }
         var snapshot = monster.ToMonsterInfo();
         foreach (var session in batch.Sessions)
@@ -238,11 +361,11 @@ internal sealed class MatchSynchronizationService
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
-            throw new InvalidOperationException("Synchronization collection requires the match lock.");
+            throw new InvalidOperationException("Synchronization requires the match lock.");
         }
         if (runtime.IsEnded)
         {
-            throw new InvalidOperationException("Cannot collect synchronization after the match has ended.");
+            throw new InvalidOperationException("Cannot synchronize after the match has ended.");
         }
         if (runtime.SynchronizedObjects.TryGetValue((info.ObjectType, info.ObjectId), out var previous))
         {
@@ -273,62 +396,11 @@ internal sealed class MatchSynchronizationService
         }
     }
 
-    internal void CollectObjectLeaves(MatchRuntime runtime, SyncBatch batch)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Visibility collection requires the match lock.");
-        }
-        var areas = new Dictionary<(ObjectType Type, long Id), AreaType>();
-        foreach (var player in runtime.GetAlivePlayers())
-        {
-            areas[(ObjectType.PLAYER, player.PlayerId)] = GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell);
-        }
-        foreach (var monster in runtime.Monsters.Entities.Values)
-        {
-            areas[(ObjectType.MONSTER, monster.MonsterId)] = GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell);
-        }
-        foreach (var session in batch.Sessions)
-        {
-            foreach (var identity in session.PublishedObjects)
-            {
-                var area = identity.Type == ObjectType.ITEM
-                    ? runtime.GroundItems.GetItemArea(identity.Id)
-                    : areas.GetValueOrDefault(identity, AreaType.None);
-                if (!session.Player.IsEliminated && area != AreaType.None && area == GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell))
-                {
-                    continue;
-                }
-                if (!batch.Leaves.TryGetValue(session, out var leaves))
-                {
-                    leaves = [];
-                    batch.Leaves.Add(session, leaves);
-                }
-                leaves.Add(new ObjectIdentity { Type = identity.Type, Id = identity.Id });
-            }
-        }
-    }
-
-
-
-    internal static void SendPendingCombatHits(MatchRuntime runtime)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Combat hit publication requires the match lock.");
-        }
-        while (runtime.PendingCombatHits.TryDequeue(out var notification))
-        {
-            using var packet = PacketMaker.G_TO_C_COMBAT_HIT(notification.Hit);
-            notification.Session.TrySend(packet);
-        }
-    }
-
     internal void CollectSunAttacks(MatchRuntime runtime, SyncBatch batch, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
-            throw new InvalidOperationException("Synchronization collection requires the match lock.");
+            throw new InvalidOperationException("Synchronization requires the match lock.");
         }
         foreach (var shape in runtime.PendingSunAttacks)
         {
@@ -349,7 +421,6 @@ internal sealed class MatchSynchronizationService
                 EndX = end.X,
                 EndY = end.Y,
                 Width = OrbData.GetSunWidth(shape.WeaponItemId),
-                // 발행이 늦어진 만큼 예고를 줄여 보낸다 — 서버의 발사 시각(ArmedAtUtc)은 움직이지 않는다.
                 TelegraphSeconds = MathF.Max(0f, (float)(shape.ArmedAtUtc - nowUtc).TotalSeconds),
                 ActiveSeconds = (float)(shape.ExpiresAtUtc - shape.ArmedAtUtc).TotalSeconds,
                 DetonateAtEnd = shape.DetonateAtEnd,
@@ -371,12 +442,11 @@ internal sealed class MatchSynchronizationService
         }
     }
 
-    /// <summary>아직 알리지 않은 파도 소용돌이 예약의 예고를 같은 구역 관찰자별로 모은다. 기폭까지 남은 시간은 예약 상태에서 계산한다.</summary>
     internal void CollectWaveAttacks(MatchRuntime runtime, SyncBatch batch, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
-            throw new InvalidOperationException("Synchronization collection requires the match lock.");
+            throw new InvalidOperationException("Synchronization requires the match lock.");
         }
         for (int index = 0; index < runtime.PendingWaveAttacks.Count; index++)
         {
@@ -410,17 +480,37 @@ internal sealed class MatchSynchronizationService
         }
     }
 
-    internal static void SendPendingCombatEffects(MatchRuntime runtime)
+    internal void CollectObjectLeaves(MatchRuntime runtime, SyncBatch batch)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
-            throw new InvalidOperationException("Combat effect publication requires the match lock.");
+            throw new InvalidOperationException("Synchronization requires the match lock.");
         }
-        while (runtime.PendingCombatEffects.TryDequeue(out var effect))
+        var areas = new Dictionary<(ObjectType Type, long Id), AreaType>();
+        foreach (var player in runtime.GetAlivePlayers())
         {
-            using var packet = Packet.Create((int)effect.Protocol);
-            packet.SetBody(effect.Body);
-            effect.Session.TrySend(packet);
+            areas[(ObjectType.PLAYER, player.PlayerId)] = GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell);
+        }
+        foreach (var monster in runtime.Monsters.Entities.Values)
+        {
+            areas[(ObjectType.MONSTER, monster.MonsterId)] = GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell);
+        }
+        foreach (var session in batch.Sessions)
+        {
+            foreach (var identity in session.PublishedObjects)
+            {
+                var area = identity.Type == ObjectType.ITEM ? runtime.GroundItems.GetItemArea(identity.Id) : areas.GetValueOrDefault(identity, AreaType.None);
+                if (!session.Player.IsEliminated && area != AreaType.None && area == GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell))
+                {
+                    continue;
+                }
+                if (!batch.Leaves.TryGetValue(session, out var leaves))
+                {
+                    leaves = [];
+                    batch.Leaves.Add(session, leaves);
+                }
+                leaves.Add(new ObjectIdentity { Type = identity.Type, Id = identity.Id });
+            }
         }
     }
 
@@ -428,11 +518,11 @@ internal sealed class MatchSynchronizationService
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
-            throw new InvalidOperationException("Object movement publication requires the match lock.");
+            throw new InvalidOperationException("Synchronization requires the match lock.");
         }
         if (runtime.IsEnded)
         {
-            throw new InvalidOperationException("Cannot publish object movement after the match has ended.");
+            throw new InvalidOperationException("Cannot synchronize after the match has ended.");
         }
         SendPendingCombatHits(runtime);
         foreach (var (session, snapshot) in batch.InteractableUpdates)
@@ -481,5 +571,32 @@ internal sealed class MatchSynchronizationService
             }
         }
         SendPendingCombatEffects(runtime);
+    }
+
+    internal static void SendPendingCombatHits(MatchRuntime runtime)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Synchronization requires the match lock.");
+        }
+        while (runtime.PendingCombatHits.TryDequeue(out var notification))
+        {
+            using var packet = PacketMaker.G_TO_C_COMBAT_HIT(notification.Hit);
+            notification.Session.TrySend(packet);
+        }
+    }
+
+    internal static void SendPendingCombatEffects(MatchRuntime runtime)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Synchronization requires the match lock.");
+        }
+        while (runtime.PendingCombatEffects.TryDequeue(out var effect))
+        {
+            using var packet = Packet.Create((int)effect.Protocol);
+            packet.SetBody(effect.Body);
+            effect.Session.TrySend(packet);
+        }
     }
 }

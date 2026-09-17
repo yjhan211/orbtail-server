@@ -24,12 +24,11 @@ public sealed class SwarmArenaTickOrderTests
 
         AssertInOrder(
             arenaTick,
-            "CollectMonsterContactDamages(runtime,",
             "if (!runtime.IsGameplayActive())",
             "orbTrails.UpdateTrails(",
             "trailCuts.ProcessTick(",
             "orbAttacks.ProcessTick(",
-            "ApplySwarmParticipantDamage(",
+            "ProcessMonsterContacts(",
             "botBehavior.UpdateSleep(",
             "ApplySleepRecovery(",
             "ProcessDoorInteractions(",
@@ -95,7 +94,7 @@ public sealed class SwarmArenaTickOrderTests
         return ReadMethodSlice(
             source,
             "public void ProcessTick(",
-            "    internal void ApplySwarmParticipantDamage(");
+            "    internal void ProcessMonsterContacts(");
     }
 
     private static string ReadBracedBlockAfterMarker(string source, string marker)

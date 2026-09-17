@@ -87,7 +87,7 @@ internal static class TestGameSessionServices
         return new MatchRuntimeStore(logger.For<MatchRuntime>(), lifecycle, redis);
     }
     public static MatchCombatDamageService CreateCombatDamageService(PlayerHealthService? health = null) =>
-        new(new MonsterCombatService(), health!);
+        new(new MonsterCombatService(), health!, new MatchSynchronizationService());
 
     public static PlayerMovementService CreateMovementService() =>
         new(NullLogger<PlayerMovementService>.Instance);

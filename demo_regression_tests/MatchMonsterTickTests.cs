@@ -397,7 +397,14 @@ public class MatchMonsterTickTests
                     _movement.ProcessTick(Runtime, nowUtc);
                 }
                 var contactPlayers = participants.Select(participant => Runtime.GetPlayer(participant.PlayerId)!).ToList();
-                var monsterContactDamages = _combat.CollectMonsterContactDamages(Runtime, contactPlayers, nowUtc);
+                var monsterContactDamages = new List<MonsterContactDamage>();
+                foreach (var monster in Runtime.Monsters.Entities.Values.ToList())
+                {
+                    if (_monsterCombat.TryStartContactAttack(Runtime, monster, contactPlayers, nowUtc, out var contact))
+                    {
+                        monsterContactDamages.Add(contact);
+                    }
+                }
                 var spawned = Runtime.Monsters.Entities.Values.Where(monster => !known.Contains(monster.MonsterId)).ToList();
                 return new TickResult(monsterContactDamages, spawned);
             }

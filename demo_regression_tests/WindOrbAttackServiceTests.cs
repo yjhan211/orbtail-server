@@ -20,7 +20,7 @@ public sealed class WindOrbAttackServiceTests
         var match = store.GetOrCreate(947503);
         var owner = new Bot { PlayerId = 11 };
         var service = new PlayerOrbService(new PlayerOrbTrailService());
-        var attacks = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store)), service);
+        var attacks = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store)), service, new MatchSynchronizationService());
         Assert.Throws<InvalidOperationException>(() => attacks.ProcessTick(match, DateTime.UtcNow));
         Assert.Throws<InvalidOperationException>(() => attacks.ProcessWindAttacks(match, DateTime.UtcNow));
         Assert.Throws<InvalidOperationException>(() => service.ActivateOrbs(match, owner.Player, DateTime.UtcNow));
@@ -38,7 +38,7 @@ public sealed class WindOrbAttackServiceTests
         var match = store.GetOrCreate(947501);
         var trails = new PlayerOrbTrailService();
         var service = new PlayerOrbService(trails);
-        var attacks = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store, NullLogger.Instance)), service);
+        var attacks = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store, NullLogger.Instance)), service, new MatchSynchronizationService());
         var now = DateTime.UtcNow;
         var owner = new Bot { PlayerId = 11 };
         var victim = new Bot { PlayerId = 12 };
@@ -82,7 +82,7 @@ public sealed class WindOrbAttackServiceTests
         var match = store.GetOrCreate(947502);
         var trails = new PlayerOrbTrailService();
         var service = new PlayerOrbService(trails);
-        var attacks = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store, NullLogger.Instance)), service);
+        var attacks = new MatchOrbAttackService(TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(store, NullLogger.Instance)), service, new MatchSynchronizationService());
         var owner = new Bot { PlayerId = 11 };
         var victim = new Bot { PlayerId = 12 };
         match.RegisterPlayer(owner.Player);

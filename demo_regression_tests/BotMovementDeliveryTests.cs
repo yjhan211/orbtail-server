@@ -284,9 +284,9 @@ public sealed class BotMovementDeliveryTests
             synchronization.InitializeComparisonSnapshots(runtime);
             var player = runtime.GetPlayer(1)!;
             var combat = TestGameSessionServices.CreateCombatDamageService();
-            combat.QueuePlayerHitNotification(runtime, player, 2, AreaType.S2Gym1, 123, 5, 95);
+            new MatchSynchronizationService().QueuePlayerHitForAttacker(runtime, player, 2, AreaType.S2Gym1, 123, 5, 95);
             if (ended) runtime.TryMarkEnded();
-            combat.QueuePlayerHitNotification(runtime, player, 2, AreaType.S2Gym1, 123, 7, 88);
+            new MatchSynchronizationService().QueuePlayerHitForAttacker(runtime, player, 2, AreaType.S2Gym1, 123, 7, 88);
             Assert.Empty(recipient.Packets);
             Assert.Equal(2, runtime.PendingCombatHits.Count);
             if (!ended)

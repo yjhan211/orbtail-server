@@ -1,18 +1,14 @@
-using network.common.data;
 using game_server.matches.monsters;
 using game_server.players;
 using game_server.players.bots;
-using game_server.sessions;
-using MessagePack;
 using network.common;
 using network.common.data.models;
-using network.packets;
 
 namespace game_server.matches;
 
 /// <summary>
 ///     매치의 전투 틱을 조율한다.
-///     오브·몬스터 공격, 상태 효과, 지연 타격을 순서대로 처리하고 피해 적용을 각 서비스에 위임한다.
+///     궤적·절단, 오브 공격, 몬스터 접촉, 봇 판단, 표시 갱신을 순서대로 부르고 피해 적용은 각 서비스에 위임한다.
 /// </summary>
 internal class MatchCombatService(
     PlayerHealthService healthService,
@@ -24,31 +20,6 @@ internal class MatchCombatService(
     BotBehaviorService botBehavior,
     MonsterCombatService monsterCombat)
 {
-    internal List<MonsterContactDamage> CollectMonsterContactDamages(MatchRuntime runtime, IReadOnlyList<Player> players, DateTime nowUtc)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Match monster service requires the match lock.");
-        }
-        var monsterContactDamages = new List<MonsterContactDamage>();
-        var state = runtime.Monsters;
-        if (!state.IsInitialized)
-        {
-            return monsterContactDamages;
-        }
-
-        foreach (var monster in state.Entities.Values)
-        {
-            if (!monster.Alive)
-            {
-                continue;
-            }
-
-            monsterCombat.CollectContactDamage(runtime, monster, players, nowUtc, monsterContactDamages);
-        }
-        return monsterContactDamages;
-    }
-
     public virtual void ProcessTick(MatchRuntime runtime)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -75,7 +46,6 @@ internal class MatchCombatService(
 
         var nowUtc = DateTime.UtcNow;
         var aliveBots = bots.Where(bot => !bot.Player.IsEliminated).ToList();
-        var monsterContactDamages = CollectMonsterContactDamages(runtime, players, nowUtc);
         if (!runtime.IsGameplayActive())
         {
             return;
@@ -84,10 +54,7 @@ internal class MatchCombatService(
         orbTrails.UpdateTrails(runtime, players);
         trailCuts.ProcessTick(runtime, nowUtc, players);
         orbAttacks.ProcessTick(runtime, nowUtc);
-        foreach (var damage in monsterContactDamages)
-        {
-            ApplySwarmParticipantDamage(runtime, damage, sessions, nowUtc);
-        }
+        ProcessMonsterContacts(runtime, players, nowUtc);
         if (runtime.IsEnded)
         {
             return;
@@ -110,41 +77,44 @@ internal class MatchCombatService(
         }
         matchResults.BroadcastOrbRankings(runtime, sessions);
         botBehavior.ProcessOrbGrowth(runtime, aliveBots);
-        if (matchResults.TryEndOnScoreTimeout(runtime, nowUtc))
-        {
-            return;
-        }
+        matchResults.TryEndOnScoreTimeout(runtime, nowUtc);
     }
 
-    internal void ApplySwarmParticipantDamage(MatchRuntime runtime, MonsterContactDamage damage, List<GameClientSession> allSessions, DateTime nowUtc)
+    /// <summary>
+    ///     살아 있는 몬스터마다 접촉 공격을 판정하고, 성립하면 그 자리에서 피해를 적용한다.
+    ///     피해는 받는 피해 배율을 거친다. 같은 구역에 보내는 피격 알림이 곧 몬스터의 공격 연출 신호다.
+    /// </summary>
+    internal void ProcessMonsterContacts(MatchRuntime runtime, IReadOnlyList<Player> players, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Combat tick requires the match lock.");
         }
-        var victim = runtime.GetPlayer(damage.TargetPlayerId);
-        if (runtime.IsEnded || victim == null || victim.IsEliminated)
+
+        if (!runtime.Monsters.IsInitialized)
         {
             return;
         }
-        damage = damage with { Damage = Config.ScaleSwarmDamageTaken(damage.Damage) };
-        if (runtime.Monsters.Entities.TryGetValue(damage.MonsterId, out var monster) && monster.Insignia == MonsterInsignia.Wave)
+
+        foreach (var monster in runtime.Monsters.Entities.Values)
         {
-            using var vfxPacket = Packet.Create((int)Protocol.G_TO_C_MONSTER_ATTACK_VFX);
-            vfxPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_ATTACK_VFX
+            if (runtime.IsEnded)
             {
-                MonsterId = damage.MonsterId,
-                TargetPlayerId = damage.TargetPlayerId,
-                AreaType = damage.Area
-            }));
-            foreach (var vfxSession in allSessions)
-            {
-                if (!vfxSession.Player.IsEliminated && GameMapData.GetCurrentArea(vfxSession.Player.GameInfo.ObjectInfo.MapId, vfxSession.Player.GameInfo.ObjectInfo.Cell) == damage.Area)
-                {
-                    vfxSession.TrySend(vfxPacket);
-                }
+                return;
             }
+
+            if (!monsterCombat.TryStartContactAttack(runtime, monster, players, nowUtc, out var contact))
+            {
+                continue;
+            }
+
+            var victim = runtime.GetPlayer(contact.TargetPlayerId);
+            if (victim == null || victim.IsEliminated)
+            {
+                continue;
+            }
+
+            combatDamage.ApplyMonsterContactHit(runtime, victim, contact.MonsterId, Config.ScaleSwarmDamageTaken(contact.Damage), nowUtc);
         }
-        combatDamage.ApplyMonsterContactHit(runtime, victim, damage.MonsterId, damage.Damage, nowUtc);
     }
 }
