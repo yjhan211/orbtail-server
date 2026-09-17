@@ -1,0 +1,36 @@
+using network.common.data.helpers;
+using network.common.data.models;
+
+namespace server_tests;
+
+public class MapTraversalTests
+{
+    [Fact]
+    public void CrossingBlockedIntermediateCellIsRejected()
+    {
+        var canMove = MapTraversal.IsTraversable(
+            new Cell(0, 0), new Cell(2, 0), cell => cell.X != 1);
+
+        Assert.False(canMove);
+    }
+
+    [Fact]
+    public void LongTraversalAcceptsOpenCells()
+    {
+        var canMove = MapTraversal.IsTraversable(
+            new Cell(0, 0), new Cell(5, -2), _ => true);
+
+        Assert.True(canMove);
+    }
+
+    [Fact]
+    public void TransitionPolicyCanRejectAnOtherwiseOpenRoute()
+    {
+        var canMove = MapTraversal.IsTraversable(
+            new Cell(0, 0), new Cell(2, 0),
+            _ => true,
+            (from, to) => !(from.X == 0 && to.X == 1));
+
+        Assert.False(canMove);
+    }
+}

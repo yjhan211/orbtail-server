@@ -11,7 +11,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "game_server", "game_server\
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Manitto", "Manitto", "{2AEF1E16-C02C-484E-B40C-1AE915D8C6A4}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "demo_regression_tests", "demo_regression_tests\demo_regression_tests.csproj", "{F97CC373-28BC-4F10-813F-FA361F3DDD72}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "server_tests", "server_tests\server_tests.csproj", "{F97CC373-28BC-4F10-813F-FA361F3DDD72}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

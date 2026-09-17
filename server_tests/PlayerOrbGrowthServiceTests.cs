@@ -1,0 +1,66 @@
+using game_server.matches;
+using game_server.players;
+using Microsoft.Extensions.Logging.Abstractions;
+using network.common;
+using network.common.data.helpers;
+namespace server_tests;
+
+public sealed class PlayerOrbGrowthServiceTests
+{
+    public PlayerOrbGrowthServiceTests()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null && !File.Exists(Path.Combine(directory.FullName, "server.sln")))
+            directory = directory.Parent;
+        if (directory == null) throw new DirectoryNotFoundException("Repository root not found.");
+        GameDataHelper.SetBasePath(Path.Combine(directory.FullName, "network"));
+        GameDataHelper.Initialize();
+    }
+
+    [Fact]
+    public void GrowthOperationsRequireMatchLock()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(984302);
+        var player = new Player(new network.common.data.models.PlayerInfo { PlayerId = 1 });
+        runtime.RegisterPlayer(player);
+        TestGameSessionServices.AddSummonStones(runtime, 1, 100);
+        var service = new PlayerOrbGrowthService(NullLogger<PlayerOrbGrowthService>.Instance);
+        Assert.Throws<InvalidOperationException>(() => service.Summon(runtime, player));
+        Assert.Throws<InvalidOperationException>(() => service.UpgradeOrb(runtime, player, Config.ORB_UPGRADE_GROUP, 107000010));
+        Assert.Throws<InvalidOperationException>(() => PlayerOrbGrowthService.GrantStartingSummonStones(runtime, player));
+        Assert.Throws<InvalidOperationException>(() => service.GetUpgradeCost(runtime, player, 107000010 / 10));
+        Assert.Throws<InvalidOperationException>(() => service.GetOrbUpgradeInfo(runtime, player));
+        Assert.Throws<InvalidOperationException>(() => service.GetNextOrbGrowthCost(runtime, player));
+        Assert.Equal(100, TestGameSessionServices.SummonStones(runtime, 1).StoneCount);
+        Assert.Empty(TestGameSessionServices.Orbs(runtime, 1).GetAllOrbs());
+        Assert.Equal(0, player.Orbs.GetUpgradeCount(107000010 / 10));
+    }
+
+    [Fact]
+    public void SummonAppliesCurrencyAndInventoryOnce()
+    {
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(984301);
+        var player = new Player(new network.common.data.models.PlayerInfo { PlayerId = 1 });
+        runtime.RegisterPlayer(player);
+        using (MatchRuntimeStore.Enter(runtime))
+        {
+            int cost = TestGameSessionServices.SummonStones(runtime, 1).NextCost;
+            TestGameSessionServices.AddSummonStones(runtime, 1, cost);
+            var service = new PlayerOrbGrowthService(NullLogger<PlayerOrbGrowthService>.Instance);
+            var attempt = service.Summon(runtime, player);
+            Assert.True(attempt.Success);
+            Assert.Equal(0, attempt.State.StoneCount);
+            Assert.Equal(attempt.AddedItem!.ItemUid,
+                Assert.Single(TestGameSessionServices.Orbs(runtime, 1).GetAllOrbs()).ItemUid);
+            var again = service.Summon(runtime, player);
+            Assert.False(again.Success);
+            Assert.Equal(ErrorCode.INSUFFICIENT_CURRENCY, again.ErrorCode);
+            Assert.Equal(0, again.State.StoneCount);
+            Assert.Single(TestGameSessionServices.Orbs(runtime, 1).GetAllOrbs());
+            runtime.TryMarkEnded();
+        }
+    }
+
+}

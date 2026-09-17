@@ -31,7 +31,7 @@
         </None>
     </ItemGroup>
     <ItemGroup>
-        <InternalsVisibleTo Include="demo_regression_tests" />
+        <InternalsVisibleTo Include="server_tests" />
     </ItemGroup>
 
 </Project>

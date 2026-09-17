@@ -55,7 +55,7 @@ jobs:
         run: dotnet build server.sln --no-restore --configuration Release
 
       - name: Run regression tests
-        run: dotnet test demo_regression_tests/demo_regression_tests.csproj --no-build --configuration Release --verbosity normal
+        run: dotnet test server_tests/server_tests.csproj --no-build --configuration Release --verbosity normal
 
       - name: Restore Redis integration tests
         run: dotnet restore redis_integration_tests/redis_integration_tests.csproj

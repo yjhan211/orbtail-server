@@ -10,7 +10,7 @@
         <ProjectReference Include="..\network\network.csproj"/>
     </ItemGroup>
     <ItemGroup>
-        <InternalsVisibleTo Include="demo_regression_tests" />
+        <InternalsVisibleTo Include="server_tests" />
     </ItemGroup>
     <ItemGroup>
         <PackageReference Include="MessagePack" Version="3.1.8" />
