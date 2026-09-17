@@ -11,11 +11,11 @@ internal static class MovementPreparationTestSteps
     // 테스트가 요구한 시간 간격을 이전·현재 시각으로 구성한다.
     internal static MovementResult Advance(MatchRuntime runtime,
         network.common.data.models.GameObjectInfo info, MovementState state, MovementRequest request,
-        float elapsedSeconds, bool ignoreClosedDoors = false, DateTime? nowUtc = null)
+        float elapsedSeconds, DateTime? nowUtc = null)
     {
         var now = nowUtc ?? DateTime.UtcNow;
         state.LastProcessedAtUtc = now.AddSeconds(-elapsedSeconds);
-        return MatchMoveService.Move(runtime, info, state, request, ignoreClosedDoors, now);
+        return MatchMoveService.Move(runtime, info, state, request, now);
     }
     internal static MovementRequest Bot(BotBehaviorService behavior, MatchRuntime runtime, Bot bot, DateTime now)
     {

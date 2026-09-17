@@ -41,15 +41,15 @@ public sealed class RouteMovementTests
         var request = new MovementRequest(to, 1f);
         MatchMoveService.PrepareMovement(runtime, info, bot, request, now);
         MatchMoveService.PrepareMovement(runtime, info, monster, request, now, true);
-        MatchMoveService.MoveAlongPath(runtime, bot, start, 10000f, DateTime.UtcNow);
+        MatchMoveService.MoveAlongPath(runtime, bot, start, 10000f);
         Assert.True(bot.WaypointIndex < route.Count);
-        var monsterPosition = MatchMoveService.MoveAlongPath(runtime, monster, start, 10000f, DateTime.UtcNow, ignoreClosedDoors: true);
+        var monsterPosition = MatchMoveService.MoveAlongPath(runtime, monster, start, 10000f);
         Assert.Equal(route.Count, monster.WaypointIndex);
         Assert.Equal(route[^1], monsterPosition);
         foreach (var door in GameDoorData.GetAll()) runtime.Doors.OpenDoor(door.DoorId);
         var openBot = CreatePath(route);
         MatchMoveService.PrepareMovement(runtime, info, openBot, request, now);
-        var openBotPosition = MatchMoveService.MoveAlongPath(runtime, openBot, start, 10000f, DateTime.UtcNow);
+        var openBotPosition = MatchMoveService.MoveAlongPath(runtime, openBot, start, 10000f);
         Assert.Equal(monster.WaypointIndex, openBot.WaypointIndex);
         Assert.Equal(monsterPosition, openBotPosition);
     }
@@ -73,16 +73,14 @@ public sealed class RouteMovementTests
         MatchMoveService.PrepareMovement(runtime, info, monster, request, DateTime.UtcNow, true);
         Assert.Empty(bot.Waypoints);
         Assert.Empty(monster.Waypoints);
-        Assert.Equal(start, MatchMoveService.MoveAlongPath(runtime, bot, start, 1000, DateTime.UtcNow));
-        Assert.Equal(start, MatchMoveService.MoveAlongPath(runtime, monster, start, 1000, DateTime.UtcNow, ignoreClosedDoors: true));
+        Assert.Equal(start, MatchMoveService.MoveAlongPath(runtime, bot, start, 1000));
+        Assert.Equal(start, MatchMoveService.MoveAlongPath(runtime, monster, start, 1000));
         Assert.Equal(0, bot.WaypointIndex);
         Assert.Equal(0, monster.WaypointIndex);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void PressureFieldDoesNotBlockMovement(bool ignoreClosedDoors)
+    [Fact]
+    public void PressureFieldDoesNotBlockMovement()
     {
         var runtime = CreateRuntime();
         using var scope = runtime.Enter();
@@ -96,7 +94,7 @@ public sealed class RouteMovementTests
         var steps = MapPathfinder.FindPath(map, AreaType.S2Corridor9, from, AreaType.S2Library1, to)!;
         var path = CreatePath(steps.Select(step => MapCoordinateConverter.CellToWorld(map, step.Cell)));
         var reached = MatchMoveService.MoveAlongPath(runtime, path,
-            MapCoordinateConverter.CellToWorld(map, from), 10000f, now, ignoreClosedDoors);
+            MapCoordinateConverter.CellToWorld(map, from), 10000f);
         Assert.Equal(MapCoordinateConverter.CellToWorld(map, to), reached);
         Assert.Equal(path.Waypoints.Count, path.WaypointIndex);
     }
@@ -122,7 +120,7 @@ public sealed class RouteMovementTests
             DateTime.UtcNow, ignoreClosedDoors);
         Assert.NotEmpty(path.Waypoints);
         var position = MatchMoveService.MoveAlongPath(runtime, path,
-            MapCoordinateConverter.CellToWorld(map, from), 10000f, DateTime.UtcNow, ignoreClosedDoors);
+            MapCoordinateConverter.CellToWorld(map, from), 10000f);
         Assert.Equal(MapCoordinateConverter.CellToWorld(map, to), position);
         Assert.Equal(AreaType.S2Library1, GameMapData.GetCurrentArea(map,
             MapCoordinateConverter.WorldToCell(map, position)));
@@ -135,9 +133,9 @@ public sealed class RouteMovementTests
             GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9));
         var first = CreatePath([start]);
         var second = CreatePath([start]);
-        Assert.Throws<InvalidOperationException>(() => MatchMoveService.MoveAlongPath(runtime, first, start, 1, DateTime.UtcNow));
+        Assert.Throws<InvalidOperationException>(() => MatchMoveService.MoveAlongPath(runtime, first, start, 1));
         using var scope = runtime.Enter();
-        MatchMoveService.MoveAlongPath(runtime, first, start, 1, DateTime.UtcNow);
+        MatchMoveService.MoveAlongPath(runtime, first, start, 1);
         Assert.Equal(1, first.WaypointIndex);
         Assert.Equal(0, second.WaypointIndex);
         first.Clear();

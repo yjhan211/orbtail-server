@@ -1,4 +1,5 @@
 using game_server.matches;
+using game_server.players.bots;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data;
@@ -70,7 +71,7 @@ public sealed class SharedMovementPlanningTests
 
         Assert.Empty(state.Waypoints);
         Assert.Equal(DateTime.MinValue, state.NextPathPlanAtUtc);
-        MovementPreparationTestSteps.Advance(runtime, info, state, request, 0.05f, ignoreDoors, now);
+        MovementPreparationTestSteps.Advance(runtime, info, state, request, 0.05f, now);
         Assert.Same(position, info.Position);
     }
     [Theory]
@@ -99,7 +100,7 @@ public sealed class SharedMovementPlanningTests
         Assert.Equal(DateTime.MinValue, state.NextPathPlanAtUtc);
         Assert.Equal(0, state.WaypointIndex);
         var position = info.Position;
-        MovementPreparationTestSteps.Advance(runtime, info, state, request, 0.05f, ignoreDoors, now);
+        MovementPreparationTestSteps.Advance(runtime, info, state, request, 0.05f, now);
         Assert.Equal(position, info.Position);
 
         request = request with { Speed = 1f };
@@ -164,20 +165,16 @@ public sealed class SharedMovementPlanningTests
     }
 
     [Fact]
-    public void SafePathReturnsIntermediateCellsAndRejectsClosedDestination()
+    public void SafePathAcceptsOpenDestinationAndRejectsClosedDestination()
     {
         var runtime = CreateRuntime();
         using var scope = runtime.Enter();
         var info = CreateObject();
         var destination = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Library1);
-        Assert.True(MatchMoveService.TryFindSafePath(runtime, info, destination, DateTime.UtcNow, out var path));
-        Assert.True(path.Count > 1);
-        Assert.Equal(destination, path[^1].Cell);
-        Assert.All(path, step => Assert.True(GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, step.Cell)));
+        Assert.True(BotBehaviorService.HasSafePath(runtime, info, destination, DateTime.UtcNow));
         runtime.Closures.InitializeMatching([(AreaType.S2Library1, 0)]);
         runtime.Closures.CloseDueAreas();
-        Assert.False(MatchMoveService.TryFindSafePath(runtime, info, destination, DateTime.UtcNow, out var blocked));
-        Assert.Empty(blocked);
+        Assert.False(BotBehaviorService.HasSafePath(runtime, info, destination, DateTime.UtcNow));
     }
     [Fact]
     public void SafePathAllowsLeavingClosedOrigin()
@@ -189,8 +186,7 @@ public sealed class SharedMovementPlanningTests
         runtime.Closures.InitializeMatching([(GameMapData.GetCurrentArea(info.MapId, info.Cell), 0)]);
         runtime.Closures.CloseDueAreas();
 
-        Assert.True(MatchMoveService.TryFindSafePath(runtime, info, destination, DateTime.UtcNow, out var path));
-        Assert.Equal(destination, path[^1].Cell);
+        Assert.True(BotBehaviorService.HasSafePath(runtime, info, destination, DateTime.UtcNow));
     }
 
     [Fact]
@@ -255,12 +251,12 @@ public sealed class SharedMovementPlanningTests
             runtime.Closures.InitializeMatching(intermediate.Select(area => (area, 0)).ToArray());
             runtime.Closures.CloseDueAreas();
             var now = DateTime.UtcNow;
-            Assert.True(MatchMoveService.TryFindSafePath(runtime, info, destination, now, out _));
+            Assert.True(BotBehaviorService.HasSafePath(runtime, info, destination, now));
             var state = new MovementState();
             MatchMoveService.PrepareMovement(runtime, info, state, new MovementRequest(destination, 1f), now);
             Assert.NotEmpty(state.Waypoints);
             Assert.Contains(state.Waypoints, cell => runtime.Closures.IsAreaClosed(GameMapData.GetCurrentArea(map, cell)));
-            var reached = MatchMoveService.MoveAlongPath(runtime, state, info.Position, 10000f, now);
+            var reached = MatchMoveService.MoveAlongPath(runtime, state, info.Position, 10000f);
             Assert.Equal(destination, MapCoordinateConverter.WorldToCell(map, reached));
             return;
         }
@@ -281,7 +277,7 @@ public sealed class SharedMovementPlanningTests
         MatchMoveService.PrepareMovement(runtime, info, state, new MovementRequest(info.Cell, 1f), DateTime.UtcNow);
         Assert.Equal(DateTime.MinValue, state.NextPathPlanAtUtc);
         Assert.Single(state.Waypoints);
-        Assert.False(MatchMoveService.TryFindSafePath(runtime, info, info.Cell, DateTime.UtcNow, out _));
+        Assert.False(BotBehaviorService.HasSafePath(runtime, info, info.Cell, DateTime.UtcNow));
     }
     [Theory]
     [InlineData(false)]
@@ -301,12 +297,12 @@ public sealed class SharedMovementPlanningTests
         MatchMoveService.PrepareMovement(runtime, info, state, request, now, ignoreDoors);
         Assert.Same(before, info.Position);
         Assert.NotEmpty(state.Waypoints);
-        var result = MovementPreparationTestSteps.Advance(runtime, info, state, request, 1f, ignoreDoors, now);
+        var result = MovementPreparationTestSteps.Advance(runtime, info, state, request, 1f, now);
         Assert.True(result.ReachedPathEnd);
         Assert.Equal(destination, info.Cell);
         Assert.Empty(state.Waypoints);
         MatchMoveService.PrepareMovement(runtime, info, state, request, now, ignoreDoors);
-        var repeated = MovementPreparationTestSteps.Advance(runtime, info, state, request, 1f, ignoreDoors, now);
+        var repeated = MovementPreparationTestSteps.Advance(runtime, info, state, request, 1f, now);
         Assert.False(repeated.ReachedPathEnd);
         Assert.Empty(state.Waypoints);
     }
@@ -347,7 +343,7 @@ public sealed class SharedMovementPlanningTests
         Assert.Empty(state.Waypoints);
         var before = info.Position;
         var result = MovementPreparationTestSteps.Advance(runtime, info, state,
-            new MovementRequest(null, 0f), 1f, ignoreDoors);
+            new MovementRequest(null, 0f), 1f);
         Assert.Equal(before, info.Position);
         Assert.False(result.ReachedPathEnd);
         Assert.Empty(state.Waypoints);

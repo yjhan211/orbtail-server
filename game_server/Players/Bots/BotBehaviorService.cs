@@ -1,4 +1,5 @@
 using game_server.matches;
+using game_server.matches.monsters;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -10,8 +11,7 @@ namespace game_server.players.bots;
 /// <summary>
 ///     봇의 대피·아이템 회수·배회 방향을 결정하고, 문 열기·수면·오브 성장을 공통 Player 규칙으로 실행한다.
 ///     기억과 재사용 대기 시간은 매치가 소유하며 호출자는 매치 잠금을 보유한다.
-///     이동 목표만 선택하며 경로 계획과 위치 갱신은 MatchMoveService가 담당한다.
-///     MatchMoveService가 이동 명령을 실행하고 결과를 전송한다.
+///     이동 목표만 선택하며 경로 계획, 위치 갱신, 결과 전송은 MatchMoveService가 담당한다.
 /// </summary>
 internal class BotBehaviorService(
     PlayerOrbGrowthService growth,
@@ -37,7 +37,7 @@ internal class BotBehaviorService(
             }
             int orbCount = bot.Player.Orbs.GetOrbScore().OrbCount;
             bool preferUpgrade = orbCount >= Config.SWARM_ORB_CAPACITY || (orbCount >= 4 && Random.Shared.Next(3) == 0);
-            if (preferUpgrade && TryUpgradePreferredOrb(runtime, bot.PlayerId))
+            if (preferUpgrade && TryUpgradePreferredOrb(runtime, bot.Player))
             {
                 continue;
             }
@@ -46,13 +46,12 @@ internal class BotBehaviorService(
             {
                 continue;
             }
-            TryUpgradePreferredOrb(runtime, bot.PlayerId);
+            TryUpgradePreferredOrb(runtime, bot.Player);
         }
     }
 
-    private bool TryUpgradePreferredOrb(MatchRuntime runtime, long playerId)
+    private bool TryUpgradePreferredOrb(MatchRuntime runtime, Player player)
     {
-        var player = runtime.GetPlayer(playerId)!;
         var distinctGroupIds = new List<int>();
         var countByGroupId = new Dictionary<int, int>();
         foreach (var item in player.Orbs.GetOrderedOrbs())
@@ -68,40 +67,35 @@ internal class BotBehaviorService(
             countByGroupId[orbGroupId] = count + 1;
         }
 
-        int preferredGroupId = 0;
-        int preferredCount = 0;
+        int mostOwnedGroupId = 0;
+        int mostOwnedCount = 0;
         foreach (int orbGroupId in distinctGroupIds)
         {
-            if (countByGroupId[orbGroupId] > preferredCount)
+            if (countByGroupId[orbGroupId] > mostOwnedCount)
             {
-                preferredGroupId = orbGroupId;
-                preferredCount = countByGroupId[orbGroupId];
+                mostOwnedGroupId = orbGroupId;
+                mostOwnedCount = countByGroupId[orbGroupId];
             }
         }
 
-        if (preferredGroupId == 0)
+        int targetGroupId = 0;
+        if (mostOwnedGroupId != 0 && growth.GetUpgradeCost(runtime, player, mostOwnedGroupId) > 0)
         {
-            return false;
+            targetGroupId = mostOwnedGroupId;
         }
-
-        if (growth.GetUpgradeCost(runtime, player, preferredGroupId) <= 0)
+        else
         {
-            preferredGroupId = 0;
             foreach (int orbGroupId in distinctGroupIds)
             {
                 if (growth.GetUpgradeCost(runtime, player, orbGroupId) > 0)
                 {
-                    preferredGroupId = orbGroupId;
+                    targetGroupId = orbGroupId;
                     break;
                 }
             }
-            if (preferredGroupId == 0)
-            {
-                return false;
-            }
         }
 
-        if (!OrbData.TryGetItemId(preferredGroupId, 1, out int targetItemId))
+        if (targetGroupId == 0 || !OrbData.TryGetItemId(targetGroupId, 1, out int targetItemId))
         {
             return false;
         }
@@ -115,7 +109,7 @@ internal class BotBehaviorService(
         {
             throw new InvalidOperationException("Bot decisions require the match lock.");
         }
-        long now = nowUtc.Ticks / TimeSpan.TicksPerMillisecond;
+        long nowMs = nowUtc.Ticks / TimeSpan.TicksPerMillisecond;
         foreach (var bot in bots)
         {
             var player = bot.Player;
@@ -123,12 +117,12 @@ internal class BotBehaviorService(
             {
                 continue;
             }
+
             if (player.Interactions.PendingInteractId is { } interactId)
             {
-                int doorId = GameInteractableData.Get(interactId)?.DoorId ?? 0;
-                if (interactions.TryFinishDoor(runtime, player, interactId, doorId, now, out var error))
+                int doorId = GameInteractableData.Get(interactId).DoorId;
+                if (interactions.TryFinishDoor(runtime, player, interactId, doorId, nowMs, out var error))
                 {
-
                     logger.LogInformation("Swarm bot unlocked door: MatchingId={MatchingId}, BotId={BotId}, DoorId={DoorId}", runtime.MatchingId, bot.PlayerId, doorId);
                     player.State = PlayerState.IDLE;
                 }
@@ -137,31 +131,53 @@ internal class BotBehaviorService(
                     interactions.CancelPendingInteractions(runtime, player);
                     player.State = PlayerState.IDLE;
                 }
+                continue;
             }
-            else if (player.State == PlayerState.EXPLORE_1)
+
+            if (player.State == PlayerState.EXPLORE_1)
             {
                 player.State = PlayerState.IDLE;
+                continue;
             }
-            else if (player.Velocity.X == 0f && player.Velocity.Y == 0f && TryFindDoorAtCurrentCell(runtime, bot, out var target) && interactions.StartDoor(runtime, player, target.Id, target.DoorId, now) == ErrorCode.SUCCESS)
+
+            if (player.Velocity.X != 0f || player.Velocity.Y != 0f)
+            {
+                continue;
+            }
+            if (!TryFindDoorAtCurrentCell(runtime, player, out var target))
+            {
+                continue;
+            }
+            if (interactions.StartDoor(runtime, player, target.Id, target.DoorId, nowMs) == ErrorCode.SUCCESS)
             {
                 player.State = PlayerState.EXPLORE_1;
             }
         }
     }
 
-    private bool TryFindDoorAtCurrentCell(MatchRuntime runtime, Bot bot, out InteractableInfoData target)
+    private static bool TryFindDoorAtCurrentCell(MatchRuntime runtime, Player player, out InteractableInfoData target)
     {
-        var cell = bot.Player.Cell;
+        target = null!;
+        var cell = player.Cell;
+        if (cell == null)
+        {
+            return false;
+        }
+
+        int areaId = (int)GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell);
         foreach (var info in GameInteractableData.GetAll())
         {
-            if (info.DoorId <= 0 || GameDoorData.Get(info.DoorId) == null || runtime.Doors.IsDoorOpen(info.DoorId) || info.ZoneId != (int)GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell) || cell.X != info.CellX || cell.Y != info.CellY)
+            if (info.DoorId <= 0 || info.ZoneId != areaId || info.CellX != cell.X || info.CellY != cell.Y)
+            {
+                continue;
+            }
+            if (GameDoorData.Get(info.DoorId) == null || runtime.Doors.IsDoorOpen(info.DoorId))
             {
                 continue;
             }
             target = info;
             return true;
         }
-        target = null!;
         return false;
     }
 
@@ -234,7 +250,8 @@ internal class BotBehaviorService(
         double retreatThreshold = safeDistance - margin * 2;
         Cell? retreatCell = null;
         int nearestDistance = int.MaxValue;
-        foreach (var entry in SwarmPressureField.GetAreaCellsByDistance(GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell)))
+        var currentArea = GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell);
+        foreach (var entry in SwarmPressureField.GetAreaCellsByDistance(currentArea))
         {
             if (entry.Distance > retreatThreshold)
             {
@@ -255,8 +272,7 @@ internal class BotBehaviorService(
         }
 
         // 안전 후보가 없을 때의 중앙 이동은 안전을 보장하는 목적지가 아니라 최후의 대안이다.
-        var bestArea = AreaType.S2Corridor9;
-        var bestCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, bestArea);
+        var bestCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
         nearestDistance = int.MaxValue;
         foreach (var region in GameMapData.GetAreas(Config.SWARM_MATCH_MAP))
         {
@@ -281,7 +297,7 @@ internal class BotBehaviorService(
         return true;
     }
 
-    private static bool TrySelectMonsterAvoidanceTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc, out Cell? target)
+    private bool TrySelectMonsterAvoidanceTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc, out Cell? target)
     {
         target = null;
         var currentCell = bot.Player.Cell!;
@@ -386,7 +402,6 @@ internal class BotBehaviorService(
 
     internal static Cell? SelectThreatEscapeTarget(MatchRuntime runtime, Bot bot, Cell threatCell, DateTime nowUtc)
     {
-        // 현재 셀과 위협 셀 사이의 거리
         var currentCell = bot.Player.Cell!;
         int currentThreatDistance = currentCell.GetDistance(threatCell);
         int radius = Config.SWARM_BOT_FLEE_PROBE_DISTANCE_CELLS;
@@ -405,7 +420,6 @@ internal class BotBehaviorService(
         candidates.Sort((left, right) => right.GetDistance(threatCell).CompareTo(left.GetDistance(threatCell)));
 
         double safeDistance = runtime.Closures.GetSafeDistance(nowUtc);
-        var targetCells = new List<Cell>();
         foreach (var cell in candidates)
         {
             var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
@@ -429,15 +443,10 @@ internal class BotBehaviorService(
             {
                 continue;
             }
-            targetCells.Add(cell);
-        }
-        foreach (var targetCell in targetCells)
-        {
-            if (!MatchMoveService.TryFindSafePath(runtime, bot.Player.GameInfo.ObjectInfo, targetCell, nowUtc, out _))
+            if (HasSafePath(runtime, bot.Player.GameInfo.ObjectInfo, cell, nowUtc))
             {
-                continue;
+                return cell.Clone();
             }
-            return targetCell.Clone();
         }
         return null;
     }
@@ -447,7 +456,8 @@ internal class BotBehaviorService(
         target = null;
         Cell? cell = null;
         int nearestDistance = int.MaxValue;
-        foreach (var item in runtime.GroundItems.GetItemsInArea(GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell)))
+        var currentArea = GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell);
+        foreach (var item in runtime.GroundItems.GetItemsInArea(currentArea))
         {
             if (item.ItemId != Config.SUMMON_STONE_GROUND_ITEM_ID)
             {
@@ -470,19 +480,15 @@ internal class BotBehaviorService(
         return true;
     }
 
-    internal static Cell SelectWanderTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc)
+    internal Cell SelectWanderTarget(MatchRuntime runtime, Bot bot, DateTime nowUtc)
     {
         var mapId = Config.SWARM_MATCH_MAP;
         var currentArea = GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell);
         var currentCell = bot.Player.Cell!;
-        double safeDistance = runtime.Closures.GetSafeDistance(nowUtc);
-        var candidates = new List<(AreaType Area, Cell Cell)>();
-        if (bot.ExplorationTarget is { } previous)
+        var candidates = new List<Cell>();
+        if (bot.ExplorationTarget is { } previous && currentArea == previous.Area && currentCell.GetDistance(previous.Cell) > 1)
         {
-            if (currentArea == previous.Area && currentCell.GetDistance(previous.Cell) > 1)
-            {
-                candidates.Add(previous);
-            }
+            candidates.Add(previous.Cell);
         }
         bot.ExplorationTarget = null;
 
@@ -513,23 +519,18 @@ internal class BotBehaviorService(
         while (nearbyCells.Count > 0)
         {
             int index = Random.Shared.Next(nearbyCells.Count);
-            candidates.Add((currentArea, nearbyCells[index]));
+            candidates.Add(nearbyCells[index]);
             nearbyCells.RemoveAt(index);
         }
 
-        var targetCells = new List<Cell>();
         foreach (var candidate in candidates)
         {
-            targetCells.Add(candidate.Cell);
-        }
-        foreach (var targetCell in targetCells)
-        {
-            if (!MatchMoveService.TryFindSafePath(runtime, bot.Player.GameInfo.ObjectInfo, targetCell, nowUtc, out _))
+            if (!HasSafePath(runtime, bot.Player.GameInfo.ObjectInfo, candidate, nowUtc))
             {
                 continue;
             }
-            bot.ExplorationTarget = (currentArea, targetCell.Clone());
-            return targetCell.Clone();
+            bot.ExplorationTarget = (currentArea, candidate.Clone());
+            return candidate.Clone();
         }
         return currentCell.Clone();
     }
@@ -552,16 +553,7 @@ internal class BotBehaviorService(
             }
 
             bool unsafeToSleep = IsUnsafeToSleep(runtime, bot, players, monsterTargets, safeRadiusSquared, nowUtc);
-            bool hasSummonStone = false;
-            foreach (var item in runtime.GroundItems.GetItemsInArea(GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell)))
-            {
-                if (item.ItemId != Config.SUMMON_STONE_GROUND_ITEM_ID)
-                {
-                    continue;
-                }
-                hasSummonStone = true;
-                break;
-            }
+            bool hasSummonStone = TrySelectSummonStoneTarget(runtime, bot, out _);
             if (unsafeToSleep || hasSummonStone || player.Health >= Config.MAX_HEALTH)
             {
                 player.TryStopSleep();
@@ -573,7 +565,7 @@ internal class BotBehaviorService(
         }
     }
 
-    private static bool IsUnsafeToSleep(MatchRuntime runtime, Bot bot, IReadOnlyList<Player> players, IReadOnlyList<matches.monsters.Monster> monsterTargets, float safeRadiusSquared, DateTime nowUtc)
+    private static bool IsUnsafeToSleep(MatchRuntime runtime, Bot bot, IReadOnlyList<Player> players, IReadOnlyList<Monster> monsterTargets, float safeRadiusSquared, DateTime nowUtc)
     {
         var player = bot.Player;
         var position = player.Position!;
@@ -583,7 +575,8 @@ internal class BotBehaviorService(
             return true;
         }
 
-        if (GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell) == AreaType.None || runtime.Closures.IsAreaClosed(GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell)))
+        var currentArea = GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell);
+        if (currentArea == AreaType.None || runtime.Closures.IsAreaClosed(currentArea))
         {
             return true;
         }
@@ -618,12 +611,46 @@ internal class BotBehaviorService(
         return false;
     }
 
-    internal static float GetBotMovementSpeedMultiplier(Bot bot, DateTime? nowUtc = null)
+    internal static bool HasSafePath(MatchRuntime runtime, GameObjectInfo objectInfo, Cell destination, DateTime nowUtc)
     {
-        var now = nowUtc ?? DateTime.UtcNow;
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Bot decisions require the match lock.");
+        }
+        if (runtime.IsEnded)
+        {
+            return false;
+        }
+
+        var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, destination);
+        double safeDistance = runtime.Closures.GetSafeDistance(nowUtc);
+        if (area == AreaType.None || runtime.Closures.IsAreaClosed(area) || SwarmPressureField.GetDistance(destination) > safeDistance)
+        {
+            return false;
+        }
+        var planned = MapPathfinder.FindPath(Config.SWARM_MATCH_MAP, GameMapData.GetCurrentArea(objectInfo.MapId, objectInfo.Cell), objectInfo.Cell, area, destination);
+        if (planned is not { Count: > 0 })
+        {
+            return false;
+        }
+        int previousDistance = SwarmPressureField.GetDistance(objectInfo.Cell);
+        foreach (var step in planned)
+        {
+            int distance = SwarmPressureField.GetDistance(step.Cell);
+            if (distance > safeDistance && distance > previousDistance)
+            {
+                return false;
+            }
+            previousDistance = distance;
+        }
+        return true;
+    }
+
+    internal static float GetBotMovementSpeedMultiplier(Bot bot, DateTime nowUtc)
+    {
         var orbs = bot.Player.Orbs.GetAllOrbs();
-        bool bareSpeedActive = !bot.Player.Orbs.HasAnyOrb() && now < bot.SwarmBareSpeedUntilUtc;
-        bool waveSlowActive = bot.Player.StatusEffects.IsActive(PlayerStatusEffectKind.WaveSlow, now);
+        bool bareSpeedActive = !bot.Player.Orbs.HasAnyOrb() && nowUtc < bot.SwarmBareSpeedUntilUtc;
+        bool waveSlowActive = bot.Player.StatusEffects.IsActive(PlayerStatusEffectKind.WaveSlow, nowUtc);
         return MovementSpeed.GetMultiplier(orbs, bootsActive: false, bareSpeedActive, waveSlowActive);
     }
 }

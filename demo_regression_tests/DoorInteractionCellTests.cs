@@ -38,7 +38,7 @@ public sealed class DoorInteractionCellTests
             foreach (var step in path)
                 movement.Waypoints.Add(step.Cell);
             var reached = MatchMoveService.MoveAlongPath(runtime, movement,
-                MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, start), 10000f, DateTime.UtcNow);
+                MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, start), 10000f);
             var reachedCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, reached);
             if (reachedCell.X != cell.X || reachedCell.Y != cell.Y)
                 failures.Add($"{info.Id}: closed door prevents arrival");

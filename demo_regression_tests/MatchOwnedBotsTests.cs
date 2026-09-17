@@ -16,11 +16,11 @@ public sealed class MatchOwnedBotsTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var bot = new Bot { PlayerId = -1 };
 
-        Assert.Equal(1f, BotBehaviorService.GetBotMovementSpeedMultiplier(bot));
+        Assert.Equal(1f, BotBehaviorService.GetBotMovementSpeedMultiplier(bot, DateTime.UtcNow));
         Assert.True(bot.Player.Orbs.TryAddOrbWithCapacity(107000020, 8, out _));
-        Assert.Equal(1f, BotBehaviorService.GetBotMovementSpeedMultiplier(bot)); // 오브 하나는 공명(과반)이 아니다
+        Assert.Equal(1f, BotBehaviorService.GetBotMovementSpeedMultiplier(bot, DateTime.UtcNow)); // 오브 하나는 공명(과반)이 아니다
         Assert.True(bot.Player.Orbs.TryAddOrbWithCapacity(107000022, 8, out _));
-        Assert.Equal(1.08f, BotBehaviorService.GetBotMovementSpeedMultiplier(bot));
+        Assert.Equal(1.08f, BotBehaviorService.GetBotMovementSpeedMultiplier(bot, DateTime.UtcNow));
 
     }
 

@@ -90,7 +90,7 @@ public sealed class CommonMovementTraversalTests
                         info.Cell = MapCoordinateConverter.WorldToCell(map, current);
                         info.Cell = network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(GameMapData.GetCurrentArea(map, info.Cell)));
                         MatchMoveService.PrepareMovement(runtime, info, state, request, now.AddSeconds(tick * 0.01), true);
-                        var next = MatchMoveService.MoveAlongPath(runtime, state, current, 0.01f, now, true);
+                        var next = MatchMoveService.MoveAlongPath(runtime, state, current, 0.01f);
                         Assert.NotEqual(current, next);
                         current = next;
                     }
@@ -187,7 +187,7 @@ public sealed class CommonMovementTraversalTests
             MatchMoveService.PrepareMovement(runtime, player.GameInfo.ObjectInfo, path,
                 new MovementRequest(new Cell(-10000, -10000), 1f), DateTime.UtcNow, ignoreDoors);
             Assert.Empty(path.Waypoints);
-            Assert.Equal(start, MatchMoveService.MoveAlongPath(runtime, path, start, 10f, DateTime.UtcNow, ignoreDoors));
+            Assert.Equal(start, MatchMoveService.MoveAlongPath(runtime, path, start, 10f));
             Assert.Equal(0, path.WaypointIndex);
         }
     }

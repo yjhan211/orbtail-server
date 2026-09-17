@@ -162,12 +162,12 @@ public sealed class MonsterMovementIntentTests
         Assert.Equal(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target), request.DestinationCell);
         Assert.True(request.Speed > 0);
 
-        MovementPreparationTestSteps.Advance(runtime, monster.Info.ObjectInfo, monster.Movement, request, 0.05f, ignoreClosedDoors: true);
+        MovementPreparationTestSteps.Advance(runtime, monster.Info.ObjectInfo, monster.Movement, request, 0.05f);
         Assert.True(monster.Position.X > position.X);
         Assert.Equal(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, target), request.DestinationCell);
         var after = monster.Position;
         request = request with { Speed = 0f };
-        MovementPreparationTestSteps.Advance(runtime, monster.Info.ObjectInfo, monster.Movement, request, 0.05f, ignoreClosedDoors: true);
+        MovementPreparationTestSteps.Advance(runtime, monster.Info.ObjectInfo, monster.Movement, request, 0.05f);
         Assert.Equal(after, monster.Position);
     }
 
@@ -195,7 +195,7 @@ public sealed class MonsterMovementIntentTests
         Assert.Empty(monster.Movement.Waypoints);
         Assert.Equal(0f, request.Speed);
         Assert.Equal(monster.Info.ObjectInfo.Cell, request.DestinationCell);
-        MovementPreparationTestSteps.Advance(runtime, monster.Info.ObjectInfo, monster.Movement, request, 1f, ignoreClosedDoors: true);
+        MovementPreparationTestSteps.Advance(runtime, monster.Info.ObjectInfo, monster.Movement, request, 1f);
         Assert.Equal(position, monster.Position);
         Assert.Empty(monster.Movement.Waypoints);
         Assert.True(monster.Alive);

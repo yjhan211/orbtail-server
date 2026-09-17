@@ -113,7 +113,7 @@ public sealed class BotReplanningTests
         var (runtime, bot, _) = CreateBot();
         using var scope = runtime.Enter();
         bot.Player.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.None)));
-        var selected = BotBehaviorService.SelectWanderTarget(runtime, bot, DateTime.UtcNow);
+        var selected = new BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance).SelectWanderTarget(runtime, bot, DateTime.UtcNow);
         Assert.True(selected!.Equals(bot.Player.Cell));
         Assert.Null(bot.ExplorationTarget);
         Assert.Equal(0, bot.Player.Cell!.GetDistance(selected!));
@@ -130,7 +130,7 @@ public sealed class BotReplanningTests
         runtime.Closures.Release();
         runtime.Closures.InitializeMatching(adjacentAreas.Select(area => (area, 0)).ToArray());
         runtime.Closures.CloseDueAreas();
-        var selected = BotBehaviorService.SelectWanderTarget(runtime, bot, DateTime.UtcNow);
+        var selected = new BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance).SelectWanderTarget(runtime, bot, DateTime.UtcNow);
         Assert.False(selected!.Equals(bot.Player.Cell));
         Assert.Equal(GameMapData.GetCurrentArea(bot.Player.GameInfo.ObjectInfo.MapId, bot.Player.GameInfo.ObjectInfo.Cell), GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, selected!));
         int radius = Config.SWARM_BOT_MONSTER_ROAM_DISTANCE_CELLS;
@@ -142,7 +142,7 @@ public sealed class BotReplanningTests
         Assert.NotEmpty(path!);
         double safeDistance = runtime.Closures.GetSafeDistance(DateTime.UtcNow);
         Assert.All(path!, step => Assert.True(SwarmPressureField.GetDistance(step.Cell) <= safeDistance));
-        selected = BotBehaviorService.SelectWanderTarget(runtime, bot, DateTime.UtcNow);
+        selected = new BotBehaviorService(null!, null!, NullLogger<BotBehaviorService>.Instance).SelectWanderTarget(runtime, bot, DateTime.UtcNow);
         Assert.Equal(0, destination.GetDistance(selected!));
     }
 
