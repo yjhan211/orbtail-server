@@ -124,7 +124,7 @@ public class MatchMonsterTickTests
     {
         var runtime = CreateManager(217003).Runtime;
         using var scope = runtime.Enter();
-        var combat = new MonsterCombatService();
+        var combat = TestGameSessionServices.CreateCombatDamageService();
         for (int index = 0; index < 20; index++)
         {
             var monster = new Monster
@@ -134,14 +134,17 @@ public class MatchMonsterTickTests
                 SummonStoneReward = reward
             };
             runtime.Monsters.Entities.Add(monster.MonsterId, monster);
-            var hit = combat.ApplyMonsterDamage(runtime, monster.MonsterId, 1, 1, StartUtc);
-            Assert.False(hit.Killed);
-            var kill = combat.ApplyMonsterDamage(runtime, monster.MonsterId, 1, 9, StartUtc);
-            Assert.True(kill.Killed);
-            Assert.Equal(reward, kill.Monster!.SummonStoneReward);
-            var duplicate = combat.ApplyMonsterDamage(runtime, monster.MonsterId, 1, 10, StartUtc);
-            Assert.False(duplicate.Killed);
-            Assert.False(duplicate.Applied);
+            Assert.True(combat.ApplyMonsterHit(runtime, monster.MonsterId, 1, 107000010, AreaType.S2Corridor9, 1, StartUtc));
+            Assert.True(monster.Alive);
+            var monsterArea = GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell);
+            int droppedBefore = runtime.GroundItems.GetItemsInArea(monsterArea).Count;
+            Assert.True(combat.ApplyMonsterHit(runtime, monster.MonsterId, 1, 107000010, AreaType.S2Corridor9, 9, StartUtc));
+            // 처치하면 그 자리에 보상 개수만큼 소환석이 떨어진다.
+            Assert.Equal(droppedBefore + reward, runtime.GroundItems.GetItemsInArea(monsterArea).Count);
+            Assert.False(monster.Alive);
+            // 이미 죽은 몬스터에는 피해가 들어가지 않고 보상도 다시 떨어지지 않는다.
+            Assert.False(combat.ApplyMonsterHit(runtime, monster.MonsterId, 1, 107000010, AreaType.S2Corridor9, 10, StartUtc));
+            Assert.Equal(droppedBefore + reward, runtime.GroundItems.GetItemsInArea(monsterArea).Count);
         }
     }
 
@@ -190,6 +193,10 @@ public class MatchMonsterTickTests
 
         // 셀 중심에 도착하면 같은 셀 내부의 플레이어까지 접촉 반경이 닿는다.
         Assert.Equal(0.5f, Monster.GetContactRadius(MonsterKind.Skeleton));
+
+        // 공격 거리: 종류 정의에 따로 없으면 종류별 접촉 반경, 있으면 그 값을 쓴다.
+        Assert.Equal(Monster.GetContactRadius(MonsterKind.RunawayGoblin), new Monster { Kind = MonsterKind.RunawayGoblin }.AttackRangeValue);
+        Assert.Equal(3f, new Monster { Kind = MonsterKind.RunawayGoblin, AttackRangeValue = 3f }.AttackRangeValue);
     }
 
     [Fact]
@@ -210,11 +217,8 @@ public class MatchMonsterTickTests
             .First(state => state.IsAlive && state.Kind == 0);
         var target = manager.GetCombatTargets().First(candidate =>
             candidate.MonsterId == skeleton.MonsterId);
-        var result = manager.ApplyMonsterDamage(target.MonsterId, attackerPlayerId: 1, skeleton.MaxHealth);
-
-        Assert.True(result.Applied);
-        Assert.True(result.Killed);
-        Assert.Equal(target.MonsterId, result.Monster!.MonsterId);
+        Assert.True(manager.ApplyMonsterDamage(target.MonsterId, attackerPlayerId: 1, skeleton.MaxHealth));
+        Assert.False(target.Alive);
         Assert.DoesNotContain(
             manager.GetCombatTargets(),
             candidate => candidate.MonsterId == target.MonsterId);
@@ -354,7 +358,8 @@ public class MatchMonsterTickTests
     {
         private readonly MatchMoveService _movement = new(null!, new MonsterBehaviorService());
         private readonly MatchCombatService _combat = TestGameSessionServices.CreateMonsterTickService();
-        private readonly MonsterCombatService _monsterCombat = new();
+        private readonly MatchCombatDamageService _combatDamage = TestGameSessionServices.CreateCombatDamageService();
+        private readonly MonsterAttackService _monsterAttacks = new(TestGameSessionServices.CreateCombatDamageService());
         private DateTime _lastNow = StartUtc;
 
         public Arena(long matchingId)
@@ -402,7 +407,7 @@ public class MatchMonsterTickTests
                 var monsterContactDamages = new List<ContactEvent>();
                 foreach (var monster in Runtime.Monsters.Entities.Values.ToList())
                 {
-                    if (_monsterCombat.TryStartContactAttack(Runtime, monster, contactPlayers, nowUtc, out var victim))
+                    if (_monsterAttacks.TryStartContactAttack(Runtime, monster, contactPlayers, nowUtc, out var victim))
                     {
                         monsterContactDamages.Add(new ContactEvent(monster.MonsterId, victim.PlayerId, GameMapData.GetCurrentArea(monster.Info.ObjectInfo.MapId, monster.Info.ObjectInfo.Cell), monster.ContactDamageValue));
                     }
@@ -412,11 +417,11 @@ public class MatchMonsterTickTests
             }
         }
 
-        public MonsterDamageResult ApplyMonsterDamage(int monsterId, long attackerPlayerId, int damage)
+        public bool ApplyMonsterDamage(int monsterId, long attackerPlayerId, int damage)
         {
             using (Runtime.Enter())
             {
-                return _monsterCombat.ApplyMonsterDamage(Runtime, monsterId, attackerPlayerId, damage, _lastNow);
+                return _combatDamage.ApplyMonsterHit(Runtime, monsterId, attackerPlayerId, 107000010, AreaType.S2Corridor9, damage, _lastNow);
             }
         }
 

@@ -15,16 +15,15 @@ public sealed class MonsterStateBehaviorTests
         runtime.Monsters.Initialize(Now);
         var monster = new Monster { MonsterId = 1, Alive = true, Health = 10 };
         runtime.Monsters.Entities[1] = monster;
-        var combat = new MonsterCombatService();
+        var combat = TestGameSessionServices.CreateCombatDamageService();
 
-        var result = combat.ApplyMonsterDamage(runtime, 1, 1, 10, Now);
+        Assert.True(combat.ApplyMonsterHit(runtime, 1, 1, 107000010, network.common.AreaType.S2Corridor9, 10, Now));
 
-        Assert.True(result.Killed);
-        Assert.Same(monster, result.Monster);
+        Assert.False(monster.Alive);
         Assert.Empty(runtime.Monsters.Entities);
         Assert.Empty(runtime.Monsters.GetVisualStatesByArea());
         Assert.False(monster.ToMonsterInfo().IsAlive);
-        Assert.False(combat.ApplyMonsterDamage(runtime, 1, 1, 10, Now).Applied);
+        Assert.False(combat.ApplyMonsterHit(runtime, 1, 1, 107000010, network.common.AreaType.S2Corridor9, 10, Now));
     }
     [Fact]
     public void LethalDamage_RecordsDeathOnce()

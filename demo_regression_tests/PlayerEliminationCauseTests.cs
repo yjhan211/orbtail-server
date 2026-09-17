@@ -62,13 +62,13 @@ public sealed class PlayerEliminationCauseTests
         {
             match.Bots.GetBots().Add(bot);
             match.RegisterPlayer(bot.Player);
-            combat.ApplyPlayerHit(match, bot.Player, 101, AreaType.None, 123, 9, DateTime.UtcNow);
+            combat.ApplyPlayerHit(match, bot.Player, 101, null, AreaType.None, 123, 9, DateTime.UtcNow);
             Assert.False(bot.Player.IsEliminated);
-            combat.ApplyPlayerHit(match, bot.Player, 102, AreaType.None, 123, 1, DateTime.UtcNow);
+            combat.ApplyPlayerHit(match, bot.Player, 102, null, AreaType.None, 123, 1, DateTime.UtcNow);
             Assert.True(bot.Player.IsEliminated);
             Assert.Equal(102, bot.Player.AttackerPlayerId);
             int rank = bot.Player.EliminationRank;
-            combat.ApplyPlayerHit(match, bot.Player, 103, AreaType.None, 123, 10, DateTime.UtcNow);
+            combat.ApplyPlayerHit(match, bot.Player, 103, null, AreaType.None, 123, 10, DateTime.UtcNow);
             Assert.Equal(102, bot.Player.AttackerPlayerId);
             Assert.Equal(rank, bot.Player.EliminationRank);
         }

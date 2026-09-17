@@ -916,8 +916,7 @@ public sealed class BotMovementDeliveryTests
         recipient.Packets.Clear();
 
         runtime.Monsters.Initialize(now);
-        var combat = new game_server.matches.monsters.MonsterCombatService();
-        combat.ApplyMonsterDamage(runtime, monster.MonsterId, 101, 5, now);
+        monster.ApplyDamage(5, now);
         Assert.Empty(recipient.Packets);
         new MatchSynchronizationService().ProcessTick(runtime, now.AddMilliseconds(50));
         Assert.Equal(5, Assert.Single(recipient.Read<G_TO_C_MONSTER_INFO>(Protocol.G_TO_C_MONSTER_INFO).Monsters).CurrentHealth);

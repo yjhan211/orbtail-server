@@ -20,8 +20,8 @@ internal static class TestGameSessionServices
     internal static MatchCombatService CreateMonsterTickService()
     {
         var spawns = new MatchMonsterSpawnService();
-        return new MatchCombatService(null!, null!, null!, null!,
-            null!, null!, null!, new MonsterCombatService());
+        return new MatchCombatService(null!, null!, null!,
+            null!, null!, null!, new MonsterAttackService(CreateCombatDamageService()));
     }
 
     public static PlayerHealthService CreateHealthService(MatchRuntimeStore store, Microsoft.Extensions.Logging.ILogger? logger = null) =>
@@ -87,7 +87,7 @@ internal static class TestGameSessionServices
         return new MatchRuntimeStore(logger.For<MatchRuntime>(), lifecycle, redis);
     }
     public static MatchCombatDamageService CreateCombatDamageService(PlayerHealthService? health = null) =>
-        new(new MonsterCombatService(), health!, new MatchSynchronizationService());
+        new(health!, new MatchSynchronizationService());
 
     public static PlayerMovementService CreateMovementService() =>
         new(NullLogger<PlayerMovementService>.Instance);

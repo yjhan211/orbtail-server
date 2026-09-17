@@ -28,7 +28,7 @@ public sealed class SwarmArenaTickOrderTests
             "orbTrails.UpdateTrails(",
             "trailCuts.ProcessTick(",
             "orbAttacks.ProcessTick(",
-            "ProcessMonsterContacts(",
+            "monsterAttacks.ProcessTick(",
             "botBehavior.UpdateSleep(",
             "ApplySleepRecovery(",
             "ProcessDoorInteractions(",
@@ -105,7 +105,7 @@ public sealed class SwarmArenaTickOrderTests
         return ReadMethodSlice(
             source,
             "public void ProcessTick(",
-            "    internal void ProcessMonsterContacts(");
+            "\n}");
     }
 
     private static string ReadBracedBlockAfterMarker(string source, string marker)

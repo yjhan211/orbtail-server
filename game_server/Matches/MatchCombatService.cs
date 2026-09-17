@@ -11,13 +11,12 @@ namespace game_server.matches;
 /// </summary>
 internal class MatchCombatService(
     PlayerHealthService healthService,
-    MatchCombatDamageService combatDamage,
     MatchResultService matchResults,
     PlayerOrbTrailService orbTrails,
     MatchTrailCutService trailCuts,
     MatchOrbAttackService orbAttacks,
     BotBehaviorService botBehavior,
-    MonsterCombatService monsterCombat)
+    MonsterAttackService monsterAttacks)
 {
     public virtual void ProcessTick(MatchRuntime runtime, DateTime nowUtc)
     {
@@ -39,7 +38,7 @@ internal class MatchCombatService(
         orbTrails.UpdateTrails(runtime, players);
         trailCuts.ProcessTick(runtime, nowUtc, players);
         orbAttacks.ProcessTick(runtime, nowUtc);
-        ProcessMonsterContacts(runtime, players, nowUtc);
+        monsterAttacks.ProcessTick(runtime, players, nowUtc);
         if (runtime.IsEnded)
         {
             return;
@@ -52,25 +51,5 @@ internal class MatchCombatService(
         botBehavior.ProcessDoorInteractions(runtime, bots, nowUtc);
         botBehavior.ProcessOrbGrowth(runtime, bots);
         matchResults.TryEndOnScoreTimeout(runtime, nowUtc);
-    }
-
-    internal void ProcessMonsterContacts(MatchRuntime runtime, IReadOnlyList<Player> players, DateTime nowUtc)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Combat tick requires the match lock.");
-        }
-
-        foreach (var monster in runtime.Monsters.Entities.Values)
-        {
-            if (runtime.IsEnded)
-            {
-                return;
-            }
-            if (monsterCombat.TryStartContactAttack(runtime, monster, players, nowUtc, out var victim))
-            {
-                combatDamage.ApplyMonsterContactHit(runtime, victim, monster.MonsterId, Config.ScaleSwarmDamageTaken(monster.ContactDamageValue), nowUtc);
-            }
-        }
     }
 }

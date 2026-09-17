@@ -71,9 +71,9 @@ internal static class GameServerTestAccess
         Func<MatchRuntime, TimeProvider, MatchTickLoop> createLoop = (runtime, clock) =>
         {
             var combat = new MatchCombatService(
-                health, combatDamage, results,
+                health, results,
                 orbTrails, trailCuts,
-                new MatchOrbAttackService(combatDamage, new PlayerOrbService(orbTrails), synchronization), decisions, new MonsterCombatService());
+                new MatchOrbAttackService(combatDamage, new PlayerOrbService(orbTrails), synchronization), decisions, new MonsterAttackService(combatDamage));
 
             return new MatchTickLoop(runtime, runtimes, logger, groundPickup,
             entryFailure, combat, field, new MatchMoveService(decisions, new MonsterBehaviorService()), new MatchMonsterSpawnService(), synchronization, clock);

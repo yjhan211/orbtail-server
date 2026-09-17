@@ -59,8 +59,7 @@ internal sealed class MatchOrbAttackService(
             var (monsters, players) = MatchOrbTarget.CollectTargetsInRadius(runtime, attack.OwnerId, attack.Area, attack.Position, attack.Radius);
             foreach (var monster in monsters)
             {
-                int monsterDamage = combatDamage.RollCriticalDamage(runtime, attack.Damage, out bool critical);
-                combatDamage.ApplyMonsterHit(runtime, monster.MonsterId, attack.OwnerId, attack.SourceItemId, attack.Area, monsterDamage, critical, nowUtc);
+                combatDamage.ApplyMonsterHit(runtime, monster.MonsterId, attack.OwnerId, attack.SourceItemId, attack.Area, attack.Damage, nowUtc);
             }
 
             foreach (var participant in players)
@@ -121,8 +120,7 @@ internal sealed class MatchOrbAttackService(
             foreach (var monster in monsters)
             {
                 attack.HitMonsters.Add(monster.MonsterId);
-                int monsterDamage = combatDamage.RollCriticalDamage(runtime, attack.Damage, out bool critical);
-                combatDamage.ApplyMonsterHit(runtime, monster.MonsterId, attack.OwnerId, attack.WeaponItemId, attack.Area, monsterDamage, critical, nowUtc);
+                combatDamage.ApplyMonsterHit(runtime, monster.MonsterId, attack.OwnerId, attack.WeaponItemId, attack.Area, attack.Damage, nowUtc);
             }
             foreach (var participant in players)
             {
@@ -198,8 +196,7 @@ internal sealed class MatchOrbAttackService(
             var (monsters, players) = MatchOrbTarget.CollectTargetsInRadius(runtime, owner.PlayerId, ownerArea, attack.Position, attack.Radius);
             foreach (var monster in monsters)
             {
-                int monsterDamage = combatDamage.RollCriticalDamage(runtime, attack.Damage, out bool critical);
-                combatDamage.ApplyMonsterHit(runtime, monster.MonsterId, owner.PlayerId, attack.SourceItemId, ownerArea, monsterDamage, critical, nowUtc);
+                combatDamage.ApplyMonsterHit(runtime, monster.MonsterId, owner.PlayerId, attack.SourceItemId, ownerArea, attack.Damage, nowUtc);
             }
 
             if (players.Count == 0)

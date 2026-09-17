@@ -139,7 +139,7 @@ internal sealed class MatchMonsterSpawnService
                 ContactDamageValue = contactDamage,
                 Kind = kind,
                 MaxHealthValue = maxHp,
-                AttackRangeValue = definition.AttackRange > 0f ? definition.AttackRange : Monster.BaseContactRadius,
+                AttackRangeValue = definition.AttackRange,
                 AttackCooldownValue = insignia == MonsterInsignia.Wave && !isCore ? Config.SWARM_MONSTER_WAVE_INSIGNIA_ATTACK_COOLDOWN_SECONDS : definition.AttackCooldownSeconds,
                 Movement =
                 {

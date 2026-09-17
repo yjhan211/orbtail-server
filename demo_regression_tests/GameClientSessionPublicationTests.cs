@@ -261,7 +261,8 @@ public sealed class GameClientSessionPublicationTests
         using (session.Match.Enter())
         {
             var combat = TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance));
-            combat.ApplyPlayerHit(session.Match, session.Player, 101, (AreaType)50, 123, 5, DateTime.UtcNow, isPeriodicDamage: true, sourceHealth: 73);
+            var attacker = new game_server.players.Player(new PlayerInfo { PlayerId = 101 }) { Health = 73 };
+            combat.ApplyPlayerHit(session.Match, session.Player, 101, attacker, (AreaType)50, 123, 5, DateTime.UtcNow, isPeriodicDamage: true);
         }
         using (session.Match.Enter())
         {
@@ -289,8 +290,8 @@ public sealed class GameClientSessionPublicationTests
         int before = bot.Player.Health;
         using (match.Enter())
         {
-            TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance)).ApplyPlayerHit(match, session.Player, 101, (AreaType)50, 123, 5, DateTime.UtcNow);
-            TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance)).ApplyPlayerHit(match, bot.Player, 101, (AreaType)50, 123, 5, DateTime.UtcNow);
+            TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance)).ApplyPlayerHit(match, session.Player, 101, null, (AreaType)50, 123, 5, DateTime.UtcNow);
+            TestGameSessionServices.CreateCombatDamageService(TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance)).ApplyPlayerHit(match, bot.Player, 101, null, (AreaType)50, 123, 5, DateTime.UtcNow);
         }
         Assert.Equal(before - 5, bot.Player.Health);
         Assert.Equal(session.Player.Health, bot.Player.Health);

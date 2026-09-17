@@ -8,6 +8,7 @@ namespace game_server.matches.monsters;
 public sealed class Monster
 {
     private readonly MonsterInsignia _insignia;
+    private readonly float _attackRange;
     public static float BaseContactRadius => Config.SWARM_MONSTER_BASE_CONTACT_RADIUS;
     public static float GetContactRadius(MonsterKind kind) => BaseContactRadius * (SwarmMonsterData.Get((int)kind)?.ContactRadiusScale ?? 1f);
 
@@ -35,7 +36,7 @@ public sealed class Monster
     public int PhaseTier { get => Info.Phase; set => Info.Phase = value; }
     public int MaxHealthValue { get => Info.MaxHealth; init => Info.MaxHealth = value; }
     public int ContactDamageValue { get; init; }
-    public float AttackRangeValue { get; init; }
+    public float AttackRangeValue { get => _attackRange > 0f ? _attackRange : GetContactRadius(Kind); init => _attackRange = value; }
     public float AttackCooldownValue { get; init; }
     public int SummonStoneReward { get => Info.SummonStoneReward; init => Info.SummonStoneReward = value; }
     public int HeartReward { get; init; }
