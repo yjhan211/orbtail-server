@@ -136,13 +136,12 @@ public class MatchMonsterTickTests
             runtime.Monsters.Entities.Add(monster.MonsterId, monster);
             var hit = combat.ApplyMonsterDamage(runtime, monster.MonsterId, 1, 1, StartUtc);
             Assert.False(hit.Killed);
-            Assert.Equal(0, hit.SummonStoneReward);
             var kill = combat.ApplyMonsterDamage(runtime, monster.MonsterId, 1, 9, StartUtc);
             Assert.True(kill.Killed);
-            Assert.Equal(reward, kill.SummonStoneReward);
+            Assert.Equal(reward, kill.Monster!.SummonStoneReward);
             var duplicate = combat.ApplyMonsterDamage(runtime, monster.MonsterId, 1, 10, StartUtc);
             Assert.False(duplicate.Killed);
-            Assert.Equal(0, duplicate.SummonStoneReward);
+            Assert.False(duplicate.Applied);
         }
     }
 

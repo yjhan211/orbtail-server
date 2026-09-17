@@ -32,8 +32,6 @@ public sealed class SwarmArenaTickOrderTests
             "botBehavior.UpdateSleep(",
             "ApplySleepRecovery(",
             "ProcessDoorInteractions(",
-            "MatchOrbVisual.Build(",
-            "matchResults.BroadcastOrbRankings(",
             "botBehavior.ProcessOrbGrowth(",
             "matchResults.TryEndOnScoreTimeout(");
 
@@ -49,6 +47,19 @@ public sealed class SwarmArenaTickOrderTests
             "ProcessSunBurns(runtime,",
             "playerOrbs.ActivateOrbs(",
             "ProcessWindAttacks(runtime,");
+
+        // 오브 표시와 순위는 틱 끝 동기화가 수집해 보낸다. 표시는 입장 뒤, 순위는 맨 끝에 나간다.
+        string syncSource = ReadNormalizedSource(FindRepositoryRoot(), "game_server", "Matches", "MatchSynchronizationService.cs");
+        AssertInOrder(
+            ReadMethodSlice(syncSource, "public void ProcessTick(", "    internal void CollectInteractableUpdates("),
+            "CollectOrbVisuals(runtime,",
+            "CollectOrbRankings(runtime,",
+            "SendBatch(runtime,");
+        AssertInOrder(
+            ReadMethodSlice(syncSource, "internal void SendBatch(", "    internal static void SendPendingCombatHits("),
+            "session.SendObjectEntries(",
+            "session.SendOrbVisualStates(",
+            "Protocol.G_TO_C_ORB_RANKINGS");
     }
 
     [Fact]

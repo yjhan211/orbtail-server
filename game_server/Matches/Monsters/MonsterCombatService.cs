@@ -4,10 +4,11 @@ using network.common;
 
 namespace game_server.matches.monsters;
 
-/// <summary>피해 적용 결과. 처치했으면 Monster가 죽은 개체이고 SummonStoneReward는 해당 개체에 설정된 드롭 수다.</summary>
-internal readonly record struct MonsterDamageResult(bool Applied, bool Killed, Monster? Monster, int SummonStoneReward)
+internal readonly record struct MonsterDamageResult(Monster? Monster, bool Killed)
 {
-    public static MonsterDamageResult None => new(false, false, null, 0);
+    public static MonsterDamageResult None => new(null, false);
+
+    public bool Applied => Monster != null;
 }
 
 /// <summary>
@@ -88,13 +89,11 @@ internal sealed class MonsterCombatService
             mate.ChaseTargetPlayerId = attackerPlayerId;
         }
         bool killed = monster.ApplyDamage(damage, nowUtc);
-        int summonStoneReward = 0;
         if (killed)
         {
-            summonStoneReward = monster.SummonStoneReward;
             runtime.RemoveMonster(monster);
         }
 
-        return new MonsterDamageResult(true, killed, monster, summonStoneReward);
+        return new MonsterDamageResult(monster, killed);
     }
 }

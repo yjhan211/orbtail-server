@@ -1,4 +1,3 @@
-using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -152,71 +151,6 @@ internal sealed class MatchResultService(
 
         FinalizeMatch(runtime.MatchingId, winnerId, MatchEndReason.OrbScoreTimeout);
         return true;
-    }
-
-    public void BroadcastOrbRankings(MatchRuntime runtime, List<GameClientSession> sessions)
-    {
-        if (!Monitor.IsEntered(runtime.MatchLock))
-        {
-            throw new InvalidOperationException("Orb rankings broadcast requires the match lock.");
-        }
-        if (sessions.Count == 0)
-        {
-            return;
-        }
-
-        var entries = new List<(long PlayerId, int Orbs, int TierSum)>();
-        foreach (var player in runtime.GetPlayers())
-        {
-            if (player.IsEliminated)
-            {
-                entries.Add((player.PlayerId, 0, 0));
-                continue;
-            }
-            var (orbCount, tierSum) = runtime.GetOrbs(player.PlayerId).GetOrbScore();
-            entries.Add((player.PlayerId, orbCount, tierSum));
-        }
-        if (entries.Count == 0)
-        {
-            return;
-        }
-        entries = entries
-            .OrderByDescending(entry => entry.Orbs)
-            .ThenByDescending(entry => entry.TierSum)
-            .ThenBy(entry => entry.PlayerId)
-            .ToList();
-
-        var playerIds = new List<long>(entries.Count);
-        var orbCounts = new List<int>(entries.Count);
-        var signatureParts = new List<string>(entries.Count);
-        foreach (var entry in entries)
-        {
-            playerIds.Add(entry.PlayerId);
-            orbCounts.Add(entry.Orbs);
-            signatureParts.Add($"{entry.PlayerId}:{entry.Orbs}");
-        }
-        string signature = string.Join("|", signatureParts);
-        bool isFirstBroadcast = runtime.OrbRankingsSignature == null;
-        if (!isFirstBroadcast && runtime.OrbRankingsSignature == signature)
-        {
-            return;
-        }
-
-        runtime.OrbRankingsSignature = signature;
-        if (isFirstBroadcast)
-        {
-            logger.LogInformation("Orb rankings broadcast armed: MatchingId={MatchingId}, Participants={Count}, Sessions={Sessions}", runtime.MatchingId, entries.Count, sessions.Count);
-        }
-        using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_RANKINGS);
-        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_RANKINGS
-        {
-            PlayerIds = playerIds,
-            OrbCounts = orbCounts
-        }));
-        foreach (var session in sessions)
-        {
-            session.TrySend(packet);
-        }
     }
 
     public List<GameResultPlayerInfo> BuildPlayerResults(MatchRuntime runtime, long winnerId)

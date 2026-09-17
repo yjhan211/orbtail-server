@@ -36,8 +36,6 @@ internal class MatchCombatService(
             return;
         }
 
-        var sessions = runtime.GetSessions().Where(session => !session.IsGameEnded).ToList();
-        var bots = runtime.Bots.GetBots().ToList();
         var players = runtime.GetAlivePlayers();
         if (players.Count == 0)
         {
@@ -45,7 +43,6 @@ internal class MatchCombatService(
         }
 
         var nowUtc = DateTime.UtcNow;
-        var aliveBots = bots.Where(bot => !bot.Player.IsEliminated).ToList();
         if (!runtime.IsGameplayActive())
         {
             return;
@@ -60,30 +57,15 @@ internal class MatchCombatService(
             return;
         }
 
-        aliveBots.RemoveAll(bot => bot.Player.IsEliminated);
-        botBehavior.UpdateSleep(runtime, aliveBots, nowUtc);
-        if (runtime.IsEnded)
-        {
-            return;
-        }
         players.RemoveAll(player => player.IsEliminated);
+        var bots = runtime.Bots.GetBots();
+        botBehavior.UpdateSleep(runtime, bots, nowUtc);
         healthService.ApplySleepRecovery(runtime, players, nowUtc);
-        botBehavior.ProcessDoorInteractions(runtime, aliveBots, sessions, nowUtc);
-
-        var orbVisuals = MatchOrbVisual.Build(runtime, players);
-        foreach (var session in sessions)
-        {
-            session.SendOrbVisualStates(orbVisuals);
-        }
-        matchResults.BroadcastOrbRankings(runtime, sessions);
-        botBehavior.ProcessOrbGrowth(runtime, aliveBots);
+        botBehavior.ProcessDoorInteractions(runtime, bots, nowUtc);
+        botBehavior.ProcessOrbGrowth(runtime, bots);
         matchResults.TryEndOnScoreTimeout(runtime, nowUtc);
     }
 
-    /// <summary>
-    ///     살아 있는 몬스터마다 접촉 공격을 판정하고, 성립하면 그 자리에서 피해를 적용한다.
-    ///     피해는 받는 피해 배율을 거친다. 같은 구역에 보내는 피격 알림이 곧 몬스터의 공격 연출 신호다.
-    /// </summary>
     internal void ProcessMonsterContacts(MatchRuntime runtime, IReadOnlyList<Player> players, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))

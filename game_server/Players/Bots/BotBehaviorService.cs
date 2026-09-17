@@ -1,5 +1,4 @@
 using game_server.matches;
-using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -110,7 +109,7 @@ internal class BotBehaviorService(
         return growth.UpgradeOrb(runtime, player, Config.ORB_UPGRADE_GROUP, targetItemId).Success;
     }
 
-    public void ProcessDoorInteractions(MatchRuntime runtime, List<Bot> bots, List<GameClientSession> sessions, DateTime nowUtc)
+    public void ProcessDoorInteractions(MatchRuntime runtime, List<Bot> bots, DateTime nowUtc)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
@@ -547,6 +546,11 @@ internal class BotBehaviorService(
         foreach (var bot in bots)
         {
             var player = bot.Player;
+            if (player.IsEliminated)
+            {
+                continue;
+            }
+
             bool unsafeToSleep = IsUnsafeToSleep(runtime, bot, players, monsterTargets, safeRadiusSquared, nowUtc);
             bool hasSummonStone = false;
             foreach (var item in runtime.GroundItems.GetItemsInArea(GameMapData.GetCurrentArea(player.GameInfo.ObjectInfo.MapId, player.GameInfo.ObjectInfo.Cell)))

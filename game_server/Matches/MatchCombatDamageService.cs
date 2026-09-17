@@ -132,7 +132,7 @@ internal sealed class MatchCombatDamageService(MonsterCombatService monsters, Pl
             return;
         }
 
-        int stoneCount = Math.Max(0, damageResult.SummonStoneReward);
+        int stoneCount = Math.Max(0, defeated.SummonStoneReward);
         int heartCount = Math.Max(0, defeated.HeartReward);
         if (stoneCount + heartCount == 0)
         {

@@ -415,6 +415,37 @@ public sealed class BotMovementDeliveryTests
     }
 
     [Fact]
+    public void OrbVisualsAndRankingsArePublishedAtTickEndOnlyWhenChanged()
+    {
+        TestGameData.EnsureBattleItemCombatLoaded();
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(44109);
+        var recipient = AddRecipient(store, 44109, 1, AreaType.S2Gym1, []);
+        recipient.RecordOrbBroadcasts = true;
+        using var scope = runtime.Enter();
+        var now = DateTime.UtcNow;
+        runtime.StartGameplay(now);
+        var synchronization = new MatchSynchronizationService();
+        synchronization.InitializeComparisonSnapshots(runtime);
+
+        // 첫 틱에 표시와 순위가 한 번 나가고, 순위는 그 틱의 맨 끝에 온다.
+        synchronization.ProcessTick(runtime, now);
+        Assert.Contains(recipient.Packets, packet => packet.Protocol == Protocol.G_TO_C_ORB_EFFECT_STATE);
+        Assert.Equal(Protocol.G_TO_C_ORB_RANKINGS, recipient.Packets[^1].Protocol);
+
+        // 바뀐 것이 없으면 다시 보내지 않는다.
+        recipient.Packets.Clear();
+        synchronization.ProcessTick(runtime, now.AddMilliseconds(50));
+        Assert.DoesNotContain(recipient.Packets, packet => packet.Protocol is Protocol.G_TO_C_ORB_EFFECT_STATE or Protocol.G_TO_C_ORB_RANKINGS);
+
+        // 오브를 얻으면 같은 틱 끝에 표시와 순위가 함께 갱신된다.
+        Assert.True(TestGameSessionServices.Orbs(runtime, 1).TryAddOrbWithCapacity(107000010, 8, out _));
+        synchronization.ProcessTick(runtime, now.AddMilliseconds(100));
+        Assert.Contains(recipient.Packets, packet => packet.Protocol == Protocol.G_TO_C_ORB_EFFECT_STATE);
+        Assert.Equal(1, Assert.Single(recipient.Read<G_TO_C_ORB_RANKINGS>(Protocol.G_TO_C_ORB_RANKINGS).OrbCounts));
+    }
+
+    [Fact]
     public void HumanStateIsSentOnceAtTickEndWithoutRepeatingMovement()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
@@ -1057,6 +1088,8 @@ public sealed class BotMovementDeliveryTests
     private sealed class RecordingConnection(long playerId, List<(long PlayerId, Protocol Protocol)> timeline) : TcpConnection
     {
         public bool AcceptPackets { get; set; } = true;
+        // 이 파일의 테스트는 입퇴장·상태·이동 전달을 본다. 같은 틱에 함께 나가는 오브 표시와 순위는 따로 켰을 때만 기록한다.
+        public bool RecordOrbBroadcasts { get; set; }
         public List<(Protocol Protocol, byte[] Wire)> Packets { get; } = [];
 
         public override bool TrySend(Packet packet)
@@ -1064,6 +1097,10 @@ public sealed class BotMovementDeliveryTests
             if (!AcceptPackets) return false;
             packet.RecordSize();
             var protocol = (Protocol)packet.ProtocolId;
+            if (!RecordOrbBroadcasts && protocol is Protocol.G_TO_C_ORB_EFFECT_STATE or Protocol.G_TO_C_ORB_RANKINGS)
+            {
+                return true;
+            }
             Packets.Add((protocol, packet.ToBytes()));
             timeline.Add((playerId, protocol));
             return true;

@@ -490,10 +490,24 @@ public sealed class GameClientSessionPublicationTests
             new MatchSynchronizationService().ProcessTick(self.Match, DateTime.UtcNow);
         }
 
-        Assert.Equal(new[] { Protocol.G_TO_C_PLAYER_INFO, Protocol.G_TO_C_MOVE }, fixture.ConnectionFor(peer).AttemptedProtocols);
-        Assert.Equal(new[] { Protocol.G_TO_C_PLAYER_INFO, Protocol.G_TO_C_MOVE }, fixture.ConnectionFor(self).AttemptedProtocols);
-        Assert.Empty(fixture.ConnectionFor(eliminated).AttemptedProtocols);
-        Assert.Empty(fixture.ConnectionFor(otherArea).AttemptedProtocols);
+        // 같은 틱에 오브 표시와 순위도 나가지만 이 테스트는 플레이어 상태 전달만 본다.
+        List<Protocol> StateProtocols(game_server.sessions.GameClientSession session)
+        {
+            var protocols = new List<Protocol>();
+            foreach (var protocol in fixture.ConnectionFor(session).AttemptedProtocols)
+            {
+                if (protocol is not (Protocol.G_TO_C_ORB_EFFECT_STATE or Protocol.G_TO_C_ORB_RANKINGS))
+                {
+                    protocols.Add(protocol);
+                }
+            }
+            return protocols;
+        }
+
+        Assert.Equal(new[] { Protocol.G_TO_C_PLAYER_INFO, Protocol.G_TO_C_MOVE }, StateProtocols(peer));
+        Assert.Equal(new[] { Protocol.G_TO_C_PLAYER_INFO, Protocol.G_TO_C_MOVE }, StateProtocols(self));
+        Assert.Empty(StateProtocols(eliminated));
+        Assert.Empty(StateProtocols(otherArea));
         Assert.Empty(fixture.ConnectionFor(otherMatch).AttemptedProtocols);
     }
 

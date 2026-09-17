@@ -84,8 +84,8 @@ public sealed class MatchGameplayServiceTests
                 Assert.True(TestGameSessionServices.Orbs(match, 103).TryAddOrbWithCapacity(107000010, 8, out _));
             match.TryEliminatePlayer(103, network.common.EliminationReason.HEALTH_ZERO);
             Assert.Empty(match.GetSessions());
-            service.BroadcastOrbRankings(match,
-                new List<game_server.sessions.GameClientSession> { TestGameSessionServices.CreateRecipientSession() });
+            new MatchSynchronizationService().CollectOrbRankings(match,
+                new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, new List<game_server.sessions.GameClientSession> { TestGameSessionServices.CreateRecipientSession() }));
             var signature = match.OrbRankingsSignature;
             Assert.Equal("101:2|-102:1|103:0", signature);
         }

@@ -22,11 +22,13 @@ internal sealed class MatchSynchronizationService
         public Dictionary<GameClientSession, List<InteractableInfo>> InteractableUpdates { get; init; } = new();
         public Dictionary<GameClientSession, List<ObjectIdentity>> Leaves { get; init; } = new();
         public Dictionary<GameClientSession, G_TO_C_OBJECT_ENTER> Entries { get; init; } = new();
+        public List<MatchOrbVisual> OrbVisuals { get; set; } = new();
         public Dictionary<GameClientSession, List<GamePlayerInfo>> PlayerUpdates { get; init; } = new();
         public Dictionary<GameClientSession, List<MonsterInfo>> MonsterUpdates { get; init; } = new();
         public Dictionary<GameClientSession, G_TO_C_MOVE> Moves { get; init; } = new();
         public Dictionary<GameClientSession, List<G_TO_C_SUN_ORB_ATTACK>> SunAttacks { get; init; } = new();
         public Dictionary<GameClientSession, List<G_TO_C_WAVE_ORB_ATTACK>> WaveAttacks { get; init; } = new();
+        public G_TO_C_ORB_RANKINGS? OrbRankings { get; set; }
     }
 
     public void InitializeComparisonSnapshots(MatchRuntime runtime)
@@ -203,6 +205,11 @@ internal sealed class MatchSynchronizationService
         }
         CollectSunAttacks(runtime, batch, nowUtc);
         CollectWaveAttacks(runtime, batch, nowUtc);
+        if (isGameplayActive && runtime.Mode != MatchMode.SoloMapValidation)
+        {
+            CollectOrbVisuals(runtime, players, batch);
+            CollectOrbRankings(runtime, batch);
+        }
         CollectObjectLeaves(runtime, batch);
         SendBatch(runtime, batch);
 
@@ -480,6 +487,78 @@ internal sealed class MatchSynchronizationService
         }
     }
 
+    internal void CollectOrbVisuals(MatchRuntime runtime, IReadOnlyList<Player> players, SyncBatch batch)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Synchronization requires the match lock.");
+        }
+
+        batch.OrbVisuals = MatchOrbVisual.Build(runtime, players);
+    }
+
+    internal void CollectOrbRankings(MatchRuntime runtime, SyncBatch batch)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Synchronization requires the match lock.");
+        }
+        if (batch.Sessions.Count == 0)
+        {
+            return;
+        }
+
+        var entries = new List<(long PlayerId, int Orbs, int TierSum)>();
+        foreach (var player in runtime.GetPlayers())
+        {
+            if (player.IsEliminated)
+            {
+                entries.Add((player.PlayerId, 0, 0));
+                continue;
+            }
+            var (orbCount, tierSum) = runtime.GetOrbs(player.PlayerId).GetOrbScore();
+            entries.Add((player.PlayerId, orbCount, tierSum));
+        }
+        if (entries.Count == 0)
+        {
+            return;
+        }
+
+        entries.Sort(static (left, right) =>
+        {
+            int byOrbs = right.Orbs.CompareTo(left.Orbs);
+            if (byOrbs != 0)
+            {
+                return byOrbs;
+            }
+            int byTierSum = right.TierSum.CompareTo(left.TierSum);
+            return byTierSum != 0 ? byTierSum : left.PlayerId.CompareTo(right.PlayerId);
+        });
+
+        var playerIds = new List<long>(entries.Count);
+        var orbCounts = new List<int>(entries.Count);
+        var signatureParts = new List<string>(entries.Count);
+        foreach (var entry in entries)
+        {
+            playerIds.Add(entry.PlayerId);
+            orbCounts.Add(entry.Orbs);
+            signatureParts.Add($"{entry.PlayerId}:{entry.Orbs}");
+        }
+
+        string signature = string.Join("|", signatureParts);
+        if (runtime.OrbRankingsSignature == signature)
+        {
+            return;
+        }
+
+        runtime.OrbRankingsSignature = signature;
+        batch.OrbRankings = new G_TO_C_ORB_RANKINGS
+        {
+            PlayerIds = playerIds,
+            OrbCounts = orbCounts
+        };
+    }
+
     internal void CollectObjectLeaves(MatchRuntime runtime, SyncBatch batch)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -537,6 +616,16 @@ internal sealed class MatchSynchronizationService
         {
             session.SendObjectEntries(entries);
         }
+        if (batch.OrbVisuals.Count > 0)
+        {
+            foreach (var session in batch.Sessions)
+            {
+                if (!session.IsGameEnded)
+                {
+                    session.SendOrbVisualStates(batch.OrbVisuals);
+                }
+            }
+        }
         foreach (var (session, players) in batch.PlayerUpdates)
         {
             using var packet = PacketMaker.G_TO_C_PLAYER_INFO(players);
@@ -568,6 +657,18 @@ internal sealed class MatchSynchronizationService
                 using var packet = Packet.Create((int)Protocol.G_TO_C_WAVE_ORB_ATTACK);
                 packet.SetBody(MessagePackSerializer.Serialize(attack));
                 session.TrySend(packet);
+            }
+        }
+        if (batch.OrbRankings != null)
+        {
+            using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_RANKINGS);
+            packet.SetBody(MessagePackSerializer.Serialize(batch.OrbRankings));
+            foreach (var session in batch.Sessions)
+            {
+                if (!session.IsGameEnded)
+                {
+                    session.TrySend(packet);
+                }
             }
         }
         SendPendingCombatEffects(runtime);
