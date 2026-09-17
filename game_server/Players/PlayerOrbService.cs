@@ -122,7 +122,7 @@ internal sealed class PlayerOrbService(
                 continue;
             }
 
-            owner.Orbs.ScheduleNextWaveOrbAttack(orbUid, nowUtc, WaveOrbAttackIntervalSeconds);
+            owner.Orbs.ScheduleNextOrbAttack(orbUid, nowUtc, WaveOrbAttackIntervalSeconds);
 
             if (sunDamageMultiplier < 0f)
             {
@@ -427,7 +427,7 @@ internal sealed class PlayerOrbService(
                 continue;
             }
 
-            if (!owner.Orbs.TryBeginWindOrbAttack(orb.ItemUid, nowUtc, Config.SWARM_WIND_BLADE_TICK_SECONDS))
+            if (!owner.Orbs.TryBeginOrbAttack(orb.ItemUid, nowUtc, Config.SWARM_WIND_BLADE_TICK_SECONDS))
             {
                 continue;
             }
@@ -475,12 +475,6 @@ internal sealed class PlayerOrbService(
             }
 
             if (monstersInRadius == null && playersInRadius == null)
-            {
-                owner.Orbs.ResetWindOrbEngagement(orb.ItemUid);
-                continue;
-            }
-
-            if (!owner.Orbs.UpdateWindOrbSpinup(orb.ItemUid, nowUtc, Config.SWARM_WIND_BLADE_SPINUP_SECONDS))
             {
                 continue;
             }

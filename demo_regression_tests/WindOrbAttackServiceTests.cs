@@ -29,7 +29,7 @@ public sealed class WindOrbAttackServiceTests
     }
 
     [Fact]
-    public void Process_WaitsForSpinupThenShocksBeforeWoundingAndHonorsImmunity()
+    public void Process_HitsWithoutSpinupAndHonorsImmunity()
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947501);
@@ -47,12 +47,7 @@ public sealed class WindOrbAttackServiceTests
             owner.Player.Position = new Vector3f(0, 0, 0);
             victim.Player.Position = origin;
             service.ActivateWindOrbs(match, owner.Player, now);
-            Assert.Equal(Config.MAX_HEALTH, victim.Player.Health);
-            Assert.False(victim.Player.StatusEffects.IsActive(PlayerStatusEffectKind.Wound, now));
-
-            var hitAt = now.AddSeconds(Math.Max(Config.SWARM_WIND_BLADE_TICK_SECONDS,
-                Config.SWARM_WIND_BLADE_SPINUP_SECONDS) + 0.001);
-            service.ActivateWindOrbs(match, owner.Player, hitAt);
+            var hitAt = now;
             int expected = Math.Max(1, (int)MathF.Round(
                 Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE)));
             Assert.Equal(Config.MAX_HEALTH - expected, victim.Player.Health);

@@ -97,7 +97,6 @@ public class Player
 
     // 기능별 소유 상태
     public PlayerOrbState Orbs { get; }
-    internal PlayerAutoAttackState AutoAttack { get; } = new();
     internal PlayerInteractState Interactions { get; } = new();
     internal Dictionary<long, ReachableItem> ReachableItems { get; } = new();
 

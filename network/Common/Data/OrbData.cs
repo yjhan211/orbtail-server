@@ -194,6 +194,12 @@ namespace network.common.data
 
         public static bool IsOrbItem(int itemId) => TryGetColorAndTier(itemId, out _, out _);
 
+        /// <summary>색 라인의 특정 티어 오브 아이템. battle_item_combat.csv가 원천이며 없으면 0.</summary>
+        public static int GetItemId(OrbColor color, int tier) =>
+            BattleItemCombatData.TryGetItemId(color, tier, out int itemId) ? itemId : 0;
+
+        public static int GetTierOneItemId(OrbColor color) => GetItemId(color, 1);
+
         public static float GetPvpProjectileImpactDelaySeconds(int itemId, float distance)
         {
             return Math.Max(0.08f, Math.Max(0f, distance) / HopeProjectileSpeed);

@@ -15,29 +15,8 @@ public class PlayerOrbState
     private readonly Dictionary<long, InGameItemInfo> _items = new();
     private readonly Dictionary<int, int> _upgradeCounts = new();
     public SummonStoneStateInfo SummonStones { get; internal set; } = SummonStoneStateInfo.Empty;
-
-    // 오브별 공격 주기·준비 상태
-    private readonly Dictionary<long, OrbAttackTimerState> _attackTimers = new();
-
-    // 이동 궤적
+    private readonly Dictionary<long, DateTime> _nextAttackAtUtc = new();
     internal List<Vector3f> OrbTrail { get; } = new();
-
-    private sealed class OrbAttackTimerState
-    {
-        public DateTime? NextAttackAtUtc { get; set; }
-        public DateTime? EngagementStartedAtUtc { get; set; }
-    }
-
-    private OrbAttackTimerState GetOrCreateAttackTimers(long itemUid)
-    {
-        if (_attackTimers.TryGetValue(itemUid, out var timers))
-        {
-            return timers;
-        }
-        timers = new OrbAttackTimerState();
-        _attackTimers.Add(itemUid, timers);
-        return timers;
-    }
 
     public int GetUpgradeCount(int orbGroupId) => _upgradeCounts.GetValueOrDefault(orbGroupId);
 
@@ -48,58 +27,43 @@ public class PlayerOrbState
         return count;
     }
 
-    internal bool TryBeginWindOrbAttack(long itemUid, DateTime nowUtc, double intervalSeconds)
+    internal bool TryBeginOrbAttack(long itemUid, DateTime nowUtc, double intervalSeconds)
     {
-        var timers = GetOrCreateAttackTimers(itemUid);
-        if (timers.NextAttackAtUtc.HasValue && nowUtc < timers.NextAttackAtUtc.Value)
+        if (!IsOrbAttackReady(itemUid, nowUtc))
         {
             return false;
         }
 
-        timers.NextAttackAtUtc = nowUtc.AddSeconds(intervalSeconds);
+        ScheduleNextOrbAttack(itemUid, nowUtc, intervalSeconds);
         return true;
     }
 
-    internal void ResetWindOrbEngagement(long itemUid)
-    {
-        if (_attackTimers.TryGetValue(itemUid, out var timers))
-        {
-            timers.EngagementStartedAtUtc = null;
-        }
-    }
-
-    internal bool UpdateWindOrbSpinup(long itemUid, DateTime nowUtc, double durationSeconds)
-    {
-        var timers = GetOrCreateAttackTimers(itemUid);
-        timers.EngagementStartedAtUtc ??= nowUtc;
-        return (nowUtc - timers.EngagementStartedAtUtc.Value).TotalSeconds >= durationSeconds;
-    }
+    internal bool IsOrbAttackReady(long itemUid, DateTime nowUtc) => !_nextAttackAtUtc.TryGetValue(itemUid, out var nextAttackAtUtc) || nowUtc >= nextAttackAtUtc;
 
     internal bool UpdateWaveOrbAttackReadiness(long itemUid, DateTime nowUtc, double intervalSeconds, double firstPhase)
     {
-        var timers = GetOrCreateAttackTimers(itemUid);
-        if (!timers.NextAttackAtUtc.HasValue)
+        if (!_nextAttackAtUtc.TryGetValue(itemUid, out var nextAttackAtUtc))
         {
-            timers.NextAttackAtUtc = nowUtc.AddSeconds(intervalSeconds * firstPhase);
+            ScheduleNextOrbAttack(itemUid, nowUtc, intervalSeconds * firstPhase);
             return false;
         }
-        return nowUtc >= timers.NextAttackAtUtc.Value;
+        return nowUtc >= nextAttackAtUtc;
     }
 
-    internal void ScheduleNextWaveOrbAttack(long itemUid, DateTime nowUtc, double intervalSeconds) =>
-        GetOrCreateAttackTimers(itemUid).NextAttackAtUtc = nowUtc.AddSeconds(intervalSeconds);
+    internal void ScheduleNextOrbAttack(long itemUid, DateTime nowUtc, double intervalSeconds) =>
+        _nextAttackAtUtc[itemUid] = nowUtc.AddSeconds(intervalSeconds);
 
     internal DateTime? GetNextWaveOrbAttackAtUtc(long itemUid) =>
-        _attackTimers.TryGetValue(itemUid, out var timers) ? timers.NextAttackAtUtc : null;
+        _nextAttackAtUtc.TryGetValue(itemUid, out var nextAttackAtUtc) ? nextAttackAtUtc : null;
 
     internal void RemoveAttackTimers(long itemUid)
     {
-        _attackTimers.Remove(itemUid);
+        _nextAttackAtUtc.Remove(itemUid);
     }
 
     internal void ClearAttackTimers()
     {
-        _attackTimers.Clear();
+        _nextAttackAtUtc.Clear();
     }
 
     public InGameItemInfo AddOrb(int itemId)

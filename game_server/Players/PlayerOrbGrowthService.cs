@@ -10,27 +10,32 @@ namespace game_server.players;
 ///     플레이어와 봇의 소환석 지급·소비, 오브 소환·강화 비용과 성장 행동을 처리한다.
 ///     소환석 상태는 Player가, 오브 인벤토리는 매치 런타임이 소유하며, 호출자는 해당 매치 잠금을 보유해야 한다.
 /// </summary>
-internal sealed class PlayerOrbGrowthService(
-    ILogger<PlayerOrbGrowthService> logger)
+internal sealed class PlayerOrbGrowthService(ILogger<PlayerOrbGrowthService> logger)
 {
-    public const int NormalMonsterReward = 1;
-    public const int CoreMonsterReward = 3;
-
-    // 공급 차단 토글(SWARM_SUN/WAVE_ORB_ENABLED=false)이면 소환 풀에서 그 색이 빠진다.
     private static readonly int[] SummonPool = BuildSummonPool();
-    private static readonly int[] OpeningAttackPool = SummonPool;
-
-    /// <summary>시작 소환석 5 — 첫 개봉(비용 5) 한 번을 보장해 개전 직후 드래프트를 먼저 보여준다. 이후는 몹 처치로 번다.</summary>
-    public static int InitialSummonStoneCount => 5;
-
     public static IReadOnlyList<int> SummonPoolItemIds => SummonPool;
-
     private static int[] BuildSummonPool()
     {
+        (OrbColor Color, bool Enabled)[] lines =
+        {
+            (OrbColor.Red, Config.SWARM_SUN_ORB_ENABLED),
+            (OrbColor.Green, Config.SWARM_WIND_ORB_ENABLED),
+            (OrbColor.Blue, Config.SWARM_WAVE_ORB_ENABLED)
+        };
         var pool = new List<int>();
-        if (Config.SWARM_SUN_ORB_ENABLED) pool.Add(107000010);
-        if (Config.SWARM_WIND_ORB_ENABLED) pool.Add(107000020);
-        if (Config.SWARM_WAVE_ORB_ENABLED) pool.Add(107000030);
+        foreach (var (color, enabled) in lines)
+        {
+            if (!enabled)
+            {
+                continue;
+            }
+            int itemId = OrbData.GetTierOneItemId(color);
+            if (itemId <= 0)
+            {
+                throw new InvalidOperationException($"battle_item_combat.csv has no tier 1 orb for {color}.");
+            }
+            pool.Add(itemId);
+        }
         return pool.ToArray();
     }
 
@@ -48,7 +53,6 @@ internal sealed class PlayerOrbGrowthService(
         return player.Orbs.SummonStones;
     }
 
-    /// <summary>오브 강화 비용을 차감한다. 잔액이 부족하면 변경하지 않는다.</summary>
     internal static bool TrySpendSummonStones(MatchRuntime match, Player player, int amount)
     {
         if (!Monitor.IsEntered(match.MatchLock))
@@ -65,9 +69,6 @@ internal sealed class PlayerOrbGrowthService(
         return true;
     }
 
-    /// <summary>
-    ///     비용을 확인하고 풀에서 뽑은 오브를 지급받아 소환석과 소환 횟수를 갱신한다. 지급이 실패하면 아무것도 바꾸지 않는다.
-    /// </summary>
     internal static SummonResult TrySummon(MatchRuntime match, Player player, Func<int, InGameItemInfo?> grantItem)
     {
         if (!Monitor.IsEntered(match.MatchLock))
@@ -82,7 +83,7 @@ internal sealed class PlayerOrbGrowthService(
             return SummonResult.Failed(ErrorCode.INSUFFICIENT_CURRENCY, player.Orbs.SummonStones);
         }
 
-        int itemId = DrawSummonOrb(player.Orbs.SummonStones.SuccessfulSummonCount);
+        int itemId = DrawSummonOrb();
         var item = grantItem(itemId);
         if (item == null)
         {
@@ -93,11 +94,9 @@ internal sealed class PlayerOrbGrowthService(
         return new SummonResult(true, ErrorCode.SUCCESS, itemId, item, player.Orbs.SummonStones);
     }
 
-    /// <summary>개전 직후에는 잔상과 싸울 수단이 바로 필요하다. 첫 소환만 공격 오브 풀에서 뽑는다.</summary>
-    private static int DrawSummonOrb(int successfulSummonCount)
+    private static int DrawSummonOrb()
     {
-        int[] pool = successfulSummonCount == 0 ? OpeningAttackPool : SummonPool;
-        return pool[Random.Shared.Next(pool.Length)];
+        return SummonPool[Random.Shared.Next(SummonPool.Length)];
     }
 
     internal static void GrantStartingSummonStones(MatchRuntime runtime, Player player)
@@ -122,7 +121,6 @@ internal sealed class PlayerOrbGrowthService(
             throw new InvalidOperationException("Orb inventory changes require the match lock.");
         }
 
-        long playerId = player.PlayerId;
         var attempt = TrySummon(runtime, player, itemId => player.Orbs.TryAddOrbWithCapacity(itemId, Config.SWARM_ORB_CAPACITY, out var added) ? added : null);
         return attempt;
     }
@@ -220,9 +218,9 @@ internal sealed class PlayerOrbGrowthService(
             throw new InvalidOperationException("Orb growth operations require the match lock.");
         }
 
-        int sunOrbGroupId = 107000010 / 10;
-        int windOrbGroupId = 107000020 / 10;
-        int waveOrbGroupId = 107000030 / 10;
+        int sunOrbGroupId = OrbData.GetTierOneItemId(OrbColor.Red) / 10;
+        int windOrbGroupId = OrbData.GetTierOneItemId(OrbColor.Green) / 10;
+        int waveOrbGroupId = OrbData.GetTierOneItemId(OrbColor.Blue) / 10;
 
         return new G_TO_C_ORB_UPGRADE_INFO
         {

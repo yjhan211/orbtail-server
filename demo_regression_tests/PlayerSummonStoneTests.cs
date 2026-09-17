@@ -31,7 +31,7 @@ public class PlayerSummonStoneTests
         var (match, player) = Create(202);
         using (match.Enter())
         {
-            var granted = PlayerOrbGrowthService.AddSummonStones(match, player, PlayerOrbGrowthService.InitialSummonStoneCount);
+            var granted = PlayerOrbGrowthService.AddSummonStones(match, player, Config.SWARM_STARTING_STONE_GRANT);
             Assert.Equal(5, granted.StoneCount);
 
             var summon = PlayerOrbGrowthService.TrySummon(match, player, Grant(1));
@@ -58,7 +58,7 @@ public class PlayerSummonStoneTests
                 for (long playerId = 1; playerId <= 16; playerId++)
                 {
                     var player = TestGameSessionServices.GetOrRegisterPlayer(match, playerId);
-                    PlayerOrbGrowthService.AddSummonStones(match, player, PlayerOrbGrowthService.InitialSummonStoneCount);
+                    PlayerOrbGrowthService.AddSummonStones(match, player, Config.SWARM_STARTING_STONE_GRANT);
                     var summon = PlayerOrbGrowthService.TrySummon(match, player, Grant(1));
                     Assert.True(summon.Success);
                     Assert.True(OrbData.IsOrbItem(summon.ItemId));
@@ -73,8 +73,8 @@ public class PlayerSummonStoneTests
         var (match, player) = Create(202);
         using (match.Enter())
         {
-            PlayerOrbGrowthService.AddSummonStones(match, player, PlayerOrbGrowthService.NormalMonsterReward);
-            var state = PlayerOrbGrowthService.AddSummonStones(match, player, PlayerOrbGrowthService.CoreMonsterReward);
+            PlayerOrbGrowthService.AddSummonStones(match, player, 1);
+            var state = PlayerOrbGrowthService.AddSummonStones(match, player, 3);
 
             Assert.Equal(4, state.StoneCount);
             Assert.Equal(0, state.SuccessfulSummonCount);

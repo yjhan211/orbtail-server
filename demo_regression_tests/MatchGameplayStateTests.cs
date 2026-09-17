@@ -63,20 +63,15 @@ public sealed class MatchGameplayStateTests
     }
 
     [Fact]
-    public void WindOrbAttackState_PreservesTimingBoundariesAndEngagementReset()
+    public void WindOrbAttackState_PreservesAttackAndImmunityTimingBoundaries()
     {
         var player = new Player(new PlayerInfo { PlayerId = 10 });
         DateTime nowUtc = new(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc);
 
-        Assert.True(player.Orbs.TryBeginWindOrbAttack(100, nowUtc, 1d));
-        Assert.False(player.Orbs.TryBeginWindOrbAttack(100, nowUtc.AddMilliseconds(999), 1d));
-        Assert.True(player.Orbs.TryBeginWindOrbAttack(100, nowUtc.AddSeconds(1), 1d));
+        Assert.True(player.Orbs.TryBeginOrbAttack(100, nowUtc, 1d));
+        Assert.False(player.Orbs.TryBeginOrbAttack(100, nowUtc.AddMilliseconds(999), 1d));
+        Assert.True(player.Orbs.TryBeginOrbAttack(100, nowUtc.AddSeconds(1), 1d));
 
-        Assert.False(player.Orbs.UpdateWindOrbSpinup(100, nowUtc, 0.2f));
-        Assert.False(player.Orbs.UpdateWindOrbSpinup(100, nowUtc.AddMilliseconds(200), 0.2f));
-        Assert.True(player.Orbs.UpdateWindOrbSpinup(100, nowUtc.AddMilliseconds(200).AddTicks(1), 0.2f));
-        player.Orbs.ResetWindOrbEngagement(100);
-        Assert.False(player.Orbs.UpdateWindOrbSpinup(100, nowUtc.AddSeconds(1), 0.2f));
 
         var victim = new Player(new PlayerInfo { PlayerId = 20 });
         Assert.True(victim.StatusEffects.TryApply(PlayerStatusEffectKind.WindShockImmunity, nowUtc, 0.9d));
@@ -118,12 +113,10 @@ public sealed class MatchGameplayStateTests
         GetOrRegisterPlayer(first, playerId).StatusEffects.Apply(PlayerStatusEffectKind.Wound, nowUtc.AddMinutes(1));
         Assert.True(GetOrRegisterPlayer(first, playerId).StatusEffects.IsActive(PlayerStatusEffectKind.Wound, nowUtc));
         Assert.False(GetOrRegisterPlayer(second, playerId).StatusEffects.IsActive(PlayerStatusEffectKind.Wound, nowUtc));
-        Assert.False(GetOrRegisterPlayer(first, playerId).Orbs.UpdateWindOrbSpinup(itemUid, nowUtc, 1d));
-        Assert.False(GetOrRegisterPlayer(second, playerId).Orbs.UpdateWindOrbSpinup(itemUid, nowUtc.AddSeconds(2), 1d));
 
-        Assert.True(GetOrRegisterPlayer(first, playerId).Orbs.TryBeginWindOrbAttack(itemUid, nowUtc, 1d));
-        Assert.False(GetOrRegisterPlayer(first, playerId).Orbs.TryBeginWindOrbAttack(itemUid, nowUtc, 1d));
-        Assert.True(GetOrRegisterPlayer(second, playerId).Orbs.TryBeginWindOrbAttack(itemUid, nowUtc, 1d));
+        Assert.True(GetOrRegisterPlayer(first, playerId).Orbs.TryBeginOrbAttack(itemUid, nowUtc, 1d));
+        Assert.False(GetOrRegisterPlayer(first, playerId).Orbs.TryBeginOrbAttack(itemUid, nowUtc, 1d));
+        Assert.True(GetOrRegisterPlayer(second, playerId).Orbs.TryBeginOrbAttack(itemUid, nowUtc, 1d));
         Assert.True(GetOrRegisterPlayer(first, playerId).StatusEffects.TryApply(PlayerStatusEffectKind.WindShockImmunity, nowUtc, 1d));
         Assert.False(GetOrRegisterPlayer(first, playerId).StatusEffects.TryApply(PlayerStatusEffectKind.WindShockImmunity, nowUtc, 1d));
         Assert.True(GetOrRegisterPlayer(second, playerId).StatusEffects.TryApply(PlayerStatusEffectKind.WindShockImmunity, nowUtc, 1d));

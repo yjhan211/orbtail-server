@@ -231,7 +231,7 @@ internal class MatchCombatService(
                 bool anchoredThisTick = !crossfireAnchoredTargets.Add((attack.AttackerPlayerId, attack.TargetPlayerId));
                 if (anchoredThisTick || runtime.GetPlayer(attack.AttackerPlayerId) is not { } sunOwner || !playerOrbs.TryStartSunCrossfire(runtime, sunOwner, attack, nowUtc))
                 {
-                    runtime.GetPlayer(attack.AttackerPlayerId)?.AutoAttack.ResetAttackCooldown(attack.AttackerItemUid, nowUtc);
+                    runtime.GetPlayer(attack.AttackerPlayerId)?.Orbs.ScheduleNextOrbAttack(attack.AttackerItemUid, nowUtc, 0d);
                 }
                 continue;
             }

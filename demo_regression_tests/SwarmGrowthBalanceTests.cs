@@ -31,7 +31,7 @@ public sealed class SwarmGrowthBalanceTests
     [InlineData(121, 9)]
     public void FiveMinuteStoneIncomeProducesExpectedChoiceCount(int earnedStones, int expectedChoices)
     {
-        int budget = PlayerOrbGrowthService.InitialSummonStoneCount + earnedStones;
+        int budget = Config.SWARM_STARTING_STONE_GRANT + earnedStones;
         int choices = 0;
         while (budget >= Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(choices)))
         {

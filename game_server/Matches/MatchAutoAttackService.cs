@@ -1,17 +1,13 @@
-using game_server.players;
 using network.common;
 
 namespace game_server.matches;
 
 /// <summary>
-///     매치의 공격 후보에서 오브별 표적을 선택하고, Player의 조준·공격 주기·표적 재획득 상태를 갱신한다.
+///     공격 주기가 된 오브마다 범위 안의 표적을 선택한다. 표적 유지나 조준 대기는 하지 않는다.
 ///     이번 틱에 발생할 공격 목록만 반환하며, 피해 적용은 MatchCombatService가 담당한다.
 /// </summary>
 internal sealed class MatchAutoAttackService
 {
-    public static readonly TimeSpan AimDuration = TimeSpan.FromMilliseconds(100);
-    public static readonly TimeSpan TargetReacquireGraceDuration = TimeSpan.FromSeconds(1.5);
-
     public IReadOnlyList<ProximityCombatAttack> UpdateAttacks(MatchRuntime runtime, IReadOnlyList<ProximityCombatActor> actors, DateTime nowUtc, Func<ProximityCombatActor, ProximityCombatActor, bool>? canAttackTarget = null)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -24,7 +20,6 @@ internal sealed class MatchAutoAttackService
         }
 
         var attacks = new List<ProximityCombatAttack>();
-        var activeWeapons = new HashSet<(long PlayerId, long ItemUid, int StackIndex)>();
         foreach (var attacker in actors)
         {
             var owner = runtime.GetPlayer(attacker.PlayerId);
@@ -32,23 +27,15 @@ internal sealed class MatchAutoAttackService
             {
                 continue;
             }
-            var state = owner.AutoAttack;
-            var weaponKey = (attacker.WeaponItemUid, attacker.WeaponStackIndex);
             if (attacker.WeaponItemId <= 0 || attacker.Area == AreaType.None || attacker.AttackRange <= 0f || attacker.Damage <= 0 || attacker.AttackIntervalSeconds <= 0f)
             {
-                state.Engagements.Remove(weaponKey);
                 continue;
             }
 
-            activeWeapons.Add((attacker.PlayerId, weaponKey.WeaponItemUid, weaponKey.WeaponStackIndex));
-            bool hasEngagement = state.Engagements.TryGetValue(weaponKey, out var engagement);
-            if (hasEngagement && engagement.Phase == AutoAttackPhase.Suspended && nowUtc - engagement.LostAtUtc > TargetReacquireGraceDuration)
+            if (!owner.Orbs.IsOrbAttackReady(attacker.WeaponItemUid, nowUtc))
             {
-                state.Engagements.Remove(weaponKey);
-                hasEngagement = false;
+                continue;
             }
-            bool isEngaged = hasEngagement && engagement.Phase == AutoAttackPhase.Engaged;
-            bool isSuspended = hasEngagement && engagement.Phase == AutoAttackPhase.Suspended;
 
             float attackRangeSquared = attacker.AttackRange * attacker.AttackRange;
             var eligibleTargetsByPlayer = new Dictionary<long, (ProximityCombatActor Actor, float DistanceSquared)>();
@@ -81,45 +68,11 @@ internal sealed class MatchAutoAttackService
             var eligibleTargets = eligibleTargetsByPlayer.Values.ToList();
             if (eligibleTargets.Count == 0)
             {
-                if (isEngaged)
-                {
-                    state.Engagements[weaponKey] = engagement with { Phase = AutoAttackPhase.Suspended, LostAtUtc = nowUtc };
-                }
                 continue;
             }
 
-            eligibleTargets.Sort((left, right) => CompareTargets(left, right, isEngaged ? engagement.TargetPlayerId : 0));
+            eligibleTargets.Sort(CompareTargets);
             var selectedTarget = eligibleTargets[0].Actor;
-            if (!isEngaged || engagement.TargetPlayerId != selectedTarget.PlayerId || engagement.WeaponItemId != attacker.WeaponItemId)
-            {
-                AutoAttackEngagement nextEngagement;
-                bool resumesSuspended = isSuspended && engagement.TargetPlayerId == selectedTarget.PlayerId && engagement.WeaponItemId == attacker.WeaponItemId && nowUtc >= engagement.LostAtUtc;
-                if (resumesSuspended)
-                {
-                    var suspensionDuration = nowUtc - engagement.LostAtUtc;
-                    nextEngagement = engagement with
-                    {
-                        Phase = AutoAttackPhase.Engaged,
-                        AimReadyAtUtc = engagement.AimReadyAtUtc.Add(suspensionDuration),
-                        NextAttackAtUtc = engagement.NextAttackAtUtc.Add(suspensionDuration),
-                        LostAtUtc = default
-                    };
-                }
-                else
-                {
-                    var aimReadyAtUtc = nowUtc.Add(AimDuration);
-                    var nextAttackAtUtc = hasEngagement && engagement.NextAttackAtUtc > aimReadyAtUtc ? engagement.NextAttackAtUtc : aimReadyAtUtc;
-                    nextEngagement = new AutoAttackEngagement(AutoAttackPhase.Engaged, selectedTarget.PlayerId, attacker.WeaponItemId, aimReadyAtUtc, nextAttackAtUtc);
-                }
-
-                state.Engagements[weaponKey] = nextEngagement;
-                continue;
-            }
-
-            if (nowUtc < engagement.AimReadyAtUtc || nowUtc < engagement.NextAttackAtUtc)
-            {
-                continue;
-            }
 
             attacks.Add(new ProximityCombatAttack(
                 attacker.PlayerId,
@@ -132,49 +85,19 @@ internal sealed class MatchAutoAttackService
                 Origin: attacker.Position,
                 AnchorPosition: selectedTarget.Position,
                 AttackerTrailOrdinal: attacker.TrailOrdinal));
-            state.Engagements[weaponKey] = engagement with { NextAttackAtUtc = nowUtc.AddSeconds(attacker.AttackIntervalSeconds) };
-        }
-
-        foreach (var player in runtime.GetPlayers())
-        {
-            var state = player.AutoAttack;
-            foreach (var weaponKey in state.Engagements.Keys.ToArray())
-            {
-                var engagement = state.Engagements[weaponKey];
-                bool active = activeWeapons.Contains((player.PlayerId, weaponKey.ItemUid, weaponKey.StackIndex));
-                if (!active && engagement.Phase == AutoAttackPhase.Engaged)
-                {
-                    state.Engagements[weaponKey] = engagement with { Phase = AutoAttackPhase.Suspended, LostAtUtc = nowUtc };
-                    continue;
-                }
-                if (engagement.Phase == AutoAttackPhase.Suspended && nowUtc - engagement.LostAtUtc > TargetReacquireGraceDuration)
-                {
-                    state.Engagements.Remove(weaponKey);
-                }
-            }
+            owner.Orbs.ScheduleNextOrbAttack(attacker.WeaponItemUid, nowUtc, attacker.AttackIntervalSeconds);
         }
 
         return attacks;
     }
 
-    private static int CompareTargets((ProximityCombatActor Actor, float DistanceSquared) left, (ProximityCombatActor Actor, float DistanceSquared) right, long currentTargetPlayerId)
+    private static int CompareTargets((ProximityCombatActor Actor, float DistanceSquared) left, (ProximityCombatActor Actor, float DistanceSquared) right)
     {
         int priorityComparison = left.Actor.TargetPriority.CompareTo(right.Actor.TargetPriority);
         if (priorityComparison != 0)
         {
             return priorityComparison;
         }
-
-        if (left.Actor.PlayerId == currentTargetPlayerId)
-        {
-            return -1;
-        }
-
-        if (right.Actor.PlayerId == currentTargetPlayerId)
-        {
-            return 1;
-        }
-
         int distanceComparison = left.DistanceSquared.CompareTo(right.DistanceSquared);
         return distanceComparison != 0 ? distanceComparison : left.Actor.PlayerId.CompareTo(right.Actor.PlayerId);
     }

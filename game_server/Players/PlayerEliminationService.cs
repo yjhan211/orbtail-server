@@ -13,9 +13,7 @@ namespace game_server.players;
 ///     탈락 상태는 Player에 기록하며, 이미 탈락한 참가자는 다시 처리하지 않는다.
 ///     호출자는 해당 매치의 잠금을 보유해야 한다.
 /// </summary>
-internal sealed class PlayerEliminationService(
-    MatchResultService matchResults,
-    ILogger logger)
+internal sealed class PlayerEliminationService(MatchResultService matchResults, ILogger logger)
 {
     public void EliminatePlayer(MatchRuntime runtime, Player eliminatedPlayer, EliminationReason reason, long? causePlayerId = null, bool deferGameOver = false, long attackerPlayerId = 0, int forcedRank = 0)
     {
