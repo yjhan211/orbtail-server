@@ -58,12 +58,12 @@ public sealed class DoorInteractionCellTests
             Cell = new Cell(info.CellX + 1, info.CellY)
         };
         var service = new PlayerInteractionService();
-        Assert.Equal(ErrorCode.DOOR_TOO_FAR, service.StartDoor(runtime, player, info.Id, info.DoorId, 0));
+        Assert.Equal(ErrorCode.DOOR_TOO_FAR, service.StartDoor(runtime, player, info.Id, info.DoorId, TestTime.Ms(0)));
         Assert.Null(player.Interactions.PendingInteractId);
         player.Cell = new Cell(info.CellX, info.CellY);
-        Assert.Equal(ErrorCode.SUCCESS, service.StartDoor(runtime, player, info.Id, info.DoorId, 0));
+        Assert.Equal(ErrorCode.SUCCESS, service.StartDoor(runtime, player, info.Id, info.DoorId, TestTime.Ms(0)));
         player.Cell = new Cell(info.CellX, info.CellY + 1);
-        Assert.False(service.TryFinishDoor(runtime, player, info.Id, info.DoorId, 60000, out var error));
+        Assert.False(service.TryFinishDoor(runtime, player, info.Id, info.DoorId, TestTime.Ms(60000), out var error));
         Assert.Equal(ErrorCode.DOOR_TOO_FAR, error);
         Assert.False(runtime.Doors.IsDoorOpen(info.DoorId));
         Assert.Null(player.Interactions.PendingInteractId);

@@ -6,19 +6,20 @@ namespace game_server.players;
 internal sealed class PlayerInteractState
 {
     public int? PendingInteractId { get; private set; }
-    private long StartedAtTimestamp { get; set; }
+    private DateTime _startedAtUtc;
 
-    public void Begin(int interactId, long startedAtTimestamp)
+    public void Begin(int interactId, DateTime nowUtc)
     {
         PendingInteractId = interactId;
-        StartedAtTimestamp = startedAtTimestamp;
+        _startedAtUtc = nowUtc;
     }
-
-    public int[] GetPendingIds() => PendingInteractId.HasValue ? [PendingInteractId.Value] : [];
 
     public bool Cancel(int interactId)
     {
-        if (PendingInteractId != interactId) return false;
+        if (PendingInteractId != interactId)
+        {
+            return false;
+        }
         Cancel();
         return true;
     }
@@ -27,15 +28,18 @@ internal sealed class PlayerInteractState
     {
         int? canceledId = PendingInteractId;
         PendingInteractId = null;
-        StartedAtTimestamp = 0;
+        _startedAtUtc = default;
         return canceledId;
     }
 
-    public bool TryComplete(int interactId, long now, TimeSpan duration, out ErrorCode error)
+    public bool TryComplete(int interactId, DateTime nowUtc, TimeSpan duration, out ErrorCode error)
     {
         error = ErrorCode.INVALID_GAME_STATE;
-        if (PendingInteractId != interactId) return false;
-        if (now - StartedAtTimestamp < duration.TotalMilliseconds)
+        if (PendingInteractId != interactId)
+        {
+            return false;
+        }
+        if (nowUtc - _startedAtUtc < duration)
         {
             error = ErrorCode.DOOR_OPEN_TOO_EARLY;
             return false;

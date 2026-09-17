@@ -26,7 +26,7 @@ public sealed class MatchPlayerStateTests
         {
             participant.Health = 42;
             participant.InitializeSpawn(network.common.data.GameMapData.GetAreaSpawnCell(network.common.Config.SWARM_MATCH_MAP, (network.common.AreaType)(AreaType.S2Library1)));
-            participant.Interactions.Begin(123, 0);
+            participant.Interactions.Begin(123, TestTime.Ms(0));
             Assert.Equal(42, session.Player.Health);
             Assert.Equal(AreaType.S2Library1, GameMapData.GetCurrentArea(session.Player.GameInfo.ObjectInfo.MapId, session.Player.GameInfo.ObjectInfo.Cell));
             Assert.True(session.Player.Interactions.Cancel(123));

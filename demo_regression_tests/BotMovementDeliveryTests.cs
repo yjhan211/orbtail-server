@@ -764,7 +764,7 @@ public sealed class BotMovementDeliveryTests
         var recipient = AddRecipient(store, match.MatchingId, 1, AreaType.S2Gym1, timeline);
         var bot = new Bot { PlayerId = -20 };
         bot.Player.State = PlayerState.EXPLORE_1;
-        bot.Player.Interactions.Begin(213, 0);
+        bot.Player.Interactions.Begin(213, TestTime.Ms(0));
         using (match.Enter())
         {
             match.Bots.GetBots().Add(bot);

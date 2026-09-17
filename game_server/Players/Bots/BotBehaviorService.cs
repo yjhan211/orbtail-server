@@ -109,7 +109,6 @@ internal class BotBehaviorService(
         {
             throw new InvalidOperationException("Bot decisions require the match lock.");
         }
-        long nowMs = nowUtc.Ticks / TimeSpan.TicksPerMillisecond;
         foreach (var bot in bots)
         {
             var player = bot.Player;
@@ -121,7 +120,7 @@ internal class BotBehaviorService(
             if (player.Interactions.PendingInteractId is { } interactId)
             {
                 int doorId = GameInteractableData.Get(interactId).DoorId;
-                if (interactions.TryFinishDoor(runtime, player, interactId, doorId, nowMs, out var error))
+                if (interactions.TryFinishDoor(runtime, player, interactId, doorId, nowUtc, out var error))
                 {
                     logger.LogInformation("Swarm bot unlocked door: MatchingId={MatchingId}, BotId={BotId}, DoorId={DoorId}", runtime.MatchingId, bot.PlayerId, doorId);
                     player.State = PlayerState.IDLE;
@@ -148,7 +147,7 @@ internal class BotBehaviorService(
             {
                 continue;
             }
-            if (interactions.StartDoor(runtime, player, target.Id, target.DoorId, nowMs) == ErrorCode.SUCCESS)
+            if (interactions.StartDoor(runtime, player, target.Id, target.DoorId, nowUtc) == ErrorCode.SUCCESS)
             {
                 player.State = PlayerState.EXPLORE_1;
             }

@@ -682,7 +682,7 @@ public sealed class GameClientSessionPublicationTests
 
         // 실제로 잠들지 않고 서버가 기록한 시작 시각만 앞당긴다.
         var interactions = session.Player;
-        interactions.Interactions.Begin(702000101, Environment.TickCount64 - 3000);
+        interactions.Interactions.Begin(702000101, DateTime.UtcNow.AddSeconds(-3));
 
         fixture.ConnectionFor(session).ClearPackets();
         await SendAsync(
@@ -1050,10 +1050,10 @@ public sealed class GameClientSessionPublicationTests
         var interactions = session.Player;
         using (session.Match.Enter())
         {
-            interactions.Interactions.Begin(702000101, 0);
+            interactions.Interactions.Begin(702000101, TestTime.Ms(0));
             int interactId = Assert.IsType<int>(interactions.Interactions.Cancel());
             session.SendDoorOpenInterrupted(interactId);
-            Assert.False(interactions.Interactions.TryComplete(702000101, 3000, TimeSpan.FromSeconds(3), out var error));
+            Assert.False(interactions.Interactions.TryComplete(702000101, TestTime.Ms(3000), TimeSpan.FromSeconds(3), out var error));
             Assert.Equal(ErrorCode.INVALID_GAME_STATE, error);
         }
         var ack = fixture.ConnectionFor(session)
@@ -1085,7 +1085,7 @@ public sealed class GameClientSessionPublicationTests
         fixture.Store.GetOrThrow(70001).StartGameplay();
         var interactions = session.Player;
         using (session.Match.Enter())
-            interactions.Interactions.Begin(702000101, 0);
+            interactions.Interactions.Begin(702000101, TestTime.Ms(0));
 
         await SendAsync(session, Protocol.C_TO_G_PLAYER_STATE,
             new C_TO_G_PLAYER_STATE { State = PlayerState.IDLE });
@@ -1098,7 +1098,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(ErrorCode.DOOR_OPEN_INTERRUPTED, ack.ErrorCode);
         Assert.False(ack.Completed);
         using (session.Match.Enter())
-            Assert.False(interactions.Interactions.TryComplete(702000101, 3000, TimeSpan.FromSeconds(3), out _));
+            Assert.False(interactions.Interactions.TryComplete(702000101, TestTime.Ms(3000), TimeSpan.FromSeconds(3), out _));
         Assert.False(session.Match.Doors.IsDoorOpen(201));
     }
     private static async Task SendAsync<T>(

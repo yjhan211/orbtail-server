@@ -49,7 +49,7 @@ public sealed class BotDoorStateTests
             var cell = new Cell((int)door.PositionX, (int)door.PositionY);
             runtime.Bots.RegisterBots(runtime.MatchingId, [-1L], new Dictionary<long, Cell> { [-1] = cell });
             var bot = runtime.Bots.GetBot(-1)!;
-            bot.Player.Interactions.Begin(702000113, 0);
+            bot.Player.Interactions.Begin(702000113, TestTime.Ms(0));
             bot.Player.State = PlayerState.EXPLORE_1;
             var now = DateTime.UtcNow;
             new game_server.matches.MatchCombatDamageService(null!, null!).MarkAttacked(runtime, bot.Player, 1, now);

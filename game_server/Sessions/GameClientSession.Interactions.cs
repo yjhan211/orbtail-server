@@ -39,14 +39,7 @@ public partial class GameClientSession
             var error = ErrorCode.INVALID_GAME_STATE;
             if (!match.IsEnded && !IsGameplayActionBlocked(out _) && GameInteractableData.Get(msg.InteractId) is { DoorId: > 0 } info)
             {
-                if (info.ZoneId != (int)Player.CurrentArea)
-                {
-                    error = ErrorCode.AREA_MISMATCH;
-                }
-                else
-                {
-                    error = _interactions.StartDoor(match, Player, msg.InteractId, info.DoorId, Environment.TickCount64);
-                }
+                error = _interactions.StartDoor(match, Player, msg.InteractId, info.DoorId, DateTime.UtcNow);
             }
 
             using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_ACK, PlayerId.Value);
@@ -83,29 +76,14 @@ public partial class GameClientSession
         using (match.Enter())
         {
             var error = ErrorCode.INVALID_GAME_STATE;
-            int doorId = 0;
+            bool completed = false;
             if (!match.IsEnded && !IsGameplayActionBlocked(out _) && GameInteractableData.Get(msg.InteractId) is { DoorId: > 0 } info)
             {
-                doorId = info.DoorId;
-                if (info.ZoneId != (int)Player.CurrentArea)
-                {
-                    error = ErrorCode.AREA_MISMATCH;
-                }
-                else
-                {
-                    error = _interactions.CheckDoorGauge(match, Player, msg.InteractId, doorId);
-                }
+                completed = _interactions.TryFinishDoor(match, Player, msg.InteractId, info.DoorId, DateTime.UtcNow, out error);
             }
-
-            bool completed = false;
-            if (error != ErrorCode.SUCCESS)
+            else
             {
                 Player.Interactions.Cancel(msg.InteractId);
-            }
-            else if (_interactions.TryFinishDoor(match, Player, msg.InteractId, doorId, Environment.TickCount64, out error))
-            {
-                completed = true;
-
             }
 
             using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_ACK, PlayerId.Value);
@@ -154,20 +132,6 @@ public partial class GameClientSession
             ErrorCode = ErrorCode.DOOR_OPEN_INTERRUPTED
         }));
         TrySend(packet);
-    }
-
-    private void SendInteractionCanceled(int[] canceledIds, string reason)
-    {
-        foreach (int interactId in canceledIds)
-        {
-            using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_ACK, PlayerId.GetValueOrDefault());
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_INTERACTION_ACK
-            {
-                InteractId = interactId,
-                ErrorCode = ErrorCode.DOOR_OPEN_INTERRUPTED
-            }));
-            TrySend(packet);
-        }
     }
 
     internal AreaType PublishedInteractionArea { get; set; } = AreaType.None;

@@ -211,12 +211,12 @@ public sealed class MatchGameplayServiceTests
             match.RegisterPlayer(player);
             match.Monsters.Initialize(now);
             match.Monsters.Entities[1] = new game_server.matches.monsters.Monster { MonsterId = 1, Alive = true, Health = 10, Position = position, ContactDamageValue = 12 };
-            player.Interactions.Begin(702000101, 0);
+            player.Interactions.Begin(702000101, TestTime.Ms(0));
 
             // 몬스터와 겹쳐 선 플레이어는 세션이 없어도 물리고, 진행 중인 문 열기가 끊긴다.
             service.ProcessTick(match, [player], now);
             Assert.Equal(100 - network.common.Config.ScaleSwarmDamageTaken(12), player.Health);
-            Assert.False(player.Interactions.TryComplete(702000101, 3000, TimeSpan.FromSeconds(3), out _));
+            Assert.False(player.Interactions.TryComplete(702000101, TestTime.Ms(3000), TimeSpan.FromSeconds(3), out _));
 
             // 탈락한 플레이어는 공격 간격과 면역 창이 지나도 물리지 않는다.
             player.Status = network.common.PlayerMatchStatus.ELIMINATED;
@@ -410,7 +410,7 @@ public sealed class MatchGameplayServiceTests
             service.UpdateSleep(match, [bot], now.AddSeconds(9));
             Assert.False(bot.Player.IsSleeping);
             bot.Player.ApplyDamage(1);
-            bot.Player.Interactions.Begin(10, 0);
+            bot.Player.Interactions.Begin(10, TestTime.Ms(0));
             service.UpdateSleep(match, [bot], now.AddSeconds(10));
             Assert.False(bot.Player.IsSleeping);
         }
