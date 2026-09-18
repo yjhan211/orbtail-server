@@ -954,14 +954,14 @@ public sealed class BotMovementDeliveryTests
         recipient.Packets.Clear();
         runtime.RemoveMonster(monster);
         Assert.Empty(runtime.Monsters.Entities);
-        // 제거 알림도 틱 끝까지 기다린다. 죽은 상태가 퇴장보다 먼저 가야 클라이언트가 사망 연출을 낸다.
+        // 사망 알림도 틱 끝까지 기다린다. 퇴장보다 먼저 가야 클라이언트가 사망 연출을 낸다.
         Assert.Empty(recipient.Packets);
         new MatchSynchronizationService().ProcessTick(runtime, now.AddMilliseconds(100));
-        Assert.False(Assert.Single(recipient.Read<G_TO_C_MONSTER_INFO>(Protocol.G_TO_C_MONSTER_INFO).Monsters).IsAlive);
-        int deadIndex = recipient.Packets.FindIndex(packet => packet.Protocol == Protocol.G_TO_C_MONSTER_INFO);
+        Assert.Equal(1, Assert.Single(recipient.Read<G_TO_C_MONSTER_DEATH>(Protocol.G_TO_C_MONSTER_DEATH).Deaths).MonsterId);
+        int deadIndex = recipient.Packets.FindIndex(packet => packet.Protocol == Protocol.G_TO_C_MONSTER_DEATH);
         int leaveIndex = recipient.Packets.FindIndex(packet => packet.Protocol == Protocol.G_TO_C_OBJECT_LEAVE);
         Assert.True(deadIndex >= 0 && leaveIndex > deadIndex);
-        Assert.Empty(runtime.PendingRemovedMonsters);
+        Assert.Empty(runtime.PendingMonsterDeaths);
     }
     [Fact]
     public void BotAndMonsterSharePacketAndUnchangedMonsterMetadataIsNotResent()

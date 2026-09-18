@@ -12,4 +12,16 @@ namespace network.common.data.models
         [Key("monsters")] public List<MonsterInfo> Monsters { get; set; } = new();
     }
 
+    [MessagePackObject]
+    public sealed class MonsterDeathInfo
+    {
+        [Key("monsterId")] public int MonsterId { get; set; }
+        [Key("killerPlayerId")] public long KillerPlayerId { get; set; }
+    }
+
+    [MessagePackObject]
+    public sealed class G_TO_C_MONSTER_DEATH : IMessagePackObject
+    {
+        [Key("deaths")] public List<MonsterDeathInfo> Deaths { get; set; } = new();
+    }
 }

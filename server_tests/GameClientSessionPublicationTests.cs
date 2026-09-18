@@ -1252,6 +1252,106 @@ public sealed class GameClientSessionPublicationTests
     }
 
     [Fact]
+    public void PlayerAndMonsterDeathsArePublishedTogetherBeforeLeaves()
+    {
+        using var fixture = new SessionFixture();
+        var observer = fixture.CreateSession(70001, 101, AreaType.S2Corridor9);
+        var match = observer.Match;
+        using (match.Enter())
+        {
+            var sync = new MatchSynchronizationService();
+            var batch = new MatchSynchronizationService.SyncBatch(DateTime.UtcNow, match.GetSessions());
+            match.PendingCombatHits.Enqueue((observer, new G_TO_C_COMBAT_HIT()));
+            sync.QueuePlayerElimination(match, new PlayerEliminationInfo { PlayerId = 102, AttackerPlayerId = 101, Reason = EliminationReason.HEALTH_ZERO });
+            observer.PublishedObjects.Add((ObjectType.MONSTER, 7000001));
+            match.PendingMonsterDeaths.Add(new MonsterDeathInfo { MonsterId = 7000001, KillerPlayerId = 101 });
+            batch.Leaves[observer] = [new ObjectIdentity { Type = ObjectType.PLAYER, Id = 102 },
+                new ObjectIdentity { Type = ObjectType.MONSTER, Id = 7000001 }];
+            batch.InteractableUpdates[observer] = [new InteractableInfo()];
+            MatchSynchronizationService.CollectDeathNotifications(match, batch);
+            Assert.Empty(match.PendingPlayerEliminations);
+            Assert.Empty(match.PendingMonsterDeaths);
+            Assert.Single(batch.PlayerEliminations);
+            Assert.Single(batch.MonsterDeaths);
+            Assert.Empty(fixture.ConnectionFor(observer).DeliveredProtocols);
+            sync.SendBatch(match, batch);
+        }
+        Assert.Equal(new[] { Protocol.G_TO_C_COMBAT_HIT, Protocol.G_TO_C_PLAYER_ELIMINATED,
+            Protocol.G_TO_C_MONSTER_DEATH, Protocol.G_TO_C_OBJECT_LEAVE, Protocol.G_TO_C_INTERACTABLE_INFO },
+            fixture.ConnectionFor(observer).DeliveredProtocols);
+    }
+
+    [Fact]
+    public void FinalEliminationIsDeliveredBeforeMatchResult()
+    {
+        using var fixture = new SessionFixture();
+        var winner = fixture.CreateSession(70001, 101, AreaType.S2Corridor9);
+        var loser = fixture.CreateSession(70001, 102, AreaType.S2Corridor9);
+        var match = winner.Match;
+        using (match.Enter())
+        {
+            var eliminations = TestGameSessionServices.CreateEliminationService(fixture.Store, NullLogger.Instance);
+            eliminations.EliminatePlayer(match, loser.Player, EliminationReason.HEALTH_ZERO, attackerPlayerId: 101);
+        }
+
+        // 마지막 탈락으로 매치가 끝나면 틱 끝 동기화가 돌지 않는다. 종료 처리가 대기열을 먼저 비우고 결과를 보낸다.
+        Assert.True(match.IsEnded);
+        foreach (var session in new[] { winner, loser })
+        {
+            var protocols = fixture.ConnectionFor(session).DeliveredProtocols.ToList();
+            int eliminated = protocols.IndexOf(Protocol.G_TO_C_PLAYER_ELIMINATED);
+            int result = protocols.IndexOf(Protocol.G_TO_C_GAME_RESULT);
+            Assert.True(eliminated >= 0 && result > eliminated, string.Join(",", protocols));
+        }
+    }
+
+    [Theory]
+    [InlineData(Protocol.G_TO_C_COMBAT_HIT)]
+    [InlineData(Protocol.G_TO_C_ORB_UPDATE)]
+    [InlineData(Protocol.G_TO_C_PLAYER_ELIMINATED)]
+    [InlineData(Protocol.G_TO_C_AREA_CLOSED)]
+    [InlineData(Protocol.G_TO_C_MONSTER_DEATH)]
+    public void TerminalQueuedNotificationFailureDoesNotPreventResultsOrCleanup(Protocol failingProtocol)
+    {
+        using var fixture = new SessionFixture();
+        var winner = fixture.CreateSession(70001, 101, AreaType.S2Corridor9);
+        var loser = fixture.CreateSession(70001, 102, AreaType.S2Corridor9);
+        var match = winner.Match;
+        fixture.ConnectionFor(loser).ThrowOnceOn = failingProtocol;
+        using (match.Enter())
+        {
+            Assert.True(TestGameSessionServices.Orbs(match, 102).TryAddOrbWithCapacity(107000010, Config.GetOrbCapacity(), out _));
+            match.PendingCombatHits.Enqueue((loser, new G_TO_C_COMBAT_HIT()));
+            winner.PublishedObjects.Add((ObjectType.MONSTER, 7000001));
+            loser.PublishedObjects.Add((ObjectType.MONSTER, 7000001));
+            match.PendingMonsterDeaths.Add(new MonsterDeathInfo { MonsterId = 7000001, KillerPlayerId = 101 });
+            new MatchSynchronizationService().QueueBroadcastPacket(match, Protocol.G_TO_C_AREA_CLOSED,
+                new G_TO_C_AREA_CLOSED { AreaType = AreaType.S2Corridor9, IsClosed = true });
+            TestGameSessionServices.CreateEliminationService(fixture.Store, NullLogger.Instance)
+                .EliminatePlayer(match, loser.Player, EliminationReason.HEALTH_ZERO, attackerPlayerId: 101);
+        }
+
+        foreach (var session in new[] { winner, loser })
+        {
+            var protocols = fixture.ConnectionFor(session).DeliveredProtocols.ToList();
+            int result = protocols.IndexOf(Protocol.G_TO_C_GAME_RESULT);
+            Assert.True(result >= 0 && protocols.IndexOf(Protocol.G_TO_C_GAME_END) > result);
+            Assert.True(session.IsGameEnded);
+        }
+        Assert.Contains(Protocol.G_TO_C_PLAYER_ELIMINATED, fixture.ConnectionFor(winner).DeliveredProtocols);
+        var winnerProtocols = fixture.ConnectionFor(winner).DeliveredProtocols.ToList();
+        Assert.True(winnerProtocols.IndexOf(Protocol.G_TO_C_MONSTER_DEATH) >= 0);
+        Assert.True(winnerProtocols.IndexOf(Protocol.G_TO_C_MONSTER_DEATH) < winnerProtocols.IndexOf(Protocol.G_TO_C_GAME_RESULT));
+        Assert.Contains(failingProtocol, fixture.ConnectionFor(loser).AttemptedProtocols);
+        Assert.DoesNotContain(failingProtocol, fixture.ConnectionFor(loser).DeliveredProtocols);
+        Assert.Empty(match.PendingCombatHits);
+        Assert.Empty(match.PendingPlayerEliminations);
+        Assert.Empty(match.PendingMonsterDeaths);
+        Assert.Empty(match.PendingCombatEffects);
+        Assert.Null(fixture.Store.GetOrNull(70001));
+    }
+
+    [Fact]
     public void EliminationClearsInventoryAndPublishesOnlyOnce()
     {
         using var fixture = new SessionFixture();
@@ -1263,6 +1363,7 @@ public sealed class GameClientSessionPublicationTests
         var match = eliminated.Match;
         using (match.Enter())
         {
+            observer.PublishedObjects.Add((ObjectType.PLAYER, eliminated.Player.PlayerId));
             Assert.True(TestGameSessionServices.Orbs(match, 101).TryAddOrbWithCapacity(107000010, Config.GetOrbCapacity(), out _));
             var eliminations = TestGameSessionServices.CreateEliminationService(fixture.Store, NullLogger.Instance);
             eliminations.EliminatePlayer(match, eliminated.Player, EliminationReason.HEALTH_ZERO, deferGameOver: true);
@@ -1270,9 +1371,18 @@ public sealed class GameClientSessionPublicationTests
 
             Assert.Empty(TestGameSessionServices.Orbs(match, 101).GetAllOrbs());
             Assert.Single(match.GroundItems.GetItemsInArea(GameMapData.GetCurrentArea(eliminated.Player.GameInfo.ObjectInfo.MapId, eliminated.Player.GameInfo.ObjectInfo.Cell)));
+
+            // 탈락 알림은 틱 끝 동기화가 보낸다. 그 전에는 아무것도 나가지 않는다.
+            Assert.Empty(fixture.ConnectionFor(eliminated).DeliveredProtocols);
+            Assert.Empty(fixture.ConnectionFor(observer).DeliveredProtocols);
+            new MatchSynchronizationService().ProcessTick(match, DateTime.UtcNow);
         }
-        Assert.Equal([Protocol.G_TO_C_ORB_UPDATE, Protocol.G_TO_C_PLAYER_ELIMINATED, Protocol.G_TO_C_OBJECT_LEAVE], fixture.ConnectionFor(eliminated).DeliveredProtocols);
-        Assert.Equal([Protocol.G_TO_C_PLAYER_ELIMINATED, Protocol.G_TO_C_OBJECT_LEAVE], fixture.ConnectionFor(observer).DeliveredProtocols);
+        // 탈락 알림은 사망 통보 단계에, 본인 전용 오브 비우기와 결과표는 효과 단계에 나간다.
+        Assert.Equal([Protocol.G_TO_C_PLAYER_ELIMINATED, Protocol.G_TO_C_ORB_UPDATE, Protocol.G_TO_C_ELIMINATION_RESULT],
+            fixture.ConnectionFor(eliminated).DeliveredProtocols.Where(protocol => protocol != Protocol.G_TO_C_OBJECT_LEAVE));
+        Assert.Single(fixture.ConnectionFor(observer).DeliveredProtocols, Protocol.G_TO_C_PLAYER_ELIMINATED);
+        var observerProtocols = fixture.ConnectionFor(observer).DeliveredProtocols.ToList();
+        Assert.True(observerProtocols.IndexOf(Protocol.G_TO_C_PLAYER_ELIMINATED) < observerProtocols.IndexOf(Protocol.G_TO_C_OBJECT_LEAVE));
         Assert.DoesNotContain(Protocol.G_TO_C_GROUND_ITEM_SPAWN, fixture.ConnectionFor(otherArea).DeliveredProtocols);
         Assert.DoesNotContain(Protocol.G_TO_C_GROUND_ITEM_SPAWN, fixture.ConnectionFor(inactiveObserver).DeliveredProtocols);
     }

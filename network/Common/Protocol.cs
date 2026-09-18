@@ -129,6 +129,12 @@ namespace network.common
 
         // 파도오브 공격 예고 — 서버가 확정한 소용돌이 자리·반경·기폭까지 남은 시간. 같은 구역에 브로드캐스트, 표시 = 판정.
         G_TO_C_WAVE_ORB_ATTACK,
+
+        // 몬스터 사망 — 같은 틱에 죽은 몬스터와 처치자. 퇴장(OBJECT_LEAVE)보다 먼저 보내 클라이언트가 사망 연출을 낸다.
+        G_TO_C_MONSTER_DEATH,
+
+        // 탈락한 본인에게만 보내는 탈락 시점 결과표. 탈락 알림(PLAYER_ELIMINATED)은 전원에게 같은 내용이라 결과표를 따로 뗐다.
+        G_TO_C_ELIMINATION_RESULT,
         END
     }
 

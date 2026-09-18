@@ -22,7 +22,8 @@ internal sealed class MatchSynchronizationService
         public IReadOnlyList<GameClientSession> Sessions { get; } = sessions;
         public long ServerTimestamp { get; } = new DateTimeOffset(nowUtc).ToUnixTimeMilliseconds();
         public Dictionary<GameClientSession, List<InteractableInfo>> InteractableUpdates { get; init; } = new();
-        public Dictionary<GameClientSession, List<MonsterInfo>> RemovedMonsters { get; init; } = new();
+        public List<MonsterDeathInfo> MonsterDeaths { get; init; } = new();
+        public List<PlayerEliminationInfo> PlayerEliminations { get; init; } = new();
         public Dictionary<GameClientSession, List<ObjectIdentity>> Leaves { get; init; } = new();
         public Dictionary<GameClientSession, G_TO_C_OBJECT_ENTER> Entries { get; init; } = new();
         public List<MatchOrbVisual> OrbVisuals { get; set; } = new();
@@ -203,6 +204,25 @@ internal sealed class MatchSynchronizationService
         }
     }
 
+    public void QueuePlayerElimination(MatchRuntime runtime, PlayerEliminationInfo elimination)
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Synchronization requires the match lock.");
+        }
+        runtime.PendingPlayerEliminations.Add(elimination);
+    }
+
+    // 세션 하나에게 틱 끝에 보낼 패킷을 넣는다. 받는 사람이 정해진 알림에 쓴다.
+    public void QueuePacket<T>(MatchRuntime runtime, GameClientSession session, Protocol protocol, T body) where T : IMessagePackObject
+    {
+        if (!Monitor.IsEntered(runtime.MatchLock))
+        {
+            throw new InvalidOperationException("Synchronization requires the match lock.");
+        }
+        runtime.PendingCombatEffects.Enqueue((session, protocol, MessagePackSerializer.Serialize(body)));
+    }
+
     public void QueueBroadcastPacket<T>(MatchRuntime runtime, Protocol protocol, T body) where T : IMessagePackObject
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -279,7 +299,7 @@ internal sealed class MatchSynchronizationService
             batch.OrbVisuals = MatchOrbVisual.Build(runtime, players);
             CollectOrbRankings(runtime, batch);
         }
-        CollectRemovedMonsters(runtime, batch);
+        CollectDeathNotifications(runtime, batch);
         CollectObjectLeaves(runtime, batch);
         SendBatch(runtime, batch);
 
@@ -552,19 +572,16 @@ internal sealed class MatchSynchronizationService
         };
     }
 
-    private static void CollectRemovedMonsters(MatchRuntime runtime, SyncBatch batch)
+    internal static void CollectDeathNotifications(MatchRuntime runtime, SyncBatch batch)
     {
-        foreach (var removed in runtime.PendingRemovedMonsters)
+        if (!Monitor.IsEntered(runtime.MatchLock))
         {
-            foreach (var session in batch.Sessions)
-            {
-                if (session.PublishedObjects.Contains((ObjectType.MONSTER, removed.MonsterId)))
-                {
-                    SyncBatch.GetList(batch.RemovedMonsters, session).Add(removed);
-                }
-            }
+            throw new InvalidOperationException("Synchronization requires the match lock.");
         }
-        runtime.PendingRemovedMonsters.Clear();
+        batch.PlayerEliminations.AddRange(runtime.PendingPlayerEliminations);
+        runtime.PendingPlayerEliminations.Clear();
+        batch.MonsterDeaths.AddRange(runtime.PendingMonsterDeaths);
+        runtime.PendingMonsterDeaths.Clear();
     }
 
     internal void CollectObjectLeaves(MatchRuntime runtime, SyncBatch batch)
@@ -608,18 +625,14 @@ internal sealed class MatchSynchronizationService
             throw new InvalidOperationException("Cannot synchronize after the match has ended.");
         }
         SendPendingCombatHits(runtime);
-        foreach (var (session, snapshot) in batch.InteractableUpdates)
-        {
-            session.SendInteractableInfos(snapshot);
-        }
-        // 죽은 상태가 퇴장보다 먼저 가야 클라이언트가 사망 연출을 낸다.
-        foreach (var (session, removedMonsters) in batch.RemovedMonsters)
-        {
-            session.SendChangedMonsterStates(removedMonsters);
-        }
+        SendDeathNotifications(runtime, batch);
         foreach (var (session, objects) in batch.Leaves)
         {
             session.SendObjectLeaves(objects);
+        }
+        foreach (var (session, snapshot) in batch.InteractableUpdates)
+        {
+            session.SendInteractableInfos(snapshot);
         }
         foreach (var (session, entries) in batch.Entries)
         {
@@ -683,6 +696,47 @@ internal sealed class MatchSynchronizationService
         SendPendingCombatEffects(runtime);
     }
 
+    private static void SendDeathNotifications(MatchRuntime runtime, SyncBatch batch)
+    {
+        foreach (var session in batch.Sessions)
+        {
+            if (batch.PlayerEliminations.Count > 0)
+            {
+                try
+                {
+                    using var packet = PacketMaker.G_TO_C_PLAYER_ELIMINATED(new G_TO_C_PLAYER_ELIMINATED { Eliminations = batch.PlayerEliminations });
+                    session.TrySend(packet);
+                }
+                catch (Exception ex)
+                {
+                    runtime.LogPublicationFailure(ex, session, Protocol.G_TO_C_PLAYER_ELIMINATED);
+                }
+            }
+
+            var deaths = new List<MonsterDeathInfo>();
+            foreach (var death in batch.MonsterDeaths)
+            {
+                if (session.PublishedObjects.Contains((ObjectType.MONSTER, death.MonsterId)))
+                {
+                    deaths.Add(death);
+                }
+            }
+            if (deaths.Count == 0)
+            {
+                continue;
+            }
+            try
+            {
+                using var packet = PacketMaker.G_TO_C_MONSTER_DEATH(new G_TO_C_MONSTER_DEATH { Deaths = deaths });
+                session.TrySend(packet);
+            }
+            catch (Exception ex)
+            {
+                runtime.LogPublicationFailure(ex, session, Protocol.G_TO_C_MONSTER_DEATH);
+            }
+        }
+    }
+
     internal static void SendPendingCombatHits(MatchRuntime runtime)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
@@ -691,22 +745,54 @@ internal sealed class MatchSynchronizationService
         }
         while (runtime.PendingCombatHits.TryDequeue(out var notification))
         {
-            using var packet = PacketMaker.G_TO_C_COMBAT_HIT(notification.Hit);
-            notification.Session.TrySend(packet);
+            try
+            {
+                using var packet = PacketMaker.G_TO_C_COMBAT_HIT(notification.Hit);
+                notification.Session.TrySend(packet);
+            }
+            catch (Exception ex)
+            {
+                runtime.LogPublicationFailure(ex, notification.Session, Protocol.G_TO_C_COMBAT_HIT);
+            }
         }
     }
 
+    internal static void SendPendingDeathNotifications(MatchRuntime runtime)
+    {
+        var batch = new SyncBatch(DateTime.UtcNow, runtime.GetSessions());
+        CollectDeathNotifications(runtime, batch);
+        SendDeathNotifications(runtime, batch);
+    }
+
     internal static void SendPendingCombatEffects(MatchRuntime runtime)
+    {
+        SendQueuedPackets(runtime, runtime.PendingCombatEffects);
+    }
+
+    private static void SendQueuedPackets(MatchRuntime runtime,
+        Queue<(GameClientSession Session, Protocol Protocol, byte[] Body)> notifications)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Synchronization requires the match lock.");
         }
-        while (runtime.PendingCombatEffects.TryDequeue(out var effect))
+        while (notifications.TryDequeue(out var effect))
         {
-            using var packet = Packet.Create((int)effect.Protocol);
-            packet.SetBody(effect.Body);
-            effect.Session.TrySend(packet);
+            SendQueuedPacket(runtime, effect.Session, effect.Protocol, effect.Body);
+        }
+    }
+
+    private static void SendQueuedPacket(MatchRuntime runtime, GameClientSession session, Protocol protocol, byte[] body)
+    {
+        try
+        {
+            using var packet = Packet.Create((int)protocol);
+            packet.SetBody(body);
+            session.TrySend(packet);
+        }
+        catch (Exception ex)
+        {
+            runtime.LogPublicationFailure(ex, session, protocol);
         }
     }
 }

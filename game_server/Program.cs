@@ -111,6 +111,7 @@ internal static class Program
         services.AddSingleton<MatchResultService>(sp => new MatchResultService(sp.GetRequiredService<ILogger<MatchResultService>>()));
         services.AddSingleton<PlayerEliminationService>(sp => new PlayerEliminationService(
             sp.GetRequiredService<MatchResultService>(),
+            sp.GetRequiredService<MatchSynchronizationService>(),
             sp.GetRequiredService<ILogger<PlayerEliminationService>>()));
         services.AddSingleton<PlayerHealthService>();
 

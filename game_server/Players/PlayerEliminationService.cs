@@ -1,9 +1,7 @@
 using game_server.matches;
-using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
-using network.packets;
 
 namespace game_server.players;
 
@@ -12,7 +10,7 @@ namespace game_server.players;
 ///     탈락 상태는 Player에 기록하며, 이미 탈락한 참가자는 다시 처리하지 않는다.
 ///     호출자는 해당 매치의 잠금을 보유해야 한다.
 /// </summary>
-internal sealed class PlayerEliminationService(MatchResultService matchResults, ILogger logger)
+internal sealed class PlayerEliminationService(MatchResultService matchResults, MatchSynchronizationService synchronization, ILogger logger)
 {
     public void EliminatePlayer(MatchRuntime runtime, Player eliminatedPlayer, EliminationReason reason, long? causePlayerId = null, bool deferGameOver = false, long attackerPlayerId = 0, int forcedRank = 0)
     {
@@ -24,7 +22,6 @@ internal sealed class PlayerEliminationService(MatchResultService matchResults, 
         long matchingId = runtime.MatchingId;
         long eliminatedPlayerId = eliminatedPlayer.PlayerId;
         var allSessions = runtime.GetSessions();
-        var eliminatedSession = eliminatedPlayer.Session;
         var eliminatedBot = runtime.Bots.GetBot(eliminatedPlayerId);
         var eliminatedArea = eliminatedPlayer.CurrentArea;
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
@@ -43,6 +40,8 @@ internal sealed class PlayerEliminationService(MatchResultService matchResults, 
 
         logger.LogInformation("Player eliminated: MatchingId={MatchingId}, PlayerId={PlayerId}, Reason={Reason}, AttackerPlayerId={AttackerPlayerId}", runtime.MatchingId, eliminatedPlayerId, reason, resolvedAttackerPlayerId);
 
+        var eliminatedSession = eliminatedPlayer.Session;
+        var clearedOrbs = new List<InGameItemInfo>();
         var position = eliminatedPlayer.Position;
         if (position != null && eliminatedArea != AreaType.None)
         {
@@ -63,40 +62,32 @@ internal sealed class PlayerEliminationService(MatchResultService matchResults, 
                 position.Y,
                 droppedItemIds);
 
-            if (removedItems.Count > 0)
+            foreach (var item in removedItems)
             {
-                foreach (var item in removedItems)
+                clearedOrbs.Add(new InGameItemInfo
                 {
-                    eliminatedSession?.SendOrbUpdate(new InGameItemInfo
-                    {
-                        ItemUid = item.ItemUid,
-                        ItemId = item.ItemId,
-                        Count = 0,
-                        GiftState = item.GiftState
-                    });
-                }
+                    ItemUid = item.ItemUid,
+                    ItemId = item.ItemId,
+                    Count = 0,
+                    GiftState = item.GiftState
+                });
             }
         }
 
-        var eliminatedResultPlayers = matchResults.BuildPlayerResults(runtime, 0);
-        foreach (var session in allSessions)
+        synchronization.QueuePlayerElimination(runtime, new PlayerEliminationInfo
         {
-            using var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED);
-            var eliminatedMsg = new G_TO_C_PLAYER_ELIMINATED
-            {
-                PlayerId = eliminatedPlayerId,
-                AttackerPlayerId = resolvedAttackerPlayerId,
-                Reason = reason,
-                ResultPlayers = session.PlayerId == eliminatedPlayerId ? eliminatedResultPlayers : []
-            };
-            eliminatedPacket.SetBody(MessagePackSerializer.Serialize(eliminatedMsg));
-            session.TrySend(eliminatedPacket);
-        }
+            PlayerId = eliminatedPlayerId,
+            AttackerPlayerId = resolvedAttackerPlayerId,
+            Reason = reason
+        });
 
-        // 이 타격으로 바로 매치가 종료될 수 있으므로 퇴장도 여기서 확정한다.
-        foreach (var session in allSessions)
+        if (eliminatedSession != null)
         {
-            session.SendObjectLeaves([new ObjectIdentity { Type = ObjectType.PLAYER, Id = eliminatedPlayerId }]);
+            if (clearedOrbs.Count > 0)
+            {
+                synchronization.QueuePacket(runtime, eliminatedSession, Protocol.G_TO_C_ORB_UPDATE, new G_TO_C_ORB_UPDATE { Items = clearedOrbs });
+            }
+            synchronization.QueuePacket(runtime, eliminatedSession, Protocol.G_TO_C_ELIMINATION_RESULT, new G_TO_C_ELIMINATION_RESULT { Players = matchResults.BuildPlayerResults(runtime, 0) });
         }
 
         (bool isGameOver, long? winnerId) = runtime.CheckGameOver();

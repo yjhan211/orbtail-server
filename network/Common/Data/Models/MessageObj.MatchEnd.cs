@@ -9,13 +9,23 @@ namespace network.common.data.models
     // ===== 탈락 =====
 
     [MessagePackObject]
-    public class G_TO_C_PLAYER_ELIMINATED : IMessagePackObject
+    public sealed class PlayerEliminationInfo
     {
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("attackerPlayerId")] public long AttackerPlayerId { get; set; }
         [Key("reason")] public EliminationReason Reason { get; set; }
-        // 탈락자에게만 채운다. 결과표 전체가 한 패킷에 들어간다(메시지 상한 MAX_MESSAGE_SIZE).
-        [Key("resultPlayers")] public List<GameResultPlayerInfo> ResultPlayers { get; set; } = new();
+    }
+
+    [MessagePackObject]
+    public sealed class G_TO_C_PLAYER_ELIMINATED : IMessagePackObject
+    {
+        [Key("eliminations")] public List<PlayerEliminationInfo> Eliminations { get; set; } = new();
+    }
+
+    [MessagePackObject]
+    public sealed class G_TO_C_ELIMINATION_RESULT : IMessagePackObject
+    {
+        [Key("players")] public List<GameResultPlayerInfo> Players { get; set; } = new();
     }
 
     // ===== 게임 결과 =====

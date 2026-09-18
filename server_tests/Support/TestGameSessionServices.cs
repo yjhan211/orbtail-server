@@ -179,7 +179,7 @@ internal static class TestGameSessionServices
         Microsoft.Extensions.Logging.ILogger logger)
     {
         var results = new MatchResultService(logger);
-        return new PlayerEliminationService(results, logger);
+        return new PlayerEliminationService(results, new MatchSynchronizationService(), logger);
     }
     public static MatchCleanupService CreateMatchCleanupService() =>
         new(CreateMatchRuntimeStore(NullLogger.Instance), NullLogger.Instance);

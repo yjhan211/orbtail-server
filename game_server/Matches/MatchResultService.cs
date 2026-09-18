@@ -30,6 +30,10 @@ internal sealed class MatchResultService(ILogger logger)
 
         logger.LogInformation("Match ended: MatchingId={MatchingId}, Reason={Reason}, WinnerId={WinnerId}, TieBreak={TieBreak}", matchingId, endReason, winnerId, tieBreakCriterion);
 
+        MatchSynchronizationService.SendPendingCombatHits(runtime);
+        MatchSynchronizationService.SendPendingDeathNotifications(runtime);
+        MatchSynchronizationService.SendPendingCombatEffects(runtime);
+
         var sessionSnapshot = runtime.GetSessions();
         var players = BuildPlayerResults(runtime, winnerId);
         byte[] resultPayload = MessagePackSerializer.Serialize(new G_TO_C_GAME_RESULT

@@ -14,13 +14,11 @@ public sealed class PlayerEliminationCauseTests
     {
         var source = new G_TO_C_PLAYER_ELIMINATED
         {
-            PlayerId = 20,
-            AttackerPlayerId = 10,
-            Reason = EliminationReason.HEALTH_ZERO
+            Eliminations = [new PlayerEliminationInfo { PlayerId = 20, AttackerPlayerId = 10, Reason = EliminationReason.HEALTH_ZERO }]
         };
 
         byte[] bytes = MessagePackSerializer.Serialize(source);
-        var result = MessagePackSerializer.Deserialize<G_TO_C_PLAYER_ELIMINATED>(bytes);
+        var result = Assert.Single(MessagePackSerializer.Deserialize<G_TO_C_PLAYER_ELIMINATED>(bytes).Eliminations);
 
         Assert.Equal(20, result.PlayerId);
         Assert.Equal(10, result.AttackerPlayerId);

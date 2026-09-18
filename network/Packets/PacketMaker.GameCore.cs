@@ -72,6 +72,20 @@ public static partial class PacketMaker
         return packet;
     }
 
+    public static Packet G_TO_C_MONSTER_DEATH(G_TO_C_MONSTER_DEATH body)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_DEATH);
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_PLAYER_ELIMINATED(G_TO_C_PLAYER_ELIMINATED body)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED);
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
     public static Packet G_TO_C_HEALTH_RECOVERY(G_TO_C_HEALTH_RECOVERY body)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_HEALTH_RECOVERY);

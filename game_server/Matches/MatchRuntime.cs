@@ -80,9 +80,16 @@ internal sealed class MatchRuntime
 
     internal Dictionary<(ObjectType Type, long Id), MatchObjectSnapshot> SynchronizedObjects { get; } = new();
     internal Dictionary<long, PlayerState> SynchronizedPlayerStates { get; } = new();
-    internal List<MonsterInfo> PendingRemovedMonsters { get; } = new();
+    internal List<MonsterDeathInfo> PendingMonsterDeaths { get; } = new();
     internal Queue<(GameClientSession Session, G_TO_C_COMBAT_HIT Hit)> PendingCombatHits { get; } = new();
     internal Queue<(GameClientSession Session, Protocol Protocol, byte[] Body)> PendingCombatEffects { get; } = new();
+    internal List<PlayerEliminationInfo> PendingPlayerEliminations { get; } = new();
+
+    internal void LogPublicationFailure(Exception exception, GameClientSession session, Protocol protocol)
+    {
+        _logger.LogWarning(exception, "Queued publication failed: MatchingId={MatchingId}, PlayerId={PlayerId}, Protocol={Protocol}", MatchingId, session.PlayerId, protocol);
+    }
+
     public string? OrbRankingsSignature { get; set; }
 
     public void InitializeMatch(MatchMode mode, IReadOnlyDictionary<long, Cell> spawnCells, IReadOnlyList<PlayerInfo> playerRoster)
@@ -320,7 +327,7 @@ internal sealed class MatchRuntime
         }
     }
 
-    internal void RemoveMonster(Monster monster)
+    internal void RemoveMonster(Monster monster, long killerPlayerId = 0)
     {
         if (!Monitor.IsEntered(MatchLock))
         {
@@ -334,7 +341,7 @@ internal sealed class MatchRuntime
 
         monster.Alive = false;
         Monsters.Entities.Remove(monster.MonsterId);
-        PendingRemovedMonsters.Add(monster.ToMonsterInfo());
+        PendingMonsterDeaths.Add(new MonsterDeathInfo { MonsterId = monster.MonsterId, KillerPlayerId = killerPlayerId });
     }
 
     public MatchLockScope Enter()
@@ -383,19 +390,19 @@ internal sealed class MatchRuntime
             if (IsEnded && !_cleanupStarted)
             {
                 _cleanupStarted = true;
-                while (PendingCombatHits.Count > 0)
+                while (PendingCombatHits.Count > 0 || PendingPlayerEliminations.Count > 0 || PendingMonsterDeaths.Count > 0 || PendingCombatEffects.Count > 0)
                 {
                     try
                     {
                         MatchSynchronizationService.SendPendingCombatHits(this);
+                        MatchSynchronizationService.SendPendingDeathNotifications(this);
+                        MatchSynchronizationService.SendPendingCombatEffects(this);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Terminal combat hit publication failed: MatchingId={MatchingId}", MatchingId);
+                        _logger.LogWarning(ex, "Terminal combat publication failed: MatchingId={MatchingId}", MatchingId);
                     }
                 }
-                PendingCombatEffects.Clear();
-                PendingRemovedMonsters.Clear();
                 TickLoop?.Stop();
                 foreach (var player in _players.Values)
                 {

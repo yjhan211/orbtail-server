@@ -125,7 +125,7 @@ internal sealed class MatchCombatDamageService(PlayerHealthService healthService
             return true;
         }
 
-        runtime.RemoveMonster(monster);
+        runtime.RemoveMonster(monster, attackerId);
         int stoneCount = Math.Max(0, monster.SummonStoneReward);
         int heartCount = Math.Max(0, monster.HeartReward);
         if (stoneCount + heartCount > 0)
