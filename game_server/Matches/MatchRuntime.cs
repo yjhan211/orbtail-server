@@ -82,7 +82,7 @@ internal sealed class MatchRuntime
     internal Dictionary<long, PlayerState> SynchronizedPlayerStates { get; } = new();
     internal List<MonsterDeathInfo> PendingMonsterDeaths { get; } = new();
     internal Queue<(GameClientSession Session, G_TO_C_COMBAT_HIT Hit)> PendingCombatHits { get; } = new();
-    internal Queue<(GameClientSession Session, Protocol Protocol, byte[] Body)> PendingCombatEffects { get; } = new();
+    internal Queue<(GameClientSession Session, Protocol Protocol, byte[] Body)> PendingNotifications { get; } = new();
     internal List<PlayerEliminationInfo> PendingPlayerEliminations { get; } = new();
 
     internal void LogPublicationFailure(Exception exception, GameClientSession session, Protocol protocol)
@@ -390,13 +390,13 @@ internal sealed class MatchRuntime
             if (IsEnded && !_cleanupStarted)
             {
                 _cleanupStarted = true;
-                while (PendingCombatHits.Count > 0 || PendingPlayerEliminations.Count > 0 || PendingMonsterDeaths.Count > 0 || PendingCombatEffects.Count > 0)
+                while (PendingCombatHits.Count > 0 || PendingPlayerEliminations.Count > 0 || PendingMonsterDeaths.Count > 0 || PendingNotifications.Count > 0)
                 {
                     try
                     {
                         MatchSynchronizationService.SendPendingCombatHits(this);
                         MatchSynchronizationService.SendPendingDeathNotifications(this);
-                        MatchSynchronizationService.SendPendingCombatEffects(this);
+                        MatchSynchronizationService.SendPendingNotifications(this);
                     }
                     catch (Exception ex)
                     {

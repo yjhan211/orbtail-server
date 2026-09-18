@@ -1347,7 +1347,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Empty(match.PendingCombatHits);
         Assert.Empty(match.PendingPlayerEliminations);
         Assert.Empty(match.PendingMonsterDeaths);
-        Assert.Empty(match.PendingCombatEffects);
+        Assert.Empty(match.PendingNotifications);
         Assert.Null(fixture.Store.GetOrNull(70001));
     }
 

@@ -32,7 +32,7 @@ internal sealed class MatchResultService(ILogger logger)
 
         MatchSynchronizationService.SendPendingCombatHits(runtime);
         MatchSynchronizationService.SendPendingDeathNotifications(runtime);
-        MatchSynchronizationService.SendPendingCombatEffects(runtime);
+        MatchSynchronizationService.SendPendingNotifications(runtime);
 
         var sessionSnapshot = runtime.GetSessions();
         var players = BuildPlayerResults(runtime, winnerId);

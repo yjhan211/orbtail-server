@@ -200,7 +200,7 @@ internal sealed class MatchSynchronizationService
             }
 
             serialized ??= MessagePackSerializer.Serialize(body);
-            runtime.PendingCombatEffects.Enqueue((session, protocol, serialized));
+            runtime.PendingNotifications.Enqueue((session, protocol, serialized));
         }
     }
 
@@ -220,7 +220,7 @@ internal sealed class MatchSynchronizationService
         {
             throw new InvalidOperationException("Synchronization requires the match lock.");
         }
-        runtime.PendingCombatEffects.Enqueue((session, protocol, MessagePackSerializer.Serialize(body)));
+        runtime.PendingNotifications.Enqueue((session, protocol, MessagePackSerializer.Serialize(body)));
     }
 
     public void QueueBroadcastPacket<T>(MatchRuntime runtime, Protocol protocol, T body) where T : IMessagePackObject
@@ -234,7 +234,7 @@ internal sealed class MatchSynchronizationService
         foreach (var session in runtime.GetSessions())
         {
             serialized ??= MessagePackSerializer.Serialize(body);
-            runtime.PendingCombatEffects.Enqueue((session, protocol, serialized));
+            runtime.PendingNotifications.Enqueue((session, protocol, serialized));
         }
     }
 
@@ -257,7 +257,7 @@ internal sealed class MatchSynchronizationService
             Effect = effect,
             DurationMs = (int)(seconds * 1000f)
         });
-        runtime.PendingCombatEffects.Enqueue((session, Protocol.G_TO_C_STATUS_EFFECT, serialized));
+        runtime.PendingNotifications.Enqueue((session, Protocol.G_TO_C_STATUS_EFFECT, serialized));
     }
 
     public void ProcessTick(MatchRuntime runtime, DateTime nowUtc)
@@ -693,7 +693,7 @@ internal sealed class MatchSynchronizationService
                 }
             }
         }
-        SendPendingCombatEffects(runtime);
+        SendPendingNotifications(runtime);
     }
 
     private static void SendDeathNotifications(MatchRuntime runtime, SyncBatch batch)
@@ -764,9 +764,9 @@ internal sealed class MatchSynchronizationService
         SendDeathNotifications(runtime, batch);
     }
 
-    internal static void SendPendingCombatEffects(MatchRuntime runtime)
+    internal static void SendPendingNotifications(MatchRuntime runtime)
     {
-        SendQueuedPackets(runtime, runtime.PendingCombatEffects);
+        SendQueuedPackets(runtime, runtime.PendingNotifications);
     }
 
     private static void SendQueuedPackets(MatchRuntime runtime,
