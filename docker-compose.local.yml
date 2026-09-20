@@ -1,9 +1,8 @@
-# 앱 서비스는 container_name과 고정 host port를 사용하므로 이 파일 자체를 --scale 하지 않는다.
-# 서버는 단일 노드 전제다 (수평 확장 계층은 #320에서 제거, 복원 태그 pre-stage2-scaling).
+# 앱 서비스는 고정 host port를 사용하므로 이 파일 자체를 --scale 하지 않는다.
+# 두 노드 실행은 docker-compose.scale.yml을 함께 사용한다.
 services:
   redis:
     image: redis:7-alpine
-    container_name: manitto-redis-dev
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
@@ -17,7 +16,6 @@ services:
 
   nats:
     image: nats:2.10-alpine
-    container_name: manitto-nats-dev
     ports:
       - "127.0.0.1:4222:4222"
       - "127.0.0.1:8222:8222"
@@ -31,10 +29,10 @@ services:
       retries: 5
 
   game_server:
+    image: orbtail-game-server:dev
     build:
       context: .
       dockerfile: Dockerfile.game_server.dev
-    container_name: manitto-game-server-dev
     ports:
       - "8080:8080"
       - "9001:9001"
@@ -50,7 +48,7 @@ services:
     environment:
       - gameServerId=game-server-0
       # 레지스트리에 광고하는 공개 주소 — 클라이언트가 실제로 접속하는 IP (#339)
-      - GAME_SERVER_PUBLIC_HOST=${GAME_SERVER_IP:-192.168.0.167}
+      - GAME_SERVER_PUBLIC_HOST=${GAME_SERVER_IP:-127.0.0.1}
       - GAME_SERVER_PUBLIC_PORT=9001
       - redisEndPoints=redis:6379
       - natsEndPoint=nats://nats:4222
@@ -64,10 +62,10 @@ services:
     restart: unless-stopped
 
   user_server:
+    image: orbtail-user-server:dev
     build:
       context: .
       dockerfile: Dockerfile.user_server.dev
-    container_name: manitto-user-server-dev
     ports:
       - "7000:7000"
       - "8081:8080"

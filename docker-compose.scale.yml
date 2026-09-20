@@ -6,8 +6,7 @@
 services:
   game_server_2:
     # 첫 노드와 같은 dev 이미지를 재사용한다 (소스는 볼륨 마운트라 코드는 항상 같다)
-    image: manitto-game_server:latest
-    container_name: manitto-game-server-2-dev
+    image: orbtail-game-server:dev
     ports:
       - "8083:8080"
       - "9003:9001"
@@ -20,20 +19,21 @@ services:
       - /App/network/obj
     environment:
       - gameServerId=game-server-1
-      - GAME_SERVER_PUBLIC_HOST=${GAME_SERVER_IP:-192.168.0.167}
+      - GAME_SERVER_PUBLIC_HOST=${GAME_SERVER_IP:-127.0.0.1}
       - GAME_SERVER_PUBLIC_PORT=9003
       - redisEndPoints=redis:6379
       - natsEndPoint=nats://nats:4222
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_USE_POLLING_FILE_WATCHER=true
     depends_on:
-      - redis
-      - nats
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
     restart: unless-stopped
 
   user_server_2:
-    image: manitto-user_server:latest
-    container_name: manitto-user-server-2-dev
+    image: orbtail-user-server:dev
     ports:
       - "7001:7000"
       - "8084:8080"
@@ -54,8 +54,8 @@ services:
       - TEST_TWO_PLAYER_MATCH=${TEST_TWO_PLAYER_MATCH:-0}
       - SOLO_MAP_VALIDATION=${SOLO_MAP_VALIDATION:-0}
     depends_on:
-      - redis
-      - nats
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
     restart: unless-stopped
-
-volumes:

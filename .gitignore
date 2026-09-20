@@ -1,183 +1,34 @@
-# Windows NUL redirect artifact
-nul
-
-# IDE and Editor Files
-.vscode/
+# Build and editor output
+**/[Bb]in/
+**/[Oo]bj/
 .vs/
-**/.idea/
-*.suo
+.vscode/
+.idea/
 *.user
-*.sln.docstates
-*.userprefs
-*.iml
-*.iws
-
-# Build and Binary Files
-[Dd]ebug/
-[Rr]elease/
-[Bb]in/
-[Oo]bj/
-[Ll]og/
-[Ll]ogs/
-x64/
-x86/
-[Ww][Ii][Nn]32/
-[Aa][Rr][Mm]/
-[Aa][Rr][Mm]64/
-
-# Dependencies and Packages
-**/node_modules
-*.nupkg
-*.snupkg
-
-# NuGetForUnity 설치 산출물 (소스: client/Assets/packages.config + NuGet.config)
-client/Assets/Packages/
-# UPM(client/Packages/)은 추적: manifest.json, packages-lock.json
-
-# .NET legacy NuGet (client/packages.config 기반 복원 산출물)
-/packages/
-
-# 유료 Asset Store UPM 로컬 패키지 (각자 라이선스로 임포트)
-client/Packages/com.singularitygroup.hotreload/
-
-# Configuration and Local Settings
-*.config.json
-publish/
-*.pubxml
-*.publishproj
-*.publishsettings
-
-# Claude Code
-**/.claude/*
-/.claude/
-manitto/*
-
-# Temporary and Cache Files
-[Tt]emp/
-/tmp/
-.sass-cache/
-*.cache
-*~
-*.tmp
-*.log
-
-# OS Generated Files
-.DS_Store
-Thumbs.db
-Desktop.ini
-*.lnk
-
-# .NET Specific
-project.lock.json
-project.fragment.lock.json
-artifacts/
-**/Properties/launchSettings.json
-*.csproj.user
-*.dbmdl
-*.jfm
-_ReSharper*/
-*.[Rr]e[Ss]harper
-*.DotSettings
+*.suo
 *.DotSettings.user
 
-# Test Results
-TestResults/
-*.trx
-*.coverage
-*.coveragexml
-
-# Environment Files
+# Local configuration and credentials
 .env
-.env.local
-.env.dev
-.env.prod
-.env.*.local
-*.env
-# 단, *.example 템플릿은 추적 (커밋 가능)
-!.env.local.example
-!.env.dev.example
-!.env.prod.example
-
-# Database
-*.db
-*.db-shm
-*.db-wal
-*.sqlite
-*.sqlite3
-
-# Redis
-dump.rdb
-
-# Docker
-docker-compose.override.yml
-
-# Security
+.env.*
+!.env.*.example
 *.pem
 *.key
-*.cert
 *.pfx
 secrets/
 credentials/
+**/Properties/launchSettings.json
+docker-compose.override.yml
 
-# Project Specific
-client_clone_*/
-trivy-results.sarif
-*.sarif
-
-# Ops Storylet 에디터가 생성하는 CSV 백업 (커밋 대상 아님)
-*.csv.bak
-*.csv.bak.meta
-
-# Unity 외부 플러그인 (에셋스토어에서 각자 임포트)
-client/Assets/Plugins/AllIn1SpriteShader/
-client/Assets/Spine/
-client/Assets/Spine Examples/
-client/Assets/Spine Examples.meta
-client/Assets/Sprite Shaders Ultimate/
-client/Assets/TextMesh Pro/
-
-# Common 코드 Junction (원본: network/Common → client/Assets/Scripts/Common)
-client/Assets/Scripts/Common/
-
-# Unity (Client)
-[Ll]ibrary/
-[Tt]emp/
-[Oo]bj/
-[Bb]uild/
-[Bb]uilds/
-[Ll]ogs/
-[Uu]ser[Ss]ettings/
-*.pidb.meta
-*.pdb.meta
-*.mdb.meta
-sysinfo.txt
-*.apk
-*.aab
-*.unitypackage
-!vendor/*.unitypackage
-*.app
-*.zip
-!vendor/*.zip
-*.zip.meta
-!vendor/*.zip.meta
-
-# Build Output
-Build_*/
-.utmp/
-# CSV files copied by BuildPreProcessor (원본: Scripts/Common/csv)
-client/Assets/StreamingAssets/Common/csv/
-client/Assets/Resources/Common/csv/
-
-# 대체 출력 경로·검증용 스크래치 빌드 (2026-08-14)
-# obj/ 밖에 있으면 MSBuild 기본 제외에 안 걸려 **/*.cs 글롭이 이 안의
-# AssemblyInfo.cs까지 컴파일한다 → CS0579 중복 속성으로 서버 빌드가 통째로 깨진다.
-obj_codex/
-.ci-fix-verify/
-.commit-verify/
-.door-distance-test/
-
-# 커밋 이력 덤프 — 로컬 작업 산출물이라 추적하지 않는다.
-log.txt
-
-# AllIn1VfxToolkit (유료 에셋 278MB) — 저장소에는 실제 참조하는 파일만 명시적으로 추가한다
-client/Assets/Plugins/AllIn1VfxToolkit/
+# Test and runtime output
+**/TestResults/
+*.trx
+*.coverage
+**/[Ll]ogs/
+*.log
+*.db
+*.rdb
+output/
+artifacts/
+.DS_Store
+Thumbs.db
