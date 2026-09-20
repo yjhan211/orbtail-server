@@ -194,7 +194,7 @@ public sealed class MatchGameplayServiceTests
     [Theory]
     [InlineData(101)]
     [InlineData(-101)]
-    public void MonsterContactFindsPlayerWithoutSessionAndInterruptsPendingDoor(long playerId)
+    public void MonsterContactFindsPlayerWithoutSessionAndPreservesPendingDoor(long playerId)
     {
         using var provider = GameServerDependencyInjectionTests.CreateProvider();
         var service = provider.GetRequiredService<game_server.matches.monsters.MonsterAttackService>();
@@ -213,10 +213,10 @@ public sealed class MatchGameplayServiceTests
             match.Monsters.Entities[1] = new game_server.matches.monsters.Monster { MonsterId = 1, Alive = true, Health = 10, Position = position, ContactDamageValue = 12 };
             player.Interactions.Begin(702000101, TestTime.Ms(0));
 
-            // 몬스터와 겹쳐 선 플레이어는 세션이 없어도 물리고, 진행 중인 문 열기가 끊긴다.
+            // 몬스터와 겹쳐 선 플레이어는 세션이 없어도 피해를 받지만 문 열기는 유지된다.
             service.ProcessTick(match, [player], now);
             Assert.Equal(100 - network.common.Config.ScaleSwarmDamageTaken(12), player.Health);
-            Assert.False(player.Interactions.TryComplete(702000101, TestTime.Ms(3000), TimeSpan.FromSeconds(3), out _));
+            Assert.True(player.Interactions.TryComplete(702000101, TestTime.Ms(3000), TimeSpan.FromSeconds(3), out _));
 
             // 탈락한 플레이어는 공격 간격과 면역 창이 지나도 물리지 않는다.
             player.Status = network.common.PlayerMatchStatus.ELIMINATED;
