@@ -1,4 +1,3 @@
-using game_server.matches;
 using network.common.data.models;
 
 namespace server_tests;
@@ -114,7 +113,7 @@ public sealed class GameMatchEntryRosterTests
         {
             await Assert.ThrowsAsync<InvalidOperationException>(() => service.PrepareMatchAsync(runtime.MatchingId));
             Assert.False(runtime.IsSetupComplete);
-                return;
+            return;
         }
         runtime = await service.PrepareMatchAsync(runtime.MatchingId);
         Assert.Equal(2, runtime.GetPlayerProfiles().Count);

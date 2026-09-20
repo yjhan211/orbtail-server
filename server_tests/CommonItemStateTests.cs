@@ -1,6 +1,6 @@
-using network.common.data;
 using MessagePack;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 
 namespace server_tests;

@@ -1,8 +1,8 @@
-using network.common.data;
 using game_server.matches;
 using game_server.players;
 using game_server.players.bots;
 using Microsoft.Extensions.DependencyInjection;
+using network.common.data;
 using network.common.data.models;
 
 namespace server_tests;

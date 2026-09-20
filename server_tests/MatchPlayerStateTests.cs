@@ -1,9 +1,8 @@
-using network.common.data;
-using game_server.matches;
 using game_server.players;
 using game_server.sessions;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 
 namespace server_tests;

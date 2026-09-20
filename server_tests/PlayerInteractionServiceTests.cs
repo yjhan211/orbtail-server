@@ -174,7 +174,7 @@ public sealed class PlayerInteractionServiceTests
         var door = GameDoorData.Get(info.DoorId)!;
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(984405);
-        var player = new Player(new PlayerInfo { PlayerId = playerId }) {  Cell = new Cell(info.CellX, info.CellY) };
+        var player = new Player(new PlayerInfo { PlayerId = playerId }) { Cell = new Cell(info.CellX, info.CellY) };
         long duration = (long)TimeSpan.FromSeconds(Config.GetSwarmDoorGaugeSeconds(door.DoorId)).TotalMilliseconds;
         using (match.Enter())
         {

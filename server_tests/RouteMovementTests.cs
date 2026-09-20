@@ -36,7 +36,7 @@ public sealed class RouteMovementTests
         var start = MapCoordinateConverter.CellToWorld(map, from);
         var bot = CreatePath(route);
         var monster = CreatePath(route);
-        var info = new GameObjectInfo {  MapId = network.common.Config.SWARM_MATCH_MAP, Cell = from, Position = start };
+        var info = new GameObjectInfo { MapId = network.common.Config.SWARM_MATCH_MAP, Cell = from, Position = start };
         var now = DateTime.UtcNow;
         var request = new MovementRequest(to, 1f);
         MatchMoveService.PrepareMovement(runtime, info, bot, request, now);
@@ -67,7 +67,7 @@ public sealed class RouteMovementTests
         var bot = CreatePath([target]);
         var monster = CreatePath([target]);
         var cell = MapCoordinateConverter.WorldToCell(map, start);
-        var info = new GameObjectInfo {  MapId = network.common.Config.SWARM_MATCH_MAP, Cell = cell, Position = start };
+        var info = new GameObjectInfo { MapId = network.common.Config.SWARM_MATCH_MAP, Cell = cell, Position = start };
         var request = new MovementRequest(new Cell(-10000, -10000), 1f);
         MatchMoveService.PrepareMovement(runtime, info, bot, request, DateTime.UtcNow);
         MatchMoveService.PrepareMovement(runtime, info, monster, request, DateTime.UtcNow, true);
@@ -114,8 +114,11 @@ public sealed class RouteMovementTests
         var path = CreatePath(steps.Select(step => MapCoordinateConverter.CellToWorld(map, step.Cell)));
         runtime.Closures.InitializeMatching([(AreaType.S2Library1, 0)]);
         runtime.Closures.CloseDueAreas();
-        var info = new GameObjectInfo { MapId = network.common.Config.SWARM_MATCH_MAP, Cell = from,
-            Position = MapCoordinateConverter.CellToWorld(map, from) };
+        var info = new GameObjectInfo
+        {
+            MapId = network.common.Config.SWARM_MATCH_MAP, Cell = from,
+            Position = MapCoordinateConverter.CellToWorld(map, from)
+        };
         MatchMoveService.PrepareMovement(runtime, info, path, new MovementRequest(to, 1f),
             DateTime.UtcNow, ignoreClosedDoors);
         Assert.NotEmpty(path.Waypoints);

@@ -113,7 +113,8 @@ public sealed class BotEscapeTargetTests
             runtime.RegisterPlayer(bot.Player);
             var position = bot.Player.Position!;
             var threatPosition = new Vector3f(position.X + threatOffset, position.Y, 0f);
-            var rival = new Player(new PlayerInfo { PlayerId = 1 }) {
+            var rival = new Player(new PlayerInfo { PlayerId = 1 })
+            {
                 Position = threatPosition,
                 Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, threatPosition),
 

@@ -1,8 +1,8 @@
-using network.common.data;
 using game_server.matches;
 using game_server.players;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 
 namespace server_tests;
@@ -19,7 +19,8 @@ public sealed class PlayerPickupServiceTests
             var item = Assert.Single(match.GroundItems.SpawnItems(
                 AreaType.S2Corridor9, TestMapPosition.In(AreaType.S2Corridor9).X, TestMapPosition.In(AreaType.S2Corridor9).Y, [Config.KEY_GROUND_ITEM_ID]));
             TestGroundItemLanding.Complete(match.GroundItems);
-            var player = new Player(new PlayerInfo { PlayerId = 1 }) {
+            var player = new Player(new PlayerInfo { PlayerId = 1 })
+            {
 
                 Position = At(item, 0, 0)
             };
@@ -47,7 +48,8 @@ public sealed class PlayerPickupServiceTests
         using (match.Enter())
         {
             var item = Spawn(match);
-            var player = new Player(new PlayerInfo { PlayerId = 1 }) {
+            var player = new Player(new PlayerInfo { PlayerId = 1 })
+            {
 
                 Position = At(item, 5, 0)
             };
@@ -87,7 +89,8 @@ public sealed class PlayerPickupServiceTests
     {
         var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(984202);
-        var player = new Player(new PlayerInfo { PlayerId = 1 }) {
+        var player = new Player(new PlayerInfo { PlayerId = 1 })
+        {
 
             Position = new Vector3f(0, 0, 0)
         };
@@ -166,7 +169,8 @@ public sealed class PlayerPickupServiceTests
             var item = Assert.Single(match.GroundItems.SpawnItems(AreaType.S2Corridor9, TestMapPosition.In(AreaType.S2Corridor9).X, TestMapPosition.In(AreaType.S2Corridor9).Y,
                 [Config.HEART_GROUND_ITEM_ID]));
             TestGroundItemLanding.Complete(match.GroundItems);
-            var player = new Player(new PlayerInfo { PlayerId = 1 }) {
+            var player = new Player(new PlayerInfo { PlayerId = 1 })
+            {
 
                 Position = At(item, 0, 0),
                 Health = Config.MAX_HEALTH

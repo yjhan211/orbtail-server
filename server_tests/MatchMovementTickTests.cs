@@ -86,13 +86,15 @@ public sealed class MatchMovementTickTests
         var monster = new Monster
         {
             MonsterId = 1, Alive = true, Position = position,
-             Health = 10
+            Health = 10
         };
         monster.Movement.LastProcessedAtUtc = start.AddSeconds(-10);
         monster.Movement.Waypoints.Add(MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, new Vector3f(position.X + 1f, position.Y, 0f)));
         runtime.Monsters.Entities[1] = monster;
-        runtime.RegisterPlayer(new game_server.players.Player(new PlayerInfo { PlayerId = 1 }) { Health = 100,
-             Position = new Vector3f(position.X + 1f, position.Y, 0f)
+        runtime.RegisterPlayer(new game_server.players.Player(new PlayerInfo { PlayerId = 1 })
+        {
+            Health = 100,
+            Position = new Vector3f(position.X + 1f, position.Y, 0f)
         });
         var service = new MatchMoveService(null!, new MonsterBehaviorService());
 
@@ -183,7 +185,9 @@ public sealed class MatchMovementTickTests
         var now = DateTime.UtcNow;
         var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Corridor9);
         var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
-        runtime.RegisterPlayer(new game_server.players.Player(new PlayerInfo { PlayerId = 1 }) { Health = 100,
+        runtime.RegisterPlayer(new game_server.players.Player(new PlayerInfo { PlayerId = 1 })
+        {
+            Health = 100,
             Position = new Vector3f(position.X + 1f, position.Y, 0f)
         });
         var monster = new Monster

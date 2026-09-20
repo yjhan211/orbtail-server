@@ -1,6 +1,5 @@
 #pragma warning disable CS8618
 using MessagePack;
-using System;
 
 namespace network.common.data.models
 {

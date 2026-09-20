@@ -76,7 +76,7 @@ public sealed class CommonMovementTraversalTests
                     Assert.Equal(from, MapCoordinateConverter.WorldToCell(map, start));
                     Assert.False(MatchMoveService.CanTraverse(runtime, from, horizontal, true));
                     var state = new MovementState();
-                    var info = new GameObjectInfo { MapId = network.common.Config.SWARM_MATCH_MAP, Cell = from,  Position = start };
+                    var info = new GameObjectInfo { MapId = network.common.Config.SWARM_MATCH_MAP, Cell = from, Position = start };
                     var now = DateTime.UtcNow;
                     var request = new MovementRequest(to, 1f);
                     MatchMoveService.PrepareMovement(runtime, info, state, request, now, true);

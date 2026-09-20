@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Reflection;
-using game_server;
 using game_server.matches;
 using game_server.players;
 using game_server.sessions;
@@ -8,11 +7,9 @@ using MessagePack;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
-using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.core;
-using network.gameentry;
 using network.packets;
 
 namespace server_tests;
@@ -352,13 +349,15 @@ public sealed class GameClientSessionTerminalPublicationTests
         {
             Assert.True(totalEntries >= humanSessions.Count);
             var entries = humanSessions
-                .Select(session => new Player(new network.common.data.models.PlayerInfo { PlayerId = session.PlayerId!.Value }) {
+                .Select(session => new Player(new network.common.data.models.PlayerInfo { PlayerId = session.PlayerId!.Value })
+                {
                     Status = session.Player.Status
                 })
                 .ToList();
             for (int index = entries.Count; index < totalEntries; index++)
             {
-                entries.Add(new Player(new network.common.data.models.PlayerInfo { PlayerId = 80_000 + index }) {
+                entries.Add(new Player(new network.common.data.models.PlayerInfo { PlayerId = 80_000 + index })
+                {
                     Status = PlayerMatchStatus.ACTIVE
                 });
             }

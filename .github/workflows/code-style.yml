@@ -27,5 +27,8 @@ jobs:
       - name: Restore
         run: dotnet restore server.sln
 
-      - name: Check formatting
-        run: dotnet format server.sln --verify-no-changes --verbosity diagnostic --no-restore
+      - name: Check whitespace
+        run: dotnet format whitespace server.sln --verify-no-changes --verbosity diagnostic --no-restore
+
+      - name: Check code style
+        run: dotnet format style server.sln --verify-no-changes --verbosity diagnostic --no-restore

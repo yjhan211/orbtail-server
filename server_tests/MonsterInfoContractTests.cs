@@ -1,6 +1,6 @@
-using network.common.data;
 using MessagePack;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 
 namespace server_tests;
@@ -46,9 +46,12 @@ public sealed class MonsterInfoContractTests
     public void SpatialPropertiesUseOneStorage()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
-        var info = new MonsterInfo { MonsterId = 7,
+        var info = new MonsterInfo
+        {
+            MonsterId = 7,
             ObjectInfo = new GameObjectInfo(ObjectType.MONSTER, 7, Config.SWARM_MATCH_MAP,
-                network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Gym1)) };
+                network.common.data.GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, AreaType.S2Gym1))
+        };
         Assert.Equal(ObjectType.MONSTER, info.ObjectInfo.ObjectType);
         Assert.Equal(7, info.ObjectInfo.ObjectId);
         Assert.Equal(AreaType.S2Gym1, GameMapData.GetCurrentArea(info.ObjectInfo.MapId, info.ObjectInfo.Cell));
