@@ -13,13 +13,13 @@ internal sealed class MatchCombatDamageService(PlayerHealthService healthService
 {
     private static bool RollCritical(MatchRuntime runtime, double chance) => runtime.CriticalRng.NextDouble() < chance;
 
-    internal void MarkAttacked(MatchRuntime runtime, Player victim, long attackerId, DateTime nowUtc)
+    internal void MarkAttacked(MatchRuntime runtime, Player victim, long attackerId, DateTime nowUtc, bool interruptInteraction = true)
     {
         if (!Monitor.IsEntered(runtime.MatchLock))
         {
             throw new InvalidOperationException("Combat damage requires the match lock.");
         }
-        if (victim.Interactions.Cancel() is { } interactId)
+        if (interruptInteraction && victim.Interactions.Cancel() is { } interactId)
         {
             victim.State = PlayerState.IDLE;
             victim.Session?.SendDoorOpenInterrupted(interactId);
@@ -83,7 +83,7 @@ internal sealed class MatchCombatDamageService(PlayerHealthService healthService
             return;
         }
 
-        MarkAttacked(runtime, victim, 0, nowUtc);
+        MarkAttacked(runtime, victim, 0, nowUtc, interruptInteraction: false);
         var victimSession = victim.Session;
         var area = victim.CurrentArea;
         healthService.ApplyDamage(runtime, victim, damage);

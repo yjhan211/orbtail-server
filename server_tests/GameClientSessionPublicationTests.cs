@@ -1042,6 +1042,35 @@ public sealed class GameClientSessionPublicationTests
         Assert.False(Monitor.IsEntered(runtime.MatchLock));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void DoorInteraction_ContinuesAfterMonsterHitButStopsAfterPlayerHit(bool monsterHit)
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, (AreaType)50);
+        var combat = TestGameSessionServices.CreateCombatDamageService(
+            TestGameSessionServices.CreateHealthService(fixture.Store, NullLogger.Instance));
+        int healthBefore = session.Player.Health;
+        using (session.Match.Enter())
+        {
+            session.Player.Interactions.Begin(702000101, TestTime.Ms(0));
+            if (monsterHit)
+                combat.ApplyMonsterContactHit(session.Match, session.Player, 42, 5, TestTime.Ms(1000));
+            else
+                combat.ApplyPlayerHit(session.Match, session.Player, 102, null, session.Player.CurrentArea, 123, 5, TestTime.Ms(1000));
+            Assert.Equal(healthBefore - 5, session.Player.Health);
+            Assert.Equal(monsterHit, session.Player.Interactions.TryComplete(
+                702000101, TestTime.Ms(3000), TimeSpan.FromSeconds(3), out _));
+        }
+        var acknowledgements = fixture.ConnectionFor(session)
+            .DeserializeAll<G_TO_C_INTERACTION_ACK>(Protocol.G_TO_C_INTERACTION_ACK);
+        if (monsterHit)
+            Assert.Empty(acknowledgements);
+        else
+            Assert.Equal(ErrorCode.DOOR_OPEN_INTERRUPTED, Assert.Single(acknowledgements).ErrorCode);
+    }
+
     [Fact]
     public void DoorHit_ReportsInterruptedAndInvalidatesPendingFinish()
     {
