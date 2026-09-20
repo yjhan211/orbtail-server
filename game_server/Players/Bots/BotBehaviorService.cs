@@ -207,8 +207,13 @@ internal class BotBehaviorService(
             throw new InvalidOperationException("Bot decisions require the match lock.");
         }
 
+        // 소환석 획득
+        if (TrySelectGroundItemTarget(runtime, bot, out var target))
+        {
+            return target;
+        }
         // 자기장 대피
-        if (TrySelectFieldEvacuationTarget(runtime, bot, nowUtc, out var target))
+        if (TrySelectFieldEvacuationTarget(runtime, bot, nowUtc, out target))
         {
             return target;
         }
@@ -219,11 +224,6 @@ internal class BotBehaviorService(
         }
         // 전력 또는 피격 상황에 따른 도주
         if (TrySelectEscapeTarget(runtime, bot, nowUtc, out target))
-        {
-            return target;
-        }
-        // 소환석 획득
-        if (TrySelectSummonStoneTarget(runtime, bot, out target))
         {
             return target;
         }
@@ -450,7 +450,7 @@ internal class BotBehaviorService(
         return null;
     }
 
-    private bool TrySelectSummonStoneTarget(MatchRuntime runtime, Bot bot, out Cell? target)
+    private bool TrySelectGroundItemTarget(MatchRuntime runtime, Bot bot, out Cell? target)
     {
         target = null;
         Cell? cell = null;
@@ -458,10 +458,6 @@ internal class BotBehaviorService(
         var currentArea = bot.Player.CurrentArea;
         foreach (var item in runtime.GroundItems.GetItemsInArea(currentArea))
         {
-            if (item.ItemId != Config.SUMMON_STONE_GROUND_ITEM_ID)
-            {
-                continue;
-            }
             var candidate = item.ObjectInfo.Cell;
             int distance = bot.Player.Cell!.GetDistance(candidate);
             if (distance >= nearestDistance)
@@ -552,7 +548,7 @@ internal class BotBehaviorService(
             }
 
             bool unsafeToSleep = IsUnsafeToSleep(runtime, bot, players, monsterTargets, safeRadiusSquared, nowUtc);
-            bool hasSummonStone = TrySelectSummonStoneTarget(runtime, bot, out _);
+            bool hasSummonStone = TrySelectGroundItemTarget(runtime, bot, out _);
             if (unsafeToSleep || hasSummonStone || player.Health >= Config.MAX_HEALTH)
             {
                 player.TryStopSleep();

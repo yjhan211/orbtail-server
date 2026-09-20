@@ -1,4 +1,3 @@
-using network.common.data;
 using game_server.matches;
 using game_server.players;
 using MessagePack;
@@ -90,9 +89,6 @@ public partial class GameClientSession : SessionBase
     internal MatchRuntime Match => Volatile.Read(ref _match) ?? throw new InvalidOperationException("Session has not entered a match.");
 
     internal bool IsGameEnded => Volatile.Read(ref _isGameEnded);
-    internal bool IsConnectionReleased => Connection.IsReleased;
-    internal bool IsAcceptingMessages => Connection.IsAcceptingMessages;
-
 
     private void InitializeProtocolHandlers()
     {
@@ -107,7 +103,6 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_SUMMON_ORB>(bytes, HandleSummonOrb));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_UPGRADE_ORB,
             async bytes => await HandleMessage<C_TO_G_UPGRADE_ORB>(bytes, HandleUpgradeOrb));
-
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_STATE,
             async bytes => await HandleMessage<C_TO_G_PLAYER_STATE>(bytes, HandlePlayerState));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_START,
@@ -685,8 +680,6 @@ public partial class GameClientSession : SessionBase
             _matchCleanup.CleanupIfNoHumanSessionsRemain(MatchingId);
         }
     }
-
-
 
     internal Action? MarkGameEndedAndPrepareLifecyclePublication()
     {
