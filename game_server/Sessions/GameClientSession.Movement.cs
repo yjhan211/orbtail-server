@@ -114,8 +114,15 @@ public partial class GameClientSession
         foreach (var identity in objects)
         {
             PublishedObjects.Remove((identity.Type, identity.Id));
+            if (identity.Type == ObjectType.PLAYER)
+            {
+                ForgetOrbVisualState(identity.Id);
+            }
+
             if (identity.Type == ObjectType.MONSTER)
+            {
                 _publishedMonsterStates.Remove((int)identity.Id);
+            }
         }
     }
 

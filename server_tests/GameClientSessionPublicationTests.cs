@@ -1480,6 +1480,16 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(102, state.PlayerId);
         Assert.Equal([107000010], state.OrbItemIds);
 
+        // 퇴장 후 재등장하면 오브/체력이 그대로여도 표시 상태를 다시 보낸다.
+        using (match.Enter())
+        {
+            observer.SendObjectLeaves([new ObjectIdentity { Type = ObjectType.PLAYER, Id = 102 }]);
+            observer.SendObjectEntries(new G_TO_C_OBJECT_ENTER { Players = [actor.Player.CreatePlayerObjectInfo()] });
+            Publish(observer);
+            Publish(observer);
+        }
+        Assert.Equal(2, Delivered(observer));
+
         // 같은 플레이어의 새 연결은 빈 캐시라 변경이 없어도 전부 다시 받는다.
         var reconnected = fixture.CreateSession(70001, 101, (AreaType)50);
         using (match.Enter())
